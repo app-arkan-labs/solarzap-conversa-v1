@@ -1,0 +1,205 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* SolarZap CRM - Design System WhatsApp */
+
+@layer base {
+  :root {
+    /* WhatsApp Colors */
+    --whatsapp-green: 142 70% 49%;
+    --whatsapp-dark: 168 85% 19%;
+    --whatsapp-light: 109 62% 91%;
+    --whatsapp-gray: 203 15% 58%;
+    --whatsapp-bg: 33 26% 88%;
+    
+    /* Solar Accent */
+    --solar-yellow: 45 100% 51%;
+    --solar-orange: 36 100% 50%;
+    
+    /* Status Colors */
+    --success: 122 39% 49%;
+    --warning: 45 100% 51%;
+    --danger: 4 90% 58%;
+    --info: 207 90% 54%;
+    
+    /* Base Theme - Light */
+    --background: 0 0% 100%;
+    --foreground: 210 11% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 210 11% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 11% 15%;
+
+    --primary: 142 70% 49%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 168 85% 19%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 210 20% 96%;
+    --muted-foreground: 203 15% 45%;
+
+    --accent: 109 62% 91%;
+    --accent-foreground: 168 85% 19%;
+
+    --destructive: 4 90% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 20% 90%;
+    --input: 210 20% 90%;
+    --ring: 142 70% 49%;
+
+    --radius: 0.5rem;
+
+    /* Sidebar - WhatsApp Dark Green */
+    --sidebar-background: 168 85% 19%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 142 70% 49%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 168 70% 25%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 168 60% 25%;
+    --sidebar-ring: 142 70% 49%;
+
+    /* Chat Area */
+    --chat-bg: 33 26% 88%;
+    --chat-bubble-sent: 109 62% 91%;
+    --chat-bubble-received: 0 0% 100%;
+  }
+
+  .dark {
+    --background: 210 11% 12%;
+    --foreground: 210 20% 96%;
+
+    --card: 210 11% 15%;
+    --card-foreground: 210 20% 96%;
+
+    --popover: 210 11% 15%;
+    --popover-foreground: 210 20% 96%;
+
+    --primary: 142 70% 49%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 168 85% 19%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 210 11% 20%;
+    --muted-foreground: 203 15% 60%;
+
+    --accent: 168 70% 25%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 4 90% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 11% 25%;
+    --input: 210 11% 25%;
+    --ring: 142 70% 49%;
+
+    --sidebar-background: 210 11% 10%;
+    --sidebar-foreground: 210 20% 96%;
+    --sidebar-primary: 142 70% 49%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 11% 18%;
+    --sidebar-accent-foreground: 210 20% 96%;
+    --sidebar-border: 210 11% 20%;
+    --sidebar-ring: 142 70% 49%;
+
+    --chat-bg: 210 11% 15%;
+    --chat-bubble-sent: 168 70% 25%;
+    --chat-bubble-received: 210 11% 20%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom scrollbar for WhatsApp feel */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Pipeline horizontal scroll - Premium scrollbar */
+.pipeline-scroll-container {
+  scrollbar-width: auto;
+  scrollbar-color: hsl(142 70% 49%) hsl(210 20% 90%);
+}
+
+.pipeline-scroll-container::-webkit-scrollbar {
+  height: 14px;
+  display: block !important;
+}
+
+.pipeline-scroll-container::-webkit-scrollbar-track {
+  background: hsl(210 20% 92%);
+  border-radius: 8px;
+  margin: 0 16px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.pipeline-scroll-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, hsl(142 70% 45%), hsl(142 70% 55%));
+  border-radius: 8px;
+  border: 3px solid hsl(210 20% 92%);
+  min-width: 60px;
+}
+
+.pipeline-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, hsl(142 70% 40%), hsl(142 70% 50%));
+}
+
+.pipeline-scroll-container::-webkit-scrollbar-thumb:active {
+  background: hsl(142 70% 35%);
+}
+
+/* Ensure scrollbar is always visible */
+.pipeline-scroll-container::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* Chat background pattern */
+.chat-bg-pattern {
+  background-color: hsl(var(--chat-bg));
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* Chat textarea scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}

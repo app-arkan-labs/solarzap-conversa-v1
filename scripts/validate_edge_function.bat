@@ -1,0 +1,9 @@
+@echo off
+echo Starting local Supabase function for testing...
+start /B npx supabase functions serve reports-dashboard --no-verify-jwt > server.log 2>&1
+timeout /t 5
+echo Sending test request...
+curl -X POST http://localhost:54321/functions/v1/reports-dashboard -H "Content-Type: application/json" -d "{\"start\": \"2023-01-01\", \"end\": \"2023-12-31\", \"filters\": {\"calendarFilter\": \"next_7_days\"}}"
+echo.
+echo Stopping server...
+taskkill /IM deno.exe /F

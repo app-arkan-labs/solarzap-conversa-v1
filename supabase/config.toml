@@ -1,0 +1,26 @@
+[functions.meta-webhook]
+verify_jwt = false
+
+[functions.evolution-webhook]
+verify_jwt = false
+
+[functions.evolution-api]
+verify_jwt = false
+
+[functions.google-oauth]
+verify_jwt = false
+
+[functions.google-callback]
+verify_jwt = false
+
+[functions.meta-oauth]
+verify_jwt = false
+
+[functions.meta-callback]
+verify_jwt = false
+
+[functions.whatsapp-connect]
+verify_jwt = false
+
+[functions.integration-disconnect]
+verify_jwt = false

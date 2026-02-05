@@ -1,0 +1,392 @@
+import React, { useState, useEffect } from 'react';
+import { formatPhoneForDisplay } from '@/lib/phoneUtils';
+import { Phone, Video, Calendar, FileText, Home, Kanban, User, Zap, MapPin, Mail, X, Save, Loader2, MessageSquare } from 'lucide-react';
+import { Conversation, PIPELINE_STAGES, PipelineStage, CHANNEL_INFO, Channel, ClientType } from '@/types/solarzap';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { UpdateLeadData } from './EditLeadModal';
+
+interface ActionsPanelProps {
+  conversation: Conversation | null;
+  onMoveToPipeline: (contactId: string, stage: PipelineStage) => void;
+  onAction: (action: string, contact?: Conversation['contact']) => void;
+  onClose: () => void;
+  onUpdateLead?: (contactId: string, data: UpdateLeadData) => Promise<void>;
+}
+
+const quickActions = [
+  { id: 'call', label: 'Ligar Agora', icon: Phone, color: 'bg-blue-500 hover:bg-blue-600' },
+  { id: 'video_call', label: 'Vídeo Chamada', icon: Video, color: 'bg-cyan-500 hover:bg-cyan-600' },
+  { id: 'schedule', label: 'Agendar Reunião', icon: Calendar, color: 'bg-purple-500 hover:bg-purple-600' },
+  { id: 'proposal', label: 'Gerar Proposta', icon: FileText, color: 'bg-green-500 hover:bg-green-600' },
+  { id: 'visit', label: 'Agendar Visita', icon: Home, color: 'bg-orange-500 hover:bg-orange-600' },
+  { id: 'comments', label: 'Comentários', icon: MessageSquare, color: 'bg-teal-500 hover:bg-teal-600' },
+  { id: 'pipeline', label: 'Ver Pipeline', icon: Kanban, color: 'bg-indigo-500 hover:bg-indigo-600' },
+];
+
+const CLIENT_TYPES: { value: ClientType; label: string }[] = [
+  { value: 'residencial', label: 'Residencial' },
+  { value: 'comercial', label: 'Comercial' },
+  { value: 'industrial', label: 'Industrial' },
+  { value: 'rural', label: 'Rural' },
+];
+
+export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose, onUpdateLead }: ActionsPanelProps) {
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [formData, setFormData] = useState<UpdateLeadData & { canal?: Channel }>({});
+  const { toast } = useToast();
+
+  const prevContactIdRef = React.useRef<string | null>(null);
+
+  // Reset form when conversation changes
+  useEffect(() => {
+    if (conversation?.contact) {
+      const { contact } = conversation;
+      const isSwitchingContact = prevContactIdRef.current !== contact.id;
+      prevContactIdRef.current = contact.id;
+
+      if (isSwitchingContact) {
+        setHasChanges(false);
+        setFormData({
+          nome: contact.name,
+          telefone: contact.phone,
+          email: contact.email || '',
+          empresa: contact.company || '',
+          tipo_cliente: contact.clientType,
+          consumo_kwh: contact.consumption,
+          valor_estimado: contact.projectValue,
+          status_pipeline: contact.pipelineStage,
+          canal: contact.channel,
+        });
+      } else if (!hasChanges) {
+        // Background update
+        setFormData({
+          nome: contact.name,
+          telefone: contact.phone,
+          email: contact.email || '',
+          empresa: contact.company || '',
+          tipo_cliente: contact.clientType,
+          consumo_kwh: contact.consumption,
+          valor_estimado: contact.projectValue,
+          status_pipeline: contact.pipelineStage,
+          canal: contact.channel,
+        });
+      }
+    }
+  }, [conversation, hasChanges]);
+
+  if (!conversation) {
+    return null;
+  }
+
+  const { contact } = conversation;
+  // Fallback to 'novo_lead' if stage is invalid/missing
+  const currentStageKey = formData.status_pipeline || contact.pipelineStage || 'novo_lead';
+  const stage = PIPELINE_STAGES[currentStageKey] || PIPELINE_STAGES['novo_lead'];
+
+  const currentChannelKey = formData.canal || contact.channel || 'whatsapp';
+  const channelInfo = CHANNEL_INFO[currentChannelKey] || CHANNEL_INFO['whatsapp'];
+
+  const handleChange = (field: keyof (UpdateLeadData & { canal?: Channel }), value: string | number) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    setHasChanges(true);
+  };
+
+  const handleStageChange = (newStage: PipelineStage) => {
+    handleChange('status_pipeline', newStage);
+    // Don't call onMoveToPipeline immediately. Wait for Save.
+  };
+
+  const handleSave = async () => {
+    if (!onUpdateLead) return;
+
+    setIsSaving(true);
+    try {
+      // Check if pipeline stage changed
+      const stageChanged = formData.status_pipeline && formData.status_pipeline !== contact.pipelineStage;
+
+      const promises = [];
+
+      // 1. Update general data
+      // We always update data if there are changes, covering fields like name, phone, etc.
+      // Even if only stage changed, updating the lead record is safe.
+      promises.push(onUpdateLead(contact.id, formData));
+
+      // 2. If stage changed, trigger the automation pipeline move
+      if (stageChanged && formData.status_pipeline) {
+        promises.push(onMoveToPipeline(contact.id, formData.status_pipeline));
+      }
+
+      await Promise.all(promises);
+
+      setHasChanges(false);
+      toast({
+        title: "Dados atualizados!",
+        description: "As alterações foram salvas.",
+      });
+    } catch (error) {
+      console.error('Error saving lead:', error);
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar as alterações.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleQuickAction = (actionId: string) => {
+    onAction(actionId, contact);
+  };
+
+  const formatDate = (date: Date) => {
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - new Date(date).getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diff === 0) return 'Hoje';
+    if (diff === 1) return 'Ontem';
+    if (diff < 7) return `${diff} dias atrás`;
+    return new Date(date).toLocaleDateString('pt-BR');
+  };
+
+  return (
+    <div className="w-[340px] h-full border-l border-border bg-card overflow-y-auto custom-scrollbar">
+      {/* Header with close button */}
+      <div className="p-4 bg-muted/50 border-b border-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🔥</span>
+          <span className="text-sm font-medium text-muted-foreground">STATUS</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasChanges && (
+            <Button onClick={handleSave} disabled={isSaving} size="sm" variant="default" className="gap-1 h-8">
+              {isSaving ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Save className="w-3 h-3" />
+              )}
+              Salvar
+            </Button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Current Stage */}
+      <div className="px-4 pb-4 pt-2 border-b border-border">
+        <Badge className={`${stage.color} text-white text-sm px-3 py-1`}>
+          {stage.icon} {stage.title}
+        </Badge>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="p-4 border-b border-border">
+        <h3 className="text-sm font-semibold text-foreground mb-3">Ações Rápidas</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {quickActions.map((action) => {
+            const Icon = action.icon;
+            return (
+              <Button
+                key={action.id}
+                variant="secondary"
+                size="sm"
+                className={`${action.color} text-white justify-start gap-2 h-10`}
+                onClick={() => handleQuickAction(action.id)}
+              >
+                <Icon className="w-4 h-4" />
+                <span className="text-xs">{action.label}</span>
+              </Button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Client Info - Editable */}
+      <div className="p-4 border-b border-border">
+        <h3 className="text-sm font-semibold text-foreground mb-3">Dados do Cliente</h3>
+
+        <div className="space-y-3">
+          {/* Avatar and Name */}
+          <div className="flex items-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center text-3xl flex-shrink-0">
+              {contact.avatar || '👤'}
+            </div>
+            <div className="flex-1 space-y-1">
+              <Input
+                value={formData.nome || ''}
+                onChange={(e) => handleChange('nome', e.target.value)}
+                className="font-medium h-8"
+                placeholder="Nome"
+              />
+              <Input
+                value={formData.empresa || ''}
+                onChange={(e) => handleChange('empresa', e.target.value)}
+                className="text-sm h-7 text-muted-foreground"
+                placeholder="Empresa"
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Contact Details - Editable */}
+          <div className="space-y-2 text-sm">
+            {/* Canal - Now Editable */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground flex items-center gap-1 flex-shrink-0">
+                <MessageSquare className="w-4 h-4" />
+                Canal
+              </span>
+              <Select
+                value={formData.canal}
+                onValueChange={(value) => handleChange('canal', value as Channel)}
+              >
+                <SelectTrigger className="h-7 w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  {Object.entries(CHANNEL_INFO).map(([key, info]) => (
+                    <SelectItem key={key} value={key}>
+                      <span className="flex items-center gap-1">
+                        {info.icon} {info.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground flex-shrink-0">Telefone</span>
+              <Input
+                value={formatPhoneForDisplay(formData.telefone) || ''}
+                onChange={(e) => handleChange('telefone', e.target.value)}
+                className="text-right h-7 max-w-[160px]"
+                placeholder="(DD) 00000-0000"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground flex-shrink-0">E-mail</span>
+              <Input
+                value={formData.email || ''}
+                onChange={(e) => handleChange('email', e.target.value)}
+                className="text-right h-7 max-w-[160px] text-xs"
+                placeholder="E-mail"
+              />
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground flex items-center gap-1 flex-shrink-0">
+                <Zap className="w-4 h-4" /> Consumo
+              </span>
+              <div className="flex items-center gap-1">
+                <Input
+                  value={formData.consumo_kwh || ''}
+                  onChange={(e) => handleChange('consumo_kwh', parseFloat(e.target.value) || 0)}
+                  className="text-right h-7 w-20"
+                  type="number"
+                />
+                <span className="text-xs text-muted-foreground">kWh/mês</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground flex-shrink-0">Tipo</span>
+              <Select
+                value={formData.tipo_cliente}
+                onValueChange={(value) => handleChange('tipo_cliente', value as ClientType)}
+              >
+                <SelectTrigger className="h-7 w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  {CLIENT_TYPES.map(type => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground flex-shrink-0">Valor Estimado</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs">R$</span>
+                <Input
+                  value={formData.valor_estimado || ''}
+                  onChange={(e) => handleChange('valor_estimado', parseFloat(e.target.value) || 0)}
+                  className="text-right h-7 w-24 text-primary font-bold"
+                  type="number"
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Último contato</span>
+              <span className="text-foreground">{formatDate(contact.lastContact)}</span>
+            </div>
+
+            {contact.city && contact.state && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground flex items-center gap-1">
+                  <MapPin className="w-4 h-4" /> Localização
+                </span>
+                <span className="text-foreground">{contact.city}/{contact.state}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Pipeline Move - Full Dropdown */}
+      <div className="p-4">
+        <h3 className="text-sm font-semibold text-foreground mb-3">Mover para</h3>
+        <Select
+          value={formData.status_pipeline}
+          onValueChange={(value) => handleStageChange(value as PipelineStage)}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Selecione a etapa" />
+          </SelectTrigger>
+          <SelectContent className="bg-popover max-h-80">
+            {Object.entries(PIPELINE_STAGES).map(([key, stageInfo]) => (
+              <SelectItem
+                key={key}
+                value={key}
+                disabled={key === formData.status_pipeline}
+              >
+                <span className="flex items-center gap-2">
+                  <span>{stageInfo.icon}</span>
+                  <span>{stageInfo.title}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
