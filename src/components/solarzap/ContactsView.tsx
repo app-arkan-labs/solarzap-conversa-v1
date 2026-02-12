@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { cn } from '@/lib/utils';
 import { Contact, PIPELINE_STAGES, PipelineStage, ClientType } from '@/types/solarzap';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -6,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Plus, Phone, Mail, MapPin, Zap, DollarSign, Calendar, Clock, Timer, Save, Loader2, MessageSquare, Upload, Download, Trash2 } from 'lucide-react';
+import { Search, Plus, Phone, Mail, MapPin, Zap, DollarSign, Calendar, Clock, Timer, Save, Loader2, MessageSquare, Upload, Download, Trash2, Bot, UserCog } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +22,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { UpdateLeadData } from './EditLeadModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
+import { useAISettings } from '@/hooks/useAISettings'; // New Import
 
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
 import { ExportContactsModal } from './ExportContactsModal';
@@ -36,6 +39,7 @@ interface ContactsViewProps {
   onUpdateLead?: (contactId: string, data: UpdateLeadData) => Promise<void>;
   onImportContacts?: (contacts: ImportedContact[]) => Promise<unknown>;
   onDeleteLead?: (contactId: string) => Promise<void>;
+  onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
 }
 
 const STAGE_COLORS: Record<string, string> = {
@@ -66,12 +70,13 @@ const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'rural', label: 'Rural' },
 ];
 
-export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDeleteLead }: ContactsViewProps) {
+export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDeleteLead, onToggleLeadAi }: ContactsViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(contacts[0] || null);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const { toast } = useToast();
+  const { settings: aiSettings } = useAISettings(); // Get Global Settings
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
@@ -324,6 +329,33 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
               <Mail className="w-4 h-4 text-primary" />
             </div>
             <h2 className="text-lg font-semibold text-foreground">Detalhes do Contato</h2>
+            {selectedContact && onToggleLeadAi && (
+              <div className={cn(
+                "ml-4 flex items-center gap-2 px-3 py-1 bg-background/50 rounded-lg border border-border/50",
+                !aiSettings?.is_active && "opacity-70"
+              )}
+                title={!aiSettings?.is_active ? "IA Global Desativada" : ""}
+              >
+                <Switch
+                  checked={selectedContact.aiEnabled !== false}
+                  onCheckedChange={(checked) => onToggleLeadAi({ leadId: selectedContact.id, enabled: checked })}
+                  className="data-[state=checked]:bg-green-600"
+                  disabled={!aiSettings?.is_active} // Disable if Global OFF
+                />
+                <div className="flex items-center gap-1.5">
+                  {!aiSettings?.is_active ? (
+                    <Bot className="w-4 h-4 text-slate-400" />
+                  ) : selectedContact.aiEnabled !== false ? (
+                    <Bot className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <UserCog className="w-4 h-4 text-orange-500" />
+                  )}
+                  <span className="text-xs font-medium">
+                    {!aiSettings?.is_active ? 'Sistema Pausado' : selectedContact.aiEnabled !== false ? 'IA Ativa' : 'Pausada'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {selectedContact && (

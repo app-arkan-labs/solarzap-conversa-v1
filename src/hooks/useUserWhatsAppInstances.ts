@@ -17,6 +17,7 @@ export interface UserWhatsAppInstance {
   created_at: string;
   updated_at: string;
   color?: string; // Added for instance differentiation
+  ai_enabled?: boolean | null;
 }
 
 export function useUserWhatsAppInstances() {
@@ -45,54 +46,77 @@ export function useUserWhatsAppInstances() {
 
       if (error) throw error;
 
-      // Sync status with Evolution API for each instance
-      const updatedInstances = await Promise.all(
-        (data || []).map(async (instance) => {
-          try {
-            const response = await evolutionApi.getInstanceStatus(instance.instance_name);
+      // IMMEDIATE RENDER: Show what we have in DB
+      const dbInstances = data as UserWhatsAppInstance[];
+      setInstances(dbInstances);
+      setLoading(false); // Stop spinner immediately
 
-            if (!response.success || !response.data) {
+      // BACKGROUND SYNC: Check status with Evolution API
+      // We don't await this for the UI to unblock
+      (async () => {
+        if (!dbInstances.length) return;
+
+        const updatedInstances = await Promise.all(
+          dbInstances.map(async (instance) => {
+            try {
+              // If already disconnected in DB, maybe we don't need to check? 
+              // keeping it simple for now, check everyone
+              const response = await evolutionApi.getInstanceStatus(instance.instance_name);
+
+              if (!response.success || !response.data) {
+                return instance;
+              }
+
+              const state = response.data.instance.state;
+              const newStatus: 'disconnected' | 'connecting' | 'connected' = state === 'open' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected';
+
+              // Only update if changed
+              if (newStatus !== instance.status) {
+
+                if (newStatus === 'connected') {
+                  // ADDING TOKEN for security
+                  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect?token=arkan_secure_2026`;
+
+                  // Fire and forget webhook update
+                  evolutionApi.setWebhook(instance.instance_name, webhookUrl, [
+                    'MESSAGES_UPSERT',
+                    'MESSAGES_UPDATE',
+                    'CONNECTION_UPDATE',
+                    'QRCODE_UPDATED'
+                  ]).catch(e => console.error("Webhook update failed in bg", e));
+                }
+
+                // Update in database if status changed (background)
+                await supabase
+                  .from('whatsapp_instances')
+                  .update({ status: newStatus, updated_at: new Date().toISOString() })
+                  .eq('id', instance.id);
+
+                return { ...instance, status: newStatus };
+              }
+              return instance;
+            } catch (e) {
+              console.error(`Error syncing status for ${instance.instance_name}`, e);
               return instance;
             }
+          })
+        ) as unknown as UserWhatsAppInstance[];
 
-            const state = response.data.instance.state;
-            const newStatus = state === 'open' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected';
+        // Update state with fresh statuses if any changed
+        setInstances(prev => {
+          // Merge logic: keep current instances but update status from background sync
+          // This prevents overwriting if user added/removed instances in the meantime
+          return prev.map(prevInst => {
+            const refreshed = updatedInstances.find(u => u.id === prevInst.id);
+            return refreshed ? refreshed : prevInst;
+          });
+        });
 
-            if (newStatus === 'connected') {
-              // ADDING TOKEN for security (matches WEBHOOK_SECRET in Supabase)
-              const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect?token=arkan_secure_2026`;
+      })(); // Immediate invocation of async IIFE
 
-              // Always ensure webhook is set on load, even if status didn't change (Self-healing)
-              await evolutionApi.setWebhook(instance.instance_name, webhookUrl, [
-                'MESSAGES_UPSERT',
-                'MESSAGES_UPDATE',
-                'CONNECTION_UPDATE',
-                'QRCODE_UPDATED'
-              ]);
-            }
-
-            if (newStatus !== instance.status) {
-              // Update in database if status changed
-              await supabase
-                .from('whatsapp_instances')
-                .update({ status: newStatus, updated_at: new Date().toISOString() })
-                .eq('id', instance.id);
-
-              return { ...instance, status: newStatus };
-            }
-            return instance;
-          } catch {
-            // If can't reach Evolution API, keep current status
-            return instance;
-          }
-        })
-      );
-
-      setInstances(updatedInstances as UserWhatsAppInstance[]);
     } catch (error) {
       console.error('Error fetching instances:', error);
       toast.error('Erro ao carregar instâncias');
-    } finally {
       setLoading(false);
     }
   }, [user]);
@@ -482,6 +506,105 @@ export function useUserWhatsAppInstances() {
         console.error('Error updating color:', error);
         toast.error('Erro ao atualizar cor');
         return false;
+      }
+    },
+    setInstanceAiEnabled: async (instanceName: string, enabled: boolean): Promise<boolean> => {
+      try {
+        // Find ID for local update (optimistic)
+        const targetInstance = instances.find(i => i.instance_name === instanceName);
+        const targetId = targetInstance?.id;
+
+        if (targetId) setActionLoading(targetId);
+
+        const { data, error } = await supabase
+          .from('whatsapp_instances')
+          .update({ ai_enabled: enabled, updated_at: new Date().toISOString() })
+          .eq('instance_name', instanceName)
+          .select();
+
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          console.error('Update returned 0 rows. RLS mismatch?');
+          throw new Error('Falha ao atualizar: Permissão negada ou instância não encontrada.');
+        }
+
+        // Optimistic update
+        setInstances(prev => prev.map(inst =>
+          inst.instance_name === instanceName ? { ...inst, ai_enabled: enabled } : inst
+        ));
+
+        // Invalidate/Refetch to be 100% sure
+        await fetchInstances();
+
+        toast.success(enabled ? 'IA ativada' : 'IA desativada');
+        return true;
+      } catch (error) {
+        console.error('Error updating AI enabled:', error);
+        toast.error('Erro ao atualizar IA da instância');
+        return false;
+      } finally {
+        setActionLoading(null);
+      }
+    },
+    toggleAllInstances: async (enabled: boolean): Promise<boolean> => {
+      try {
+        setLoading(true);
+        const { error } = await supabase
+          .from('whatsapp_instances')
+          .update({ ai_enabled: enabled, updated_at: new Date().toISOString() })
+          .eq('user_id', user?.id) // Safe update for all user instances
+          .neq('status', 'disconnected'); // Optional: only update active/connected ones? User said "Reset ALL status", usually implies all valid ones.
+
+        if (error) throw error;
+
+        // Optimistic update all
+        setInstances(prev => prev.map(inst => ({ ...inst, ai_enabled: enabled })));
+
+        await fetchInstances();
+        toast.success(enabled ? 'Todas as instâncias ativadas' : 'Todas as instâncias desativadas');
+        return true;
+      } catch (error) {
+        console.error('Error toggling all instances:', error);
+        toast.error('Erro ao atualizar instâncias');
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    activateAiForAllLeads: async (instanceName: string): Promise<number | null> => {
+      try {
+        setActionLoading(instanceName);
+
+        // 1. Ensure instance itself is enabled
+        await supabase
+          .from('whatsapp_instances')
+          .update({ ai_enabled: true, updated_at: new Date().toISOString() })
+          .eq('instance_name', instanceName);
+
+        // Optimistic update instance
+        setInstances(prev => prev.map(inst =>
+          inst.instance_name === instanceName ? { ...inst, ai_enabled: true } : inst
+        ));
+
+        // 2. Batch update leads
+        const { data, error } = await supabase
+          .from('leads')
+          .update({
+            ai_enabled: true,
+            ai_paused_reason: null,
+            ai_paused_at: null
+          })
+          .eq('instance_name', instanceName)
+          .select('id');
+
+        if (error) throw error;
+
+        return data?.length || 0;
+      } catch (error) {
+        console.error('Error activating all leads:', error);
+        throw error;
+      } finally {
+        setActionLoading(null);
       }
     }
   };

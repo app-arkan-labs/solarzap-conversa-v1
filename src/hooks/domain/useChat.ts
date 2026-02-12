@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from '@/hooks/use-toast';
 import { supabase, InteracaoDB } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Conversation, Message } from '@/types/solarzap';
@@ -309,7 +310,7 @@ export function useChat() {
             }
             return interacaoToMessage(data);
         },
-        onSuccess: (newMessage) => {
+        onSuccess: async (newMessage) => {
             console.log('✅ [SEND SUCCESS] Message sent, updating cache immediately:', newMessage?.id);
             // Optimistic update: Add message to cache immediately
             if (newMessage) {
@@ -319,6 +320,60 @@ export function useChat() {
                     if (old.some(m => m.id === newMessage.id)) return old;
                     return [...old, newMessage];
                 });
+
+                // --- HUMAN TAKEOVER LOGIC (STRICT PATCH) ---
+                try {
+                    const leadId = Number(newMessage.contactId);
+                    const instanceName = newMessage.instanceName || 'unknown';
+
+                    if (!isNaN(leadId)) {
+                        console.log('[HumanTakeover] Attempting to pause AI for lead:', leadId);
+
+                        const pausePayload = {
+                            ai_enabled: false,
+                            ai_paused_reason: 'human_takeover',
+                            ai_paused_at: new Date().toISOString()
+                        };
+
+                        const { data: pausedRows, error: pauseErr } = await supabase
+                            .from('leads')
+                            .update(pausePayload)
+                            .eq('id', leadId)
+                            .select('id');
+
+                        console.log('[HumanTakeover] pause lead', { leadId, instanceName, ok: pausedRows?.length });
+
+                        if (pauseErr) {
+                            console.error('[HumanTakeover] Error pausing AI:', pauseErr);
+                            toast({
+                                variant: "destructive",
+                                title: "Falha ao pausar IA",
+                                description: "Erro de permissão ou conexão. IA pode continuar respondendo."
+                            });
+                        } else if (!pausedRows || pausedRows.length === 0) {
+                            console.error('[HumanTakeover] 0 rows updated. Check RLS or Lead ID.', { leadId, instanceName });
+                            toast({
+                                variant: "destructive",
+                                title: "Falha ao pausar IA",
+                                description: "Não foi possível atualizar o status do lead. Verifique as permissões."
+                            });
+                        } else {
+                            console.log('[HumanTakeover] AI Paused successfully');
+                            // Strict invalidation to reflect UI toggle
+                            queryClient.invalidateQueries({ queryKey: ['leads'] });
+                            queryClient.invalidateQueries({ queryKey: ['lead', String(leadId)] });
+                        }
+                    } else {
+                        console.warn('[HumanTakeover] Invalid Lead ID:', newMessage.contactId);
+                    }
+                } catch (err) {
+                    console.error("Error in Human Takeover logic:", err);
+                    toast({
+                        variant: "destructive",
+                        title: "Erro Crítico",
+                        description: "Falha ao tentar pausar a IA após envio."
+                    });
+                }
             }
             // NOTE: Do NOT invalidate here - it overwrites the optimistic update!
             // Polling and realtime will sync eventually.
@@ -477,7 +532,7 @@ export function useChat() {
             if (error) throw error;
             return interacaoToMessage(data);
         },
-        onSuccess: (newMessage) => {
+        onSuccess: async (newMessage) => {
             console.log('✅ [ATTACHMENT SUCCESS] Attachment sent:', newMessage?.id);
             if (newMessage) {
                 queryClient.setQueryData(['interactions', user?.id], (old: Message[] | undefined) => {
@@ -485,6 +540,57 @@ export function useChat() {
                     if (old.some(m => m.id === newMessage.id)) return old;
                     return [...old, newMessage];
                 });
+
+                // --- HUMAN TAKEOVER LOGIC (STRICT PATCH) ---
+                try {
+                    const leadId = Number(newMessage.contactId);
+                    const instanceName = newMessage.instanceName || 'unknown';
+
+                    if (!isNaN(leadId)) {
+                        console.log('[HumanTakeover] Attempting to pause AI for lead:', leadId);
+
+                        const pausePayload = {
+                            ai_enabled: false,
+                            ai_paused_reason: 'human_takeover',
+                            ai_paused_at: new Date().toISOString()
+                        };
+
+                        const { data: pausedRows, error: pauseErr } = await supabase
+                            .from('leads')
+                            .update(pausePayload)
+                            .eq('id', leadId)
+                            .select('id');
+
+                        console.log('[HumanTakeover] pause lead', { leadId, instanceName, ok: pausedRows?.length });
+
+                        if (pauseErr) {
+                            console.error('[HumanTakeover] Error pausing AI:', pauseErr);
+                            toast({
+                                variant: "destructive",
+                                title: "Falha ao pausar IA",
+                                description: "Erro de permissão ou conexão. IA pode continuar respondendo."
+                            });
+                        } else if (!pausedRows || pausedRows.length === 0) {
+                            console.error('[HumanTakeover] 0 rows updated. Check RLS or Lead ID.', { leadId, instanceName });
+                            toast({
+                                variant: "destructive",
+                                title: "Falha ao pausar IA",
+                                description: "Não foi possível atualizar o status do lead. Verifique as permissões."
+                            });
+                        } else {
+                            console.log('[HumanTakeover] AI Paused successfully');
+                            queryClient.invalidateQueries({ queryKey: ['leads'] });
+                            queryClient.invalidateQueries({ queryKey: ['lead', String(leadId)] });
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error in Human Takeover (Attachment):", err);
+                    toast({
+                        variant: "destructive",
+                        title: "Erro Crítico",
+                        description: "Falha ao tentar pausar a IA após envio de anexo."
+                    });
+                }
             }
             // NOTE: Do NOT invalidate - lets polling/realtime sync
         }
@@ -588,7 +694,7 @@ export function useChat() {
             if (error) throw error;
             return interacaoToMessage(data);
         },
-        onSuccess: (newMessage) => {
+        onSuccess: async (newMessage) => {
             console.log('✅ [AUDIO SUCCESS] Audio sent:', newMessage?.id);
             if (newMessage) {
                 queryClient.setQueryData(['interactions', user?.id], (old: Message[] | undefined) => {
@@ -596,6 +702,55 @@ export function useChat() {
                     if (old.some(m => m.id === newMessage.id)) return old;
                     return [...old, newMessage];
                 });
+
+                // --- HUMAN TAKEOVER LOGIC (STRICT PATCH) ---
+                try {
+                    const leadId = Number(newMessage.contactId);
+                    const instanceName = newMessage.instanceName || 'unknown';
+
+                    if (!isNaN(leadId)) {
+                        const pausePayload = {
+                            ai_enabled: false,
+                            ai_paused_reason: 'human_takeover',
+                            ai_paused_at: new Date().toISOString()
+                        };
+
+                        const { data: pausedRows, error: pauseErr } = await supabase
+                            .from('leads')
+                            .update(pausePayload)
+                            .eq('id', leadId)
+                            .select('id');
+
+                        console.log('[HumanTakeover] pause lead', { leadId, instanceName, ok: pausedRows?.length });
+
+                        if (pauseErr) {
+                            console.error('[HumanTakeover] Error pausing AI:', pauseErr);
+                            toast({
+                                variant: "destructive",
+                                title: "Falha ao pausar IA",
+                                description: "Erro de permissão ou conexão. IA pode continuar respondendo."
+                            });
+                        } else if (!pausedRows || pausedRows.length === 0) {
+                            console.error('[HumanTakeover] 0 rows updated (Audio).', { leadId, instanceName });
+                            toast({
+                                variant: "destructive",
+                                title: "Falha ao pausar IA",
+                                description: "Não foi possível atualizar o status do lead após áudio."
+                            });
+                        } else {
+                            console.log('[HumanTakeover] AI Paused successfully (Audio)');
+                            queryClient.invalidateQueries({ queryKey: ['leads'] });
+                            queryClient.invalidateQueries({ queryKey: ['lead', String(leadId)] });
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error in Human Takeover (Audio):", err);
+                    toast({
+                        variant: "destructive",
+                        title: "Erro Crítico",
+                        description: "Falha ao tentar pausar a IA após envio de áudio."
+                    });
+                }
             }
             // NOTE: Do NOT invalidate - lets polling/realtime sync
         }

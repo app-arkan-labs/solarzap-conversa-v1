@@ -45,7 +45,7 @@ export function SobreEmpresaTab() {
                 .from('company_profile')
                 .select('*')
                 .eq('org_id', orgId)
-                .single();
+                .maybeSingle();
 
             if (data) {
                 setProfile({

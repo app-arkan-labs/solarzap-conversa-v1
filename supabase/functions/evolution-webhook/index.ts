@@ -1,8 +1,13 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-arkan-webhook-secret',
+}
+
+function onlyDigits(str: string | null | undefined): string {
+    if (!str) return ''
+    return str.replace(/\D/g, '')
 }
 
 function normalizeEvent(raw: string | null) {
@@ -216,15 +221,143 @@ Deno.serve(async (req: Request) => {
 
                 console.log(`📩 Message from: ${remoteJid}, isFromMe: ${isFromMe}`)
 
+                // UNWRAP ViewOnce (Fix for media inside viewOnce)
+                let m = msg?.message || {}
+                let msgType = msg?.messageType || msg?.type || Object.keys(m)[0]
+
+                if (msgType === 'viewOnceMessage' || msgType === 'viewOnceMessageV2') {
+                    const inner = m[msgType]?.message
+                    if (inner) {
+                        m = inner
+                        msg.message = inner // Patch msg for extractMessageContent
+                        msgType = Object.keys(inner)[0]
+                        console.log(`🔓 Unwrapped ViewOnce message. Real type: ${msgType}`)
+                    }
+                }
+
+                // ============================================================
+                // REACTION LOGIC (Prioritized - Process BEFORE group filter)
+                // ============================================================
+                if (msgType === 'reactionMessage') {
+                    console.log('🔵 [REACTION] Phase 1: Identifying reactor...')
+
+                    // Get instance owner for identity check
+                    const { data: instanceRow } = await supabase
+                        .from('whatsapp_instances')
+                        .select('phone_number')
+                        .eq('instance_name', instanceName)
+                        .maybeSingle()
+
+                    const reactionInfo = msg?.message?.reactionMessage
+                    const emoji = reactionInfo?.text ?? ''
+
+                    // Phase 1: Extract participant from all possible locations
+                    const participantCandidate =
+                        data?.participant ||
+                        msg?.participant ||
+                        msg?.key?.participant ||
+                        body?.participant ||
+                        (String(remoteJid).endsWith('@g.us') ? null : remoteJid)
+
+                    // Determine reactor identity by comparing with instance owner
+                    const ownerDigits = onlyDigits(instanceRow?.phone_number)
+                    const participantDigits = onlyDigits(participantCandidate)
+                    const isReactorMe = !!(ownerDigits && participantDigits && ownerDigits === participantDigits)
+                    const reactorId = isReactorMe ? 'ME' : (participantCandidate || 'UNKNOWN')
+
+                    console.log(`🔵 [REACTION] ReactorId: ${reactorId}, isReactorMe: ${isReactorMe}, ownerDigits: ${ownerDigits}, participantDigits: ${participantDigits}`)
+
+                    // Phase 2: Locate target message
+                    console.log('🔵 [REACTION] Phase 2: Locating target message...')
+                    const targetMsgId =
+                        reactionInfo?.key?.id ||
+                        reactionInfo?.stanzaId ||
+                        reactionInfo?.msgKey?.id ||
+                        data?.reaction?.key?.id
+
+                    if (!targetMsgId) {
+                        console.log('⚠️ [REACTION] Could not extract target message ID. Payload keys:', Object.keys(reactionInfo || {}))
+                        break
+                    }
+
+                    console.log(`🔵 [REACTION] Target message ID: ${targetMsgId}`)
+
+                    const { data: originalMsg } = await supabase
+                        .from('interacoes')
+                        .select('id, reactions')
+                        .eq('wa_message_id', targetMsgId)
+                        .eq('instance_name', instanceName)
+                        .limit(1)
+                        .maybeSingle()
+
+                    if (!originalMsg) {
+                        console.log(`⚠️ [REACTION] Original message not found for wa_message_id: ${targetMsgId}, instance: ${instanceName}`)
+                        break
+                    }
+
+                    console.log(`🔵 [REACTION] Found message ID: ${originalMsg.id}`)
+
+                    // Phase 3: Compute new reactions - SIMPLE LOGIC
+                    console.log('🔵 [REACTION] Phase 3: Computing new reactions...')
+                    const existingReactions: any[] = Array.isArray(originalMsg.reactions) ? originalMsg.reactions : []
+                    const beforeCount = existingReactions.length
+
+                    console.log(`🔵 [REACTION] Before: ${JSON.stringify(existingReactions)}`)
+
+                    // SIMPLE: Remove ALL reactions from this reactor (by reactorId OR by fromMe for legacy)
+                    const filtered = existingReactions.filter((r: any) => {
+                        // If this reactor is "ME", remove any reaction that is fromMe=true or reactorId="ME"
+                        if (reactorId === 'ME') {
+                            if (r.reactorId === 'ME' || r.fromMe === true) return false
+                        } else {
+                            // If this reactor is NOT me, remove by matching reactorId or by fromMe=false in 1:1 chats
+                            if (r.reactorId === reactorId) return false
+                            if (!r.reactorId && r.fromMe === false) return false
+                        }
+                        return true
+                    })
+
+                    // Build final array
+                    let newReactions: any[]
+                    if (!emoji) {
+                        // Empty emoji = remove
+                        newReactions = filtered
+                        console.log('🔵 [REACTION] Remove operation (empty emoji)')
+                    } else {
+                        // Add new reaction
+                        newReactions = [...filtered, {
+                            emoji,
+                            reactorId,
+                            fromMe: isReactorMe,
+                            timestamp: new Date().toISOString()
+                        }]
+                        console.log(`🔵 [REACTION] Add/Replace. Emoji: ${emoji}`)
+                    }
+
+                    console.log(`🔵 [REACTION] After: ${JSON.stringify(newReactions)}`)
+
+                    // Phase 4: Update DB
+                    console.log('🔵 [REACTION] Phase 4: Updating database...')
+                    const { error: updateError } = await supabase
+                        .from('interacoes')
+                        .update({ reactions: newReactions })
+                        .eq('id', originalMsg.id)
+
+                    if (updateError) {
+                        console.error('❌ [REACTION] DB update failed:', updateError)
+                    } else {
+                        console.log(`✅ [REACTION] Updated. Instance: ${instanceName}, Target: ${targetMsgId}, ReactorId: ${reactorId}, Emoji: ${emoji || '(removed)'}, Before: ${beforeCount}, After: ${newReactions.length}`)
+                    }
+
+                    break // Exit after processing reaction
+                }
+
                 if (!remoteJid || String(remoteJid).endsWith('@g.us')) {
                     console.log('🚫 Skipping group message or missing remoteJid')
                     break
                 }
 
                 let text = extractMessageContent(msg)
-                const m = msg?.message || {}
-                const msgType = msg?.messageType || msg?.type || Object.keys(m)[0]
-
                 console.log(`📝 Message type: ${msgType}`)
 
                 // Get instance and user
@@ -270,16 +403,49 @@ Deno.serve(async (req: Request) => {
 
                 let finalText = text
 
+                // Determine attachment type for DB
+                let dbAttachmentType = null
+                if (msgType === 'imageMessage') dbAttachmentType = 'image'
+                else if (msgType === 'videoMessage') dbAttachmentType = 'video'
+                else if (msgType === 'audioMessage') dbAttachmentType = 'audio'
+                else if (msgType === 'documentMessage') dbAttachmentType = 'document'
+
+                // 1. IDEMPOTENCY CHECK (Prevent Duplicates on Retry)
+                const waMessageId = msg?.key?.id || null
+                if (waMessageId) {
+                    const { data: existing } = await supabase
+                        .from('interacoes')
+                        .select('id')
+                        .eq('wa_message_id', waMessageId)
+                        .eq('instance_name', instanceName)
+                        .maybeSingle()
+
+                    if (existing) {
+                        console.log('🔄 Duplicate message detected (wa_message_id). Skipping:', waMessageId)
+                        break
+                    }
+                }
+
+                // 2. PROCESS MEDIA (Before Insert)
+                let dbPublicUrl = null
+
                 if (isMediaMessage) {
                     console.log(`🔐 Requesting decrypted media from Evolution for type: ${msgType}`)
 
                     try {
                         const evolutionResult = await fetchBase64FromEvolution(instanceName, msg)
+
                         if (evolutionResult) {
                             let mimeType = evolutionResult.mimeType || 'application/octet-stream'
+                            // FORCE Video MimeType if generic
+                            if (msgType === 'videoMessage' && (mimeType === 'application/octet-stream' || !mimeType)) {
+                                mimeType = 'video/mp4'
+                            }
+
                             const publicUrl = await uploadMedia(supabase, evolutionResult.base64, mimeType, instanceName, 'base64')
                             if (publicUrl) {
                                 finalText = `${text}\n${publicUrl}`
+                                dbPublicUrl = publicUrl
                             }
                         }
                     } catch (mediaErr) {
@@ -287,8 +453,42 @@ Deno.serve(async (req: Request) => {
                     }
                 }
 
-                // Save interaction
-                const { error: insertError } = await supabase
+                // --- CUSTOM: HUMAN TAKEOVER (NATIVE & ECHO CHECK) ---
+                if (isFromMe && leadId) {
+                    const messageContent = finalText || ''
+                    // Anti-Auto-Pause: Check if this is a system message echo
+                    // Look for recent message (last 2 mins) with same text/lead/instance
+                    const { data: recentSystemMsg } = await supabase
+                        .from('interacoes')
+                        .select('id')
+                        .eq('lead_id', leadId)
+                        .eq('instance_name', instanceName)
+                        .eq('tipo', 'mensagem_vendedor')
+                        .eq('wa_from_me', true)
+                        .eq('mensagem', messageContent) // Strict text match
+                        .gt('created_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
+                        .limit(1)
+                        .maybeSingle()
+
+                    if (recentSystemMsg) {
+                        console.log(`🛡️ [Takeover] Ignored system echo (Anti-Auto-Pause). Match ID: ${recentSystemMsg.id}`)
+                    } else {
+                        // It's a human message from native WhatsApp (or unknown source)
+                        console.log(`👤 [Takeover] Native WhatsApp message detected. Pausing AI for lead: ${leadId}`)
+
+                        await supabase
+                            .from('leads')
+                            .update({
+                                ai_enabled: false,
+                                ai_paused_reason: 'human_takeover_whatsapp',
+                                ai_paused_at: new Date().toISOString()
+                            })
+                            .eq('id', leadId)
+                    }
+                }
+
+                // 3. INSERT FINAL (Atomic)
+                const { data: inserted, error: insertError } = await supabase
                     .from('interacoes')
                     .insert({
                         user_id: userId,
@@ -298,11 +498,39 @@ Deno.serve(async (req: Request) => {
                         instance_name: instanceName,
                         remote_jid: remoteJid,
                         phone_e164: phoneE164,
-                        wa_message_id: msg?.key?.id || null
+                        wa_message_id: waMessageId,
+                        attachment_url: dbPublicUrl,
+                        attachment_type: dbAttachmentType,
+                        attachment_ready: true, // ALWAYS READY because we waited
+                        wa_from_me: Boolean(isFromMe)
                     })
+                    .select('id')
+                    .single()
 
-                if (insertError) console.error('❌ DB Insert Error:', insertError)
-                else console.log('💾 Interaction saved to database')
+                if (insertError) {
+                    console.error('❌ DB Insert Error:', insertError)
+                } else {
+                    console.log('💾 Interaction saved (Atomic). ID:', waMessageId)
+
+                    // 4. TRIGGER AI AGENT (Fire-and-forget)
+                    if (!isFromMe && leadId && inserted?.id) {
+                        try {
+                            console.log(`🤖 AI trigger invoked - Lead: ${leadId}, Interaction: ${inserted.id}`)
+                            supabase.functions.invoke('ai-pipeline-agent', {
+                                body: {
+                                    leadId,
+                                    triggerType: 'incoming_message',
+                                    interactionId: inserted.id,
+                                    instanceName
+                                }
+                            }).catch((err: any) => {
+                                console.error(`❌ AI trigger failed (async):`, err)
+                            })
+                        } catch (err) {
+                            console.error(`❌ AI trigger failed (sync):`, err)
+                        }
+                    }
+                }
 
                 break
             }

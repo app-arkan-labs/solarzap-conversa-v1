@@ -53,8 +53,20 @@ const PRESET_OBJECTIONS = [
         response: "Enquanto espera, você continua pagando conta de luz cheia. Os equipamentos já são excelentes e os preços subiram nos últimos anos. Quanto antes instalar, mais economia acumula!"
     },
     {
-        question: "Já tenho proposta de outra empresa",
-        response: "Ótimo que está pesquisando! Posso fazer uma análise comparativa? Muitos clientes escolhem a gente pela garantia estendida, equipe própria e pós-venda de verdade."
+        question: "Lei 14.300 acabou com energia solar?",
+        response: "Não! A energia solar continua muito vantajosa. A taxação é progressiva e apenas sobre o fio B, mas a economia final ainda gira em torno de 90%. O retorno do investimento mudou poucos meses, mas a segurança energética continua."
+    },
+    {
+        question: "Homologação demora / concessionária barra?",
+        response: "Nós cuidamos de toda a burocracia. O prazo regulamentar é de até 30 dias para parecer de acesso, e nossa engenharia garante que o projeto siga todas as normas para evitar reprovas."
+    },
+    {
+        question: "Funciona no inverno / em dias nublados?",
+        response: "Sim! Os painéis funcionam com radiação, não calor. Em dias nublados a produção é menor, mas compensa com os créditos gerados nos dias de sol intenso (sistema de compensação)."
+    },
+    {
+        question: "E manutenção / limpeza / garantia?",
+        response: "A manutenção é mínima, basicamente limpeza dos painéis 1 ou 2 vezes ao ano. Os equipamentos têm garantia longa (inversores ~10 anos, painéis ~25 anos de performance)."
     }
 ];
 

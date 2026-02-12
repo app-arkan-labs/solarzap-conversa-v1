@@ -34,7 +34,9 @@ import {
   Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 import { UserWhatsAppInstance as WhatsAppInstance } from '@/hooks/useUserWhatsAppInstances';
+import { useAISettings } from '@/hooks/useAISettings'; // New Import
 
 interface WhatsAppInstanceCardProps {
   instance: WhatsAppInstance;
@@ -43,6 +45,7 @@ interface WhatsAppInstanceCardProps {
   onDisconnect: (instanceId: string) => void;
   onRequestDelete: (instance: WhatsAppInstance) => void;
   onRename: (instanceId: string, newName: string) => void;
+  onToggleAiEnabled: (instanceName: string, enabled: boolean) => void;
 }
 
 export function WhatsAppInstanceCard({
@@ -52,7 +55,9 @@ export function WhatsAppInstanceCard({
   onDisconnect,
   onRequestDelete,
   onRename,
+  onToggleAiEnabled,
 }: WhatsAppInstanceCardProps) {
+  const { settings: aiSettings } = useAISettings(); // Get Global Settings
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [newName, setNewName] = useState(instance.display_name);
 
@@ -133,6 +138,19 @@ export function WhatsAppInstanceCard({
 
             {/* Right: Actions */}
             <div className="flex items-center gap-2 shrink-0">
+              {/* AI Toggle */}
+              <div className="flex items-center gap-2 mr-2 px-2 py-1"
+                title="Ativar/Desativar IA para esta instância"
+              >
+                <span className="font-medium text-muted-foreground">IA</span>
+                <Switch
+                  checked={!!instance.ai_enabled}
+                  onCheckedChange={(checked) => onToggleAiEnabled(instance.instance_name, checked)}
+                  disabled={isLoading}
+                  className="scale-75 origin-right data-[state=checked]:bg-green-500"
+                />
+              </div>
+
               {instance.status === 'disconnected' && (
                 <Button
                   size="sm"
@@ -211,19 +229,21 @@ export function WhatsAppInstanceCard({
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <button
-                className="h-8 w-8 inline-flex items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors z-50 relative"
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 z-50"
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
-                  console.log('NATIVE Icon Delete Clicked:', instance.instance_name);
+                  console.log('Delete Clicked:', instance.instance_name);
                   onRequestDelete(instance);
                 }}
+                disabled={isLoading}
                 title="Excluir Instância"
-                type="button"
               >
                 <Trash2 className="w-4 h-4" />
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -199,6 +199,14 @@ export function DepoimentosTab() {
                 setIsUploading(false);
             }
 
+            // Map 'text' to 'other' for DB if using asset_type enum, or keep as is if text field
+            // But user requirement says: map mediaType "text" -> type='other' and media_url=null
+            // And strict schema might require specific enum. 
+            // Assuming DB enum has 'image','video','audio','pdf','other'.
+
+            const dbType = formData.mediaType === 'text' ? 'other' : formData.mediaType;
+            const dbMediaUrl = formData.mediaType === 'text' ? null : mediaUrl;
+
             const { error } = await supabase
                 .from('testimonials')
                 .insert({
@@ -206,8 +214,8 @@ export function DepoimentosTab() {
                     display_name: formData.clientName,
                     quote_short: formData.quote,
                     story_long: formData.aiSummary || formData.quote,
-                    type: formData.mediaType,
-                    media_url: mediaUrl || null,
+                    type: dbType,
+                    media_url: dbMediaUrl,
                     status: 'approved',
                     consent_status: 'internal_only',
                     created_by: user.id
@@ -258,6 +266,7 @@ export function DepoimentosTab() {
             case 'audio': return <Mic className="w-4 h-4 text-orange-500" />;
             case 'image': return <ImageIcon className="w-4 h-4 text-purple-500" />;
             case 'pdf': return <FileText className="w-4 h-4 text-red-500" />;
+            case 'other': return <MessageSquareQuote className="w-4 h-4 text-green-500" />;
             default: return <MessageSquareQuote className="w-4 h-4 text-green-500" />;
         }
     };

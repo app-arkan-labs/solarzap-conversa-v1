@@ -13,6 +13,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Plus,
   Smartphone,
   Loader2,
@@ -57,6 +67,7 @@ export function WhatsAppInstancesManager() {
     connectedCount,
     isDevMode,
     isFallbackMode,
+    setInstanceAiEnabled,
   } = useWhatsAppInstances();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -327,6 +338,9 @@ export function WhatsAppInstancesManager() {
                   onDisconnect={disconnectInstance}
                   onRequestDelete={handleRequestDelete}
                   onRename={renameInstance}
+                  onToggleAiEnabled={async (instanceName, enabled) => {
+                    await setInstanceAiEnabled(instanceName, enabled);
+                  }}
                 />
               ))}
             </div>
@@ -483,20 +497,23 @@ export function WhatsAppInstancesManager() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Excluir instância</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir instância</AlertDialogTitle>
+            <AlertDialogDescription>
               Tem certeza que deseja excluir a instância "{instanceToDelete?.display_name}"?
               Esta ação irá desconectar o WhatsApp e remover a instância.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancelar</Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmDelete}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading === instanceToDelete?.id}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault(); // Prevent auto-close to handle async
+                handleConfirmDelete();
+              }}
               disabled={actionLoading === instanceToDelete?.id}
             >
               {actionLoading === instanceToDelete?.id ? (
@@ -505,10 +522,10 @@ export function WhatsAppInstancesManager() {
                 <Trash2 className="w-4 h-4 mr-2" />
               )}
               Excluir
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

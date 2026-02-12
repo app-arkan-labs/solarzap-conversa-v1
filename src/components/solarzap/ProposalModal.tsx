@@ -14,6 +14,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Loader2, FileText, Zap, DollarSign, Sun, Battery, Ruler, Download } from 'lucide-react';
 import { generateProposalPDF } from '@/utils/generateProposalPDF';
 import { useToast } from '@/hooks/use-toast';
+import { useLeads } from '@/hooks/domain/useLeads';
+import { ClientType } from '@/types/solarzap';
 
 interface ProposalModalProps {
   isOpen: boolean;
@@ -32,10 +34,19 @@ export interface ProposalData {
   paybackMeses: number;
   garantiaAnos: number;
   observacoes?: string;
+  tipo_cliente?: ClientType;
 }
+
+const CLIENT_TYPES: { value: ClientType; label: string }[] = [
+  { value: 'residencial', label: 'Residencial' },
+  { value: 'comercial', label: 'Comercial' },
+  { value: 'industrial', label: 'Industrial' },
+  { value: 'rural', label: 'Rural' },
+];
 
 export function ProposalModal({ isOpen, onClose, contact, onGenerate }: ProposalModalProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const { updateLead } = useLeads();
   const [formData, setFormData] = useState({
     consumoMensal: contact?.consumption || 0,
     potenciaSistema: 0,
@@ -45,6 +56,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
     paybackMeses: 0,
     garantiaAnos: 25,
     observacoes: '',
+    tipo_cliente: contact?.clientType || 'residencial' as ClientType,
   });
   const { toast } = useToast();
 
@@ -82,13 +94,26 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
 
     setIsLoading(true);
     try {
-      // Generate and download PDF
+      // 1. Update Lead with new values (Consumo, Valor, Tipo)
+      // This ensures consistency across the platform
+      await updateLead({
+        contactId: contact.id,
+        data: {
+          consumo_kwh: formData.consumoMensal,
+          valor_estimado: formData.valorTotal,
+          tipo_cliente: formData.tipo_cliente,
+        }
+      }).catch(err => console.error('Failed to update lead data during proposal:', err));
+
+      // 2. Generate and download PDF
       generateProposalPDF({
         contact,
         ...formData,
+        // @ts-ignore - generateProposalPDF might not strictly type `tipo_cliente` yet, but we pass it
+        tipo_cliente: formData.tipo_cliente
       });
 
-      // Call onGenerate to update pipeline (but won't send message)
+      // 3. Update Pipeline (Trigger)
       await onGenerate({
         contactId: contact.id,
         ...formData,
@@ -96,7 +121,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
 
       toast({
         title: "Proposta gerada!",
-        description: "O PDF foi baixado automaticamente.",
+        description: "O PDF foi baixado e os dados do lead atualizados.",
       });
 
       onClose();
@@ -157,6 +182,28 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="tipo_cliente" className="flex items-center gap-1">
+                  <User className="w-3 h-3" />
+                  Tipo de Cliente
+                </Label>
+                <Select
+                  value={formData.tipo_cliente}
+                  onValueChange={(value) => handleChange('tipo_cliente', value as ClientType)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    {CLIENT_TYPES.map(type => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="consumoMensal" className="flex items-center gap-1">
                   <Zap className="w-3 h-3" />

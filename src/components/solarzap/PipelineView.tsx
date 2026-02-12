@@ -2,7 +2,8 @@ import React, { useState, useRef, useCallback } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
 import { Contact, PIPELINE_STAGES, PipelineStage, CalendarEvent } from '@/types/solarzap';
 import { Badge } from '@/components/ui/badge';
-import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2 } from 'lucide-react';
+import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useAutomationSettings } from '@/hooks/useAutomationSettings';
@@ -44,6 +45,7 @@ interface PipelineViewProps {
   onImportContacts?: (contacts: ImportedContact[]) => Promise<unknown>;
   onDeleteLead?: (contactId: string) => Promise<void>;
   onSchedule?: (contact: Contact, type: 'reuniao' | 'visita') => void;
+  onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
 }
 
 // Custom colors for each pipeline stage header
@@ -59,6 +61,7 @@ const STAGE_COLORS: Record<PipelineStage, string> = {
   visita_realizada: '#009688',
   proposta_negociacao: '#FFC107',
   financiamento: '#E91E63',
+  aprovou_projeto: '#84cc16', // lime-500
   contrato_assinado: '#8BC34A',
   projeto_pago: '#4CAF50',
   aguardando_instalacao: '#607D8B',
@@ -68,7 +71,7 @@ const STAGE_COLORS: Record<PipelineStage, string> = {
   perdido: '#424242',
 };
 
-export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead, onGoToConversation, onImportContacts, onDeleteLead, onSchedule }: PipelineViewProps) {
+export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead, onGoToConversation, onImportContacts, onDeleteLead, onSchedule, onToggleLeadAi }: PipelineViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [draggedContact, setDraggedContact] = useState<Contact | null>(null);
   const [dragOverStage, setDragOverStage] = useState<PipelineStage | null>(null);
@@ -344,6 +347,7 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
       visita_realizada: 'Negociar proposta',
       proposta_negociacao: 'Fechar negócio',
       financiamento: 'Aprovar crédito',
+      aprovou_projeto: 'Assinar contrato',
       contrato_assinado: 'Aguardar pagamento',
       projeto_pago: 'Agendar instalação',
       aguardando_instalacao: 'Instalar sistema',
@@ -743,6 +747,22 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
                               >
                                 <MessageSquare className="w-4 h-4" />
                               </Button>
+
+                              {onToggleLeadAi && (
+                                <div className="flex items-center gap-1.5 mx-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <Switch
+                                    checked={contact.aiEnabled !== false}
+                                    onCheckedChange={(checked) => onToggleLeadAi({ leadId: contact.id, enabled: checked })}
+                                    className="scale-75 data-[state=checked]:bg-green-600"
+                                    title={contact.aiEnabled !== false ? 'IA Ativa' : 'IA Pausada'}
+                                  />
+                                  {contact.aiEnabled !== false ? (
+                                    <Bot className="w-3.5 h-3.5 text-green-600" />
+                                  ) : (
+                                    <UserCog className="w-3.5 h-3.5 text-orange-500" />
+                                  )}
+                                </div>
+                              )}
                               {/* Actions Dropdown Button */}
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>

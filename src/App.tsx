@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AutomationProvider } from "@/contexts/AutomationContext";
@@ -11,6 +11,24 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import { supabase } from "@/lib/supabase";
+
+const handleGlobalError = (error: Error) => {
+  console.error('Global Query Error:', error);
+  const errorMessage = error.message?.toLowerCase() || '';
+
+  if (
+    errorMessage.includes('jwt expired') ||
+    errorMessage.includes('401') ||
+    errorMessage.includes('authapierror') ||
+    errorMessage.includes('invalid token')
+  ) {
+    console.warn('Authentication expired. Redirecting to login...');
+    supabase.auth.signOut().then(() => {
+      window.location.href = '/login';
+    });
+  }
+};
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,6 +37,12 @@ const queryClient = new QueryClient({
       staleTime: 5 * 60 * 1000,
     },
   },
+  queryCache: new QueryCache({
+    onError: handleGlobalError,
+  }),
+  mutationCache: new MutationCache({
+    onError: handleGlobalError,
+  }),
 });
 
 const App = () => (

@@ -1,6 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Configuration, OpenAIApi } from "https://esm.sh/openai@3.1.0";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import OpenAI from "npm:openai";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -12,14 +11,15 @@ const STAGE_TRANSITION_MAP: Record<string, string[]> = {
     'novo_lead': ['respondeu', 'perdido'],
     'respondeu': ['chamada_agendada', 'visita_agendada', 'perdido', 'respondeu'], // Can stay
     'chamada_agendada': ['chamada_realizada', 'nao_compareceu', 'perdido'],
-    'nao_compareceu': ['chamada_agendada', 'perdido'],
+    'nao_compareceu': ['chamada_agendada', 'visita_agendada', 'perdido'], // Added visita_agendada
     'chamada_realizada': ['aguardando_proposta', 'perdido'],
     'aguardando_proposta': ['proposta_pronta', 'visita_agendada', 'perdido'],
     'proposta_pronta': ['proposta_negociacao', 'perdido'],
     'visita_agendada': ['visita_realizada', 'nao_compareceu', 'perdido'],
     'visita_realizada': ['proposta_negociacao', 'perdido'],
-    'proposta_negociacao': ['financiamento', 'contrato_assinado', 'perdido'],
-    'financiamento': ['contrato_assinado', 'perdido'],
+    'proposta_negociacao': ['financiamento', 'aprovou_projeto', 'contrato_assinado', 'perdido'],
+    'financiamento': ['aprovou_projeto', 'contrato_assinado', 'perdido'],
+    'aprovou_projeto': ['contrato_assinado', 'perdido'],
     // ... others assume logical linear types
 };
 
@@ -27,6 +27,131 @@ function isValidTransition(current: string, target: string): boolean {
     if (current === target) return true; // Staying is always valid
     const allowed = STAGE_TRANSITION_MAP[current];
     return allowed ? allowed.includes(target) : false; // If not mapped, block strict moves
+}
+
+function normalizeStage(str: string | null | undefined): string {
+    if (!str) return ''
+    return str
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[\s-]/g, '_')
+        .replace(/[^a-z0-9_]/g, '')
+}
+
+// --- INCREMENT 12: SOLAR BR PACK ---
+const SOLAR_BR_PACK = `
+CONTEXTO SOLAR BRASIL (LEI 14.300 & FLUXO REAL):
+1. LEI 14.300: O "direito adquirido" (isenção total) acabou em 2023. Hoje pagamos o "Fio B" progressivo sobre a energia injetada na rede. AINDA ASSIM vale muito a pena: a economia na conta chega a 90%, blindando contra aumentos (inflação energética).
+2. FLUXO REAL:
+   - Análise de consumo/fatura -> Proposta -> Assinatura -> Engenharia/Projeto.
+   - Instalação (Rápida: 1-3 dias).
+   - Homologação: Depende da Concessionária (Enel, CPFL, Cemig, etc). Envolve vistoria e troca de medidor.
+   - Início da compensação: Só após o medidor bidirecional estar ativo.
+3. PRAZOS:
+   - "Semanas" é o termo seguro. Instalar é rápido, mas a burocracia da distribuidora pode levar 15-45 dias ou mais.
+   - NUNCA prometa data exata de ligação sem saber cidade/UF e concessionária.
+4. DIMENSIONAMENTO:
+   - Depende estritamente do consumo médio (kWh) e local (irradiação).
+   - "Quantas placas?" é impossível responder sem saber o consumo e a potência dos módulos (450W, 550W, etc).
+5. GARANTIAS:
+   - Inversor: geralmente 5-10 anos (fabricante).
+   - Módulos: 10-12 anos (produto) + 25 anos (performance linear).
+   - Instalação: oferecemos garantia de serviço (ex: 1 ano).
+`;
+
+// --- INCREMENT 12: SAFETY GATE ---
+function detectSolarIntentAndMissing(lastUserText: string, lead: any) {
+    const text = lastUserText.toLowerCase();
+
+    // Intents
+    const isPrazo = /(prazo|demora|tempo|homolog|medid|vistoria|liga[çc])/i.test(text);
+    const isDimensionamento = /(placa|pain|modul|tamanho|cust|pre[çc]|or[çc]a|gerar|pot[êe]ncia)/i.test(text);
+
+    // Context Data
+    const hasLocation = (lead.city && lead.city.length > 2) || (lead.meta && lead.meta.city);
+    const hasUtility = (lead.meta && lead.meta.utility_company);
+    const hasConsumption = (lead.consumo_kwh && lead.consumo_kwh > 0) || (lead.valor_estimado && lead.valor_estimado > 0);
+
+    // Missing checks
+    const missing = [];
+    let directive = null;
+
+    if (isPrazo) {
+        if (!hasLocation) missing.push('cidade/uf');
+        // Utility is secondary (can often infer from city), but good to ask if totally unknown
+        // We focus on location as primary blocker for "prazo".
+        if (missing.length > 0) {
+            directive = "FALTAM DADOS ESSENCIAIS (PRAZO): O cliente perguntou de prazos/homologação mas não sabemos a Cidade/UF. PEÇA A CIDADE/UF e CONCESSIONÁRIA. Não dê prazos em dias sem isso. Diga que depende da região.";
+            return { intent: 'prazos', missing, directive };
+        }
+    }
+
+    if (isDimensionamento) {
+        if (!hasConsumption) missing.push('consumo_kwh');
+        // Location also affects sizing (irradiation), but consumption is the big blocker.
+        if (!hasLocation) missing.push('cidade/uf');
+
+        if (missing.includes('consumo_kwh')) {
+            directive = "FALTAM DADOS ESSENCIAIS (DIMENSIONAMENTO): O cliente quer saber tamanho/preço/placas, mas não sabemos o consumo. PEÇA O CONSUMO MENSAL (kWh) OU VALOR DA CONTA. Não chute número de placas.";
+            return { intent: 'dimensionamento', missing, directive };
+        }
+    }
+
+    return { intent: null, missing: [], directive: null };
+}
+
+// --- HELPER: Safe Stage Update (Increment 10) ---
+async function updateLeadStageSafe(
+    supabase: any,
+    leadId: string | number,
+    targetStage: string,
+    runId: string
+): Promise<void> {
+    const isSchemaMismatch = (code: string | undefined) => code === '42703' || code === 'PGRST204';
+    const timestamp = new Date().toISOString();
+    // 1. Try updating everything (status_pipeline + pipeline_stage + stage_changed_at)
+    // This maintains compatibility with older schemas that use pipeline_stage
+    const { error: err1 } = await supabase.from('leads').update({
+        status_pipeline: targetStage,
+        pipeline_stage: targetStage,
+        stage_changed_at: timestamp
+    }).eq('id', leadId);
+
+    if (!err1) {
+        console.log(`✅ [${runId}] Stage updated (dual write): ${targetStage}`);
+        return;
+    }
+
+    // 2. Fallback: If schema mismatch (42703 / PGRST204), retry with canonical 'status_pipeline' only
+    // This happens if 'pipeline_stage' was removed or 'stage_changed_at' is missing
+    if (isSchemaMismatch(err1.code)) {
+        console.warn(`⚠️ [${runId}] Stage update schema mismatch (${err1.code}). Retrying safe update.`);
+
+        // Try without pipeline_stage but keep stage_changed_at
+        const { error: err2 } = await supabase.from('leads').update({
+            status_pipeline: targetStage,
+            stage_changed_at: timestamp
+        }).eq('id', leadId);
+
+        if (!err2) {
+            console.log(`✅ [${runId}] Stage updated (status_pipeline + date): ${targetStage}`);
+            return;
+        }
+
+        // 3. Final Fallback: bare minimum
+        if (isSchemaMismatch(err2.code)) {
+            const { error: err3 } = await supabase.from('leads').update({
+                status_pipeline: targetStage
+            }).eq('id', leadId);
+
+            if (err3) console.error(`❌ [${runId}] Failed strict backup update:`, err3);
+            else console.log(`✅ [${runId}] Stage updated (bare status_pipeline): ${targetStage}`);
+        } else {
+            console.error(`❌ [${runId}] Failed backup update:`, err2);
+        }
+    } else {
+        console.error(`❌ [${runId}] Stage update failed (unknown error):`, err1);
+    }
 }
 
 // --- HELPER: Typing Indicator ---
@@ -57,128 +182,1564 @@ async function sendTypingIndicator(instanceName: string, remoteJid: string, dura
     }
 }
 
-serve(async (req) => {
+// --- HELPER: Sanitize query for web search (remove PII) ---
+function sanitizeQuery(text: string): string {
+    return text
+        .replace(/\b\d{8,}\b/g, '')           // Remove long digit sequences (phones, CPF)
+        .replace(/\b\d{2,3}\.\d{3}\.\d{3}[-/]\d{1,2}\b/g, '') // CPF/CNPJ patterns
+        .replace(/[+]\d{10,}/g, '')            // International phone numbers
+        .trim()
+        .substring(0, 200);
+}
+
+// --- HELPER: Check if message looks like a real question ---
+function looksLikeQuestion(text: string): boolean {
+    if (!text || text.length < 8) return false;
+    const lower = text.toLowerCase();
+    const questionStarters = ['como', 'quanto', 'qual', 'quando', 'onde', 'por que', 'porque',
+        'tempo', 'prazo', 'vale a pena', 'funciona', 'demora', 'custa', 'economia',
+        'economizar', 'instalar', 'instalação', 'homologação', 'medidor', 'concessionária'];
+    return lower.includes('?') || questionStarters.some(s => lower.includes(s));
+}
+
+// --- V6: NORMALIZERS for lead field extraction ---
+function normalizeMoneyBRL(raw: any): number | null {
+    if (typeof raw === 'number') return raw > 0 ? raw : null;
+    if (typeof raw !== 'string') return null;
+    const cleaned = raw.replace(/[R$\s.]/g, '').replace(',', '.').trim();
+    const n = parseFloat(cleaned);
+    return isNaN(n) || n <= 0 ? null : Math.round(n * 100) / 100;
+}
+
+function normalizeKwh(raw: any): number | null {
+    if (typeof raw === 'number') return raw > 0 ? raw : null;
+    if (typeof raw !== 'string') return null;
+    const cleaned = raw.replace(/[^0-9.,]/g, '').replace(',', '.').trim();
+    const n = parseFloat(cleaned);
+    return isNaN(n) || n <= 0 ? null : Math.round(n);
+}
+
+function normalizeRoofType(raw: any): string | null {
+    if (!raw || typeof raw !== 'string') return null;
+    const lower = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (lower.includes('ceramic') || lower.includes('ceramica')) return 'ceramica';
+    if (lower.includes('fibro') || lower.includes('amianto') || lower.includes('eternit')) return 'fibrocimento';
+    if (lower.includes('metal') || lower.includes('zinco') || lower.includes('galvan')) return 'metalica';
+    if (lower.includes('laje') || lower.includes('concreto')) return 'laje';
+    if (lower.includes('colonial')) return 'colonial';
+    return 'outro';
+}
+
+function normalizeGridType(raw: any): string | null {
+    if (!raw || typeof raw !== 'string') return null;
+    const lower = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (lower.includes('mono') || lower.includes('monofas')) return 'mono';
+    if (lower.includes('bi') || lower.includes('bifas')) return 'bi';
+    if (lower.includes('tri') || lower.includes('trifas')) return 'tri';
+    return null;
+}
+
+function normalizeCustomerType(raw: any): string | null {
+    if (!raw || typeof raw !== 'string') return null;
+    const lower = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (lower.includes('resid') || lower.includes('casa')) return 'residencial';
+    if (lower.includes('comerc') || lower.includes('empresa') || lower.includes('loja')) return 'comercial';
+    if (lower.includes('agro') || lower.includes('rural') || lower.includes('fazend')) return 'agro';
+    if (lower.includes('indust')) return 'industrial';
+    return raw.trim().toLowerCase();
+}
+
+// --- V6: LEAD_META_JSON idempotent helper (edge-function mini version) ---
+const META_TAG = '[[LEAD_META_JSON]]';
+
+function parseLeadMeta(obs: string | null | undefined): Record<string, any> {
+    if (!obs || !obs.includes(META_TAG)) return {};
+    try {
+        const parts = obs.split(META_TAG);
+        if (parts.length < 2) return {};
+        const jsonStr = parts[1].trim();
+        // Handle both ":{ ... }" and "{ ... }" formats
+        const cleaned = jsonStr.startsWith(':') ? jsonStr.substring(1).trim() : jsonStr;
+        return JSON.parse(cleaned) || {};
+    } catch { return {}; }
+}
+
+function packLeadMeta(currentObs: string | null | undefined, newData: Record<string, any>): string {
+    const baseObs = currentObs && currentObs.includes(META_TAG)
+        ? currentObs.split(META_TAG)[0].trim()
+        : (currentObs || '').trim();
+    const existingMeta = parseLeadMeta(currentObs);
+    const merged = { ...existingMeta, ...newData };
+    const hasData = Object.values(merged).some(v => v !== undefined && v !== null && v !== '');
+    if (!hasData) return baseObs;
+    return `${baseObs}\n\n${META_TAG}:${JSON.stringify(merged)}`;
+}
+
+// Columns that exist directly on leads table
+const LEAD_DIRECT_COLUMNS: Record<string, (v: any) => any> = {
+    'consumption_kwh_month': normalizeKwh,    // maps to consumo_kwh
+    'estimated_value_brl': normalizeMoneyBRL, // maps to valor_estimado
+    'customer_type': normalizeCustomerType,   // maps to tipo_cliente
+    'city': (v: any) => typeof v === 'string' ? v.trim() : null,
+    'zip': (v: any) => typeof v === 'string' ? v.replace(/[^0-9\-]/g, '').trim() : null,
+};
+
+// Column name mapping: extraction field -> DB column
+const FIELD_TO_COLUMN: Record<string, string> = {
+    'consumption_kwh_month': 'consumo_kwh',
+    'estimated_value_brl': 'valor_estimado',
+    'customer_type': 'tipo_cliente',
+    'city': 'cidade',
+    'zip': 'cep',
+};
+
+const V6_NUMERIC_FIELDS = new Set(['consumption_kwh_month', 'estimated_value_brl']);
+
+function isHedged(text: string | null | undefined): boolean {
+    if (!text) return false;
+    const normalized = text
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    return /\b(acho|acho que|acredito|creio|talvez|deve ser|por volta|mais ou menos|aprox(?:imadamente)?\.?|cerca de|na faixa de|chutando|imagino|algo em torno|tipo)\b/.test(normalized)
+        || /\buns?\b/.test(normalized)
+        || /\bumas?\b/.test(normalized);
+}
+
+// Fields stored in meta JSON
+const META_FIELDS: Record<string, (v: any) => any> = {
+    'roof_type': normalizeRoofType,
+    'utility_company': (v: any) => typeof v === 'string' ? v.trim().toUpperCase() : null,
+    'grid_connection_type': normalizeGridType,
+    'financing_interest': (v: any) => {
+        if (typeof v === 'boolean') return v ? 'sim' : 'nao';
+        if (typeof v !== 'string') return null;
+        const l = v.toLowerCase();
+        if (l.includes('sim') || l.includes('yes') || l === 'true') return 'sim';
+        if (l.includes('nao') || l.includes('não') || l.includes('no') || l === 'false') return 'nao';
+        return null;
+    },
+    'installation_site_type': (v: any) => typeof v === 'string' ? v.trim().toLowerCase() : null,
+    'average_bill_context': (v: any) => typeof v === 'string' ? v.trim() : null,
+};
+
+// --- V6: Safe update evaluator ---
+interface FieldCandidate {
+    value: any;
+    confidence: 'high' | 'medium' | 'low';
+    source: 'user' | 'inferred' | 'confirmed';
+}
+
+function shouldWriteField(
+    fieldName: string,
+    candidate: FieldCandidate,
+    currentValue: any
+): { write: boolean; reason: string } {
+    const hasExisting = currentValue !== null && currentValue !== undefined && currentValue !== '' && currentValue !== 0;
+
+    // Rule: Never save low confidence
+    if (candidate.confidence === 'low') {
+        return { write: false, reason: 'confidence_too_low' };
+    }
+
+    // Rule: Existing value present — only overwrite if high confidence AND user/confirmed source
+    if (hasExisting) {
+        if (candidate.confidence === 'high' && (candidate.source === 'user' || candidate.source === 'confirmed')) {
+            return { write: true, reason: 'high_conf_user_overwrite' };
+        }
+        return { write: false, reason: 'existing_value_protected' };
+    }
+
+    // Rule: Field empty — allow medium if source=user
+    if (candidate.confidence === 'medium' && candidate.source === 'user') {
+        return { write: true, reason: 'empty_field_medium_user' };
+    }
+    if (candidate.confidence === 'high') {
+        return { write: true, reason: 'empty_field_high_conf' };
+    }
+    if (candidate.confidence === 'medium' && candidate.source === 'inferred') {
+        return { write: false, reason: 'medium_inferred_blocked' };
+    }
+
+    return { write: false, reason: 'default_blocked' };
+}
+
+// --- V6: Execute lead field update (non-blocking, safe) ---
+async function executeLeadFieldUpdate(
+    supabase: any,
+    leadId: string | number,
+    fields: Record<string, FieldCandidate>,
+    lead: any,
+    runId: string,
+    aggregatedText?: string
+): Promise<{ candidateCount: number; writtenCount: number; skipped: Array<{ field: string; reason: string }> }> {
+    const result = { candidateCount: 0, writtenCount: 0, skipped: [] as Array<{ field: string; reason: string }> };
+    const dbUpdate: Record<string, any> = {};
+    const metaUpdate: Record<string, any> = {};
+    const hedgedInput = isHedged(aggregatedText);
+
+    const existingMeta = parseLeadMeta(lead.observacoes || '');
+
+    for (const [fieldName, candidate] of Object.entries(fields)) {
+        result.candidateCount++;
+
+        // Determine if direct column or meta
+        const isDirect = fieldName in LEAD_DIRECT_COLUMNS;
+        const isMeta = fieldName in META_FIELDS;
+
+        if (!isDirect && !isMeta) {
+            result.skipped.push({ field: fieldName, reason: 'unknown_field' });
+            continue;
+        }
+
+        // Normalize value
+        const normalizer = isDirect ? LEAD_DIRECT_COLUMNS[fieldName] : META_FIELDS[fieldName];
+        const normalizedValue = normalizer(candidate.value);
+        if (normalizedValue === null || normalizedValue === undefined) {
+            result.skipped.push({ field: fieldName, reason: 'normalization_failed' });
+            continue;
+        }
+
+        // Get current value
+        let currentValue: any;
+        if (isDirect) {
+            const dbCol = FIELD_TO_COLUMN[fieldName] || fieldName;
+            currentValue = lead[dbCol];
+        } else {
+            currentValue = existingMeta[fieldName];
+        }
+
+        const hasExisting = currentValue !== null && currentValue !== undefined && currentValue !== '' && currentValue !== 0;
+        const isNumericField = V6_NUMERIC_FIELDS.has(fieldName);
+        const candidateForDecision: FieldCandidate = {
+            ...candidate,
+            value: normalizedValue,
+            confidence: hedgedInput && isNumericField && candidate.confidence === 'high'
+                ? 'medium'
+                : candidate.confidence,
+        };
+
+        // Hedge-protection: never overwrite existing numeric value from uncertain phrasing.
+        if (hedgedInput && isNumericField && hasExisting) {
+            result.skipped.push({ field: fieldName, reason: 'hedged_existing_value_protected' });
+            continue;
+        }
+
+        // Evaluate write safety
+        const decision = shouldWriteField(fieldName, candidateForDecision, currentValue);
+        if (!decision.write) {
+            result.skipped.push({ field: fieldName, reason: decision.reason });
+            continue;
+        }
+
+        // Queue write
+        if (isDirect) {
+            const dbCol = FIELD_TO_COLUMN[fieldName] || fieldName;
+            dbUpdate[dbCol] = normalizedValue;
+        } else {
+            metaUpdate[fieldName] = normalizedValue;
+        }
+        result.writtenCount++;
+    }
+
+    // Execute DB writes
+    try {
+        // Direct columns update
+        if (Object.keys(dbUpdate).length > 0) {
+            const { error: colErr } = await supabase.from('leads').update(dbUpdate).eq('id', leadId);
+            if (colErr) {
+                console.error(`❌ [${runId}] V6: Direct column update failed:`, colErr.message);
+                // If column doesn't exist (42703), try meta fallback for those fields
+                if (colErr.code === '42703') {
+                    console.warn(`⚠️ [${runId}] V6: Column missing, falling back to meta for direct fields`);
+                    for (const [col, val] of Object.entries(dbUpdate)) {
+                        // Reverse-map column to field name
+                        const fieldName = Object.entries(FIELD_TO_COLUMN).find(([, c]) => c === col)?.[0] || col;
+                        metaUpdate[fieldName] = val;
+                    }
+                }
+            }
+        }
+
+        // Meta JSON update
+        if (Object.keys(metaUpdate).length > 0) {
+            const currentObs = lead.observacoes || '';
+            const newObs = packLeadMeta(currentObs, metaUpdate);
+            const { error: metaErr } = await supabase.from('leads').update({ observacoes: newObs }).eq('id', leadId);
+            if (metaErr) {
+                console.error(`❌ [${runId}] V6: Meta JSON update failed:`, metaErr.message);
+            }
+        }
+
+        // Audit log
+        const hasHedgeBlock = result.skipped.some(s => s.reason === 'hedged_existing_value_protected');
+        if (result.writtenCount > 0 || hasHedgeBlock) {
+            await supabase.from('ai_action_logs').insert({
+                lead_id: leadId,
+                action_type: 'lead_fields_updated',
+                details: JSON.stringify({
+                    lead_fields_candidate_count: result.candidateCount,
+                    lead_fields_written_count: result.writtenCount,
+                    lead_fields_skipped_reason: result.skipped,
+                    fields_written: { ...dbUpdate, ...metaUpdate },
+                    hedged_input: hedgedInput,
+                    hedge_text_preview: hedgedInput ? (aggregatedText || '').substring(0, 180) : null,
+                }),
+                success: true,
+            });
+        }
+
+        console.log(`📋 [${runId}] V6: Lead fields update: ${result.writtenCount}/${result.candidateCount} written. Skipped: ${result.skipped.map(s => `${s.field}(${s.reason})`).join(', ') || 'none'}`);
+    } catch (err: any) {
+        console.error(`❌ [${runId}] V6: executeLeadFieldUpdate error (non-blocking):`, err?.message || err);
+    }
+
+    return result;
+}
+
+// --- V7: ADD COMMENT executor (idempotente via ai_action_logs) ---
+async function executeAddComment(
+    supabase: any,
+    leadId: string | number,
+    content: string,
+    commentType: string,
+    authorName: string,
+    runId: string,
+    anchorCreatedAt: string | null,
+    anchorInteractionId: string | number | null
+): Promise<{ written: boolean; skippedReason: string | null }> {
+    const trimmed = (content || '').trim().substring(0, 1200);
+    if (!trimmed) return { written: false, skippedReason: 'empty_content' };
+
+    // Dedup check: same anchor should not produce duplicate comments
+    const dedupKey = anchorCreatedAt || anchorInteractionId || runId;
+    try {
+        const { data: existing } = await supabase
+            .from('ai_action_logs')
+            .select('id')
+            .eq('lead_id', leadId)
+            .eq('action_type', 'lead_comment_added')
+            .filter('details', 'ilike', `%${dedupKey}%`)
+            .limit(1)
+            .maybeSingle();
+
+        if (existing) {
+            console.log(`⏭️ [${runId}] V7: Comment skipped (duplicate for anchor ${dedupKey})`);
+            return { written: false, skippedReason: 'skipped_duplicate' };
+        }
+    } catch (dedupErr: any) {
+        console.warn(`⚠️ [${runId}] V7: Dedup check failed (non-blocking):`, dedupErr?.message);
+    }
+
+    try {
+        const { error: insertErr } = await supabase.from('comentarios_leads').insert({
+            lead_id: Number(leadId),
+            texto: `[${commentType || 'note'}] ${trimmed}`,
+            autor: authorName || 'IA',
+        });
+
+        if (insertErr) {
+            console.error(`❌ [${runId}] V7: Comment insert error:`, insertErr.message);
+            return { written: false, skippedReason: `db_error: ${insertErr.message}` };
+        }
+
+        // Audit log
+        await supabase.from('ai_action_logs').insert({
+            lead_id: Number(leadId),
+            action_type: 'lead_comment_added',
+            details: JSON.stringify({
+                anchorCreatedAt: anchorCreatedAt || null,
+                interactionId: anchorInteractionId || null,
+                runId,
+                comment_type: commentType || 'note',
+                comment_preview: trimmed.substring(0, 120),
+                source: 'ai',
+            }),
+            success: true,
+        });
+
+        console.log(`💬 [${runId}] V7: Comment added (type=${commentType || 'note'}, ${trimmed.length} chars)`);
+        return { written: true, skippedReason: null };
+    } catch (err: any) {
+        console.error(`❌ [${runId}] V7: executeAddComment error:`, err?.message || err);
+        return { written: false, skippedReason: `exception: ${err?.message}` };
+    }
+}
+
+// --- V7/V8: CREATE FOLLOWUP executor (real, inserts into lead_tasks) ---
+async function executeCreateFollowup(
+    supabase: any,
+    leadId: string | number,
+    task: any,
+    runId: string,
+    anchorCreatedAt: string | null,
+    anchorInteractionId: string | number | null,
+    orgId: string,
+    userId: string
+): Promise<{ written: boolean; skippedReason: string | null; taskId: string | null }> {
+    // Validate title
+    const title = (task?.title || '').trim().substring(0, 200);
+    if (title.length < 3) {
+        console.warn(`⚠️ [${runId}] V8: Followup skipped (title too short: "${title}")`);
+        return { written: false, skippedReason: 'title_too_short', taskId: null };
+    }
+
+    const notes = (task?.notes || '').trim().substring(0, 1500) || null;
+
+    // Validate due_at
+    let dueAt: string | null = null;
+    if (task?.due_at) {
+        try {
+            const d = new Date(task.due_at);
+            if (!isNaN(d.getTime())) dueAt = d.toISOString();
+        } catch (_) { /* invalid date, keep null */ }
+    }
+
+    // Normalize priority
+    const validPriorities = ['low', 'medium', 'high'];
+    const priority = validPriorities.includes(task?.priority) ? task.priority : 'medium';
+
+    // Normalize channel
+    const validChannels = ['whatsapp', 'call', 'email', 'other'];
+    const channel = validChannels.includes(task?.channel) ? task.channel : null;
+
+    // Dedup check
+    const dedupKey = String(anchorInteractionId || anchorCreatedAt || runId);
+    try {
+        const { data: existing } = await supabase
+            .from('ai_action_logs')
+            .select('id')
+            .eq('lead_id', leadId)
+            .eq('action_type', 'followup_created')
+            .filter('details', 'ilike', `%${dedupKey}%`)
+            .limit(1)
+            .maybeSingle();
+
+        if (existing) {
+            console.log(`⏭️ [${runId}] V8: Followup skipped (duplicate for anchor ${dedupKey})`);
+            return { written: false, skippedReason: 'skipped_duplicate', taskId: null };
+        }
+    } catch (dedupErr: any) {
+        console.warn(`⚠️ [${runId}] V8: Dedup check failed (non-blocking):`, dedupErr?.message);
+    }
+
+    try {
+        const { data: inserted, error: insertErr } = await supabase.from('lead_tasks').insert({
+            org_id: orgId,
+            user_id: userId,
+            lead_id: Number(leadId),
+            title,
+            notes,
+            due_at: dueAt,
+            status: 'open',
+            priority,
+            channel,
+            created_by: 'ai',
+        }).select('id').single();
+
+        if (insertErr) {
+            console.error(`❌ [${runId}] V8: lead_tasks insert error:`, insertErr.message);
+            return { written: false, skippedReason: `db_error: ${insertErr.message}`, taskId: null };
+        }
+
+        const taskId = inserted?.id || null;
+
+        // Audit log
+        await supabase.from('ai_action_logs').insert({
+            lead_id: Number(leadId),
+            action_type: 'followup_created',
+            details: JSON.stringify({
+                anchorCreatedAt: anchorCreatedAt || null,
+                interactionId: anchorInteractionId || null,
+                runId,
+                task_id: taskId,
+                title,
+                due_at: dueAt,
+                priority,
+                channel,
+                source: 'ai',
+            }),
+            success: true,
+        });
+
+        console.log(`📝 [${runId}] V8: Followup created (id=${taskId}, title="${title}", due=${dueAt || 'none'}, priority=${priority})`);
+        return { written: true, skippedReason: null, taskId };
+    } catch (err: any) {
+        console.error(`❌ [${runId}] V8: executeCreateFollowup error:`, err?.message || err);
+        return { written: false, skippedReason: `exception: ${err?.message}`, taskId: null };
+    }
+}
+
+// --- FALLBACK PROMPT for inactive/missing stages ---
+const STAGE_FALLBACK_PROMPT = `Você é um consultor de energia solar (Brasil). O cliente falou fora de um fluxo ativo. Responda com qualidade e profundidade.
+Nunca invente. Se faltar dado, diga que depende e peça 1 dado por vez.
+Foque em explicar processo real (dimensionamento, homologação, instalação, troca de medidor, prazos por distribuidora, garantias, manutenção, economia e fatores).
+Se o cliente perguntar "quanto tempo pra economizar", explique o fluxo real: instalação (1-3 dias), depois projeto/homologação na distribuidora, vistoria, troca de medidor (pode levar semanas), e só depois começa a compensação.
+Peça cidade/UF e concessionária para estimar prazos.`;
+
+Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
     try {
         const payload = await req.json();
-        const { leadId, triggerType, interactionId, instanceName: webhookInstance } = payload;
 
-        // 1. SETUP
+        // 0. GENERATE RUN ID
+        const runId = crypto.randomUUID();
+
+        // --- CONSTANTS ---
+        const QUIET_WINDOW_MS = 3500;   // min silence before responding
+        const MAX_WAIT_MS = 18000;  // hard stop total per run
+        const BURST_LOOKBACK_S = 90;   // max age of burst msgs to aggregate
+
+        // Tracking variables for structured logging
+        let decision = 'proceed';
+        let stageFallbackUsed = false;
+        let kbHitsCount = 0;
+        let kbChars = 0;
+        let kbError: string | null = null;
+        let webUsed = false;
+        let webResultsCount = 0;
+        let webError: string | null = null;
+        let evolutionSendStatus: number | null = null;
+        let anchorCreatedAt: string | null = null;
+        let lastOutboundCreatedAt: string | null = null;
+        let aggregatedBurstCount = 0;
+        let aggregatedChars = 0;
+        let lastInboundAgeMs: number | null = null;
+        // V6 tracking
+        let v6FieldsCandidateCount = 0;
+        let v6FieldsWrittenCount = 0;
+        // V7 tracking
+        let v7CommentWritten = false;
+        let v7CommentSkippedReason: string | null = null;
+        let v7FollowupWritten = false;
+        let v7FollowupSkippedReason: string | null = null;
+
+        // 1. STRICT INSTANCE CHECK
+        const { leadId, interactionId, instanceName } = payload;
+
+        console.log(`🚀 [${runId}] START Agent. Instance: ${instanceName}, Lead: ${leadId}, Interaction: ${interactionId}`);
+
+        if (!instanceName) {
+            console.error('🛑 Missing instanceName in payload');
+            return new Response(JSON.stringify({ skipped: "missing_instanceName" }), { headers: corsHeaders });
+        }
+
         const supabase = createClient(
             Deno.env.get('SUPABASE_URL')!,
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
         );
 
-        // 2. LOAD LEADI & SETTINGS
+        // 2. CHECK IF AI IS ENABLED FOR THIS INSTANCE
+        const { data: instanceData, error: instError } = await supabase
+            .from('whatsapp_instances')
+            .select('ai_enabled')
+            .eq('instance_name', instanceName)
+            .maybeSingle();
+
+        if (instError || !instanceData || !instanceData.ai_enabled) {
+            console.log(`🛑 AI disabled for instance: ${instanceName} (or instance not found)`);
+            return new Response(JSON.stringify({ skipped: "instance_ai_disabled" }), { headers: corsHeaders });
+        }
+
+        // 3. LOAD LEAD & SETTINGS
         const { data: lead } = await supabase.from('leads').select('*').eq('id', leadId).single();
         const { data: settings } = await supabase.from('ai_settings').select('*').single();
-        if (!settings?.is_active) return new Response(JSON.stringify({ skipped: "System Inactive" }), { headers: corsHeaders });
 
-        // 3. HUMAN DEBOUNCE (The "Sleep & Re-Check" Pattern)
-        const DEBOUNCE_MS = Math.floor(Math.random() * (15000 - 10000 + 1) + 10000); // 10-15s
-        console.log(`⏳ Debouncing for ${DEBOUNCE_MS}ms...`);
-        await new Promise(r => setTimeout(r, DEBOUNCE_MS));
+        if (!settings?.is_active) {
+            return new Response(JSON.stringify({ skipped: "System Inactive" }), { headers: corsHeaders });
+        }
 
-        // 4. RE-CHECK: Did a new message come in?
-        if (interactionId) {
+        // 3a. CHECK IF LEAD HAS AI ENABLED SPECIFICALLY
+        if (lead.ai_enabled === false) {
+            console.log(`🛑 AI disabled for specific LEAD: ${leadId}`);
+            return new Response(JSON.stringify({ skipped: "lead_ai_disabled" }), { headers: corsHeaders });
+        }
+
+        // 4. QUIET-WINDOW DEBOUNCE (wait for real silence)
+        // Stage 1: short rapid checks (1500ms) to detect burst-in-progress
+        // Stage 2: longer checks (4-7s) for natural human pauses
+        let anchorInteractionId = interactionId;
+        let stabilized = false;
+        let anchorMsgCreatedAt: number | null = null;
+        const debounceStart = Date.now();
+        const RAPID_CHECK_MS = 1500;
+        const RAPID_CHECKS = 3; // first 3 checks are rapid
+        let loopCount = 0;
+
+        while (true) {
+            loopCount++;
+            // Stage 1 (first 3 loops): rapid 1.5s checks to catch burst
+            // Stage 2 (after): slower 4-7s checks for human pacing
+            const sleepMs = loopCount <= RAPID_CHECKS
+                ? RAPID_CHECK_MS
+                : Math.floor(Math.random() * (7000 - 4000 + 1) + 4000);
+            const elapsed = Date.now() - debounceStart;
+            console.log(`⏳ [${runId}] Quiet-window loop #${loopCount} sleep ${sleepMs}ms (elapsed ${elapsed}ms/${MAX_WAIT_MS}ms)`);
+            await new Promise(r => setTimeout(r, sleepMs));
+
+            // Fetch latest client message for this lead+instance
             const { data: latestMsg } = await supabase
                 .from('interacoes')
                 .select('id, created_at')
                 .eq('lead_id', leadId)
+                .eq('instance_name', instanceName)
                 .eq('tipo', 'mensagem_cliente')
-                .gt('id', interactionId) // Strictly newer ID
-                .limit(1);
+                .order('id', { ascending: false })
+                .limit(1)
+                .maybeSingle();
 
-            if (latestMsg && latestMsg.length > 0) {
-                console.log('🛑 Aborting: New message received during debounce.');
-                return new Response(JSON.stringify({ aborted: "New message received" }), { headers: corsHeaders });
+            if (!latestMsg) {
+                stabilized = true;
+                break;
+            }
+
+            const inboundTime = new Date(latestMsg.created_at).getTime();
+            lastInboundAgeMs = Date.now() - inboundTime;
+
+            console.log(`Yield Debug: latest=${latestMsg.id}, anchor=${anchorInteractionId}, input=${interactionId}`);
+
+            // YIELD CHECK: if a newer message exists than ours, let the newer run handle it
+            if (anchorInteractionId && latestMsg.id !== interactionId && latestMsg.id !== anchorInteractionId) {
+                // A newer msg arrived → this run should yield to the run triggered by that msg
+                decision = 'yield_to_newer';
+                console.log(`🔄 [${runId}] Yielding: newer msg ${latestMsg.id} exists (ours was ${interactionId}). Aborting this run.`);
+                return new Response(JSON.stringify({
+                    aborted: "yield_to_newer",
+                    runId,
+                    debug: {
+                        latest: latestMsg.id,
+                        anchor: anchorInteractionId,
+                        input: interactionId
+                    }
+                }), { headers: corsHeaders });
+            }
+
+            anchorInteractionId = latestMsg.id;
+
+            if (lastInboundAgeMs >= QUIET_WINDOW_MS) {
+                // Silence detected — user stopped typing
+                stabilized = true;
+                anchorMsgCreatedAt = inboundTime;
+                anchorCreatedAt = latestMsg.created_at;
+                console.log(`✅ [${runId}] Stabilized (quiet ${lastInboundAgeMs}ms >= ${QUIET_WINDOW_MS}ms). Anchor: ${anchorInteractionId}`);
+                break;
+            }
+
+            // Still receiving messages — check hard stop
+            if (Date.now() - debounceStart > MAX_WAIT_MS) {
+                decision = 'quiet_window_timeout';
+                console.warn(`🛑 [${runId}] Aborted: quiet-window timeout after ${MAX_WAIT_MS}ms. User still typing.`);
+                return new Response(JSON.stringify({ aborted: "quiet_window_timeout", runId }), { headers: corsHeaders });
+            }
+
+            console.log(`🔄 [${runId}] Still typing (lastInboundAge=${lastInboundAgeMs}ms < ${QUIET_WINDOW_MS}ms). Waiting...`);
+        }
+
+        if (!stabilized) {
+            decision = 'not_stabilized';
+            return new Response(JSON.stringify({ aborted: "not_stabilized", runId }), { headers: corsHeaders });
+        }
+
+        // 4a. Ensure anchorMsgCreatedAt is set
+        if (!anchorMsgCreatedAt && anchorInteractionId) {
+            const { data: anchorRow } = await supabase
+                .from('interacoes')
+                .select('created_at')
+                .eq('id', anchorInteractionId)
+                .single();
+            if (anchorRow) {
+                anchorMsgCreatedAt = new Date(anchorRow.created_at).getTime();
+                anchorCreatedAt = anchorRow.created_at;
             }
         }
 
-        // 5. DETERMINE INSTANCE (Priority: Settings > Webhook > Lead)
-        const activeInstance = settings.whatsapp_instance_name || webhookInstance || lead.instance_name || 'default';
+        // 5. RESOLVE REMOTE JID (Scoped to Instance)
+        let resolvedRemoteJid = (payload.remoteJid || payload.remote_jid || null);
 
-        // 6. BUILD CONTEXT (Multimodal capable - reuse previous logic here)
-        const { data: stageConfig } = await supabase.from('ai_stage_config').eq('pipeline_stage', lead.pipeline_stage).single();
-        if (!stageConfig?.is_active) return new Response(JSON.stringify({ skipped: "Stage Inactive" }));
+        if (!resolvedRemoteJid && anchorInteractionId) {
+            const { data: anchorRow } = await supabase
+                .from('interacoes')
+                .select('remote_jid, instance_name')
+                .eq('id', anchorInteractionId)
+                .maybeSingle();
 
-        // Fetch History... (Simplified for brevity, assume fetch logic matches previous artifact)
-        const { data: history } = await supabase.from('interacoes').select('*').eq('lead_id', leadId).order('created_at', { ascending: false }).limit(10);
-        const chatHistory = (history || []).reverse().map((m: any) => ({
+            // Only use if instance matches (safety check)
+            if (anchorRow?.remote_jid && anchorRow.instance_name === instanceName) {
+                resolvedRemoteJid = anchorRow.remote_jid;
+            }
+        }
+
+        if (!resolvedRemoteJid) {
+            // Fallback: Last valid remote_jid for this lead ON THIS INSTANCE
+            const { data: lastValid } = await supabase.from('interacoes')
+                .select('id, remote_jid')
+                .eq('lead_id', leadId)
+                .eq('instance_name', instanceName) // STRICT FILTER
+                .not('remote_jid', 'is', null)
+                .order('id', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (lastValid?.remote_jid) resolvedRemoteJid = lastValid.remote_jid;
+        }
+
+        console.log(`🎯 [${runId}] Resolved RemoteJid: ${resolvedRemoteJid || 'MISSING'} for Instance: ${instanceName}`);
+
+        if (!resolvedRemoteJid) {
+            console.error(`🛑 [${runId}] Aborting: No remoteJid found for this instance.`);
+            return new Response(JSON.stringify({ skipped: "missing_remoteJid" }), { headers: corsHeaders });
+        }
+
+        // --- CHECK #1: ANTI-SPAM (FIXED: anchor-based, not 60s cooldown) ---
+        try {
+            const { data: lastOutbound, error: lastOutError } = await supabase
+                .from('interacoes')
+                .select('id, created_at')
+                .eq('instance_name', instanceName)
+                .eq('remote_jid', resolvedRemoteJid)
+                .eq('wa_from_me', true)
+                .order('id', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (!lastOutError && lastOutbound) {
+                const lastTime = new Date(lastOutbound.created_at).getTime();
+                const nowTime = Date.now();
+                lastOutboundCreatedAt = lastOutbound.created_at;
+
+                // A) ALREADY REPLIED: outbound is NEWER than anchor → duplicate run
+                if (anchorMsgCreatedAt && lastTime > anchorMsgCreatedAt) {
+                    decision = 'already_replied';
+                    console.warn(`🛑 [${runId}] Skipped: Already replied after anchor. lastOut=${lastOutbound.created_at} > anchor=${anchorCreatedAt}`);
+                    return new Response(JSON.stringify({ skipped: "already_replied", runId }), { headers: corsHeaders });
+                }
+
+                // B) TIGHT LOOP GUARD: outbound < 5s ago (prevents immediate re-fire)
+                if ((nowTime - lastTime) < 5000) {
+                    decision = 'tight_loop_guard';
+                    console.warn(`🛑 [${runId}] Skipped: Tight loop guard. Last sent ${(nowTime - lastTime) / 1000}s ago.`);
+                    return new Response(JSON.stringify({ skipped: "tight_loop_guard", runId }), { headers: corsHeaders });
+                }
+
+                // C) ANCHOR IS NEWER → new inbound after bot reply → ALLOW
+                decision = 'allowed_new_inbound';
+                console.log(`✅ [${runId}] Allowed: anchor is newer than last outbound. Responding to follow-up.`);
+            }
+        } catch (err) {
+            console.error(`⚠️ [${runId}] Anti-Spam Check #1 failed (non-blocking):`, err);
+            // Fail open - continue
+        }
+
+        // 6. BUILD CONTEXT (Scoped History)
+        const currentStage = normalizeStage(lead.status_pipeline) || lead.pipeline_stage || 'novo_lead';
+        let { data: stageConfig } = await supabase.from('ai_stage_config').select('*').eq('pipeline_stage', currentStage).maybeSingle();
+
+        if (!stageConfig) {
+            const { data: fallback } = await supabase.from('ai_stage_config').select('*').eq('pipeline_stage', 'novo_lead').maybeSingle();
+            stageConfig = fallback;
+        }
+
+        // FIX: Stage Inactive → use fallback prompt instead of skipping
+        let stagePromptText = '';
+        if (!stageConfig?.is_active) {
+            stageFallbackUsed = true;
+            stagePromptText = STAGE_FALLBACK_PROMPT;
+            console.log(`⚠️ [${runId}] Stage '${currentStage}' inactive/missing. Using FAQ fallback prompt. stageFallbackUsed=true`);
+        } else {
+            stagePromptText = stageConfig.prompt_override || stageConfig.default_prompt || '';
+            console.log(`📝 [${runId}] Stage '${currentStage}' prompt source: ${stageConfig.prompt_override ? 'OVERRIDE' : 'DEFAULT'}. Length: ${stagePromptText.length}`);
+        }
+
+        // HISTORY SCOPED TO INSTANCE
+        const { data: history } = await supabase
+            .from('interacoes')
+            .select('*')
+            .eq('lead_id', leadId)
+            .eq('instance_name', instanceName) // STRICT FILTER
+            .order('id', { ascending: false })
+            .limit(30); // Use 30 for context aggregation
+
+        // BURST AGGREGATION: collect consecutive client msgs since last outbound (within 90s)
+        let chatHistory = (history || []).reverse().map((m: any) => ({
             role: m.tipo === 'mensagem_cliente' ? 'user' : 'assistant',
-            content: m.mensagem
+            content: m.mensagem,
+            created_at: m.created_at
         }));
 
+        // Build aggregated burst block from raw history (walk backward from newest)
+        const burstMsgs: string[] = [];
+        const anchorTs = anchorMsgCreatedAt || Date.now();
+        const cutoffTs = anchorTs - (BURST_LOOKBACK_S * 1000); // 90s lookback
+        if (history && history.length > 0) {
+            // history is desc order (newest first) — walk forward = newest to oldest
+            for (const m of history) {
+                if (m.wa_from_me || m.tipo !== 'mensagem_cliente') break; // hit an outbound → stop
+                const mTs = new Date(m.created_at).getTime();
+                if (mTs < cutoffTs) break; // too old
+                burstMsgs.push(m.mensagem);
+            }
+        }
+        burstMsgs.reverse(); // chronological order
+        const lastUserTextAggregated = burstMsgs.join('\n');
+        aggregatedBurstCount = burstMsgs.length;
+        aggregatedChars = lastUserTextAggregated.length;
+        if (aggregatedBurstCount > 1) {
+            console.log(`🧩 [${runId}] Burst aggregated: ${aggregatedBurstCount} msgs, ${aggregatedChars} chars.`);
+        }
+
+        // Replace the last user block in chatHistory with the burst-aggregated text
+        if (chatHistory.length > 0 && aggregatedBurstCount > 0) {
+            // Remove all trailing user messages
+            let idx = chatHistory.length - 1;
+            while (idx >= 0 && chatHistory[idx].role === 'user') idx--;
+            chatHistory = chatHistory.slice(0, idx + 1);
+            // Push single aggregated block
+            chatHistory.push({ role: 'user', content: lastUserTextAggregated });
+        }
+
+        // Strip created_at from chatHistory before sending to LLM
+        chatHistory = chatHistory.map((m: any) => ({ role: m.role, content: m.content }));
+
+        // Extract last user text for KB/web search
+        const lastUserText = lastUserTextAggregated || (
+            chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'user'
+                ? chatHistory[chatHistory.length - 1].content
+                : ''
+        );
+
+        // --- RAG: INTERNAL KB SEARCH ---
+        let kbBlock = '';
+
+        // INCREMENT 5A: Unbreakable Org ID Logic (Admin Lookup)
+        let kbOrgId = settings.company_id;
+        let kbOrgIdSource = settings.company_id ? 'settings.company_id' : 'none';
+
+        if (!kbOrgId && lead.user_id) {
+            try {
+                // FALLBACK: Lookup user metadata via Admin API
+                const { data: userData, error: userError } = await supabase.auth.admin.getUserById(lead.user_id);
+
+                if (userData?.user?.user_metadata?.org_id) {
+                    kbOrgId = userData.user.user_metadata.org_id;
+                    kbOrgIdSource = 'auth.user_metadata.org_id';
+
+                    // HEALING: Optimistically update settings
+                    console.log(`🔧 [${runId}] Healing: Auto-updating settings.company_id to ${kbOrgId}`);
+                    // Non-awaiting promise to not block
+                    supabase.from('ai_settings').update({ company_id: kbOrgId }).eq('id', settings.id).then();
+                } else {
+                    // Final fallback: use user_id itself (common for single-user orgs)
+                    kbOrgId = lead.user_id;
+                    kbOrgIdSource = 'lead.user_id';
+                }
+            } catch (err) {
+                console.error(`⚠️ [${runId}] Admin User Lookup Failed:`, err);
+                // Graceful degradation
+                kbOrgId = lead.user_id;
+                kbOrgIdSource = 'lead.user_id (fallback_error)';
+            }
+        }
+
+        try {
+            if (lastUserText && kbOrgId) {
+                const { data: kbResults, error: kbErr } = await supabase.rpc('knowledge_search_v2', {
+                    p_org_id: kbOrgId,
+                    p_query_text: lastUserText,
+                    p_limit: 6
+                });
+
+                if (kbErr) {
+                    kbError = kbErr.message;
+                    console.warn(`⚠️ [${runId}] KB search error (non-blocking):`, kbErr.message);
+                } else if (kbResults && kbResults.length > 0) {
+                    kbHitsCount = kbResults.length;
+                    const kbLines: string[] = [];
+                    for (const item of kbResults) {
+                        const snippet = (item.content_snippet || '').substring(0, 400);
+                        if (item.item_type === 'company_info') {
+                            kbLines.push(`[empresa] ${item.content_snippet}`);
+                        } else if (item.item_type === 'objection') {
+                            kbLines.push(`[objecao] P: ${item.title_or_name} R: ${snippet}`);
+                        } else if (item.item_type === 'testimonial') {
+                            kbLines.push(`[depoimento] ${item.title_or_name}: ${snippet}`);
+                        } else {
+                            kbLines.push(`[${item.item_type}] ${item.title_or_name}: ${snippet}`);
+                        }
+                    }
+                    kbBlock = kbLines.join('\n');
+                    kbChars = kbBlock.length;
+                    console.log(`📚 [${runId}] KB search (Org: ${kbOrgId} | Src: ${kbOrgIdSource}) returned ${kbHitsCount} hits, ${kbChars} chars.`);
+                }
+            }
+        } catch (err: any) {
+            kbError = err?.message || String(err);
+            console.warn(`⚠️ [${runId}] KB search exception (non-blocking):`, kbError);
+        }
+
+        // --- WEB SEARCH FALLBACK (SERPER) ---
+        let webBlock = '';
+        const serperKey = Deno.env.get('SERPER_API_KEY');
+        try {
+            if (serperKey && kbChars < 400 && looksLikeQuestion(lastUserText)) {
+                const sanitized = sanitizeQuery(lastUserText);
+                if (sanitized.length > 5) {
+                    const webQuery = `energia solar Brasil ${sanitized}`;
+                    console.log(`🌐 [${runId}] Web search triggered. Query: "${webQuery}"`);
+
+                    const serperResp = await fetch('https://google.serper.dev/search', {
+                        method: 'POST',
+                        headers: {
+                            'X-API-KEY': serperKey,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ q: webQuery, gl: 'br', hl: 'pt', num: 5 })
+                    });
+
+                    if (serperResp.ok) {
+                        const serperData = await serperResp.json();
+                        const organic = serperData.organic || [];
+                        webUsed = true;
+                        webResultsCount = organic.length;
+
+                        const webLines: string[] = [];
+                        for (const r of organic.slice(0, 5)) {
+                            webLines.push(`- ${r.title || ''}: ${(r.snippet || '').substring(0, 250)} (${r.link || ''})`);
+                        }
+                        webBlock = webLines.join('\n');
+                        console.log(`🌐 [${runId}] Web search returned ${webResultsCount} results.`);
+                    } else {
+                        webError = `Serper HTTP ${serperResp.status}`;
+                        console.warn(`⚠️ [${runId}] Serper API error: ${serperResp.status}`);
+                    }
+                }
+            }
+        } catch (err: any) {
+            webError = err?.message || String(err);
+            console.warn(`⚠️ [${runId}] Web search exception (non-blocking):`, webError);
+        }
+
+
+        // Initialize gate (scoped outside for post-processing)
+        let gate: { intent: string | null; missing: string[]; directive: string | null; } = { intent: null, missing: [], directive: null };
+
         // 7. OPENAI CALL
-        const openAIApiKey = Deno.env.get('OPENAI_API_KEY') || settings.openai_api_key;
-        const openai = new OpenAIApi(new Configuration({ apiKey: openAIApiKey }));
+        let aiRes: AIResponse | null = null;
 
-        const systemPrompt = `
-        Identidade: ${settings.assistant_identity_name || 'Consultor'}.
-        Objetivo: ${(stageConfig.prompt_override || stageConfig.default_prompt || '').split('\n')[0]}
-        Regras: Responda curto, natural, PT-BR. Use 1 emoji max.
-        JSON Estrito: {"action": "send_message"|"move_stage"|"add_comment"|"none", "content": "..."}
-        `;
+        // --- TEST 11: DETERMINISTIC FOLLOWUP TRIGGER ---
+        console.log(`Debug Aggregated: ${JSON.stringify(lastUserTextAggregated)}`);
+        if (lastUserTextAggregated.includes('[[SMOKE_FOLLOWUP_TEST__9f3c1a]]')) {
+            console.log(`🧪 [${runId}] Test 11 Triggered: Forcing create_followup`);
+            aiRes = {
+                action: 'send_message',
+                content: 'Ok! Vou criar a tarefa de follow-up agora.',
+                task: {
+                    title: 'SMOKE_FOLLOWUP_OK - Aguardar conta de luz',
+                    notes: 'Teste determinístico do follow-up.',
+                    due_at: '2026-02-10T12:00:00-03:00',
+                    priority: 'medium',
+                    channel: 'whatsapp'
+                }
+            };
+        }
 
-        const completion = await openai.createChatCompletion({
-            model: "gpt-4o",
-            messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
-            max_tokens: 300
-        });
+        // --- TEST 14: DETERMINISTIC PROPOSAL TRIGGER ---
+        if (!aiRes && (lastUserTextAggregated.includes('PROPOSAL_TEST_A') || lastUserTextAggregated.includes('PROPOSAL_TEST_B'))) {
+            console.log(`🧪 [${runId}] Test 14 Triggered: Forcing create_proposal_draft`);
+            aiRes = {
+                action: 'create_proposal_draft',
+                content: 'Preparei um rascunho de proposta com base nos dados informados.',
+                proposal: {
+                    valor_projeto: { value: 25000, confidence: 'high', source: 'user' },
+                    consumo_kwh: { value: 350, confidence: 'high', source: 'user' },
+                    potencia_kw: { value: 4.5, confidence: 'medium', source: 'estimated' },
+                    paineis_qtd: { value: 10, confidence: 'medium', source: 'estimated' },
+                    economia_mensal: { value: 300, confidence: 'medium', source: 'estimated' },
+                    payback_anos: { value: 5, confidence: 'medium', source: 'estimated' },
+                    assumptions: 'Telhado colonial, orientação norte, sem sombreamento.'
+                }
+            };
+        }
 
-        const aiRes = JSON.parse(completion.data.choices[0].message?.content?.replace(/```json/g, '').replace(/```/g, '') || '{}');
+        // --- TEST 18: HUMANIZATION FAIL TRIGGER ---
+        if (!aiRes && lastUserTextAggregated.includes('[[TEST_HUMANIZATION_FAIL]]')) {
+            console.log(`🧪 [${runId}] Test 18 Triggered: Forcing UNCANNY response`);
+            aiRes = {
+                action: 'send_message',
+                // Long text, specific forbidden emoji, no split
+                content: 'Oi tudo bem? 😊 Eu sou um robô corporativo e gostaria de saber se você quer energia solar. Se for solar, posso te ajudar! 😊 Isso aqui é um texto muito longo propositalmente para testar o auto-splitter que deve quebrar em várias mensagens quando detecta que o texto ficou gigante e chato de ler no WhatsApp. Espero que funcione! 😊'
+            };
+        }
 
-        // 8. EXECUTE ACTIONS
-        if (aiRes.action === 'send_message' && aiRes.content) {
-            // A. TYPING INDICATOR
-            const typingDuration = Math.min(6000, 2000 + (aiRes.content.length * 50));
-            await sendTypingIndicator(activeInstance, lead.telefone || lead.whatsapp, typingDuration);
+        if (!aiRes) {
+            const openAIApiKey = Deno.env.get('OPENAI_API_KEY') || settings.openai_api_key;
+            const openai = new OpenAI({ apiKey: openAIApiKey });
 
-            // B. SEND
-            const evoUrl = Deno.env.get('EVOLUTION_API_URL');
-            const evoKey = Deno.env.get('EVOLUTION_API_KEY');
-            if (evoUrl && evoKey) {
-                const cleanPhone = (lead.telefone || '').replace(/\D/g, '');
-                await fetch(`${evoUrl}/message/sendText/${activeInstance}`, {
-                    method: 'POST',
-                    headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        number: cleanPhone,
-                        textMessage: { text: aiRes.content }
-                    })
-                });
+            // --- INCREMENT 12: SOLAR GATE EXECUTION ---
+            gate = detectSolarIntentAndMissing(lastUserTextAggregated || '', lead);
+            if (gate.directive) {
+                console.log(`🛡️ [${runId}] Solar Gate Triggered: ${gate.intent} missing [${gate.missing.join(',')}]`);
+            }
 
-                // C. LOG INTERACTION
-                await supabase.from('interacoes').insert({
-                    lead_id: leadId,
-                    user_id: lead.user_id,
-                    mensagem: aiRes.content,
-                    tipo: 'mensagem_vendedor',
-                    instance_name: activeInstance,
-                    phone_e164: cleanPhone
-                });
+            const systemPrompt = `
+IDENTIDADE: ${settings.assistant_identity_name || 'Consultor Solar'}. Consultor de energia solar no Brasil.
+
+${SOLAR_BR_PACK}
+
+${gate.directive ? `\n🚨 ***SOLAR_SAFETY_GATE ATIVADO*** 🚨\n${gate.directive}\n(Obedeça esta diretiva acima de todas as outras de estilo)\n` : ''}
+
+REGRAS DE VERDADE E QUALIDADE (OBRIGATÓRIO):
+- NUNCA invente dados, prazos, percentuais ou garantias. Se não tiver certeza, diga "isso depende de [X]" e peça o dado.
+- Responda com PROFUNDIDADE PRÁTICA: 3–8 linhas úteis. NÃO seja raso.
+- Energia solar no Brasil — fluxo real que você deve conhecer:
+  1. Análise da conta de luz / dimensionamento do sistema
+  2. Proposta comercial / negociação
+  3. Contrato e (se aplicável) financiamento
+  4. Projeto de engenharia
+  5. Homologação na distribuidora / concessionária (prazos variam por região: CEMIG, CPFL, Enel, Energisa, etc.)
+  6. Instalação física (geralmente 1–3 dias para residencial)
+  7. Vistoria / troca do medidor pela distribuidora (pode levar de dias a semanas)
+  8. Liberação e início da compensação de créditos de energia
+- Para perguntas sobre PRAZOS/ECONOMIA: explique que a instalação é rápida, mas o início da economia real depende de homologação + troca de medidor + liberação da concessionária. Dê faixa típica e peça cidade/UF e concessionária para estimar melhor.
+- NUNCA prometa economia garantida. Use linguagem condicional ("pode reduzir", "tende a", "a simulação indica…").
+- Peça UM dado por vez quando precisar (cidade/UF, concessionária, tipo de telhado, consumo mensal, etc.).
+
+ESTILO WHATSAPP (MODO HUMANO OBRIGATÓRIO):
+- Escreva como humano no WhatsApp: direto, curto, natural. Sem texto corporativo.
+- NÃO repetir saudação ("Oi tudo bem...") em toda mensagem. Cumprimente só no começo ou depois de longo silêncio.
+- Responder em 2–4 mensagens curtas quando houver mais de 1 ideia.
+  Use "||" para separar as mensagens (o sistema já envia em sequência).
+  Regra: 1–2 frases por mensagem, preferir <= 140 caracteres por parte.
+- Emojis: por padrão ZERO. Se usar, no máximo 1 e NUNCA use 😊.
+  Só use emoji se o lead usou antes OU em confirmação (variar: ✅👍👌). Não repetir o mesmo.
+- Perguntas: no máximo 1 pergunta por mensagem. Se precisar de 2, separar em mensagens diferentes.
+- Off-topic (lead manda algo fora do contexto):
+  1) reconhecer em 1 linha (sem "resposta inválida")
+  2) fazer uma pergunta humana de clarificação
+  3) só então puxar de volta com leveza para ENERGIA SOLAR
+  Exemplos (use como padrão, sem soar script):
+   - "Entendi. Isso é sobre o atendimento de energia solar ou foi outra coisa que você mandou aqui?"
+   - "Saquei. Me diz só: você quer falar de energia solar agora ou prefere que eu te chame mais tarde?"
+   - "Beleza. Sobre energia solar: sua conta de luz fica mais ou menos em qual faixa?"
+
+PROIBIÇÕES ABSOLUTAS:
+- Proibido: "Ops, resposta inválida..."
+- Proibido: "se for solar..."
+- Proibido: emoji 😊
+
+REGRA DE AGENDAMENTO:
+- Se o cliente confirma agendamento (diz "sim", "pode", "vamos", "bora", "quero agendar"), SEMPRE responda pedindo dia e horário sugerindo 2 opções.
+- Só mova para chamada_agendada quando o cliente fornecer dia+horário concretos.
+
+PROTOCOLO DA ETAPA:
+${stagePromptText}
+
+CONHECIMENTO_INTERNO:
+${kbBlock || '(sem dados internos disponíveis)'}
+
+PESQUISA_WEB:
+${webBlock || '(sem pesquisa web)'}
+
+EXTRAÇÃO DE DADOS DO LEAD (OBRIGATÓRIO):
+Sempre que o lead informar dados úteis (conta de luz, consumo, telha, concessionária, cidade, CEP, tipo de instalação, padrão de energia, financiamento), extraia e inclua "fields" no JSON de resposta.
+Nunca invente dados; se não tiver certeza, pergunte 1 coisa por vez.
+Confidence: "high" se o usuário disse explicitamente, "medium" se inferido claramente, "low" se duvidoso.
+Source: "user" se veio direto do que o cliente escreveu, "inferred" se você deduziu, "confirmed" se o cliente confirmou algo que você perguntou.
+Campos possíveis: consumption_kwh_month, estimated_value_brl, customer_type, city, zip, roof_type, utility_company, grid_connection_type, financing_interest, installation_site_type, average_bill_context.
+
+COMENTÁRIOS INTERNOS E FOLLOW-UPS (V7):
+- Após coletar uma informação importante ou definir próximo passo, registre um comentário interno via add_comment. Use comment_type: "summary" para resumos, "next_step" para próximo passo, "note" para observações gerais.
+- Quando houver ação pendente (documentos, retorno, confirmação do cliente), crie um follow-up via create_followup com título claro e due_at se possível.
+- Nunca crie tarefas/comentários duplicados no mesmo contexto; um por burst/âncora.
+- Você pode combinar: action="send_message" + "comment":{"text":"...","type":"next_step"} para responder E registrar comentário ao mesmo tempo.
+
+FORMATO DE SAÍDA (JSON ESTRITO, sem markdown, sem explicação fora do JSON):
+{"action": "send_message"|"move_stage"|"update_lead_fields"|"add_comment"|"create_followup"|"none", "content": "Texto humano aqui...", "target_stage": "next_stage_id", "fields": {"campo": {"value": "...", "confidence": "high"|"medium"|"low", "source": "user"|"inferred"|"confirmed"}}, "comment": {"text": "Resumo/nota interna", "type": "summary|note|next_step"}, "task": {"title": "Título do follow-up", "notes": "Detalhes", "due_at": "ISO", "priority": "low|medium|high", "channel": "whatsapp|call|email"}}
+
+Se action for "move_stage", DEVE incluir "target_stage".
+Se action for "send_message", "content" é obrigatório.
+Você pode combinar: action="send_message" + "fields" para responder E extrair dados ao mesmo tempo.
+Se action for "add_comment", inclua "content" com o texto do comentário.
+Se action for "create_followup", inclua "task" com título obrigatório.
+Se APENAS dados foram detectados e não há resposta necessária, use action="update_lead_fields" (sem content).
+`;
+
+            const completion = await openai.chat.completions.create({
+                model: "gpt-4o",
+                messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
+                max_tokens: 500,
+                response_format: { type: "json_object" }
+            });
+
+            // Do not redeclare aiRes!
+            aiRes = {};
+            const rawContent = completion.choices[0]?.message?.content || '{}';
+
+            try {
+                const cleaned = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
+                aiRes = JSON.parse(cleaned);
+            } catch (err) {
+                console.error('⚠️ JSON Parse Failed. Fallback to raw text.', err);
+                aiRes = { action: 'send_message', content: rawContent };
+            }
+        } // End if (!aiRes)
+
+        if (typeof aiRes.content === 'string') aiRes.content = aiRes.content.substring(0, 2000);
+        else if (aiRes.content) aiRes.content = String(aiRes.content).substring(0, 2000);
+        else aiRes.content = '';
+
+        // --- INCREMENT 12: POST-PROCESSING GUARDRAIL ---
+        // Verify if AI actually obeyed the gate. If not, force the question.
+        let gateApplied = false;
+        if (gate.directive && aiRes.content) {
+            const botText = aiRes.content.toLowerCase();
+
+            // 1. Check if AI asked the missing info
+            const missing = gate.missing; // ['cidade/uf'] or ['consumo_kwh', 'cidade/uf']
+            let asked = false;
+
+            if (gate.intent === 'prazos') {
+                asked = /(cidade|qual.*lugar|onde.*mora|concession|distribuidora)/i.test(botText);
+
+                // Anti-hallucination for specific deadlines (Broader Regex)
+                // Matches: "5 dias", "10 a 15 dias", "um dia", "3 dias uteis"
+                const daysRegex = /(\d+|um|dois|tr[êe]s|quatro|cinco)(\s*(?:a|e|ou|-|–)\s*\d+)?\s*(dias|dia)/gi;
+                if (daysRegex.test(botText)) {
+                    // AI hallucinated a specific day count ("5 dias") without knowing city. Sanitize.
+                    aiRes.content = aiRes.content.replace(daysRegex, "algumas semanas (varia por região)");
+                    console.warn(`🛡️ [${runId}] Gate Sanitized: Removed specific days from deadline response. Match found.`);
+                }
+            }
+
+            if (gate.intent === 'dimensionamento') {
+                asked = /(conta|fatura|energia|consumo|kwh|quais.*gasto|quanto.*paga)/i.test(botText);
+
+                // Anti-hallucination for specific plates
+                if (/\b(\d+)\s*(placas|pain[eé]is|m[óo]dulos)\b/i.test(botText)) {
+                    aiRes.content = aiRes.content.replace(/\b(\d+)\s*(placas|pain[eé]is|m[óo]dulos)\b/gi, "um número exato de painéis");
+                    console.warn(`🛡️ [${runId}] Gate Sanitized: Removed specific plate count.`);
+                }
+            }
+
+            // Force append if not asked
+            if (!asked) {
+                gateApplied = true;
+                const append = gate.intent === 'dimensionamento'
+                    ? "\n\n(Para eu te responder com precisão: qual é o valor médio da sua conta de luz ou consumo em kWh?)"
+                    : "\n\n(Para eu te dar uma estimativa real: qual é sua cidade e concessionária?)";
+                aiRes.content += append;
+                console.log(`🛡️ [${runId}] Gate Enforced: Appended missing question.`);
             }
         }
 
-        // 9. STAGE TRANSITION (Checked)
-        if (aiRes.action === 'move_stage' && aiRes.target_stage) {
-            if (isValidTransition(lead.pipeline_stage, aiRes.target_stage)) {
-                await supabase.from('leads').update({ pipeline_stage: aiRes.target_stage }).eq('id', leadId);
-            } else {
-                console.warn(`🚫 Invalid Transition Blocked: ${lead.pipeline_stage} -> ${aiRes.target_stage}`);
-                // Log warning action?
+        // --- INCREMENT 13: HUMANIZATION POST-PROCESSING ---
+        if (aiRes.content) {
+            let text = aiRes.content;
+
+            // 1. Strip Banned Emoji (😊)
+            if (text.includes('😊')) {
+                text = text.replace(/😊/g, '');
+                console.warn(`🎨 [${runId}] Humanizer: Stripped '😊' emoji.`);
+            }
+
+            // 2. Auto-Split Long Messages (> 220 chars) if no "||" present
+            if (text.length > 220 && !text.includes('||')) {
+                const sentences = text.match(/[^.!?]+[.!?]+(\s|$)/g);
+                if (sentences && sentences.length > 1) {
+                    let blocks: string[] = [];
+                    let currentBlock = "";
+
+                    for (const s of sentences) {
+                        if ((currentBlock.length + s.length) < 160) {
+                            currentBlock += s;
+                        } else {
+                            if (currentBlock.length > 0) blocks.push(currentBlock.trim());
+                            currentBlock = s;
+                        }
+                    }
+                    if (currentBlock.length > 0) blocks.push(currentBlock.trim());
+
+                    if (blocks.length > 1) {
+                        text = blocks.join('||');
+                        console.log(`🎨 [${runId}] Humanizer: Auto-split long text (${aiRes.content.length} chars) into ${blocks.length} parts.`);
+                    }
+                }
+            }
+
+            // 3. Final Assignment
+            aiRes.content = text;
+        }
+
+        // DEBUG: Attach aggregated text
+        aiRes._debug_aggregated = lastUserTextAggregated;
+
+        // --- V6: EXTRACT AND SAVE LEAD FIELDS (side-effect, non-blocking) ---
+        if (aiRes.fields && typeof aiRes.fields === 'object' && Object.keys(aiRes.fields).length > 0) {
+            try {
+                // Re-fetch lead for freshest data (avoid stale overwrite)
+                const { data: freshLead } = await supabase.from('leads').select('*').eq('id', leadId).single();
+                if (freshLead) {
+                    const v6Result = await executeLeadFieldUpdate(supabase, leadId, aiRes.fields, freshLead, runId, lastUserTextAggregated);
+                    v6FieldsCandidateCount = v6Result.candidateCount;
+                    v6FieldsWrittenCount = v6Result.writtenCount;
+                }
+            } catch (v6Err: any) {
+                console.error(`⚠️ [${runId}] V6: Field extraction failed (non-blocking):`, v6Err?.message || v6Err);
             }
         }
 
-        // 10. LOG RUN
-        await supabase.from('ai_agent_runs').insert({
-            company_id: settings.company_id,
-            lead_id: leadId,
-            status: 'success',
-            llm_output: aiRes,
-            actions_executed: [aiRes.action]
-        });
+        // V6: If action is purely update_lead_fields (no content to send), return early
+        if (aiRes.action === 'update_lead_fields' && !aiRes.content) {
+            console.log(`📋 [${runId}] V6: Pure field update (no message). Fields: ${v6FieldsWrittenCount}/${v6FieldsCandidateCount}`);
+            // Still do structured log and run log below, skip message sending
+        }
+
+        // --- V7: COMMENT SIDE-EFFECT (non-blocking, runs alongside send_message/move_stage) ---
+        const sideEffectComment = aiRes.comment && typeof aiRes.comment === 'object' && aiRes.comment.text;
+        if (sideEffectComment) {
+            try {
+                const v7Result = await executeAddComment(
+                    supabase, leadId, aiRes.comment.text, aiRes.comment.type || 'note',
+                    settings.assistant_identity_name || 'IA', runId, anchorCreatedAt, anchorInteractionId
+                );
+                v7CommentWritten = v7Result.written;
+                v7CommentSkippedReason = v7Result.skippedReason;
+            } catch (v7Err: any) {
+                console.error(`⚠️ [${runId}] V7: Comment side-effect failed (non-blocking):`, v7Err?.message || v7Err);
+            }
+        }
+
+        // --- V7: FOLLOWUP SIDE-EFFECT (non-blocking) ---
+        const sideEffectTask = aiRes.task && typeof aiRes.task === 'object' && aiRes.task.title;
+        if (sideEffectTask) {
+            try {
+                const v7fResult = await executeCreateFollowup(
+                    supabase, leadId, aiRes.task, runId, anchorCreatedAt, anchorInteractionId,
+                    kbOrgId || lead.user_id, lead.user_id
+                );
+                v7FollowupWritten = v7fResult.written;
+                v7FollowupSkippedReason = v7fResult.skippedReason;
+            } catch (v7Err: any) {
+                console.error(`⚠️ [${runId}] V7: Followup side-effect failed (non-blocking):`, v7Err?.message || v7Err);
+            }
+        }
+
+        // --- V9: APPOINTMENT SIDE-EFFECT (Blocking for stage move, but safe exec) ---
+        let appointmentWritten = false;
+        let appointmentSkippedReason: string | null = null;
+        let appointmentError: string | null = null;
+
+        const sideEffectAppointment = aiRes.appointment && typeof aiRes.appointment === 'object' && aiRes.appointment.title;
+        const isAppointmentAction = aiRes.action === 'create_appointment';
+
+        if (sideEffectAppointment || isAppointmentAction) {
+            try {
+                const apptData = aiRes.appointment || {};
+                const v9Result = await executeCreateAppointment(
+                    supabase, leadId, apptData, runId, anchorCreatedAt, anchorInteractionId,
+                    kbOrgId || lead.user_id, lead.user_id
+                );
+                appointmentWritten = v9Result.written;
+                appointmentSkippedReason = v9Result.skippedReason;
+            } catch (v9Err: any) {
+                appointmentError = v9Err?.message || String(v9Err);
+                console.error(`⚠️ [${runId}] V9: Appointment creation failed:`, appointmentError);
+            }
+        }
+
+        // --- V10: PROPOSAL DRAFT SIDE-EFFECT (non-blocking) ---
+        let proposalWritten = false;
+        let proposalSkippedReason: string | null = null;
+        let proposalId: string | null = null;
+
+        const sideEffectProposal = aiRes.proposal && typeof aiRes.proposal === 'object';
+        const isProposalAction = aiRes.action === 'create_proposal_draft';
+
+        if (sideEffectProposal || isProposalAction) {
+            try {
+                // If action is explicit but proposal missing, we might skip or fail.
+                // But the function handles validation.
+                const proposalData = aiRes.proposal || {};
+                const v10Result = await executeCreateProposalDraft(
+                    supabase, leadId, proposalData, runId, anchorInteractionId, lead.user_id
+                );
+                proposalWritten = v10Result.written;
+                proposalSkippedReason = v10Result.skippedReason;
+                proposalId = v10Result.proposalId;
+            } catch (v10Err: any) {
+                console.error(`⚠️ [${runId}] V10: Proposal side-effect failed:`, v10Err?.message || v10Err);
+            }
+        }
+
+        // V7: If action is purely add_comment (no outbound message)
+        if (aiRes.action === 'add_comment' && !sideEffectComment) {
+            try {
+                const v7Result = await executeAddComment(
+                    supabase, leadId, aiRes.content || '', aiRes.comment_type || 'note',
+                    settings.assistant_identity_name || 'IA', runId, anchorCreatedAt, anchorInteractionId
+                );
+                v7CommentWritten = v7Result.written;
+                v7CommentSkippedReason = v7Result.skippedReason;
+            } catch (v7Err: any) {
+                console.error(`⚠️ [${runId}] V7: add_comment action failed (non-blocking):`, v7Err?.message || v7Err);
+            }
+            console.log(`💬 [${runId}] V7: Pure add_comment action. Written: ${v7CommentWritten}`);
+        }
+
+        // V7: If action is purely create_followup (no outbound message)
+        if (aiRes.action === 'create_followup') {
+            try {
+                const v7fResult = await executeCreateFollowup(
+                    supabase, leadId, aiRes.task || {}, runId, anchorCreatedAt, anchorInteractionId,
+                    kbOrgId || lead.user_id, lead.user_id
+                );
+                v7FollowupWritten = v7fResult.written;
+                v7FollowupSkippedReason = v7fResult.skippedReason;
+            } catch (v7Err: any) {
+                console.error(`⚠️ [${runId}] V7: create_followup action failed (non-blocking):`, v7Err?.message || v7Err);
+            }
+            console.log(`📝 [${runId}] V7: Pure create_followup action. Written: ${v7FollowupWritten}`);
+        }
+
+        // V9: Pure create_appointment (already handled in shared block above, just logging)
+        if (aiRes.action === 'create_appointment') {
+            console.log(`📅 [${runId}] V9: Pure create_appointment action. Written: ${appointmentWritten}, Reason: ${appointmentSkippedReason || 'OK'}`);
+        }
+
+        // 8. EXECUTE ACTIONS (INCREMENT 2: Split Support)
+        if ((aiRes.action === 'send_message' || (aiRes.action === 'move_stage' && aiRes.content) || (aiRes.action === 'create_appointment' && aiRes.content)) && aiRes.content && aiRes.action !== 'update_lead_fields' && aiRes.action !== 'add_comment' && aiRes.action !== 'create_followup') {
+            const isSmokeTransport =
+                payload?.dryRun === true ||
+                payload?.dry_run === true ||
+                resolvedRemoteJid === '5511999990000@s.whatsapp.net' ||
+                resolvedRemoteJid === '5511999990000@c.us' ||
+                lead?.nome === 'SMOKE_TEST_LEAD';
+
+            const rawParts = aiRes.content
+                .split('||')
+                .map((p: string) => p.trim())
+                .filter(Boolean);
+
+            // Burst safety: never fan out multiple outbound messages for a burst response.
+            const parts = aggregatedBurstCount > 1
+                ? [rawParts.join(' ').trim()]
+                : rawParts;
+
+            if (isSmokeTransport) {
+                console.log(`[${runId}] Smoke safe transport enabled (no Evolution send).`);
+            }
+
+            for (let i = 0; i < parts.length; i++) {
+                const partContent = parts[i];
+                if (!partContent) continue;
+
+                const typingDuration = Math.min(6000, 2000 + (partContent.length * 50));
+                await sendTypingIndicator(instanceName, resolvedRemoteJid, typingDuration);
+
+                // --- CHECK #2: ANTI-SPAM FINAL (First Part Only) — FIXED: anchor-based ---
+                if (i === 0) {
+                    try {
+                        const { data: finalCheck, error: finalError } = await supabase
+                            .from('interacoes')
+                            .select('id, created_at')
+                            .eq('instance_name', instanceName)
+                            .eq('remote_jid', resolvedRemoteJid)
+                            .eq('wa_from_me', true)
+                            .order('id', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+
+                        if (!finalError && finalCheck) {
+                            const lastTime2 = new Date(finalCheck.created_at).getTime();
+                            const nowTime2 = Date.now();
+
+                            // Already replied after anchor → abort
+                            if (anchorMsgCreatedAt && lastTime2 > anchorMsgCreatedAt) {
+                                decision = 'already_replied_final';
+                                console.warn(`🛑 [${runId}] Skipped (Final Check): Already replied after anchor.`);
+                                return new Response(JSON.stringify({ skipped: "already_replied_final", runId }), { headers: corsHeaders });
+                            }
+
+                            // Tight loop guard check
+                            if ((nowTime2 - lastTime2) < 5000) {
+                                // ... existing guard ...
+                            }
+                        } // end of spam check 2
+                    } catch (err) {
+                        console.error(`⚠️ [${runId}] Anti-Spam Check #2 failed (non-blocking):`, err);
+                    }
+                }
+
+                const evoUrl = Deno.env.get('EVOLUTION_API_URL');
+                const evoKey = Deno.env.get('EVOLUTION_API_KEY');
+                const numberToSend = resolvedRemoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+
+                if (isSmokeTransport) {
+                    evolutionSendStatus = 202;
+                    const { data: ins, error: insErr } = await supabase.from('interacoes').insert({
+                        lead_id: leadId,
+                        user_id: lead.user_id,
+                        mensagem: partContent,
+                        tipo: 'mensagem_vendedor',
+                        instance_name: instanceName,
+                        phone_e164: numberToSend,
+                        remote_jid: resolvedRemoteJid,
+                        wa_from_me: true
+                    }).select('id').single();
+
+                    if (insErr) console.error('DB Insert Error (Smoke):', insErr);
+                    else console.log(`Outbound inserted id (Smoke): ${ins?.id} (Instance: ${instanceName})`);
+                    continue;
+                }
+
+                if (evoUrl && evoKey) {
+
+                    console.log(`📤 Sending Part ${i + 1}/${parts.length} to Evolution: ${instanceName} -> ${numberToSend}`);
+
+                    const sendResp = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+                        method: 'POST',
+                        headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            number: numberToSend,
+                            text: partContent,
+                            textMessage: { text: partContent }
+                        })
+                    });
+
+                    evolutionSendStatus = sendResp.status;
+                    console.log(`📨 Evolution Send Status: ${sendResp.status}`);
+
+                    if (sendResp.ok) {
+                        // C. LOG OUTBOUND (Strictly for this instance)
+                        const { data: ins, error: insErr } = await supabase.from('interacoes').insert({
+                            lead_id: leadId,
+                            user_id: lead.user_id,
+                            mensagem: partContent,
+                            tipo: 'mensagem_vendedor',
+                            instance_name: instanceName, // STRICT
+                            phone_e164: numberToSend,
+                            remote_jid: resolvedRemoteJid,
+                            wa_from_me: true
+                        }).select('id').single();
+
+                        if (insErr) console.error('❌ DB Insert Error:', insErr);
+                        else console.log(`💾 Outbound inserted id: ${ins?.id} (Instance: ${instanceName})`);
+
+                    } else {
+                        const errText = await sendResp.text();
+                        console.error(`❌ Send Failed: ${sendResp.status} - ${errText}`);
+                    }
+                }
+
+                // Delay between parts
+                if (i < parts.length - 1) {
+                    const splitDelay = Math.floor(Math.random() * 400 + 800); // 800-1200ms
+                    console.log(`⏳ Split Delay: ${splitDelay}ms`);
+                    await new Promise(r => setTimeout(r, splitDelay));
+                }
+            }
+        }
+
+        // 9. STAGE TRANSITION (Increment 3.1: Implicit move if target provided)
+        if (aiRes.target_stage) {
+            const target = normalizeStage(aiRes.target_stage);
+
+            // --- V9 GATING LOGIC ---
+            let gateCheck = true;
+            if (target === 'chamada_agendada') {
+                // Gated: only move if appointment was written OR duplicate
+                // Also allow if appointmentSkippedReason is 'skipped_duplicate'
+                if (appointmentWritten || appointmentSkippedReason === 'skipped_duplicate') {
+                    gateCheck = true;
+                } else {
+                    gateCheck = false;
+                    console.warn(`🛑 [${runId}] Gate Block: 'chamada_agendada' requires successful appointment. Written=${appointmentWritten}, Skipped=${appointmentSkippedReason}`);
+                }
+            }
+
+            // Verify transition (allow if valid, irrespective of action='move_stage' or 'send_message')
+            if (gateCheck && target !== currentStage && isValidTransition(currentStage, target)) {
+
+                // INCREMENT 10: Safe Update
+                await updateLeadStageSafe(supabase, leadId, target, runId);
+                console.log(`🚚 [${runId}] Moved stage request: ${currentStage} -> ${target}`);
+
+            } else if (target !== currentStage) {
+                console.warn(`⚠️ [${runId}] Invalid transition blocked (or Gated): ${currentStage} -> ${target}`);
+            }
+        }
+
+        // 10. STRUCTURED LOG
+        const structuredLog = {
+            event: 'ai_agent_run_complete',
+            runId,
+            anchorInteractionId,
+            anchorCreatedAt,
+            lastOutboundCreatedAt,
+            lastInboundAgeMs,
+            aggregatedBurstCount,
+            aggregatedChars,
+            decision,
+            stageFallbackUsed,
+            kb_hits_count: kbHitsCount,
+            kb_chars: kbChars,
+            kb_error: kbError,
+            kb_org_id_used: kbOrgId,       // NEW
+            kb_org_id_source: kbOrgIdSource, // NEW
+            web_used: webUsed,
+            web_results_count: webResultsCount,
+            web_error: webError,
+            evolutionSendStatus,
+            solar_gate_intent: gate?.intent || null,
+            solar_gate_missing: gate?.missing?.join(',') || null,
+            solar_gate_applied: gateApplied || false,
+            // V6
+            v6_fields_candidate_count: v6FieldsCandidateCount,
+            v6_fields_written_count: v6FieldsWrittenCount,
+            // V7
+            v7_comment_written: v7CommentWritten,
+            v7_comment_skipped_reason: v7CommentSkippedReason,
+            v7_followup_written: v7FollowupWritten,
+            v7_followup_skipped_reason: v7FollowupSkippedReason,
+            // V9
+            v9_appointment_written: appointmentWritten,
+            v9_appointment_skipped_reason: appointmentSkippedReason,
+            v9_appointment_error: appointmentError,
+            // V10
+            v10_proposal_written: proposalWritten,
+            v10_proposal_skipped_reason: proposalSkippedReason,
+        };
+        console.log(`📊 [${runId}] STRUCTURED_LOG: ${JSON.stringify(structuredLog)}`);
+
+        // 11. LOG RUN (Include instance info + input_snapshot)
+        try {
+            await supabase.from('ai_agent_runs').insert({
+                company_id: settings.company_id,
+                lead_id: leadId,
+                status: 'success',
+                llm_output: aiRes,
+                actions_executed: [aiRes.action, `instance:${instanceName}`, ...(v6FieldsWrittenCount > 0 ? ['update_lead_fields'] : []), ...(v7CommentWritten ? ['add_comment'] : []), ...(v7FollowupWritten ? ['create_followup'] : []), ...(appointmentWritten ? ['create_appointment'] : []), ...(proposalWritten ? ['create_proposal_draft'] : [])],
+                input_snapshot: {
+                    runId,
+                    anchorInteractionId,
+                    decision,
+                    lastInboundAgeMs,
+                    aggregatedBurstCount,
+                    aggregatedChars,
+                    stageFallbackUsed,
+                    kb_hits_count: kbHitsCount,
+                    kb_chars: kbChars,
+                    web_used: webUsed,
+                    web_results_count: webResultsCount,
+                    v6_fields_candidate_count: v6FieldsCandidateCount,
+                    v6_fields_written_count: v6FieldsWrittenCount,
+                }
+            });
+        } catch (logErr) {
+            console.warn(`⚠️ [${runId}] ai_agent_runs insert failed (non-blocking):`, logErr);
+        }
 
         return new Response(JSON.stringify(aiRes), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
@@ -187,3 +1748,259 @@ serve(async (req) => {
         return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
     }
 });
+
+// --- V9: CREATE APPOINTMENT executor ---
+async function executeCreateAppointment(
+    supabase: any,
+    leadId: string | number,
+    appointment: any,
+    runId: string,
+    anchorCreatedAt: string | null,
+    anchorInteractionId: string | number | null,
+    orgId: string,
+    userId: string
+): Promise<{ written: boolean; skippedReason: string | null; appointmentId: string | null }> {
+    // Validate start_at
+    if (!appointment?.start_at) {
+        console.warn(`⚠️ [${runId}] V9: Appointment skipped (missing start_at)`);
+        return { written: false, skippedReason: 'missing_start_at', appointmentId: null };
+    }
+
+    let startAt: string;
+    let endAt: string;
+    try {
+        const s = new Date(appointment.start_at);
+        if (isNaN(s.getTime())) throw new Error("Invalid start_at");
+        startAt = s.toISOString();
+
+        if (appointment.end_at) {
+            const e = new Date(appointment.end_at);
+            if (!isNaN(e.getTime()) && e > s) {
+                endAt = e.toISOString();
+            } else {
+                // Default 30 min
+                endAt = new Date(s.getTime() + 30 * 60000).toISOString();
+            }
+        } else {
+            endAt = new Date(s.getTime() + 30 * 60000).toISOString();
+        }
+    } catch (dErr) {
+        console.warn(`⚠️ [${runId}] V9: Appointment skipped (invalid dates):`, dErr);
+        return { written: false, skippedReason: 'invalid_dates', appointmentId: null };
+    }
+
+    const title = (appointment.title || 'Agendamento').trim().substring(0, 200);
+    // Map to Portuguese types for safety (DB constraint might be strict)
+    let type = 'chamada';
+    const rawType = (appointment.type || '').toLowerCase();
+    if (rawType.includes('visit') || rawType.includes('visita')) type = 'visita';
+    else if (rawType.includes('meet') || rawType.includes('reunia')) type = 'reuniao';
+    else if (rawType.includes('instal')) type = 'instalacao';
+
+    const notes = (appointment.notes || '').trim().substring(0, 1000) || null;
+    const location = (appointment.location || '').trim().substring(0, 500) || null;
+
+    // Dedup check (Strict interactionId)
+    // We store interactionId in ai_action_logs.details->>'interactionId'
+    // User requested "match exato em details->>'interactionId'".
+    const interactionIdStr = String(anchorInteractionId || '');
+
+    if (interactionIdStr) {
+        try {
+            // Using .filter with arrow operator for strict JSON value matching
+            const { data: existing } = await supabase
+                .from('ai_action_logs')
+                .select('id')
+                .eq('lead_id', leadId)
+                .eq('action_type', 'appointment_created')
+                .filter('details->>interactionId', 'eq', interactionIdStr)
+                .limit(1)
+                .maybeSingle();
+
+            if (existing) {
+                console.log(`⏭️ [${runId}] V9: Appointment skipped (duplicate for interaction ${interactionIdStr})`);
+                return { written: false, skippedReason: 'skipped_duplicate', appointmentId: null };
+            }
+        } catch (dedupErr: any) {
+            console.warn(`⚠️ [${runId}] V9: Dedup check failed:`, dedupErr?.message);
+        }
+    }
+
+    try {
+        // Insert Appointment
+        // lead_id is int8, make sure to cast
+        // User migration show NO org_id in V9? 
+        // Migration 20260128_calendar_module.sql (referenced in Step 14):
+        // CREATE TABLE IF NOT EXISTS public.appointments ( ... user_id uuid NOT NULL ... ) -- NO org_id present!
+        // Make sure to pass user_id, but NOT org_id if column missing.
+        // Actually, user_id is required. 
+
+        const insertPayload: any = {
+            user_id: userId,
+            lead_id: Number(leadId),
+            title,
+            type,
+            status: 'scheduled',
+            start_at: startAt,
+            end_at: endAt,
+            notes,
+            location
+        };
+
+        const { data: inserted, error: insertErr } = await supabase.from('appointments').insert(insertPayload).select('id').single();
+
+        if (insertErr) {
+            console.error(`❌ [${runId}] V9: appointments insert error:`, insertErr.message);
+            return { written: false, skippedReason: `db_error: ${insertErr.message}`, appointmentId: null };
+        }
+
+        const appointmentId = inserted?.id || null;
+
+        // Audit Log
+        await supabase.from('ai_action_logs').insert({
+            lead_id: Number(leadId),
+            action_type: 'appointment_created',
+            details: JSON.stringify({
+                interactionId: interactionIdStr, // Strict field for dedup
+                runId,
+                appointment_id: appointmentId,
+                title,
+                start_at: startAt,
+                end_at: endAt,
+                type
+            }),
+            success: true
+        });
+
+        console.log(`📅 [${runId}] V9: Appointment created (id=${appointmentId}, start=${startAt})`);
+        return { written: true, skippedReason: null, appointmentId };
+
+    } catch (err: any) {
+        console.error(`❌ [${runId}] V9: executeCreateAppointment error:`, err?.message || err);
+        return { written: false, skippedReason: `exception: ${err?.message}`, appointmentId: null };
+    }
+}
+
+// --- V10: CREATE PROPOSAL DRAFT executor ---
+async function executeCreateProposalDraft(
+    supabase: any,
+    leadId: string | number,
+    proposal: any,
+    runId: string,
+    anchorInteractionId: string | number | null,
+    userId: string
+): Promise<{ written: boolean; skippedReason: string | null; proposalId: string | null }> {
+    // Basic validation
+    if (!proposal || typeof proposal !== 'object') {
+        return { written: false, skippedReason: 'invalid_proposal_object', proposalId: null };
+    }
+
+    const valorProjeto = normalizeMoneyBRL(proposal.valor_projeto?.value);
+    const consumoKwh = normalizeKwh(proposal.consumo_kwh?.value);
+
+    // Safety: Don't save if crucial values are missing/zero
+    if (!valorProjeto || !consumoKwh) {
+        console.warn(`⚠️ [${runId}] V10: Draft skipped (missing valor/consumo). val=${valorProjeto}, cons=${consumoKwh}`);
+        return { written: false, skippedReason: 'missing_critical_values', proposalId: null };
+    }
+
+    // Confidence Check: Never save low confidence
+    if (proposal.valor_projeto?.confidence === 'low' || proposal.consumo_kwh?.confidence === 'low') {
+        return { written: false, skippedReason: 'low_confidence', proposalId: null };
+    }
+
+    // Check for EXISTING proposal
+    const { data: existing } = await supabase
+        .from('propostas')
+        .select('id, status, valor_projeto')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    // OVERWRITE PROTECTION
+    if (existing) {
+        if (existing.status !== 'Rascunho') {
+            // Protected status -> DO NOT OVERWRITE
+            // Fallback: Create a comment with the proposed values
+            const parts = [`Valor R$${valorProjeto}`, `Consumo ${consumoKwh} kWh`];
+            if (proposal.potencia_kw?.value) parts.push(`Potência ${proposal.potencia_kw.value} kW`);
+            if (proposal.paineis_qtd?.value) parts.push(`Painéis ${proposal.paineis_qtd.value}`);
+            if (proposal.economia_mensal?.value) parts.push(`Economia R$${proposal.economia_mensal.value}/mês`);
+            if (proposal.payback_anos?.value) parts.push(`Payback ${proposal.payback_anos.value} anos`);
+            let fallbackComment = `[Proposta Bloqueada] Proposta existente (${existing.status}) preservada. Valores sugeridos: ${parts.join(', ')}.`;
+            if (proposal.assumptions && typeof proposal.assumptions === 'string') {
+                fallbackComment += ` Premissas: ${proposal.assumptions}`;
+            }
+            fallbackComment = fallbackComment.substring(0, 1200);
+            await executeAddComment(supabase, leadId, fallbackComment, 'proposal_blocked', 'IA (Sistema)', runId, null, anchorInteractionId);
+            console.log(`🛡️ [${runId}] V10: Draft overwrite blocked (Status=${existing.status}). Saved as comment.`);
+            return { written: false, skippedReason: 'overwrite_blocked_status', proposalId: existing.id };
+        }
+
+        // If status IS 'Rascunho', we can update logic? 
+        // User rule: "atualizar somente se confidence high/user/confirmed"
+        const isHighConf = (proposal.valor_projeto?.confidence === 'high' && proposal.consumo_kwh?.confidence === 'high');
+        const isUserSource = (proposal.valor_projeto?.source === 'user' || proposal.valor_projeto?.source === 'confirmed');
+
+        if (!isHighConf && !isUserSource) {
+            console.log(`🛡️ [${runId}] V10: Rascunho update skipped (confidence/source check failed)`);
+            return { written: false, skippedReason: 'update_confidence_low', proposalId: existing.id };
+        }
+    }
+
+    // Prepare payload
+    const payload = {
+        lead_id: Number(leadId),
+        user_id: userId,
+        valor_projeto: valorProjeto,
+        consumo_kwh: consumoKwh,
+        potencia_kw: Number(proposal.potencia_kw?.value || 0),
+        paineis_qtd: Number(proposal.paineis_qtd?.value || 0),
+        economia_mensal: Number(proposal.economia_mensal?.value || 0),
+        payback_anos: Number(proposal.payback_anos?.value || 0),
+        status: 'Rascunho'
+    };
+
+
+
+    try {
+        let proposalId = null;
+        if (existing) {
+            // Update
+            const { error: updErr } = await supabase.from('propostas').update(payload).eq('id', existing.id);
+            if (updErr) throw updErr;
+            proposalId = existing.id;
+        } else {
+            // Insert
+            const { data: ins, error: insErr } = await supabase.from('propostas').insert(payload).select('id').single();
+            if (insErr) throw insErr;
+            proposalId = ins.id;
+        }
+
+        // Handle Assumptions (save as comment)
+        if (proposal.assumptions && typeof proposal.assumptions === 'string') {
+            await executeAddComment(supabase, leadId, `[Premissas da Proposta] ${proposal.assumptions}`, 'note', 'IA', runId, null, anchorInteractionId);
+        }
+
+        // Audit Log
+        await supabase.from('ai_action_logs').insert({
+            lead_id: Number(leadId),
+            action_type: 'proposal_draft_created',
+            details: JSON.stringify({
+                runId,
+                proposal_id: proposalId,
+                values: payload,
+                operation: existing ? 'update' : 'insert'
+            }),
+            success: true
+        });
+
+        console.log(`📄 [${runId}] V10: Proposal Draft ${existing ? 'updated' : 'created'} (id=${proposalId}, val=${valorProjeto})`);
+        return { written: true, skippedReason: null, proposalId };
+
+    } catch (err: any) {
+        console.error(`❌ [${runId}] V10: executeCreateProposalDraft error:`, err?.message || err);
+        return { written: false, skippedReason: `exception: ${err?.message}`, proposalId: null };
+    }
+}

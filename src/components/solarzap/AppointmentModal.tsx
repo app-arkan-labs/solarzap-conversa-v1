@@ -20,8 +20,9 @@ import {
 import { Label } from '@/components/ui/label';
 import { useAppointments } from '@/hooks/useAppointments';
 import { useLeads } from '@/hooks/domain/useLeads';
+import { useToast } from '@/hooks/use-toast';
 import { Appointment, AppointmentType, Contact } from '@/types/solarzap';
-import { addMinutes, format } from 'date-fns';
+import { addMinutes, format, isValid } from 'date-fns';
 import { CalendarIcon, Clock, MapPin, Search, Trash2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -32,7 +33,8 @@ interface AppointmentModalProps {
     isOpen: boolean;
     onClose: () => void;
     initialData?: Partial<Appointment>; // If editing
-    defaultDate?: Date; // If clicking on calendar
+    initialType?: AppointmentType; // Default type for new appointments
+    defaultDate?: Date | string; // If clicking on calendar
     preselectedLeadId?: string; // string because Contact.id is string
     preselectedContact?: Contact; // Full contact object to avoid lookup issues
     onSuccess?: (appointment: Appointment) => void;
@@ -53,6 +55,7 @@ export function AppointmentModal({
     isOpen,
     onClose,
     initialData,
+    initialType,
     defaultDate,
     preselectedLeadId,
     preselectedContact,
@@ -60,10 +63,11 @@ export function AppointmentModal({
 }: AppointmentModalProps) {
     const { createAppointment, updateAppointment, deleteAppointment } = useAppointments();
     const { contacts } = useLeads();
+    const { toast } = useToast();
 
     const { control, register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
         defaultValues: {
-            type: 'chamada',
+            type: initialType || 'chamada',
             duration: '30',
             location: '',
             notes: ''
@@ -77,13 +81,21 @@ export function AppointmentModal({
         if (isOpen) {
             if (initialData?.id) {
                 // Edit Mode (Existing appointment)
-                const start = new Date(initialData.start_at!);
-                const end = new Date(initialData.end_at!);
-                const duration = Math.round((end.getTime() - start.getTime()) / 60000).toString();
+                const fallbackStart = new Date();
+                const parsedStart = initialData.start_at ? new Date(initialData.start_at) : fallbackStart;
+                const start = isValid(parsedStart) ? parsedStart : fallbackStart;
+                const parsedEnd = initialData.end_at ? new Date(initialData.end_at) : addMinutes(start, 30);
+                const end = isValid(parsedEnd) ? parsedEnd : addMinutes(start, 30);
+                const durationDiff = Math.round((end.getTime() - start.getTime()) / 60000);
+                const duration = Number.isFinite(durationDiff) && durationDiff > 0 ? String(durationDiff) : '30';
+
+                // Check if lead exists in contacts (or is preselected) to avoid Select crash
+                const leadExists = contacts.some(c => String(c.id) === String(initialData.lead_id)) ||
+                    (String(preselectedContact?.id) === String(initialData.lead_id));
 
                 reset({
                     title: initialData.title,
-                    lead_id: String(initialData.lead_id),
+                    lead_id: leadExists ? String(initialData.lead_id) : '', // Safety: don't set invalid value
                     type: initialData.type as AppointmentType,
                     date: start,
                     time: format(start, 'HH:mm'),
@@ -91,26 +103,37 @@ export function AppointmentModal({
                     location: initialData.location || '',
                     notes: initialData.notes || ''
                 });
+
+                if (!leadExists && initialData.lead_id) {
+                    console.warn(`Lead ${initialData.lead_id} not found in contacts list for editing.`);
+                }
             } else {
                 // Create Mode (New appointment)
                 // Initialize default values
-                const currentType = (initialData?.type as AppointmentType) || 'chamada';
+                const currentType = (initialData?.type as AppointmentType) || initialType || 'chamada';
                 let initialTitle = '';
+                let safeLeadId = '';
 
                 // Auto-set title if lead is selected
                 if (preselectedLeadId) {
-                    const lead = preselectedContact || contacts.find(c => c.id === preselectedLeadId);
+                    const lead = preselectedContact || contacts.find(c => String(c.id) === String(preselectedLeadId));
                     if (lead) {
                         const typeLabel = currentType.charAt(0).toUpperCase() + currentType.slice(1);
                         initialTitle = `${typeLabel} - ${lead.name}`;
+                        safeLeadId = String(lead.id);
                     }
                 }
 
+                const parsedDefaultDate = defaultDate
+                    ? (defaultDate instanceof Date ? defaultDate : new Date(defaultDate))
+                    : null;
+                const safeDefaultDate = parsedDefaultDate && isValid(parsedDefaultDate) ? parsedDefaultDate : new Date();
+
                 reset({
                     title: initialTitle,
-                    lead_id: preselectedLeadId || '',
+                    lead_id: safeLeadId,
                     type: currentType,
-                    date: defaultDate || new Date(),
+                    date: safeDefaultDate,
                     time: format(new Date(), 'HH:mm'),
                     duration: '30',
                     location: '',
@@ -118,14 +141,14 @@ export function AppointmentModal({
                 });
             }
         }
-    }, [isOpen]); // Only run when modal opens/closes
+    }, [isOpen, contacts.length, preselectedLeadId, preselectedContact, initialData, initialType]);
 
     // Update Title dynamically if new (not editing existing title manually) - ONLY if lead changes and TITLE IS EMPTY or DEFAULT
     useEffect(() => {
         if (isOpen && !initialData && selectedLeadId) {
-            const lead = preselectedContact && preselectedContact.id === selectedLeadId
+            const lead = preselectedContact && String(preselectedContact.id) === String(selectedLeadId)
                 ? preselectedContact
-                : contacts.find(c => c.id === selectedLeadId);
+                : contacts.find(c => String(c.id) === String(selectedLeadId));
 
             const currentType = watch('type');
             if (lead) {
@@ -143,10 +166,44 @@ export function AppointmentModal({
     const onSubmit = async (data: FormData) => {
         try {
             const [hours, minutes] = data.time.split(':').map(Number);
+            if (
+                !isValid(data.date) ||
+                !Number.isFinite(hours) ||
+                !Number.isFinite(minutes) ||
+                hours < 0 ||
+                hours > 23 ||
+                minutes < 0 ||
+                minutes > 59
+            ) {
+                console.error('Invalid appointment date/time payload:', {
+                    date: data.date,
+                    time: data.time
+                });
+                toast({
+                    title: 'Data ou hora invalida',
+                    description: 'Revise a data e a hora do agendamento.',
+                    variant: 'destructive',
+                });
+                return;
+            }
+
             const startAt = new Date(data.date);
             startAt.setHours(hours, minutes, 0, 0);
+            if (!isValid(startAt)) {
+                console.error('Invalid appointment startAt:', {
+                    date: data.date,
+                    time: data.time
+                });
+                toast({
+                    title: 'Data ou hora invalida',
+                    description: 'Nao foi possivel montar a data/hora do agendamento.',
+                    variant: 'destructive',
+                });
+                return;
+            }
 
-            const endAt = addMinutes(startAt, parseInt(data.duration));
+            const durationMinutes = parseInt(data.duration, 10);
+            const endAt = addMinutes(startAt, Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 30);
 
             if (initialData?.id) {
                 await updateAppointment({
@@ -197,19 +254,19 @@ export function AppointmentModal({
                             name="lead_id"
                             rules={{ required: "Selecione um lead" }}
                             render={({ field }) => (
-                                <Select onValueChange={field.onChange} value={field.value} disabled={!!initialData}>
+                                <Select onValueChange={field.onChange} value={field.value ? String(field.value) : ''} disabled={!!initialData}>
                                     <SelectTrigger className={cn(errors.lead_id && "border-destructive")}>
                                         <SelectValue placeholder="Selecione um cliente..." />
                                     </SelectTrigger>
                                     <SelectContent className="max-h-[200px]">
                                         {/* Ensure preselected contact is in the list even if not in 'contacts' yet */}
-                                        {preselectedContact && !contacts.some(c => c.id === preselectedContact.id) && (
-                                            <SelectItem key={preselectedContact.id} value={preselectedContact.id}>
+                                        {preselectedContact && !contacts.some(c => String(c.id) === String(preselectedContact.id)) && (
+                                            <SelectItem key={preselectedContact.id} value={String(preselectedContact.id)}>
                                                 {preselectedContact.name || preselectedContact.phone}
                                             </SelectItem>
                                         )}
                                         {contacts.map(contact => (
-                                            <SelectItem key={contact.id} value={contact.id}>
+                                            <SelectItem key={contact.id} value={String(contact.id)}>
                                                 {contact.name || contact.phone}
                                             </SelectItem>
                                         ))}
@@ -273,13 +330,13 @@ export function AppointmentModal({
                                                 )}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {field.value ? format(field.value, "dd/MM") : <span>Data</span>}
+                                                {field.value && isValid(field.value) ? format(field.value, "dd/MM") : <span>Data</span>}
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-auto p-0">
                                             <Calendar
                                                 mode="single"
-                                                selected={field.value}
+                                                selected={field.value && isValid(field.value) ? field.value : undefined}
                                                 onSelect={field.onChange}
                                                 initialFocus
                                                 locale={ptBR}

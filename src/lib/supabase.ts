@@ -23,6 +23,10 @@ export interface LeadDB {
   phone_e164?: string | null;     // NEW
   instance_name?: string | null;  // NEW
   whatsapp_name?: string | null;  // NEW
+  // AI Control
+  ai_enabled?: boolean;
+  ai_paused_reason?: string | null;
+  ai_paused_at?: string | null; // ISO String from DB
 }
 
 // Estrutura REAL da tabela interacoes

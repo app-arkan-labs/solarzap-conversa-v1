@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { AISettings, AIStageConfig, DEFAULT_AI_SETTINGS } from '@/types/ai';
 import { useToast } from '@/hooks/use-toast';
@@ -8,6 +8,8 @@ export function useAISettings() {
     const [stageConfigs, setStageConfigs] = useState<AIStageConfig[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
+
+    const didInitCompanyId = useRef(false);
 
     const fetchSettings = useCallback(async () => {
         setIsLoading(true);
@@ -28,6 +30,26 @@ export function useAISettings() {
                 }
             } else {
                 setSettings(settingsData);
+
+                // Auto-fix company_id if missing (Hardening RAG)
+                if (!settingsData.company_id && !didInitCompanyId.current) {
+                    didInitCompanyId.current = true;
+                    const { data: { user } } = await supabase.auth.getUser();
+                    const orgId = user?.user_metadata?.org_id || user?.id;
+
+                    if (orgId) {
+                        console.log('🔧 Auto-fixing missing company_id in settings to:', orgId);
+                        const { error: updateErr } = await supabase
+                            .from('ai_settings')
+                            .update({ company_id: orgId })
+                            .eq('id', settingsData.id);
+
+                        if (!updateErr) {
+                            // Optimistic update locally to avoid reload loop
+                            setSettings({ ...settingsData, company_id: orgId });
+                        }
+                    }
+                }
             }
 
             // Fetch Stage Configs

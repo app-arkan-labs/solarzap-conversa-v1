@@ -1,8 +1,7 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Configuration, OpenAIApi } from "https://esm.sh/openai@3.1.0";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { Configuration, OpenAIApi } from "npm:openai@3.1.0";
 
-serve(async (req) => {
+Deno.serve(async (req) => {
     // 1. Initialize Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -34,7 +33,7 @@ serve(async (req) => {
     const { count: messagesReceived } = await supabase.from('messages').select('*', { count: 'exact' }).gte('timestamp', startDate.toISOString()).eq('isFromClient', true);
 
     // Fetch some qualitative data (e.g., last 5 lost leads reasons)
-    const { data: lostLeads } = await supabase.from('leads').select('nome, comentarios_leads(texto)').eq('pipeline_stage', 'perdido').gte('created_at', startDate.toISOString()).limit(5);
+    const { data: lostLeads } = await supabase.from('leads').select('nome, comentarios_leads(texto)').eq('status_pipeline', 'perdido').gte('created_at', startDate.toISOString()).limit(5);
 
     // 5. Generate Report with LLM
     const openAIApiKey = settings.openai_api_key || Deno.env.get('OPENAI_API_KEY');

@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { ActiveTab } from '@/types/solarzap';
-import { MessageCircle, Kanban, Calendar, Users, BarChart3, Sun, Bell, Settings, Plug, Zap, Brain, BrainCircuit } from 'lucide-react';
+import { MessageCircle, Kanban, Calendar, Users, BarChart3, Sun, Bell, Settings, Plug, Zap, Brain, BrainCircuit, Bot } from 'lucide-react';
 import { GoogleAccountButton } from './GoogleAccountButton';
 import {
   Popover,
@@ -21,7 +21,6 @@ const navItems: { id: ActiveTab; icon: typeof MessageCircle; label: string }[] =
   { id: 'calendario', icon: Calendar, label: 'Calendário' },
   { id: 'contatos', icon: Users, label: 'Contatos' },
   { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
-  { id: 'ia_agentes', icon: BrainCircuit, label: 'Inteligência Artificial' },
 ];
 
 export function SolarZapNav({
@@ -99,6 +98,16 @@ export function SolarZapNav({
           </PopoverTrigger>
           <PopoverContent side="right" align="end" className="w-64 p-3">
             <div className="space-y-2">
+              <button
+                onClick={() => onTabChange('ia_agentes')}
+                className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
+              >
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Bot className="w-4 h-4 text-primary" />
+                </div>
+                Inteligência Artificial
+              </button>
+
               <button
                 onClick={() => onTabChange('automacoes')}
                 className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"

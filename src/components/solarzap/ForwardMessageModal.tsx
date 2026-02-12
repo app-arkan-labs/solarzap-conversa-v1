@@ -17,7 +17,7 @@ interface ForwardMessageModalProps {
 }
 
 // Mock equipe interna (placeholder)
-const mockTeamMembers = [
+export const mockTeamMembers = [
   { id: 'team-1', name: 'Carlos Vendedor', role: 'Vendedor', avatar: '👨‍💼' },
   { id: 'team-2', name: 'Ana Suporte', role: 'Suporte', avatar: '👩‍💻' },
   { id: 'team-3', name: 'Pedro Gerente', role: 'Gerente', avatar: '👨‍💼' },

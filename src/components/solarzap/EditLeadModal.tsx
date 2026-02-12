@@ -88,7 +88,7 @@ export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModa
         tipo_cliente: contact.clientType,
         endereco: contact.address || '',
         cidade: contact.city || '',
-        cep: '',
+        cep: contact.zip || '',
         consumo_kwh: contact.consumption,
         valor_estimado: contact.projectValue,
         observacoes: contact.notes || '',

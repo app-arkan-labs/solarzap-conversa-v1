@@ -130,28 +130,42 @@ async function callEvolutionApi<T>(
 
     const url = `${DIRECT_API_URL}${endpoint}`;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
     const options: RequestInit = {
       method,
       headers: {
         'Content-Type': 'application/json',
         'apikey': DIRECT_API_KEY
-      }
+      },
+      signal: controller.signal
     };
 
     if (method !== 'GET' && method !== 'HEAD') {
       options.body = JSON.stringify(body);
     }
 
-    const response = await fetch(url, options);
+    try {
+      const response = await fetch(url, options);
+      clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Direct API Error:', response.status, errorText);
-      return { success: false, error: `API Error ${response.status}: ${errorText}` };
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Direct API Error:', response.status, errorText);
+        return { success: false, error: `API Error ${response.status}: ${errorText}` };
+      }
+
+      const data = await response.json();
+      return { success: true, data };
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.error('Evolution API Timeout:', action);
+        return { success: false, error: 'Timeout ao conectar com Evolution API' };
+      }
+      throw fetchError;
     }
-
-    const data = await response.json();
-    return { success: true, data };
 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';

@@ -209,7 +209,7 @@ export function usePipeline() {
 
     return {
         events: eventsQuery.data || [],
-        isLoadingEvents: eventsQuery.isLoading,
+        isLoadingEvents: eventsQuery.isLoading && !!user,
         moveToPipeline: moveToPipelineMutation.mutateAsync,
         saveProposal: saveProposalMutation.mutateAsync,
         addEvent: addEventMutation.mutateAsync,

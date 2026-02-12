@@ -36,10 +36,24 @@ import { useIntegrationsContext } from '@/contexts/IntegrationsContext';
 import { useUserWhatsAppInstances, UserWhatsAppInstance } from '@/hooks/useUserWhatsAppInstances';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { Switch } from '@/components/ui/switch';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 import { WHATSAPP_COLORS } from '@/constants';
 
+import { useAISettings } from '@/hooks/useAISettings'; // New Import
+
 export function IntegrationsView() {
+  const { settings: aiSettings } = useAISettings(); // Get Global Settings
   const [newInstanceName, setNewInstanceName] = useState('');
   const [currentQR, setCurrentQR] = useState<{ instanceName: string; qrCode: string } | null>(null);
   const [updatingColor, setUpdatingColor] = useState<string | null>(null);
@@ -66,6 +80,7 @@ export function IntegrationsView() {
     deleteInstance,
     disconnectInstance,
     connectedCount: whatsappConnectedCount,
+    setInstanceAiEnabled,
   } = useUserWhatsAppInstances();
 
   const handleCreateInstance = async () => {
@@ -85,12 +100,25 @@ export function IntegrationsView() {
     }
   };
 
-  const handleDeleteInstance = async (instance: UserWhatsAppInstance) => {
-    if (!confirm(`Tem certeza que deseja excluir "${instance.display_name}"?`)) return;
-    await deleteInstance(instance);
-    if (currentQR?.instanceName === instance.instance_name) {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [instanceToDelete, setInstanceToDelete] = useState<UserWhatsAppInstance | null>(null);
+
+  const handleDeleteClick = (e: React.MouseEvent, instance: UserWhatsAppInstance) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setInstanceToDelete(instance);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!instanceToDelete) return;
+
+    await deleteInstance(instanceToDelete);
+    if (currentQR?.instanceName === instanceToDelete.instance_name) {
       setCurrentQR(null);
     }
+    setDeleteDialogOpen(false);
+    setInstanceToDelete(null);
   };
 
   const handleUpdateColor = async (instance: UserWhatsAppInstance, color: string) => {
@@ -509,6 +537,19 @@ export function IntegrationsView() {
                           </div>
 
                           <div className="flex items-center gap-2">
+                            {/* AI Toggle */}
+                            <div className="flex items-center gap-2 mr-2 px-2 py-1"
+                              title="Ativar/Desativar IA para esta instância"
+                            >
+                              <span className="font-medium text-muted-foreground">IA</span>
+                              <Switch
+                                checked={!!instance.ai_enabled}
+                                onCheckedChange={(checked) => setInstanceAiEnabled(instance.instance_name, checked)}
+                                disabled={actionLoading === instance.id}
+                                className="scale-75 origin-right data-[state=checked]:bg-green-500"
+                              />
+                            </div>
+
                             {/* Color Picker */}
                             <div className="flex items-center gap-1 transition-opacity">
                               {WHATSAPP_COLORS.map(color => (
@@ -568,7 +609,8 @@ export function IntegrationsView() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleDeleteInstance(instance)}
+                                type="button"
+                                onClick={(e) => handleDeleteClick(e, instance)}
                                 disabled={actionLoading === instance.id}
                                 className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
                               >
@@ -696,6 +738,32 @@ export function IntegrationsView() {
             </CardContent>
           </Card>
         </div>
+
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir instância</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir a instância "{instanceToDelete?.display_name}"?
+                Esta ação irá desconectar o WhatsApp e remover a instância permanentemente.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setDeleteDialogOpen(false)}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleConfirmDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {actionLoading === instanceToDelete?.id ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4 mr-2" />
+                )}
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </ScrollArea>
   );

@@ -17,6 +17,7 @@ export type PipelineStage =
   | 'visita_realizada'
   | 'proposta_negociacao'
   | 'financiamento'
+  | 'aprovou_projeto'
   | 'contrato_assinado'
   | 'projeto_pago'
   | 'aguardando_instalacao'
@@ -44,6 +45,7 @@ export interface Contact {
   address?: string;
   city?: string;
   state?: string;
+  zip?: string;
   cpfCnpj?: string;
   createdAt: Date;
   lastContact: Date;
@@ -51,6 +53,10 @@ export interface Contact {
   phoneE164?: string; // NEW
   instanceName?: string; // NEW
   notes?: string;
+  // AI Control (New)
+  aiEnabled?: boolean;
+  aiPausedReason?: string | null;
+  aiPausedAt?: Date | null;
 }
 
 export interface Message {
@@ -169,6 +175,7 @@ export const PIPELINE_STAGES: Record<PipelineStage, { title: string; icon: strin
   visita_realizada: { title: 'Visita Realizada', icon: '✅', color: 'bg-green-600' },
   proposta_negociacao: { title: 'Proposta em Negociação', icon: '💬', color: 'bg-amber-500' },
   financiamento: { title: 'Financiamento', icon: '💳', color: 'bg-pink-500' },
+  aprovou_projeto: { title: 'Aprovou Projeto', icon: '👍', color: 'bg-lime-500' },
   contrato_assinado: { title: 'Contrato Assinado', icon: '✍️', color: 'bg-emerald-500' },
   projeto_pago: { title: 'Projeto Pago', icon: '💰', color: 'bg-green-700' },
   aguardando_instalacao: { title: 'Aguardando Instalação', icon: '🔨', color: 'bg-slate-500' },
@@ -204,6 +211,8 @@ export const CHANNEL_INFO: Record<Channel, { label: string; icon: string; color:
   cold_list: { label: 'Lista Fria', icon: '❄️', color: 'bg-cyan-500' },
   other: { label: 'Outros', icon: '🌐', color: 'bg-gray-400' },
 };
+
+export type ChannelFilter = Channel | 'all';
 
 export const EVENT_COLORS: Record<EventType, string> = {
   chamada: 'bg-blue-500',

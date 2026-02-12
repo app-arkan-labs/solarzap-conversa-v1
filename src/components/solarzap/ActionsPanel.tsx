@@ -68,6 +68,10 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
           valor_estimado: contact.projectValue,
           status_pipeline: contact.pipelineStage,
           canal: contact.channel,
+          endereco: contact.address || '',
+          cidade: contact.city || '',
+          cep: contact.zip || '',
+          observacoes: contact.notes || '',
         });
       } else if (!hasChanges) {
         // Background update
@@ -81,6 +85,10 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
           valor_estimado: contact.projectValue,
           status_pipeline: contact.pipelineStage,
           canal: contact.channel,
+          endereco: contact.address || '',
+          cidade: contact.city || '',
+          cep: contact.zip || '',
+          observacoes: contact.notes || '',
         });
       }
     }
@@ -247,30 +255,33 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
           <Separator />
 
           {/* Contact Details - Editable */}
-          <div className="space-y-2 text-sm">
-            {/* Canal - Now Editable */}
+          {/* Contact Details - Editable */}
+          <div className="space-y-4 text-sm">
+            {/* Canal - Now Editable & Truncated */}
             <div className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground flex items-center gap-1 flex-shrink-0">
                 <MessageSquare className="w-4 h-4" />
-                Canal
+                Origin
               </span>
-              <Select
-                value={formData.canal}
-                onValueChange={(value) => handleChange('canal', value as Channel)}
-              >
-                <SelectTrigger className="h-7 w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  {Object.entries(CHANNEL_INFO).map(([key, info]) => (
-                    <SelectItem key={key} value={key}>
-                      <span className="flex items-center gap-1">
-                        {info.icon} {info.label}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex-1 min-w-0">
+                <Select
+                  value={formData.canal}
+                  onValueChange={(value) => handleChange('canal', value as Channel)}
+                >
+                  <SelectTrigger className="w-full h-7 text-xs px-2 truncate">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    {Object.entries(CHANNEL_INFO).map(([key, info]) => (
+                      <SelectItem key={key} value={key}>
+                        <span className="flex items-center gap-1 truncate">
+                          {info.icon} {info.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="flex items-center justify-between gap-2">
@@ -295,6 +306,37 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
 
             <Separator />
 
+            {/* Address Fields */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground flex items-center gap-1 flex-shrink-0">
+                  <MapPin className="w-4 h-4" /> Endereço
+                </span>
+                <Input
+                  value={formData.endereco || ''}
+                  onChange={(e) => handleChange('endereco', e.target.value)}
+                  className="text-right h-7 flex-1 min-w-0 text-xs"
+                  placeholder="Rua, Bairro"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={formData.cidade || ''}
+                  onChange={(e) => handleChange('cidade', e.target.value)}
+                  className="h-7 flex-1 text-xs"
+                  placeholder="Cidade"
+                />
+                <Input
+                  value={formData.cep || ''}
+                  onChange={(e) => handleChange('cep', e.target.value)}
+                  className="h-7 w-20 text-xs"
+                  placeholder="CEP"
+                />
+              </div>
+            </div>
+
+            <Separator />
+
             <div className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground flex items-center gap-1 flex-shrink-0">
                 <Zap className="w-4 h-4" /> Consumo
@@ -306,31 +348,33 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
                   className="text-right h-7 w-20"
                   type="number"
                 />
-                <span className="text-xs text-muted-foreground">kWh/mês</span>
+                <span className="text-xs text-muted-foreground">kWh</span>
               </div>
             </div>
 
             <div className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground flex-shrink-0">Tipo</span>
-              <Select
-                value={formData.tipo_cliente}
-                onValueChange={(value) => handleChange('tipo_cliente', value as ClientType)}
-              >
-                <SelectTrigger className="h-7 w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  {CLIENT_TYPES.map(type => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex-1 min-w-0 ml-2">
+                <Select
+                  value={formData.tipo_cliente}
+                  onValueChange={(value) => handleChange('tipo_cliente', value as ClientType)}
+                >
+                  <SelectTrigger className="w-full h-7 text-xs px-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    {CLIENT_TYPES.map(type => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <span className="text-muted-foreground flex-shrink-0">Valor Estimado</span>
+              <span className="text-muted-foreground flex-shrink-0 text-xs">Valor Est.</span>
               <div className="flex items-center gap-1">
                 <span className="text-xs">R$</span>
                 <Input
@@ -344,19 +388,23 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
 
             <Separator />
 
+            {/* Observações */}
+            <div className="space-y-1">
+              <span className="text-xs font-semibold text-muted-foreground block">Observações</span>
+              <textarea
+                value={formData.observacoes || ''}
+                onChange={(e) => handleChange('observacoes', e.target.value)}
+                className="w-full text-xs bg-muted/30 border-border rounded p-2 min-h-[60px] resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="Anotações..."
+              />
+            </div>
+
+            <Separator />
+
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Último contato</span>
               <span className="text-foreground">{formatDate(contact.lastContact)}</span>
             </div>
-
-            {contact.city && contact.state && (
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground flex items-center gap-1">
-                  <MapPin className="w-4 h-4" /> Localização
-                </span>
-                <span className="text-foreground">{contact.city}/{contact.state}</span>
-              </div>
-            )}
           </div>
         </div>
       </div>
