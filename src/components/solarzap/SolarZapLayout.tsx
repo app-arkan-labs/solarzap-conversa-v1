@@ -766,38 +766,29 @@ export function SolarZapLayout() {
           initialData={undefined}
           initialType={scheduleType}
           onSuccess={async (appointment) => {
-            // Side effects after scheduling
             if (!actionContact) return;
 
-            // 1. Move pipeline stage (only if makes sense)
-            const newStage = appointment.type === 'reuniao' ? 'chamada_agendada' : 'visita_agendada';
-            // We can't import PipelineStage easily here if it causes cycle, but assuming string match is fine or imported
-            // For now just calling moveToPipeline if it exists or doing optimistic UI update
-            // Ideally we use the hook functions.
+            const isCallLikeType = appointment.type === 'reuniao' || appointment.type === 'chamada' || appointment.type === 'meeting' || appointment.type === 'call';
+            const newStage: PipelineStage = isCallLikeType ? 'chamada_agendada' : 'visita_agendada';
+            await moveToPipeline({ contactId: actionContact.id, newStage });
 
-            // 2. Prepare confirmation message
             const dateStr = new Date(appointment.start_at).toLocaleDateString('pt-BR');
             const timeStr = format(new Date(appointment.start_at), 'HH:mm');
 
             let message = '';
-            if (appointment.type === 'reuniao') {
+            if (isCallLikeType) {
               message = getMessage('callScheduledMessage', { data: dateStr, hora: timeStr });
             } else {
               message = getMessage('visitScheduledMessage', { data: dateStr, hora: timeStr });
             }
 
-            // 3. Go to conversation
             goToConversation(actionContact.id, message, false);
 
-            // 4. Notify using props if available, otherwise just toast
-            if (appointment.type === 'reuniao') {
-              // onCallScheduled(actionContact, new Date(appointment.start_at)); // If these props exist on Layout?
-              // The original file didn't seem to have these props on Layout, maybe I assumed.
-              // Let's stick to what was there or safe defaults.
-              // checking viewed_file 10... Layout doesn't have onCallScheduled props.
-              // It seems I invented them or saw them in a diff?
-              // Re-reading Step 126... It doesn't show them.
-              // I will remove the specific callbacks if they don't exist to avoid TS error.
+            const startDate = new Date(appointment.start_at);
+            if (isCallLikeType) {
+              onCallScheduled(actionContact, startDate);
+            } else {
+              onVisitScheduled(actionContact, startDate);
             }
 
             toast({

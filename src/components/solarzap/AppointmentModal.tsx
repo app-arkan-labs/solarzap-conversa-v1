@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import {
     Dialog,
@@ -51,6 +51,26 @@ type FormData = {
     notes: string;
 };
 
+const TYPE_FALLBACK: AppointmentType = 'chamada';
+const TYPE_OPTIONS = new Set<AppointmentType>(['chamada', 'visita', 'reuniao', 'instalacao', 'other']);
+
+const toSafeLeadId = (value: unknown): string => {
+    if (value === null || value === undefined) return '';
+    const id = String(value).trim();
+    if (!id || id === 'undefined' || id === 'null') return '';
+    return id;
+};
+
+const normalizeAppointmentType = (value: unknown, fallback: AppointmentType = TYPE_FALLBACK): AppointmentType => {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (raw === 'call') return 'chamada';
+    if (raw === 'visit') return 'visita';
+    if (raw === 'meeting') return 'reuniao';
+    if (raw === 'installation') return 'instalacao';
+    if (TYPE_OPTIONS.has(raw as AppointmentType)) return raw as AppointmentType;
+    return fallback;
+};
+
 export function AppointmentModal({
     isOpen,
     onClose,
@@ -64,6 +84,31 @@ export function AppointmentModal({
     const { createAppointment, updateAppointment, deleteAppointment } = useAppointments();
     const { contacts } = useLeads();
     const { toast } = useToast();
+    const leadOptions = useMemo(() => {
+        const options = new Map<string, { id: string; label: string }>();
+
+        if (preselectedContact) {
+            const id = toSafeLeadId(preselectedContact.id);
+            if (id) {
+                options.set(id, {
+                    id,
+                    label: preselectedContact.name || preselectedContact.phone || id
+                });
+            }
+        }
+
+        for (const contact of contacts) {
+            const id = toSafeLeadId(contact.id);
+            if (!id || options.has(id)) continue;
+            options.set(id, {
+                id,
+                label: contact.name || contact.phone || id
+            });
+        }
+
+        return Array.from(options.values());
+    }, [contacts, preselectedContact]);
+    const leadOptionIds = useMemo(() => new Set(leadOptions.map(option => option.id)), [leadOptions]);
 
     const { control, register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
         defaultValues: {
@@ -75,11 +120,19 @@ export function AppointmentModal({
     });
 
     const selectedLeadId = watch('lead_id');
+    const watchedType = watch('type');
+    const watchedTitle = watch('title');
 
     // Reset/Init form
     useEffect(() => {
-        if (isOpen) {
-            if (initialData?.id) {
+        if (!isOpen) return;
+
+        try {
+            const hasEditId = initialData?.id !== undefined && initialData?.id !== null;
+            const hasEditLeadId = toSafeLeadId(initialData?.lead_id) !== '';
+            const isEditMode = hasEditId && hasEditLeadId;
+
+            if (isEditMode) {
                 // Edit Mode (Existing appointment)
                 const fallbackStart = new Date();
                 const parsedStart = initialData.start_at ? new Date(initialData.start_at) : fallbackStart;
@@ -90,13 +143,15 @@ export function AppointmentModal({
                 const duration = Number.isFinite(durationDiff) && durationDiff > 0 ? String(durationDiff) : '30';
 
                 // Check if lead exists in contacts (or is preselected) to avoid Select crash
-                const leadExists = contacts.some(c => String(c.id) === String(initialData.lead_id)) ||
-                    (String(preselectedContact?.id) === String(initialData.lead_id));
+                const requestedLeadId = toSafeLeadId(initialData.lead_id);
+                const leadExists = leadOptionIds.has(requestedLeadId);
+                const safeLeadId = leadExists ? requestedLeadId : '';
+                const safeType = normalizeAppointmentType(initialData.type, normalizeAppointmentType(initialType));
 
                 reset({
-                    title: initialData.title,
-                    lead_id: leadExists ? String(initialData.lead_id) : '', // Safety: don't set invalid value
-                    type: initialData.type as AppointmentType,
+                    title: initialData.title || '',
+                    lead_id: safeLeadId,
+                    type: safeType,
                     date: start,
                     time: format(start, 'HH:mm'),
                     duration: duration,
@@ -109,18 +164,20 @@ export function AppointmentModal({
                 }
             } else {
                 // Create Mode (New appointment)
-                // Initialize default values
-                const currentType = (initialData?.type as AppointmentType) || initialType || 'chamada';
+                const currentType = normalizeAppointmentType(initialData?.type, normalizeAppointmentType(initialType));
                 let initialTitle = '';
                 let safeLeadId = '';
 
-                // Auto-set title if lead is selected
                 if (preselectedLeadId) {
-                    const lead = preselectedContact || contacts.find(c => String(c.id) === String(preselectedLeadId));
+                    const requestedLeadId = toSafeLeadId(preselectedLeadId);
+                    const lead = preselectedContact || contacts.find(c => toSafeLeadId(c.id) === requestedLeadId);
                     if (lead) {
                         const typeLabel = currentType.charAt(0).toUpperCase() + currentType.slice(1);
                         initialTitle = `${typeLabel} - ${lead.name}`;
-                        safeLeadId = String(lead.id);
+                        safeLeadId = toSafeLeadId(lead.id);
+                        if (!leadOptionIds.has(safeLeadId)) {
+                            safeLeadId = '';
+                        }
                     }
                 }
 
@@ -140,8 +197,16 @@ export function AppointmentModal({
                     notes: ''
                 });
             }
+        } catch (error) {
+            console.error('[appointment-modal][init-error]', error);
+            toast({
+                title: 'Erro ao abrir agendamento',
+                description: 'Falha ao inicializar o formulario.',
+                variant: 'destructive',
+            });
+            onClose();
         }
-    }, [isOpen, contacts.length, preselectedLeadId, preselectedContact, initialData, initialType]);
+    }, [isOpen, preselectedLeadId, preselectedContact, initialData, initialType, leadOptionIds, contacts, onClose, reset, toast]);
 
     // Update Title dynamically if new (not editing existing title manually) - ONLY if lead changes and TITLE IS EMPTY or DEFAULT
     useEffect(() => {
@@ -150,23 +215,25 @@ export function AppointmentModal({
                 ? preselectedContact
                 : contacts.find(c => String(c.id) === String(selectedLeadId));
 
-            const currentType = watch('type');
             if (lead) {
-                const currentTitle = watch('title');
                 // Only auto-update if strictly necessary to avoid overwriting user input
-                if (!currentTitle || currentTitle === '') {
-                    const typeLabel = currentType.charAt(0).toUpperCase() + currentType.slice(1);
+                if (!watchedTitle || watchedTitle === '') {
+                    const safeCurrentType = normalizeAppointmentType(watchedType);
+                    const typeLabel = safeCurrentType.charAt(0).toUpperCase() + safeCurrentType.slice(1);
                     setValue('title', `${typeLabel} - ${lead.name}`);
                 }
             }
         }
-    }, [selectedLeadId, watch('type')]);
+    }, [isOpen, initialData, selectedLeadId, preselectedContact, contacts, watchedType, watchedTitle, setValue]);
 
 
     const onSubmit = async (data: FormData) => {
         try {
             const [hours, minutes] = data.time.split(':').map(Number);
+            const leadId = Number(data.lead_id);
             if (
+                !Number.isFinite(leadId) ||
+                leadId <= 0 ||
                 !isValid(data.date) ||
                 !Number.isFinite(hours) ||
                 !Number.isFinite(minutes) ||
@@ -176,12 +243,13 @@ export function AppointmentModal({
                 minutes > 59
             ) {
                 console.error('Invalid appointment date/time payload:', {
+                    lead_id: data.lead_id,
                     date: data.date,
                     time: data.time
                 });
                 toast({
                     title: 'Data ou hora invalida',
-                    description: 'Revise a data e a hora do agendamento.',
+                    description: 'Revise lead, data e hora do agendamento.',
                     variant: 'destructive',
                 });
                 return;
@@ -210,7 +278,7 @@ export function AppointmentModal({
                     id: initialData.id,
                     data: {
                         title: data.title,
-                        lead_id: Number(data.lead_id),
+                        lead_id: leadId,
                         type: data.type,
                         start_at: startAt,
                         end_at: endAt,
@@ -221,7 +289,7 @@ export function AppointmentModal({
             } else {
                 const newAppt = await createAppointment({
                     title: data.title,
-                    lead_id: Number(data.lead_id),
+                    lead_id: leadId,
                     type: data.type,
                     start_at: startAt,
                     end_at: endAt,
@@ -254,20 +322,21 @@ export function AppointmentModal({
                             name="lead_id"
                             rules={{ required: "Selecione um lead" }}
                             render={({ field }) => (
-                                <Select onValueChange={field.onChange} value={field.value ? String(field.value) : ''} disabled={!!initialData}>
+                                <Select
+                                    onValueChange={field.onChange}
+                                    value={(() => {
+                                        const currentLeadValue = toSafeLeadId(field.value);
+                                        return leadOptionIds.has(currentLeadValue) ? currentLeadValue : '';
+                                    })()}
+                                    disabled={!!initialData}
+                                >
                                     <SelectTrigger className={cn(errors.lead_id && "border-destructive")}>
                                         <SelectValue placeholder="Selecione um cliente..." />
                                     </SelectTrigger>
                                     <SelectContent className="max-h-[200px]">
-                                        {/* Ensure preselected contact is in the list even if not in 'contacts' yet */}
-                                        {preselectedContact && !contacts.some(c => String(c.id) === String(preselectedContact.id)) && (
-                                            <SelectItem key={preselectedContact.id} value={String(preselectedContact.id)}>
-                                                {preselectedContact.name || preselectedContact.phone}
-                                            </SelectItem>
-                                        )}
-                                        {contacts.map(contact => (
-                                            <SelectItem key={contact.id} value={String(contact.id)}>
-                                                {contact.name || contact.phone}
+                                        {leadOptions.map(option => (
+                                            <SelectItem key={option.id} value={option.id}>
+                                                {option.label}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -289,7 +358,10 @@ export function AppointmentModal({
                                 control={control}
                                 name="type"
                                 render={({ field }) => (
-                                    <Select onValueChange={field.onChange} value={field.value}>
+                                    <Select
+                                        onValueChange={(value) => field.onChange(normalizeAppointmentType(value))}
+                                        value={normalizeAppointmentType(field.value)}
+                                    >
                                         <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
