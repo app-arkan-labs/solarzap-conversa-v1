@@ -84,6 +84,10 @@ export function AppointmentModal({
     const { createAppointment, updateAppointment, deleteAppointment } = useAppointments();
     const { contacts } = useLeads();
     const { toast } = useToast();
+    const contactsSignature = useMemo(
+        () => contacts.map(contact => toSafeLeadId(contact.id)).join('|'),
+        [contacts]
+    );
     const leadOptions = useMemo(() => {
         const options = new Map<string, { id: string; label: string }>();
 
@@ -108,9 +112,13 @@ export function AppointmentModal({
 
         return Array.from(options.values());
     }, [contacts, preselectedContact]);
-    const leadOptionIds = useMemo(() => new Set(leadOptions.map(option => option.id)), [leadOptions]);
+    const leadOptionSignature = useMemo(
+        () => leadOptions.map(option => option.id).join('|'),
+        [leadOptions]
+    );
+    const leadOptionIds = useMemo(() => new Set(leadOptions.map(option => option.id)), [leadOptionSignature]);
 
-    const { control, register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
+    const { control, register, handleSubmit, reset, setValue, watch, getValues, formState: { errors, isSubmitting } } = useForm<FormData>({
         defaultValues: {
             type: initialType || 'chamada',
             duration: '30',
@@ -120,8 +128,6 @@ export function AppointmentModal({
     });
 
     const selectedLeadId = watch('lead_id');
-    const watchedType = watch('type');
-    const watchedTitle = watch('title');
 
     // Reset/Init form
     useEffect(() => {
@@ -206,7 +212,22 @@ export function AppointmentModal({
             });
             onClose();
         }
-    }, [isOpen, preselectedLeadId, preselectedContact, initialData, initialType, leadOptionIds, contacts, onClose, reset, toast]);
+    }, [
+        isOpen,
+        initialData?.id,
+        initialData?.lead_id,
+        initialData?.start_at,
+        initialData?.end_at,
+        initialData?.title,
+        initialData?.location,
+        initialData?.notes,
+        initialData?.type,
+        initialType,
+        preselectedLeadId,
+        preselectedContact?.id,
+        defaultDate,
+        leadOptionSignature
+    ]);
 
     // Update Title dynamically if new (not editing existing title manually) - ONLY if lead changes and TITLE IS EMPTY or DEFAULT
     useEffect(() => {
@@ -216,15 +237,23 @@ export function AppointmentModal({
                 : contacts.find(c => String(c.id) === String(selectedLeadId));
 
             if (lead) {
-                // Only auto-update if strictly necessary to avoid overwriting user input
-                if (!watchedTitle || watchedTitle === '') {
-                    const safeCurrentType = normalizeAppointmentType(watchedType);
-                    const typeLabel = safeCurrentType.charAt(0).toUpperCase() + safeCurrentType.slice(1);
+                const currentTitle = (getValues('title') || '').trim();
+                if (!currentTitle) {
+                    const currentType = normalizeAppointmentType(getValues('type'));
+                    const typeLabel = currentType.charAt(0).toUpperCase() + currentType.slice(1);
                     setValue('title', `${typeLabel} - ${lead.name}`);
                 }
             }
         }
-    }, [isOpen, initialData, selectedLeadId, preselectedContact, contacts, watchedType, watchedTitle, setValue]);
+    }, [
+        isOpen,
+        initialData?.id,
+        selectedLeadId,
+        preselectedContact?.id,
+        contactsSignature,
+        getValues,
+        setValue
+    ]);
 
 
     const onSubmit = async (data: FormData) => {

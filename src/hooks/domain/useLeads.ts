@@ -91,6 +91,7 @@ export const mapPipelineStage = (status: string): PipelineStage => {
         'visita_realizada': 'visita_realizada',
         'proposta_negociacao': 'proposta_negociacao',
         'financiamento': 'financiamento',
+        'aprovou_projeto': 'aprovou_projeto',
         'contrato_assinado': 'contrato_assinado',
         'projeto_pago': 'projeto_pago',
         'aguardando_instalacao': 'aguardando_instalacao',

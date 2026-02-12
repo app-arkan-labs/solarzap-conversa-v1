@@ -11,7 +11,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, FileText, Zap, DollarSign, Sun, Battery, Ruler, Download } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Loader2, FileText, Zap, DollarSign, Sun, Battery, Ruler, Download, User } from 'lucide-react';
 import { generateProposalPDF } from '@/utils/generateProposalPDF';
 import { useToast } from '@/hooks/use-toast';
 import { useLeads } from '@/hooks/domain/useLeads';
@@ -143,7 +150,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
     }
   }, [contact, isOpen]);
 
-  if (!contact) return null;
+  if (!contact || !isOpen) return null;
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);

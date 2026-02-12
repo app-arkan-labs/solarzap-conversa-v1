@@ -43,6 +43,12 @@ type AppointmentModalErrorBoundaryState = {
   hasError: boolean;
 };
 
+type PipelineStageChangeOptions = {
+  skipScheduleModal?: boolean;
+  skipMoveToProposalModal?: boolean;
+  skipGenerateProposalPromptModal?: boolean;
+};
+
 class AppointmentModalErrorBoundary extends Component<AppointmentModalErrorBoundaryProps, AppointmentModalErrorBoundaryState> {
   state: AppointmentModalErrorBoundaryState = { hasError: false };
 
@@ -326,7 +332,7 @@ export function SolarZapLayout() {
 
     if (completed && pendingCallContact) {
       // Move to chamada_realizada
-      await moveToPipeline({ contactId: pendingCallContact.id, newStage: 'chamada_realizada' });
+      await handlePipelineStageChange(pendingCallContact.id, 'chamada_realizada', { skipMoveToProposalModal: true });
       toast({
         title: "Chamada registrada!",
         description: `${pendingCallContact.name} movido para "Chamada Realizada"`,
@@ -360,6 +366,7 @@ export function SolarZapLayout() {
 
       setActionContact(pendingCallContact);
       setMoveToProposalOpen(true);
+
     }
 
     setPendingCallContact(null);
@@ -369,7 +376,7 @@ export function SolarZapLayout() {
     setMoveToProposalOpen(false);
 
     if (moveToProposal && actionContact) {
-      await moveToPipeline({ contactId: actionContact.id, newStage: 'aguardando_proposta' });
+      await handlePipelineStageChange(actionContact.id, 'aguardando_proposta', { skipGenerateProposalPromptModal: true });
       toast({
         title: "Lead movido!",
         description: `${actionContact.name} movido para "Aguardando Proposta"`,
@@ -400,7 +407,7 @@ export function SolarZapLayout() {
     CENTRALIZED PIPELINE AUTOMATION HANDLER 
     Ensures that ALL stage changes (Drag&Drop, Dropdown, Buttons) trigger the same behavior.
   */
-  const handlePipelineStageChange = useCallback(async (contactId: string, newStage: PipelineStage) => {
+  const handlePipelineStageChange = useCallback(async (contactId: string, newStage: PipelineStage, options: PipelineStageChangeOptions = {}) => {
     // 1. Check if configured to block/automate this transition
     // Note: The original Drag&Drop logic checked `isDragDropEnabled(toStage, fromStage)`.
     // Since we want this for ALL changes, we should use that check or a broader one.
@@ -420,16 +427,20 @@ export function SolarZapLayout() {
     switch (newStage) {
       case 'chamada_realizada':
         // When moved to "Chamada Realizada", ask if should move to "Aguardando Proposta"
-        setActionContact(contact);
-        setMoveToProposalOpen(true);
+        if (!options.skipMoveToProposalModal) {
+          setActionContact(contact);
+          setMoveToProposalOpen(true);
+        }
         break;
 
       case 'aguardando_proposta':
         // When moved to "Aguardando Proposta", ask to generate proposal after delay
-        setActionContact(contact);
-        setTimeout(() => {
-          setGenerateProposalPromptOpen(true);
-        }, 1500);
+        if (!options.skipGenerateProposalPromptModal) {
+          setActionContact(contact);
+          setTimeout(() => {
+            setGenerateProposalPromptOpen(true);
+          }, 1500);
+        }
         break;
 
       case 'proposta_pronta':
@@ -446,7 +457,7 @@ export function SolarZapLayout() {
         break;
 
       case 'chamada_agendada':
-        if (isDragDropEnabled(newStage, oldStage)) {
+        if (!options.skipScheduleModal && isDragDropEnabled(newStage, oldStage)) {
           setActionContact(contact);
           setScheduleType('reuniao');
           setIsScheduleOpen(true);
@@ -454,7 +465,7 @@ export function SolarZapLayout() {
         break;
 
       case 'visita_agendada':
-        if (isDragDropEnabled(newStage, oldStage)) {
+        if (!options.skipScheduleModal && isDragDropEnabled(newStage, oldStage)) {
           setActionContact(contact);
           setScheduleType('visita');
           setIsScheduleOpen(true);
@@ -502,7 +513,7 @@ export function SolarZapLayout() {
       status: 'Enviada',
     });
 
-    await moveToPipeline({ contactId: data.contactId, newStage: 'proposta_pronta' });
+    await handlePipelineStageChange(data.contactId, 'proposta_pronta');
 
     await updateLead({
       contactId: data.contactId,
@@ -518,7 +529,7 @@ export function SolarZapLayout() {
       onProposalReady(contact);
     }
 
-    setProposalReadyOpen(true);
+    // Modal state is centralized in handlePipelineStageChange for proposta_pronta.
   };
 
   if (isInitialLoading) {
@@ -770,7 +781,7 @@ export function SolarZapLayout() {
 
             const isCallLikeType = appointment.type === 'reuniao' || appointment.type === 'chamada' || appointment.type === 'meeting' || appointment.type === 'call';
             const newStage: PipelineStage = isCallLikeType ? 'chamada_agendada' : 'visita_agendada';
-            await moveToPipeline({ contactId: actionContact.id, newStage });
+            await handlePipelineStageChange(actionContact.id, newStage, { skipScheduleModal: true });
 
             const dateStr = new Date(appointment.start_at).toLocaleDateString('pt-BR');
             const timeStr = format(new Date(appointment.start_at), 'HH:mm');

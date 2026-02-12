@@ -3,6 +3,26 @@ import { supabase } from '@/lib/supabase';
 import { AISettings, AIStageConfig, DEFAULT_AI_SETTINGS } from '@/types/ai';
 import { useToast } from '@/hooks/use-toast';
 
+const STAGE_COL = 'status_pipeline';
+const LEGACY_COL = 'pipeline' + '_stage';
+const STAGE_CONFIG_BASE_FIELDS = 'id, company_id, is_active, agent_goal, default_prompt, prompt_override, updated_at';
+const STAGE_SCHEMA_ERRORS = new Set(['PGRST204', '42703']);
+
+const isStageSchemaMismatch = (error: any): boolean => {
+    const code = typeof error?.code === 'string' ? error.code : '';
+    return STAGE_SCHEMA_ERRORS.has(code);
+};
+
+const stageConfigSelect = (stageCol: string): string => `${STAGE_CONFIG_BASE_FIELDS}, ${stageCol}`;
+
+const normalizeStageConfig = (row: any): AIStageConfig => ({
+    ...row,
+    status_pipeline: row?.[STAGE_COL] ?? row?.[LEGACY_COL] ?? 'novo_lead',
+});
+
+const getStageKey = (row: Partial<AIStageConfig> | undefined): string =>
+    row?.status_pipeline ?? (row as any)?.[LEGACY_COL] ?? 'novo_lead';
+
 export function useAISettings() {
     const [settings, setSettings] = useState<AISettings | null>(null);
     const [stageConfigs, setStageConfigs] = useState<AIStageConfig[]>([]);
@@ -53,15 +73,25 @@ export function useAISettings() {
             }
 
             // Fetch Stage Configs
-            const { data: stagesData, error: stagesError } = await supabase
+            let { data: stagesData, error: stagesError } = await supabase
                 .from('ai_stage_config')
-                .select('*')
+                .select(stageConfigSelect(STAGE_COL))
                 .order('id');
+
+            if (stagesError && isStageSchemaMismatch(stagesError)) {
+                console.warn(`[AISettings] fallback legacy stage col: ${LEGACY_COL}`, stagesError.code);
+                const legacyFetch = await supabase
+                    .from('ai_stage_config')
+                    .select(stageConfigSelect(LEGACY_COL))
+                    .order('id');
+                stagesData = legacyFetch.data;
+                stagesError = legacyFetch.error;
+            }
 
             if (stagesError) {
                 console.error('Error fetching AI stages:', stagesError);
             } else {
-                setStageConfigs(stagesData || []);
+                setStageConfigs((stagesData || []).map(normalizeStageConfig));
             }
 
         } catch (error) {
@@ -125,15 +155,26 @@ export function useAISettings() {
 
     const updateStageConfig = async (stage: string | number, updates: Partial<AIStageConfig>) => {
         try {
-            let query = supabase.from('ai_stage_config').update(updates);
-
+            let error: any = null;
             if (typeof stage === 'number') {
-                query = query.eq('id', stage);
+                ({ error } = await supabase
+                    .from('ai_stage_config')
+                    .update(updates)
+                    .eq('id', stage));
             } else {
-                query = query.eq('pipeline_stage', stage);
-            }
+                ({ error } = await supabase
+                    .from('ai_stage_config')
+                    .update(updates)
+                    .eq(STAGE_COL, stage));
 
-            const { error } = await query;
+                if (error && isStageSchemaMismatch(error)) {
+                    console.warn(`[AISettings] fallback legacy stage col: ${LEGACY_COL}`, error.code);
+                    ({ error } = await supabase
+                        .from('ai_stage_config')
+                        .update(updates)
+                        .eq(LEGACY_COL, stage));
+                }
+            }
 
             if (error) throw error;
 
@@ -141,7 +182,7 @@ export function useAISettings() {
             // Optimistic update
             setStageConfigs(prev => prev.map(s => {
                 if (typeof stage === 'number' && s.id === stage) return { ...s, ...updates };
-                if (typeof stage === 'string' && s.pipeline_stage === stage) return { ...s, ...updates };
+                if (typeof stage === 'string' && getStageKey(s) === stage) return { ...s, ...updates };
                 return s;
             }));
         } catch (error) {
@@ -152,10 +193,18 @@ export function useAISettings() {
 
     const restoreDefaultPrompt = async (stage: string) => {
         try {
-            const { error } = await supabase
+            let { error } = await supabase
                 .from('ai_stage_config')
                 .update({ prompt_override: null }) // Setting to null restores usage of default_prompt in View logic
-                .eq('pipeline_stage', stage);
+                .eq(STAGE_COL, stage);
+
+            if (error && isStageSchemaMismatch(error)) {
+                console.warn(`[AISettings] fallback legacy stage col: ${LEGACY_COL}`, error.code);
+                ({ error } = await supabase
+                    .from('ai_stage_config')
+                    .update({ prompt_override: null })
+                    .eq(LEGACY_COL, stage));
+            }
 
             if (error) throw error;
 

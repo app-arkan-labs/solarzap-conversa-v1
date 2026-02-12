@@ -100,6 +100,28 @@ function detectSolarIntentAndMissing(lastUserText: string, lead: any) {
     return { intent: null, missing: [], directive: null };
 }
 
+function buildFallbackCommentFromText(agg: string): { text: string; type: 'summary' } | null {
+    const text = String(agg || '');
+    const kwh = text.match(/(\d{2,4})\s*kwh/i)?.[1];
+    const bill =
+        text.match(/(\d{2,5})\s*reais/i)?.[1] ||
+        text.match(/r\$\s*(\d{2,5})/i)?.[1];
+    const city = text.match(/moro em\s*([^,.\n]+)/i)?.[1]?.trim();
+    const roof = text.match(/telhado\s*([^,.\n]+)/i)?.[0]?.trim();
+
+    const parts: string[] = [];
+    if (kwh) parts.push(`consumo de ${kwh} kWh/mês`);
+    if (bill) parts.push(`conta de luz de R$${bill}`);
+    if (city) parts.push(`cidade: ${city}`);
+    if (roof) parts.push(roof);
+    if (parts.length < 2) return null;
+
+    return {
+        text: `Cliente informou ${parts.join(', ')}.`,
+        type: 'summary'
+    };
+}
+
 // --- HELPER: Safe Stage Update (Increment 10) ---
 async function updateLeadStageSafe(
     supabase: any,
@@ -200,6 +222,14 @@ function looksLikeQuestion(text: string): boolean {
         'tempo', 'prazo', 'vale a pena', 'funciona', 'demora', 'custa', 'economia',
         'economizar', 'instalar', 'instalação', 'homologação', 'medidor', 'concessionária'];
     return lower.includes('?') || questionStarters.some(s => lower.includes(s));
+}
+
+function extractDomain(url: string): string {
+    try {
+        return new URL(url).hostname.replace(/^www\./i, '');
+    } catch (_) {
+        return '';
+    }
 }
 
 // --- V6: NORMALIZERS for lead field extraction ---
@@ -534,16 +564,35 @@ async function executeAddComment(
         console.warn(`⚠️ [${runId}] V7: Dedup check failed (non-blocking):`, dedupErr?.message);
     }
 
-    try {
-        const { error: insertErr } = await supabase.from('comentarios_leads').insert({
+    const persistLeadCommentSafe = async (): Promise<{ ok: boolean; err: any | null }> => {
+        const isSchemaMismatch = (code: string | undefined) => code === '42703' || code === 'PGRST204';
+        const safeType = (commentType || 'note').trim().substring(0, 40) || 'note';
+        const basePayload = {
             lead_id: Number(leadId),
-            texto: `[${commentType || 'note'}] ${trimmed}`,
-            autor: authorName || 'IA',
-        });
+            texto: `[${safeType}] ${trimmed}`,
+            autor: 'AI',
+        };
+        const payloads = [
+            { ...basePayload, categoria: safeType },
+            { ...basePayload, tipo: safeType },
+            basePayload,
+        ];
 
-        if (insertErr) {
-            console.error(`❌ [${runId}] V7: Comment insert error:`, insertErr.message);
-            return { written: false, skippedReason: `db_error: ${insertErr.message}` };
+        let lastErr: any = null;
+        for (const payload of payloads) {
+            const { error } = await supabase.from('comentarios_leads').insert(payload);
+            if (!error) return { ok: true, err: null };
+            lastErr = error;
+            if (!isSchemaMismatch(error.code)) break;
+        }
+        return { ok: false, err: lastErr };
+    };
+
+    try {
+        const persisted = await persistLeadCommentSafe();
+        if (!persisted.ok) {
+            console.error(`❌ [${runId}] V7: Comment insert error:`, persisted.err?.message || persisted.err);
+            return { written: false, skippedReason: `db_error: ${persisted.err?.message || 'insert_failed'}` };
         }
 
         // Audit log
@@ -556,6 +605,7 @@ async function executeAddComment(
                 runId,
                 comment_type: commentType || 'note',
                 comment_preview: trimmed.substring(0, 120),
+                author_name: authorName || null,
                 source: 'ai',
             }),
             success: true,
@@ -703,12 +753,16 @@ Deno.serve(async (req) => {
         let webUsed = false;
         let webResultsCount = 0;
         let webError: string | null = null;
+        let webSearchStatus: string | null = null;
+        let webSearchPerformedThisRun = false;
         let evolutionSendStatus: number | null = null;
         let anchorCreatedAt: string | null = null;
         let lastOutboundCreatedAt: string | null = null;
         let aggregatedBurstCount = 0;
         let aggregatedChars = 0;
         let lastInboundAgeMs: number | null = null;
+        let transportMode: 'live' | 'simulated' | 'blocked' = 'live';
+        let transportSimReason: string | null = null;
         // V6 tracking
         let v6FieldsCandidateCount = 0;
         let v6FieldsWrittenCount = 0;
@@ -720,18 +774,85 @@ Deno.serve(async (req) => {
 
         // 1. STRICT INSTANCE CHECK
         const { leadId, interactionId, instanceName } = payload;
+        const forceSimulatedTransport = String(Deno.env.get('FORCE_SIMULATED_TRANSPORT') || '').toLowerCase() === 'true';
+        const parsedMaxOutboundPerLeadPerMin = Number.parseInt(Deno.env.get('MAX_OUTBOUND_PER_LEAD_PER_MIN') || '3', 10);
+        const maxOutboundPerLeadPerMin =
+            Number.isFinite(parsedMaxOutboundPerLeadPerMin) && parsedMaxOutboundPerLeadPerMin > 0
+                ? parsedMaxOutboundPerLeadPerMin
+                : 3;
+
+        const respondNoSend = (
+            body: Record<string, any>,
+            reason: string,
+            mode: 'simulated' | 'blocked' = 'blocked',
+            status = 200
+        ) => {
+            transportMode = mode;
+            transportSimReason = reason;
+            return new Response(
+                JSON.stringify({
+                    ...body,
+                    _transport_mode: mode,
+                    _transport_reason: reason
+                }),
+                {
+                    status,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                }
+            );
+        };
 
         console.log(`🚀 [${runId}] START Agent. Instance: ${instanceName}, Lead: ${leadId}, Interaction: ${interactionId}`);
 
         if (!instanceName) {
             console.error('🛑 Missing instanceName in payload');
-            return new Response(JSON.stringify({ skipped: "missing_instanceName" }), { headers: corsHeaders });
+            return respondNoSend({ skipped: "missing_instanceName" }, 'missing_instanceName');
         }
 
         const supabase = createClient(
             Deno.env.get('SUPABASE_URL')!,
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
         );
+
+        const logRateLimitedOutbound = async (recentCount: number, anchorInteractionId: string | number | null) => {
+            try {
+                await supabase.from('ai_action_logs').insert({
+                    lead_id: Number(leadId),
+                    action_type: 'send_message_rate_limited',
+                    details: JSON.stringify({
+                        runId,
+                        lead_id: Number(leadId),
+                        instanceName,
+                        window_sec: 60,
+                        max_allowed: maxOutboundPerLeadPerMin,
+                        recent_count: recentCount,
+                        interactionId: anchorInteractionId || interactionId || null
+                    }),
+                    success: false
+                });
+            } catch (rateLogErr) {
+                console.warn(`[${runId}] send_message_rate_limited log failed (non-blocking):`, rateLogErr);
+            }
+        };
+
+        const logWebSearch = async (
+            actionType: 'web_search_performed' | 'web_search_skipped',
+            details: Record<string, any>
+        ) => {
+            try {
+                await supabase.from('ai_action_logs').insert({
+                    lead_id: Number(leadId),
+                    action_type: actionType,
+                    details: JSON.stringify({
+                        runId,
+                        ...details
+                    }),
+                    success: actionType === 'web_search_performed'
+                });
+            } catch (webLogErr) {
+                console.warn(`[${runId}] ${actionType} log failed (non-blocking):`, webLogErr);
+            }
+        };
 
         // 2. CHECK IF AI IS ENABLED FOR THIS INSTANCE
         const { data: instanceData, error: instError } = await supabase
@@ -742,7 +863,7 @@ Deno.serve(async (req) => {
 
         if (instError || !instanceData || !instanceData.ai_enabled) {
             console.log(`🛑 AI disabled for instance: ${instanceName} (or instance not found)`);
-            return new Response(JSON.stringify({ skipped: "instance_ai_disabled" }), { headers: corsHeaders });
+            return respondNoSend({ skipped: "instance_ai_disabled" }, 'instance_ai_disabled');
         }
 
         // 3. LOAD LEAD & SETTINGS
@@ -750,13 +871,13 @@ Deno.serve(async (req) => {
         const { data: settings } = await supabase.from('ai_settings').select('*').single();
 
         if (!settings?.is_active) {
-            return new Response(JSON.stringify({ skipped: "System Inactive" }), { headers: corsHeaders });
+            return respondNoSend({ skipped: "System Inactive" }, 'system_inactive');
         }
 
         // 3a. CHECK IF LEAD HAS AI ENABLED SPECIFICALLY
         if (lead.ai_enabled === false) {
             console.log(`🛑 AI disabled for specific LEAD: ${leadId}`);
-            return new Response(JSON.stringify({ skipped: "lead_ai_disabled" }), { headers: corsHeaders });
+            return respondNoSend({ skipped: "lead_ai_disabled" }, 'lead_ai_disabled');
         }
 
         // 4. QUIET-WINDOW DEBOUNCE (wait for real silence)
@@ -803,11 +924,11 @@ Deno.serve(async (req) => {
             console.log(`Yield Debug: latest=${latestMsg.id}, anchor=${anchorInteractionId}, input=${interactionId}`);
 
             // YIELD CHECK: if a newer message exists than ours, let the newer run handle it
-            if (anchorInteractionId && latestMsg.id !== interactionId && latestMsg.id !== anchorInteractionId) {
+            if (interactionId && latestMsg.id !== interactionId) {
                 // A newer msg arrived → this run should yield to the run triggered by that msg
                 decision = 'yield_to_newer';
                 console.log(`🔄 [${runId}] Yielding: newer msg ${latestMsg.id} exists (ours was ${interactionId}). Aborting this run.`);
-                return new Response(JSON.stringify({
+                return respondNoSend({
                     aborted: "yield_to_newer",
                     runId,
                     debug: {
@@ -815,7 +936,7 @@ Deno.serve(async (req) => {
                         anchor: anchorInteractionId,
                         input: interactionId
                     }
-                }), { headers: corsHeaders });
+                }, 'yield_to_newer');
             }
 
             anchorInteractionId = latestMsg.id;
@@ -833,7 +954,7 @@ Deno.serve(async (req) => {
             if (Date.now() - debounceStart > MAX_WAIT_MS) {
                 decision = 'quiet_window_timeout';
                 console.warn(`🛑 [${runId}] Aborted: quiet-window timeout after ${MAX_WAIT_MS}ms. User still typing.`);
-                return new Response(JSON.stringify({ aborted: "quiet_window_timeout", runId }), { headers: corsHeaders });
+                return respondNoSend({ aborted: "quiet_window_timeout", runId }, 'quiet_window_timeout');
             }
 
             console.log(`🔄 [${runId}] Still typing (lastInboundAge=${lastInboundAgeMs}ms < ${QUIET_WINDOW_MS}ms). Waiting...`);
@@ -841,7 +962,7 @@ Deno.serve(async (req) => {
 
         if (!stabilized) {
             decision = 'not_stabilized';
-            return new Response(JSON.stringify({ aborted: "not_stabilized", runId }), { headers: corsHeaders });
+            return respondNoSend({ aborted: "not_stabilized", runId }, 'not_stabilized');
         }
 
         // 4a. Ensure anchorMsgCreatedAt is set
@@ -890,7 +1011,7 @@ Deno.serve(async (req) => {
 
         if (!resolvedRemoteJid) {
             console.error(`🛑 [${runId}] Aborting: No remoteJid found for this instance.`);
-            return new Response(JSON.stringify({ skipped: "missing_remoteJid" }), { headers: corsHeaders });
+            return respondNoSend({ skipped: "missing_remoteJid" }, 'missing_remoteJid');
         }
 
         // --- CHECK #1: ANTI-SPAM (FIXED: anchor-based, not 60s cooldown) ---
@@ -914,14 +1035,14 @@ Deno.serve(async (req) => {
                 if (anchorMsgCreatedAt && lastTime > anchorMsgCreatedAt) {
                     decision = 'already_replied';
                     console.warn(`🛑 [${runId}] Skipped: Already replied after anchor. lastOut=${lastOutbound.created_at} > anchor=${anchorCreatedAt}`);
-                    return new Response(JSON.stringify({ skipped: "already_replied", runId }), { headers: corsHeaders });
+                    return respondNoSend({ skipped: "already_replied", runId }, 'already_replied');
                 }
 
                 // B) TIGHT LOOP GUARD: outbound < 5s ago (prevents immediate re-fire)
                 if ((nowTime - lastTime) < 5000) {
                     decision = 'tight_loop_guard';
                     console.warn(`🛑 [${runId}] Skipped: Tight loop guard. Last sent ${(nowTime - lastTime) / 1000}s ago.`);
-                    return new Response(JSON.stringify({ skipped: "tight_loop_guard", runId }), { headers: corsHeaders });
+                    return respondNoSend({ skipped: "tight_loop_guard", runId }, 'tight_loop_guard');
                 }
 
                 // C) ANCHOR IS NEWER → new inbound after bot reply → ALLOW
@@ -1081,43 +1202,134 @@ Deno.serve(async (req) => {
 
         // --- WEB SEARCH FALLBACK (SERPER) ---
         let webBlock = '';
+        let webNoKeyFallbackResponse: { action: string; content: string; _web_search: string } | null = null;
         const serperKey = Deno.env.get('SERPER_API_KEY');
+        const shouldTryWebSearch = kbChars < 400 && looksLikeQuestion(lastUserText);
+        const sanitizedWebQuery = sanitizeQuery(lastUserText);
+        const webQuery = sanitizedWebQuery.length > 5 ? `energia solar Brasil ${sanitizedWebQuery}` : '';
+
         try {
-            if (serperKey && kbChars < 400 && looksLikeQuestion(lastUserText)) {
-                const sanitized = sanitizeQuery(lastUserText);
-                if (sanitized.length > 5) {
-                    const webQuery = `energia solar Brasil ${sanitized}`;
-                    console.log(`🌐 [${runId}] Web search triggered. Query: "${webQuery}"`);
-
-                    const serperResp = await fetch('https://google.serper.dev/search', {
-                        method: 'POST',
-                        headers: {
-                            'X-API-KEY': serperKey,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ q: webQuery, gl: 'br', hl: 'pt', num: 5 })
+            if (shouldTryWebSearch && webQuery) {
+                if (!serperKey) {
+                    webSearchStatus = 'skipped_no_key';
+                    webError = 'missing_key';
+                    webNoKeyFallbackResponse = {
+                        action: 'send_message',
+                        content: 'Posso te orientar com base no fluxo padrão. Para te passar algo mais preciso, me confirma sua cidade/UF e concessionária de energia.',
+                        _web_search: 'skipped_no_key'
+                    };
+                    await logWebSearch('web_search_skipped', {
+                        query: webQuery,
+                        results_count: 0,
+                        reason: 'missing_key',
+                        latency_ms: 0
                     });
+                } else if (webSearchPerformedThisRun) {
+                    webSearchStatus = 'already_performed_this_run';
+                    await logWebSearch('web_search_skipped', {
+                        query: webQuery,
+                        results_count: 0,
+                        reason: 'already_performed_this_run',
+                        latency_ms: 0
+                    });
+                } else {
+                    const nowMinus60sIso = new Date(Date.now() - 60_000).toISOString();
+                    const { count: recentWebSearchCount, error: webRateErr } = await supabase
+                        .from('ai_action_logs')
+                        .select('id', { count: 'exact', head: true })
+                        .eq('lead_id', Number(leadId))
+                        .eq('action_type', 'web_search_performed')
+                        .gte('created_at', nowMinus60sIso);
 
-                    if (serperResp.ok) {
-                        const serperData = await serperResp.json();
-                        const organic = serperData.organic || [];
-                        webUsed = true;
-                        webResultsCount = organic.length;
-
-                        const webLines: string[] = [];
-                        for (const r of organic.slice(0, 5)) {
-                            webLines.push(`- ${r.title || ''}: ${(r.snippet || '').substring(0, 250)} (${r.link || ''})`);
-                        }
-                        webBlock = webLines.join('\n');
-                        console.log(`🌐 [${runId}] Web search returned ${webResultsCount} results.`);
+                    if (webRateErr) {
+                        webSearchStatus = 'rate_limit_check_error';
+                        webError = webRateErr.message;
+                        await logWebSearch('web_search_skipped', {
+                            query: webQuery,
+                            results_count: 0,
+                            reason: 'rate_limit_check_error',
+                            latency_ms: 0
+                        });
+                    } else if ((recentWebSearchCount || 0) > 0) {
+                        webSearchStatus = 'rate_limited';
+                        await logWebSearch('web_search_skipped', {
+                            query: webQuery,
+                            results_count: 0,
+                            reason: 'recent_search_60s',
+                            latency_ms: 0
+                        });
                     } else {
-                        webError = `Serper HTTP ${serperResp.status}`;
-                        console.warn(`⚠️ [${runId}] Serper API error: ${serperResp.status}`);
+                        console.log(`🌐 [${runId}] Web search triggered. Query: "${webQuery}"`);
+                        const webStart = Date.now();
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 8000);
+                        let serperResp: Response;
+                        try {
+                            serperResp = await fetch('https://google.serper.dev/search', {
+                                method: 'POST',
+                                headers: {
+                                    'X-API-KEY': serperKey,
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ q: webQuery, gl: 'br', hl: 'pt', num: 3 }),
+                                signal: controller.signal
+                            });
+                        } finally {
+                            clearTimeout(timeoutId);
+                        }
+
+                        const latencyMs = Date.now() - webStart;
+                        if (serperResp.ok) {
+                            const serperData = await serperResp.json();
+                            const organic = Array.isArray(serperData?.organic) ? serperData.organic : [];
+                            const topResults = organic.slice(0, 3).map((r: any) => {
+                                const title = String(r?.title || '').trim().substring(0, 120);
+                                const snippet = String(r?.snippet || '').replace(/\s+/g, ' ').trim().substring(0, 200);
+                                const domain = extractDomain(String(r?.link || ''));
+                                return { title, snippet, domain };
+                            }).filter((r: any) => r.title || r.snippet);
+
+                            webUsed = true;
+                            webResultsCount = topResults.length;
+                            webSearchStatus = 'performed';
+                            webSearchPerformedThisRun = true;
+
+                            const webLines: string[] = [];
+                            for (const r of topResults) {
+                                const source = r.domain ? ` (fonte: ${r.domain})` : '';
+                                webLines.push(`- ${r.title || 'Sem título'}: ${r.snippet || '(sem resumo)'}${source}`);
+                            }
+                            webBlock = webLines.join('\n');
+
+                            await logWebSearch('web_search_performed', {
+                                query: webQuery,
+                                results_count: webResultsCount,
+                                latency_ms: latencyMs
+                            });
+                            console.log(`🌐 [${runId}] Web search returned ${webResultsCount} results.`);
+                        } else {
+                            webSearchStatus = 'http_error';
+                            webError = `Serper HTTP ${serperResp.status}`;
+                            await logWebSearch('web_search_skipped', {
+                                query: webQuery,
+                                results_count: 0,
+                                reason: `http_${serperResp.status}`,
+                                latency_ms: latencyMs
+                            });
+                            console.warn(`⚠️ [${runId}] Serper API error: ${serperResp.status}`);
+                        }
                     }
                 }
             }
         } catch (err: any) {
+            webSearchStatus = err?.name === 'AbortError' ? 'timeout' : 'error';
             webError = err?.message || String(err);
+            await logWebSearch('web_search_skipped', {
+                query: webQuery || null,
+                results_count: 0,
+                reason: webSearchStatus,
+                latency_ms: 0
+            });
             console.warn(`⚠️ [${runId}] Web search exception (non-blocking):`, webError);
         }
 
@@ -1171,6 +1383,10 @@ Deno.serve(async (req) => {
                 // Long text, specific forbidden emoji, no split
                 content: 'Oi tudo bem? 😊 Eu sou um robô corporativo e gostaria de saber se você quer energia solar. Se for solar, posso te ajudar! 😊 Isso aqui é um texto muito longo propositalmente para testar o auto-splitter que deve quebrar em várias mensagens quando detecta que o texto ficou gigante e chato de ler no WhatsApp. Espero que funcione! 😊'
             };
+        }
+
+        if (!aiRes && webNoKeyFallbackResponse) {
+            aiRes = webNoKeyFallbackResponse as any;
         }
 
         if (!aiRes) {
@@ -1374,6 +1590,16 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
 
         // DEBUG: Attach aggregated text
         aiRes._debug_aggregated = lastUserTextAggregated;
+        if (webSearchStatus && !(aiRes as any)?._web_search) {
+            (aiRes as any)._web_search = webSearchStatus;
+        }
+
+        if (!aiRes?.comment?.text || !String(aiRes.comment.text).trim()) {
+            const fallbackComment = buildFallbackCommentFromText(lastUserTextAggregated || '');
+            if (fallbackComment) {
+                aiRes.comment = fallbackComment;
+            }
+        }
 
         // --- V6: EXTRACT AND SAVE LEAD FIELDS (side-effect, non-blocking) ---
         if (aiRes.fields && typeof aiRes.fields === 'object' && Object.keys(aiRes.fields).length > 0) {
@@ -1510,25 +1736,43 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
 
         // 8. EXECUTE ACTIONS (INCREMENT 2: Split Support)
         if ((aiRes.action === 'send_message' || (aiRes.action === 'move_stage' && aiRes.content) || (aiRes.action === 'create_appointment' && aiRes.content)) && aiRes.content && aiRes.action !== 'update_lead_fields' && aiRes.action !== 'add_comment' && aiRes.action !== 'create_followup') {
+            const sourceTag = String(payload?.source || '').toLowerCase();
+            const remoteDigits = String(resolvedRemoteJid || '').replace(/\D/g, '');
             const isSmokeTransport =
                 payload?.dryRun === true ||
                 payload?.dry_run === true ||
-                resolvedRemoteJid === '5511999990000@s.whatsapp.net' ||
-                resolvedRemoteJid === '5511999990000@c.us' ||
+                sourceTag === 'smoke' ||
+                remoteDigits === '5511999990000' ||
                 lead?.nome === 'SMOKE_TEST_LEAD';
+            const isSimulatedTransport = forceSimulatedTransport || isSmokeTransport;
+
+            if (isSimulatedTransport) {
+                transportMode = 'simulated';
+                transportSimReason = forceSimulatedTransport
+                    ? 'force_simulated_transport'
+                    : payload?.dryRun === true || payload?.dry_run === true
+                        ? 'dry_run'
+                        : sourceTag === 'smoke'
+                            ? 'source_smoke'
+                            : remoteDigits === '5511999990000'
+                                ? 'test_remote'
+                                : 'smoke_lead';
+            }
 
             const rawParts = aiRes.content
                 .split('||')
                 .map((p: string) => p.trim())
                 .filter(Boolean);
+            const singleOutboundContent = rawParts.join('\n\n').trim();
+            const burstMode = aggregatedBurstCount > 1;
 
             // Burst safety: never fan out multiple outbound messages for a burst response.
-            const parts = aggregatedBurstCount > 1
-                ? [rawParts.join(' ').trim()]
+            const parts = (isSimulatedTransport || burstMode)
+                ? [singleOutboundContent]
                 : rawParts;
 
-            if (isSmokeTransport) {
-                console.log(`[${runId}] Smoke safe transport enabled (no Evolution send).`);
+            if (isSimulatedTransport) {
+                console.log(`[${runId}] Simulated transport enabled (${transportSimReason || 'unknown'}).`);
             }
 
             for (let i = 0; i < parts.length; i++) {
@@ -1536,11 +1780,72 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                 if (!partContent) continue;
 
                 const typingDuration = Math.min(6000, 2000 + (partContent.length * 50));
-                await sendTypingIndicator(instanceName, resolvedRemoteJid, typingDuration);
+                if (!isSimulatedTransport) {
+                    await sendTypingIndicator(instanceName, resolvedRemoteJid, typingDuration);
+                }
 
                 // --- CHECK #2: ANTI-SPAM FINAL (First Part Only) — FIXED: anchor-based ---
                 if (i === 0) {
                     try {
+                        const { data: latestClientAtSend } = await supabase
+                            .from('interacoes')
+                            .select('id')
+                            .eq('lead_id', leadId)
+                            .eq('instance_name', instanceName)
+                            .eq('tipo', 'mensagem_cliente')
+                            .order('id', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+
+                        if (latestClientAtSend?.id && String(latestClientAtSend.id) !== String(interactionId)) {
+                            decision = 'lost_latest_race';
+                            console.warn(`[${runId}] Skipped (Final Check): interaction ${interactionId} lost race to latest ${latestClientAtSend.id}.`);
+                            return respondNoSend({ skipped: "lost_latest_race", runId }, 'lost_latest_race');
+                        }
+
+                        if (burstMode && latestClientAtSend?.id) {
+                            const burstKey = `${instanceName}:${resolvedRemoteJid}:${latestClientAtSend.id}`;
+                            try {
+                                await supabase.from('ai_action_logs').insert({
+                                    lead_id: Number(leadId),
+                                    action_type: 'burst_winner_claim',
+                                    details: JSON.stringify({
+                                        key: burstKey,
+                                        runId,
+                                        interactionId: latestClientAtSend.id
+                                    }),
+                                    success: true
+                                });
+
+                                const { data: winnerClaim } = await supabase
+                                    .from('ai_action_logs')
+                                    .select('id, details')
+                                    .eq('lead_id', Number(leadId))
+                                    .eq('action_type', 'burst_winner_claim')
+                                    .filter('details', 'ilike', `%"key":"${burstKey}"%`)
+                                    .order('id', { ascending: true })
+                                    .limit(1)
+                                    .maybeSingle();
+
+                                if (winnerClaim?.details) {
+                                    let winnerRunId: string | null = null;
+                                    try {
+                                        winnerRunId = JSON.parse(winnerClaim.details)?.runId || null;
+                                    } catch (_) {
+                                        winnerRunId = null;
+                                    }
+
+                                    if (winnerRunId && winnerRunId !== runId) {
+                                        decision = 'lost_burst_winner';
+                                        console.warn(`[${runId}] Skipped (Burst Winner): winner is ${winnerRunId}.`);
+                                        return respondNoSend({ skipped: "lost_burst_winner", runId }, 'lost_burst_winner');
+                                    }
+                                }
+                            } catch (winnerErr) {
+                                console.warn(`[${runId}] burst_winner_claim failed (non-blocking):`, winnerErr);
+                            }
+                        }
+
                         const { data: finalCheck, error: finalError } = await supabase
                             .from('interacoes')
                             .select('id, created_at')
@@ -1559,7 +1864,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                             if (anchorMsgCreatedAt && lastTime2 > anchorMsgCreatedAt) {
                                 decision = 'already_replied_final';
                                 console.warn(`🛑 [${runId}] Skipped (Final Check): Already replied after anchor.`);
-                                return new Response(JSON.stringify({ skipped: "already_replied_final", runId }), { headers: corsHeaders });
+                                return respondNoSend({ skipped: "already_replied_final", runId }, 'already_replied_final');
                             }
 
                             // Tight loop guard check
@@ -1576,7 +1881,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                 const evoKey = Deno.env.get('EVOLUTION_API_KEY');
                 const numberToSend = resolvedRemoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
 
-                if (isSmokeTransport) {
+                if (isSimulatedTransport) {
                     evolutionSendStatus = 202;
                     const { data: ins, error: insErr } = await supabase.from('interacoes').insert({
                         lead_id: leadId,
@@ -1590,8 +1895,90 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                     }).select('id').single();
 
                     if (insErr) console.error('DB Insert Error (Smoke):', insErr);
-                    else console.log(`Outbound inserted id (Smoke): ${ins?.id} (Instance: ${instanceName})`);
+                    else {
+                        console.log(`Outbound inserted id (Smoke): ${ins?.id} (Instance: ${instanceName})`);
+                        try {
+                            await supabase.from('ai_action_logs').insert({
+                                lead_id: Number(leadId),
+                                action_type: 'simulated_outbound',
+                                details: JSON.stringify({
+                                    runId,
+                                    interactionId: anchorInteractionId || null,
+                                    source: sourceTag || null,
+                                    reason: transportSimReason,
+                                    remote_jid: resolvedRemoteJid,
+                                    message_id: ins?.id || null,
+                                    message_preview: partContent.substring(0, 120)
+                                }),
+                                success: true
+                            });
+                        } catch (simLogErr) {
+                            console.warn(`[${runId}] simulated_outbound log failed (non-blocking):`, simLogErr);
+                        }
+                    }
                     continue;
+                }
+
+                const nowMinus60sIso = new Date(Date.now() - 60_000).toISOString();
+                const { data: recentOutboundRows, error: rateLimitErr } = await supabase
+                    .from('interacoes')
+                    .select('id')
+                    .eq('lead_id', leadId)
+                    .eq('wa_from_me', true)
+                    .eq('tipo', 'mensagem_vendedor')
+                    .gte('created_at', nowMinus60sIso);
+
+                if (rateLimitErr) {
+                    console.warn(`[${runId}] Rate-limit check failed (fail-open):`, rateLimitErr?.message || rateLimitErr);
+                } else {
+                    let recentCount = (recentOutboundRows || []).length;
+                    if (recentCount > 0) {
+                        const recentOutboundIds = new Set<number>();
+                        for (const row of (recentOutboundRows || [])) {
+                            const rowId = Number((row as any)?.id);
+                            if (Number.isFinite(rowId)) recentOutboundIds.add(rowId);
+                        }
+
+                        try {
+                            const { data: simulatedLogs, error: simulatedLogsErr } = await supabase
+                                .from('ai_action_logs')
+                                .select('details')
+                                .eq('lead_id', Number(leadId))
+                                .eq('action_type', 'simulated_outbound')
+                                .gte('created_at', nowMinus60sIso);
+
+                            if (simulatedLogsErr) {
+                                console.warn(`[${runId}] Rate-limit simulated_outbound lookup failed (non-blocking):`, simulatedLogsErr?.message || simulatedLogsErr);
+                            } else if (simulatedLogs?.length) {
+                                const simulatedIds = new Set<number>();
+                                for (const logRow of simulatedLogs) {
+                                    try {
+                                        const details = typeof (logRow as any)?.details === 'string'
+                                            ? JSON.parse((logRow as any).details)
+                                            : (logRow as any)?.details;
+                                        const msgId = Number(details?.message_id);
+                                        if (Number.isFinite(msgId) && recentOutboundIds.has(msgId)) {
+                                            simulatedIds.add(msgId);
+                                        }
+                                    } catch (_) {
+                                        // Ignore malformed details rows
+                                    }
+                                }
+
+                                if (simulatedIds.size > 0) {
+                                    recentCount = Math.max(0, recentCount - simulatedIds.size);
+                                }
+                            }
+                        } catch (simLookupErr) {
+                            console.warn(`[${runId}] Rate-limit simulated_outbound parse failed (non-blocking):`, simLookupErr);
+                        }
+                    }
+
+                    if (recentCount >= maxOutboundPerLeadPerMin) {
+                        decision = 'rate_limited';
+                        await logRateLimitedOutbound(recentCount, anchorInteractionId || null);
+                        return respondNoSend({ aborted: 'rate_limited', runId }, 'rate_limited', 'blocked');
+                    }
                 }
 
                 if (evoUrl && evoKey) {
@@ -1671,6 +2058,11 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             }
         }
 
+        if (transportMode !== 'live') {
+            aiRes._transport_mode = transportMode;
+            aiRes._transport_reason = transportSimReason;
+        }
+
         // 10. STRUCTURED LOG
         const structuredLog = {
             event: 'ai_agent_run_complete',
@@ -1692,6 +2084,8 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             web_results_count: webResultsCount,
             web_error: webError,
             evolutionSendStatus,
+            transport_mode: transportMode,
+            transport_sim_reason: transportSimReason,
             solar_gate_intent: gate?.intent || null,
             solar_gate_missing: gate?.missing?.join(',') || null,
             solar_gate_applied: gateApplied || false,
@@ -1745,7 +2139,14 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
 
     } catch (error: any) {
         console.error("Agent Error:", error);
-        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
+        return new Response(
+            JSON.stringify({
+                error: error.message,
+                _transport_mode: 'blocked',
+                _transport_reason: 'exception'
+            }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
     }
 });
 

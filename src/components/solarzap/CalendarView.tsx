@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { Component, ReactNode, useState, useMemo } from 'react';
 import { Appointment, Contact } from '@/types/solarzap';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Plus, Video, Calendar as CalendarIcon, Clock, MapPin, Archive, History, Filter } from 'lucide-react';
@@ -13,6 +13,39 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarFilters, CalendarFilterState } from './calendar/CalendarFilters';
 import { EventFeedbackModal } from './calendar/EventFeedbackModal';
 import { EventArchiveModal } from './calendar/EventArchiveModal';
+import { useToast } from '@/hooks/use-toast';
+
+type CalendarAppointmentErrorBoundaryProps = {
+  children: ReactNode;
+  onError: () => void;
+};
+
+type CalendarAppointmentErrorBoundaryState = {
+  hasError: boolean;
+};
+
+class CalendarAppointmentErrorBoundary extends Component<
+  CalendarAppointmentErrorBoundaryProps,
+  CalendarAppointmentErrorBoundaryState
+> {
+  state: CalendarAppointmentErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): CalendarAppointmentErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[calendar-appointment-modal-error]', error, errorInfo);
+    this.props.onError();
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null;
+    }
+    return this.props.children;
+  }
+}
 
 interface CalendarViewProps {
   contacts?: Contact[];
@@ -63,6 +96,7 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
   const { appointments, isLoading } = useAppointments();
   const { contacts: hookContacts } = useLeads();
   const contacts = hookContacts.length > 0 ? hookContacts : (propContacts || []);
+  const { toast } = useToast();
 
   // Filter States - Independent for each section
   const [mainFilters, setMainFilters] = useState<CalendarFilterState>({});
@@ -79,6 +113,17 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
   const [feedbackEvent, setFeedbackEvent] = useState<Appointment | undefined>(undefined);
 
   const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+
+  const handleAppointmentModalError = () => {
+    setAppointmentModalOpen(false);
+    setSelectedAppointment(undefined);
+    setModalDate(undefined);
+    toast({
+      title: 'Erro ao abrir agendamento',
+      description: 'Ocorreu um erro. Tente novamente.',
+      variant: 'destructive',
+    });
+  };
 
   // --- Filtering Helper ---
   const applyFilters = (list: Appointment[], currentFilters: CalendarFilterState) => {
@@ -485,12 +530,17 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
       </div>
 
       {/* Modals */}
-      <AppointmentModal
-        isOpen={appointmentModalOpen}
-        onClose={() => setAppointmentModalOpen(false)}
-        initialData={selectedAppointment}
-        defaultDate={modalDate}
-      />
+      <CalendarAppointmentErrorBoundary
+        key={`appt-${appointmentModalOpen ? 'open' : 'closed'}-${selectedAppointment?.id ?? 'new'}-${modalDate?.getTime() ?? 'none'}`}
+        onError={handleAppointmentModalError}
+      >
+        <AppointmentModal
+          isOpen={appointmentModalOpen}
+          onClose={() => setAppointmentModalOpen(false)}
+          initialData={selectedAppointment}
+          defaultDate={modalDate}
+        />
+      </CalendarAppointmentErrorBoundary>
 
       <EventFeedbackModal
         isOpen={feedbackModalOpen}

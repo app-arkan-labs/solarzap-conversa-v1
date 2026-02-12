@@ -17,7 +17,7 @@ export interface AISettings {
 export interface AIStageConfig {
     id: number;
     company_id?: string;
-    pipeline_stage: string;
+    status_pipeline: string;
     is_active: boolean;
     agent_goal: string;
     default_prompt?: string;  // System Default

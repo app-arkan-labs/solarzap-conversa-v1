@@ -26,6 +26,7 @@ const ORDERED_STAGES: PipelineStage[] = [
     'visita_realizada',
     'proposta_negociacao',
     'financiamento',
+    'aprovou_projeto',
     'contrato_assinado',
     'projeto_pago',
     'aguardando_instalacao',

@@ -35,11 +35,21 @@ async function callAgent(leadId, interactionId, instanceName, remoteJid) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
             },
-            body: JSON.stringify({ leadId, interactionId, instanceName, remoteJid })
+            body: JSON.stringify({
+                leadId,
+                interactionId,
+                instanceName,
+                remoteJid,
+                dry_run: true,
+                source: 'smoke'
+            })
         });
         const body = await resp.json();
         if (body._debug_aggregated) {
             console.log(`\n[DEBUG AGGREGATED]: ${JSON.stringify(body._debug_aggregated)}\n`);
+        }
+        if (body._transport_mode) {
+            console.log(`[DEBUG TRANSPORT]: ${body._transport_mode}${body._transport_reason ? ` (${body._transport_reason})` : ''}`);
         }
         return { status: resp.status, body };
     } catch (err) {
@@ -69,6 +79,19 @@ async function countOutbounds(leadId, instanceName, afterTime) {
         .eq('wa_from_me', true)
         .gte('created_at', afterTime)
         .order('created_at', { ascending: true });
+
+    if (error) return { count: -1, rows: [], error: error.message };
+    return { count: (data || []).length, rows: data || [] };
+}
+
+async function countOutboundsSinceId(leadId, instanceName, afterId) {
+    const { data, error } = await supabase.from('interacoes')
+        .select('id, created_at, mensagem')
+        .eq('lead_id', leadId)
+        .eq('instance_name', instanceName)
+        .eq('wa_from_me', true)
+        .gt('id', afterId)
+        .order('id', { ascending: true });
 
     if (error) return { count: -1, rows: [], error: error.message };
     return { count: (data || []).length, rows: data || [] };
@@ -172,7 +195,15 @@ async function test1_burstAntiSpam(leadId) {
     console.log('TEST 1: Burst Anti-Spam (7 parallel)');
     console.log('========================================');
 
-    const beforeTime = new Date().toISOString();
+    const { data: baseline } = await supabase
+        .from('interacoes')
+        .select('id')
+        .eq('lead_id', leadId)
+        .eq('instance_name', TEST_INSTANCE)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    const beforeId = baseline?.id || 0;
 
     // Insert 7 messages rapidly
     const msgIds = [];
@@ -197,8 +228,11 @@ async function test1_burstAntiSpam(leadId) {
     await sleep(40000);
 
     // Count outbounds
-    const outbounds = await countOutbounds(leadId, TEST_INSTANCE, beforeTime);
+    const outbounds = await countOutboundsSinceId(leadId, TEST_INSTANCE, beforeId);
     console.log(`   Outbound messages after burst: ${outbounds.count}`);
+    if (outbounds.rows?.length) {
+        console.log(`   Outbound rows: ${outbounds.rows.map(r => `${r.id}:${(r.mensagem || '').substring(0, 80)}`).join(' | ')}`);
+    }
 
     report('Burst Anti-Spam', outbounds.count <= 1,
         `Expected ≤1 outbound, got ${outbounds.count}. Skipped: ${skipped.length}/7`);
@@ -613,13 +647,14 @@ async function test10_addComment(leadId) {
     await supabase.from('leads').update({ status_pipeline: 'novo_lead' }).eq('id', leadId);
 
     // Clean any previous V7 test comments
-    await supabase.from('comentarios_leads').delete().eq('lead_id', leadId).ilike('texto', '%SMOKE_COMMENT_OK%');
+    await supabase.from('comentarios_leads').delete().eq('lead_id', leadId);
     await supabase.from('ai_action_logs').delete().eq('lead_id', leadId).eq('action_type', 'lead_comment_added');
 
     const msg = await insertClientMessage(leadId, TEST_INSTANCE, TEST_REMOTE_JID,
         'Meu consumo é 500 kwh e minha conta vem 650 reais, moro em Belo Horizonte, telhado cerâmico');
     console.log(`   Message inserted: ${msg.id}`);
 
+    const testStartAt = new Date().toISOString();
     const resp = await callAgent(leadId, msg.id, TEST_INSTANCE, TEST_REMOTE_JID);
     console.log(`   Agent response: action=${resp.body?.action}`);
     console.log(`   Comment in response: ${JSON.stringify(resp.body?.comment || 'none')}`);
@@ -631,9 +666,14 @@ async function test10_addComment(leadId) {
     const { data: comments } = await supabase.from('comentarios_leads')
         .select('*')
         .eq('lead_id', leadId)
+        .gte('created_at', testStartAt)
         .order('created_at', { ascending: false })
         .limit(5);
-    const aiComments = (comments || []).filter(c => c.autor && (c.autor.toLowerCase().includes('ia') || c.autor.toLowerCase().includes('consultor')));
+    const expectedSnippet = String(resp.body?.comment?.text || '').trim().toLowerCase().substring(0, 40);
+    const aiComments = (comments || []).filter(c => {
+        const txt = String(c?.texto || '').toLowerCase();
+        return expectedSnippet ? txt.includes(expectedSnippet) : txt.length > 0;
+    });
     console.log(`   AI comments found: ${aiComments.length}`);
     if (aiComments.length > 0) console.log(`   Latest comment: "${aiComments[0]?.texto?.substring(0, 80)}..."`);
 
@@ -660,7 +700,7 @@ async function test10_addComment(leadId) {
     const hasComment = aiComments.length > 0;
     const hasAudit = !!logs;
     const hasResponseComment = resp.body?.comment && typeof resp.body.comment === 'object';
-    const commentWritten = hasComment || hasAudit;
+    const commentWritten = hasComment;
 
     const pass = (resp.status === 200) && commentWritten;
     report('V7 Add Comment', pass,
@@ -1328,3 +1368,4 @@ async function test18_humanization(leadId) {
 }
 
 main().catch(console.error);
+

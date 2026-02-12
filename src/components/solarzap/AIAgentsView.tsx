@@ -90,7 +90,7 @@ export function AIAgentsView() {
     const pipelineStagesInOrder: PipelineStage[] = [
         'novo_lead', 'respondeu', 'chamada_agendada', 'nao_compareceu', 'chamada_realizada',
         'aguardando_proposta', 'proposta_pronta', 'visita_agendada', 'visita_realizada',
-        'proposta_negociacao', 'financiamento', 'contrato_assinado', 'projeto_pago',
+        'proposta_negociacao', 'financiamento', 'aprovou_projeto', 'contrato_assinado', 'projeto_pago',
         'aguardando_instalacao', 'projeto_instalado', 'coletar_avaliacao', 'contato_futuro', 'perdido'
     ];
 
@@ -240,7 +240,7 @@ export function AIAgentsView() {
                 <h2 className="text-lg font-semibold text-slate-800">Agentes de Pipeline</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {pipelineStagesInOrder.map((stage) => {
-                        const config = stageConfigs.find(c => c.pipeline_stage === stage);
+                        const config = stageConfigs.find(c => c.status_pipeline === stage);
                         const stageInfo = PIPELINE_STAGES[stage];
                         const isEnabled = config?.is_active || false;
                         // Effective prompt: override > default > empty
