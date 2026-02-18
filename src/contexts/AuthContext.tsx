@@ -4,12 +4,27 @@ import { supabase } from '@/lib/supabase';
 
 interface AuthContextType {
   user: User | null;
+  orgId: string | null;
+  role: string | null;
+  canViewTeamLeads: boolean;
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthError | null>;
   signUp: (email: string, password: string) => Promise<AuthError | null>;
   signOut: () => Promise<void>;
 }
+
+type MembershipState = {
+  orgId: string | null;
+  role: string | null;
+  canViewTeamLeads: boolean;
+};
+
+const EMPTY_MEMBERSHIP: MembershipState = {
+  orgId: null,
+  role: null,
+  canViewTeamLeads: false,
+};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -23,12 +38,70 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [canViewTeamLeads, setCanViewTeamLeads] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
+
+  const setMembershipState = (membership: MembershipState) => {
+    setOrgId(membership.orgId);
+    setRole(membership.role);
+    setCanViewTeamLeads(membership.canViewTeamLeads);
+  };
+
+  const resolveMembership = async (userId: string): Promise<MembershipState> => {
+    try {
+      const { data, error } = await supabase
+        .from('organization_members')
+        .select('org_id, role, can_view_team_leads, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .order('org_id', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (error || !data?.org_id) {
+        if (error) {
+          console.error('Error loading membership:', error);
+        }
+        return EMPTY_MEMBERSHIP;
+      }
+
+      const resolvedRole = typeof data.role === 'string' ? data.role : null;
+      return {
+        orgId: data.org_id,
+        role: resolvedRole,
+        canViewTeamLeads:
+          resolvedRole === 'owner' ||
+          resolvedRole === 'admin' ||
+          data.can_view_team_leads === true,
+      };
+    } catch (err) {
+      console.error('Membership resolution error:', err);
+      return EMPTY_MEMBERSHIP;
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
+
+    const applySessionState = async (nextSession: Session | null) => {
+      if (!mounted) return;
+
+      setSession(nextSession);
+      const nextUser = nextSession?.user ?? null;
+      setUser(nextUser);
+
+      if (!nextUser) {
+        setMembershipState(EMPTY_MEMBERSHIP);
+        return;
+      }
+
+      const membership = await resolveMembership(nextUser.id);
+      if (!mounted) return;
+      setMembershipState(membership);
+    };
 
     const initAuth = async () => {
       try {
@@ -38,18 +111,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (error) {
           console.error('Error getting session:', error);
         }
-        
-        if (mounted) {
-          setSession(initialSession);
-          setUser(initialSession?.user ?? null);
-          setLoading(false);
-          setInitialized(true);
-        }
+
+        await applySessionState(initialSession);
       } catch (err) {
         console.error('Auth initialization error:', err);
+      } finally {
         if (mounted) {
           setLoading(false);
-          setInitialized(true);
         }
       }
     };
@@ -57,14 +125,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, newSession) => {
-        if (mounted) {
-          setSession(newSession);
-          setUser(newSession?.user ?? null);
-          if (!initialized) {
+        void (async () => {
+          await applySessionState(newSession);
+          if (mounted) {
             setLoading(false);
-            setInitialized(true);
           }
-        }
+        })();
       }
     );
 
@@ -74,7 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [initialized]);
+  }, []);
 
   const signIn = async (email: string, password: string): Promise<AuthError | null> => {
     try {
@@ -112,6 +178,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     try {
+      setMembershipState(EMPTY_MEMBERSHIP);
       await supabase.auth.signOut();
     } catch (err) {
       console.error('Sign out error:', err);
@@ -120,6 +187,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const value: AuthContextType = {
     user,
+    orgId,
+    role,
+    canViewTeamLeads,
     session,
     loading,
     signIn,

@@ -33,6 +33,7 @@ import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Contact, PipelineStage, ChannelFilter, ActiveTab, Conversation } from '@/types/solarzap';
+import { useAuth } from '@/contexts/AuthContext';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -70,6 +71,7 @@ class AppointmentModalErrorBoundary extends Component<AppointmentModalErrorBound
 }
 
 export function SolarZapLayout() {
+  const { orgId } = useAuth();
   // Domain Hooks
   const {
     contacts,
@@ -344,12 +346,13 @@ export function SolarZapLayout() {
         console.log('Call feedback:', { contactId: pendingCallContact.id, feedback });
 
         // Added: Save to Lead Comments
-        if (pendingCallContact.id) {
+        if (pendingCallContact.id && orgId) {
           // Dynamic import to avoid top-level dependency issues if circular
           import('@/lib/supabase').then(async (m) => {
             const { error: commentError } = await m.supabase
               .from('comentarios_leads')
               .insert([{
+                org_id: orgId,
                 lead_id: parseInt(pendingCallContact.id),
                 texto: `[Feedback Ligação]: ${feedback}`,
                 autor: 'Vendedor'
@@ -744,6 +747,7 @@ export function SolarZapLayout() {
           <Button
             onClick={() => setIsCreateLeadOpen(true)}
             size="icon"
+            data-testid="open-create-lead-modal"
             className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
           >
             <Plus className="w-6 h-6" />
@@ -767,6 +771,7 @@ export function SolarZapLayout() {
           <Button
             onClick={() => setIsCreateLeadOpen(true)}
             size="icon"
+            data-testid="open-create-lead-modal"
             className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
           >
             <Plus className="w-6 h-6" />

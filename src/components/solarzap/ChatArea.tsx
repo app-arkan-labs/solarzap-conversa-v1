@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { Phone, Video, Search, Paperclip, Smile, Mic, Send, FileText, Image, Film, X, CheckSquare, Copy, Forward, ArrowLeft, Reply, Bot, UserCog } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
@@ -19,6 +19,7 @@ import { MessageContent } from './MessageContent';
 import { AudioDeviceModal } from './AudioDeviceModal';
 import { ImportedContact } from './ImportContactsModal';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 import { InstanceSelector } from './InstanceSelector';
 import { useUserWhatsAppInstances } from '@/hooks/useUserWhatsAppInstances';
@@ -31,8 +32,8 @@ interface ChatAreaProps {
   conversation: Conversation | null;
   conversations?: Conversation[];
   onSendMessage: (conversationId: string, content: string, instanceName?: string, replyTo?: { id: string }) => Promise<void>;
-  onSendAttachment?: (conversationId: string, file: File, fileType: string) => Promise<void>;
-  onSendAudio?: (conversationId: string, audioBlob: Blob, durationSeconds: number) => Promise<void>;
+  onSendAttachment?: (conversationId: string, file: File, fileType: string, caption?: string, instanceName?: string) => Promise<void>;
+  onSendAudio?: (conversationId: string, audioBlob: Blob, durationSeconds: number, instanceName?: string) => Promise<void>;
   onSendReaction?: (messageId: string, waMessageId: string, remoteJid: string, emoji: string, instanceName: string) => Promise<void>;
   onOpenDetails?: () => void;
   onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
@@ -42,6 +43,7 @@ interface ChatAreaProps {
   initialMessage?: string;
   onInitialMessageUsed?: () => void;
   onClientMessage?: (conversationId: string) => void;
+  isDetailsOpen?: boolean;
 }
 
 // Traduções em português para o emoji picker
@@ -71,8 +73,10 @@ export function ChatArea({
   onInitialMessageUsed,
   onClientMessage,
   onToggleLeadAi,
-  onVideoCallAction
+  onVideoCallAction,
+  isDetailsOpen
 }: ChatAreaProps) {
+  const { orgId } = useAuth();
   // Instance Selection
   const { instances, updateColor } = useUserWhatsAppInstances();
 
@@ -151,6 +155,22 @@ export function ChatArea({
 
   const [activeReactionId, setActiveReactionId] = useState<string | null>(null);
 
+  // Reverse-pagination UI state: show latest messages first, load older as user scrolls up.
+  const INITIAL_MESSAGES_BATCH = 50;
+  const OLDER_MESSAGES_BATCH = 50;
+  const LOAD_OLDER_SCROLL_THRESHOLD_PX = 120;
+  const BOTTOM_STICKY_THRESHOLD_PX = 80;
+
+  const [visibleStartIndex, setVisibleStartIndex] = useState(0);
+  const prependAdjustRef = useRef<{ pending: boolean; prevScrollTop: number; prevScrollHeight: number }>({
+    pending: false,
+    prevScrollTop: 0,
+    prevScrollHeight: 0,
+  });
+  const isAtBottomRef = useRef(true);
+  const shouldScrollToBottomRef = useRef(true);
+  const pendingScrollToMessageIdRef = useRef<string | null>(null);
+
   const [attachmentType, setAttachmentType] = useState<'document' | 'image' | 'video' | null>(null);
   const { toast } = useToast();
   const { settings: aiSettings } = useAISettings(); // Get Global Settings
@@ -195,6 +215,8 @@ export function ChatArea({
     if (!conversation || !onSendAttachment) return;
 
     const files = Array.from(e.dataTransfer.files);
+    const selectedInstance = instances.find(i => i.id === selectedInstanceId);
+    const caption = message.trim() || undefined;
 
     for (const file of files) {
       const fileType = getFileType(file);
@@ -203,8 +225,7 @@ export function ChatArea({
         description: file.name,
       });
 
-      const selectedInstance = instances.find(i => i.id === selectedInstanceId);
-      await onSendAttachment(conversation.id, file, fileType);
+      await onSendAttachment(conversation.id, file, fileType, caption, selectedInstance?.instance_name);
     }
   };
 
@@ -244,7 +265,7 @@ export function ChatArea({
   // Wrapper delay para imagens - FIX FOR SCROLL
   const handleMediaLoad = () => {
     setTimeout(() => {
-      scrollToBottom();
+      if (isAtBottomRef.current) scrollToBottom();
     }, 100);
   };
 
@@ -252,7 +273,15 @@ export function ChatArea({
   const lastMessageId = conversation?.messages?.[conversation.messages.length - 1]?.id;
 
   useEffect(() => {
-    scrollToBottom();
+    if (!lastMessageId) return;
+
+    if (shouldScrollToBottomRef.current) {
+      scrollToBottom(true);
+      shouldScrollToBottomRef.current = false;
+      return;
+    }
+
+    if (isAtBottomRef.current) scrollToBottom();
   }, [lastMessageId]); // Depend on ID, not array reference
 
   // Track previous message count
@@ -342,18 +371,36 @@ export function ChatArea({
     const file = e.target.files?.[0];
     if (!file || !conversation || !onSendAttachment) return;
 
+    const caption = message.trim() || undefined;
+    const selectedInstance = instances.find(i => i.id === selectedInstanceId);
+
     try {
       toast({
         title: "Enviando arquivo...",
         description: file.name,
       });
-      await onSendAttachment(conversation.id, file, attachmentType || 'document');
+      await onSendAttachment(conversation.id, file, attachmentType || 'document', caption, selectedInstance?.instance_name);
       e.target.value = '';
+
+      if (caption) {
+        setMessage('');
+        if (inputRef.current) {
+          inputRef.current.style.height = 'auto';
+        }
+      }
     } catch (error) {
       console.error('Error sending attachment:', error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : (error as any)?.message
+              ? String((error as any).message)
+              : "Erro desconhecido";
       toast({
         title: "Erro ao enviar arquivo",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
+        description: errorMessage,
         variant: "destructive"
       });
     }
@@ -382,7 +429,21 @@ export function ChatArea({
           : true
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (err) {
+        const e = err as { name?: string; message?: string };
+        const canFallback = deviceId && (e?.name === 'OverconstrainedError' || e?.name === 'NotFoundError');
+
+        if (!canFallback) throw err;
+
+        // If the stored/selected device is no longer available, retry with the default mic.
+        console.warn('Selected microphone is unavailable; retrying with default device.', e?.name, e?.message);
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setSelectedMicrophoneId(null);
+        localStorage.removeItem('solarzap_audio_input');
+      }
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -405,9 +466,10 @@ export function ChatArea({
         setRecordingDuration(0);
 
         if (conversation && onSendAudio && audioChunksRef.current.length > 0) {
+          const selectedInstance = instances.find(i => i.id === selectedInstanceId);
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           try {
-            await onSendAudio(conversation.id, audioBlob, finalDuration);
+            await onSendAudio(conversation.id, audioBlob, finalDuration, selectedInstance?.instance_name);
           } catch (error) {
             console.error('Error sending audio:', error);
             toast({
@@ -456,14 +518,45 @@ export function ChatArea({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const CHAT_TIME_ZONE = 'America/Sao_Paulo';
+
+  const getDayKey = (date: Date) => {
+    const d = new Date(date);
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: CHAT_TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(d);
+
+    const year = parts.find((p) => p.type === 'year')?.value ?? '';
+    const month = parts.find((p) => p.type === 'month')?.value ?? '';
+    const day = parts.find((p) => p.type === 'day')?.value ?? '';
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatDayMarkerLabel = (date: Date, dayKey: string) => {
+    const now = new Date();
+    const todayKey = getDayKey(now);
+    const yesterdayKey = getDayKey(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+
+    if (dayKey === todayKey) return 'Hoje';
+    if (dayKey === yesterdayKey) return 'Ontem';
+
+    return new Intl.DateTimeFormat('pt-BR', {
+      timeZone: CHAT_TIME_ZONE,
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(new Date(date));
+  };
+
   const formatMessageTime = (date: Date) => {
-    return new Date(date).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+    return new Date(date).toLocaleTimeString('pt-BR', { timeZone: CHAT_TIME_ZONE, hour: '2-digit', minute: '2-digit' });
   };
 
   const handleCall = () => {
     if (!conversation) return;
-    const phone = conversation.contact.phone.replace(/\D/g, '');
-    window.location.href = `tel:${phone}`;
     onCallAction?.(conversation.contact);
   };
 
@@ -594,6 +687,14 @@ export function ChatArea({
 
   const handleForwardInternally = async (teamMemberIds: string[]) => {
     if (!conversation) return;
+    if (!orgId) {
+      toast({
+        title: "Erro ao registrar",
+        description: "Organizacao nao vinculada ao usuario.",
+        variant: "destructive"
+      });
+      return;
+    }
 
     const content = conversation.messages
       .filter((msg) => selectedMessages.has(msg.id))
@@ -630,6 +731,7 @@ export function ChatArea({
       const { error } = await supabase
         .from('comentarios_leads')
         .insert({
+          org_id: orgId,
           lead_id: Number(conversation.id),
           texto: note,
           autor: 'Sistema (Encaminhamento)'
@@ -655,6 +757,46 @@ export function ChatArea({
     exitSelectionMode();
   };
 
+  // Reset pagination window when switching conversations
+  useEffect(() => {
+    if (!conversation) return;
+
+    const total = conversation.messages.length;
+    setVisibleStartIndex(Math.max(0, total - INITIAL_MESSAGES_BATCH));
+    prependAdjustRef.current.pending = false;
+    pendingScrollToMessageIdRef.current = null;
+    shouldScrollToBottomRef.current = true;
+    isAtBottomRef.current = true;
+  }, [conversation?.id]);
+
+  // Keep scroll position stable when we prepend older messages (increase rendered list at the top).
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const state = prependAdjustRef.current;
+    if (!el || !state.pending) return;
+
+    const delta = el.scrollHeight - state.prevScrollHeight;
+    el.scrollTop = state.prevScrollTop + delta;
+    state.pending = false;
+  }, [visibleStartIndex]);
+
+  // If we had to expand the window to make an older message visible, scroll to it after render.
+  useEffect(() => {
+    if (!conversation) return;
+
+    const id = pendingScrollToMessageIdRef.current;
+    if (!id) return;
+
+    const el = document.getElementById(`msg-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    pendingScrollToMessageIdRef.current = null;
+  }, [visibleStartIndex, conversation?.id]);
+
+  const allMessages = conversation?.messages || [];
+  const clampedVisibleStartIndex = Math.min(visibleStartIndex, allMessages.length);
+  const visibleMessages = allMessages.slice(clampedVisibleStartIndex);
+
   if (!conversation) {
     return (
       <div className="flex-1 flex items-center justify-center bg-muted/30">
@@ -668,6 +810,41 @@ export function ChatArea({
       </div>
     );
   }
+
+  const handleMessagesScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isAtBottomRef.current = distanceFromBottom < BOTTOM_STICKY_THRESHOLD_PX;
+
+    // Load older messages when the user reaches the top region of the scroll.
+    if (el.scrollTop < LOAD_OLDER_SCROLL_THRESHOLD_PX && visibleStartIndex > 0 && !prependAdjustRef.current.pending) {
+      prependAdjustRef.current = {
+        pending: true,
+        prevScrollTop: el.scrollTop,
+        prevScrollHeight: el.scrollHeight,
+      };
+      setVisibleStartIndex((prev) => Math.max(0, prev - OLDER_MESSAGES_BATCH));
+    }
+  };
+
+  const scrollToMessageById = (messageId: string) => {
+    const existing = document.getElementById(`msg-${messageId}`);
+    if (existing) {
+      existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    // Message exists in the full list but is outside the visible window; expand then scroll.
+    const idx = conversation.messages.findIndex((m) => m.id === messageId);
+    if (idx === -1) return;
+
+    if (idx < visibleStartIndex) {
+      pendingScrollToMessageIdRef.current = messageId;
+      setVisibleStartIndex(Math.max(0, idx - 10));
+    }
+  };
 
   const stage = PIPELINE_STAGES[conversation.contact.pipelineStage];
 
@@ -695,27 +872,29 @@ export function ChatArea({
       <div className="h-16 px-4 flex items-center justify-between border-b border-border bg-card">
         <button
           onClick={onOpenDetails}
-          className="flex items-center gap-3 flex-1 text-left hover:bg-muted/50 -ml-2 pl-2 py-2 rounded-lg transition-colors cursor-pointer"
+          className="flex items-center gap-3 min-w-0 flex-1 text-left hover:bg-muted/50 -ml-2 pl-2 py-2 rounded-lg transition-colors cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xl">
+          <div className="w-10 h-10 rounded-full bg-muted flex-shrink-0 flex items-center justify-center text-xl">
             {conversation.contact.avatar || '👤'}
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-foreground">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="font-medium text-foreground truncate min-w-[50px]">
                 {conversation.contact.name}
               </span>
-              <Badge variant="secondary" className={cn('text-[10px]', stage.color.replace('bg-', 'bg-'))}>
-                {stage.icon} {stage.title}
-              </Badge>
+              {!isDetailsOpen && (
+                <Badge variant="secondary" className={cn('text-[10px] flex-shrink truncate max-w-[120px] sm:max-w-[160px] whitespace-nowrap', stage.color.replace('bg-', 'bg-'))}>
+                  <span className="truncate">{stage.icon} {stage.title}</span>
+                </Badge>
+              )}
             </div>
             {conversation.contact.company && (
-              <span className="text-sm text-muted-foreground">{conversation.contact.company}</span>
+              <div className="text-sm text-muted-foreground truncate">{conversation.contact.company}</div>
             )}
           </div>
         </button>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-shrink-0">
           {onToggleLeadAi && (
             <div className={cn(
               "flex items-center gap-2 mr-2 px-2 py-1 bg-muted/50 rounded-lg border border-border/50",
@@ -743,7 +922,7 @@ export function ChatArea({
                   {!aiSettings?.is_active
                     ? 'Sistema Pausado'
                     : instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false
-                      ? 'Instância Pausada'
+                      ? (isDetailsOpen ? 'Pausada' : 'Instância Pausada')
                       : conversation.contact.aiEnabled !== false
                         ? 'IA Ativa'
                         : 'Pausada'}
@@ -801,12 +980,18 @@ export function ChatArea({
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto chat-bg-pattern custom-scrollbar"
+        onScroll={handleMessagesScroll}
       >
         <div className="flex flex-col space-y-1 py-2 px-4 min-h-full">
-          {conversation.messages.map((msg) => {
+          {visibleMessages.map((msg, idx) => {
             const isSent = !msg.isFromClient;
             const isAutomation = msg.isAutomation;
             const isSelected = selectedMessages.has(msg.id);
+
+            const dayKey = getDayKey(msg.timestamp);
+            const prevDayKey = idx > 0 ? getDayKey(visibleMessages[idx - 1].timestamp) : null;
+            const shouldShowDayMarker = idx === 0 || dayKey !== prevDayKey;
+            const dayLabel = shouldShowDayMarker ? formatDayMarkerLabel(msg.timestamp, dayKey) : '';
 
             let messageStyle = {};
             let instanceNameDisplay = null;
@@ -830,153 +1015,171 @@ export function ChatArea({
 
             if (isAutomation) {
               return (
-                <div key={msg.id} className="flex justify-center my-4">
-                  <div className="bg-muted/80 backdrop-blur-sm px-4 py-2 rounded-lg text-sm text-muted-foreground flex items-center gap-2">
-                    <span className="text-lg">🤖</span>
-                    {msg.content}
+                <React.Fragment key={msg.id}>
+                  {shouldShowDayMarker && (
+                    <div className="flex justify-center my-4" data-day={dayKey}>
+                      <div className="bg-muted/80 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs text-muted-foreground border border-border/50 shadow-sm">
+                        {dayLabel}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-center my-4">
+                    <div className="bg-muted/80 backdrop-blur-sm px-4 py-2 rounded-lg text-sm text-muted-foreground flex items-center gap-2">
+                      <span className="text-lg">🤖</span>
+                      {msg.content}
+                    </div>
                   </div>
-                </div>
+                </React.Fragment>
               );
             }
 
             return (
-              <div
-                id={`msg-${msg.id}`}
-                key={msg.id}
-                className={cn(
-                  'flex w-full items-start gap-2',
-                  isSent ? 'justify-end' : 'justify-start',
-                  isSelectionMode && 'cursor-pointer'
-                )}
-                onClick={isSelectionMode ? () => toggleMessageSelection(msg.id) : undefined}
-              >
-                {/* Checkbox para seleção */}
-                {isSelectionMode && (
-                  <div className={cn(
-                    'flex items-center justify-center w-5 h-5 mt-2 rounded border-2 transition-colors flex-shrink-0',
-                    isSelected
-                      ? 'bg-primary border-primary'
-                      : 'border-muted-foreground bg-transparent'
-                  )}>
-                    {isSelected && (
-                      <span className="text-primary-foreground text-xs">✓</span>
-                    )}
+              <React.Fragment key={msg.id}>
+                {shouldShowDayMarker && (
+                  <div className="flex justify-center my-4" data-day={dayKey}>
+                    <div className="bg-muted/80 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs text-muted-foreground border border-border/50 shadow-sm">
+                      {dayLabel}
+                    </div>
                   </div>
                 )}
 
                 <div
+                  id={`msg-${msg.id}`}
                   className={cn(
-                    'max-w-[65%] px-3 py-2 rounded-lg shadow-sm relative transition-colors group',
-                    isSent
-                      ? 'bg-chat-sent rounded-tr-none ml-auto'
-                      : 'bg-chat-received rounded-tl-none mr-auto',
-                    isSelected && 'ring-2 ring-primary'
+                    'flex w-full items-start gap-2',
+                    isSent ? 'justify-end' : 'justify-start',
+                    isSelectionMode && 'cursor-pointer'
                   )}
-                  style={messageStyle}
+                  onClick={isSelectionMode ? () => toggleMessageSelection(msg.id) : undefined}
                 >
-                  {/* Reply Action (Hover) */}
-                  {!isSelectionMode && (
+                  {/* Checkbox para seleção */}
+                  {isSelectionMode && (
                     <div className={cn(
-                      "absolute top-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 z-20",
-                      isSent ? "left-1" : "right-1"
+                      'flex items-center justify-center w-5 h-5 mt-2 rounded border-2 transition-colors flex-shrink-0',
+                      isSelected
+                        ? 'bg-primary border-primary'
+                        : 'border-muted-foreground bg-transparent'
                     )}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setReplyTarget(msg);
-                          inputRef.current?.focus();
-                        }}
-                        className="p-1 bg-background/50 rounded-full shadow-sm hover:bg-background top-1"
-                        title="Responder"
-                      >
-                        <Reply className="w-3 h-3" />
-                      </button>
-                      <ReactionPicker
-                        isOpen={activeReactionId === msg.id}
-                        onOpenChange={(open) => setActiveReactionId(open ? msg.id : null)}
-                        onSelect={(emoji) => {
-                          const selectedInstance = instances.find(i => i.id === selectedInstanceId);
-                          const instanceToUse = msg.instanceName || selectedInstance?.instance_name;
-
-                          if (!msg.waMessageId) {
-                            toast({ title: "Erro", description: "Mensagem sem ID do WhatsApp", variant: "destructive" });
-                            return;
-                          }
-                          if (!instanceToUse) {
-                            toast({ title: "Erro", description: "Nenhuma instância disponível", variant: "destructive" });
-                            return;
-                          }
-
-                          // Get remoteJid from contact phone
-                          const phone = conversation.contact.phoneE164 || conversation.contact.phone;
-                          const cleanPhone = phone?.replace(/\D/g, '') || '';
-                          const remoteJid = cleanPhone + '@s.whatsapp.net';
-
-                          onSendReaction?.(msg.id, msg.waMessageId, remoteJid, emoji, instanceToUse);
-                        }}
-                      />
+                      {isSelected && (
+                        <span className="text-primary-foreground text-xs">✓</span>
+                      )}
                     </div>
                   )}
 
-                  {/* Render Quoted Message */}
-                  {msg.replyTo && (
-                    <div
-                      className="mb-1 p-1 rounded bg-black/5 dark:bg-black/20 border-l-4 border-primary/50 text-xs cursor-pointer opacity-80"
-                      onClick={() => {
-                        const el = document.getElementById(`msg-${msg.replyTo?.id}`);
-                        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      }}
-                    >
-                      <div className="font-semibold text-primary">{msg.replyTo.senderName || (isSent ? 'Você' : conversation.contact.name)}</div>
-                      <div className="truncate text-muted-foreground">{msg.replyTo.type === 'text' ? msg.replyTo.content : (msg.replyTo.content || 'Mídia')}</div>
-                    </div>
-                  )}
-
-                  {/* Instance indicator for both sent and received messages */}
-                  {instanceNameDisplay && (
-                    <div className="text-[10px] font-bold opacity-70 mb-1" style={{ color: instanceColor || undefined }}>
-                      {instanceNameDisplay}
-                    </div>
-                  )}
-                  <MessageContent
-                    content={msg.content}
-                    isSent={isSent}
-                    onLoad={handleMediaLoad}
-                    attachmentUrl={msg.attachment_url}
-                    attachmentType={msg.attachment_type}
-                    attachmentReady={msg.attachment_ready}
-                    attachmentName={msg.attachment_name}
-                  />
-                  <div className="flex items-center justify-end gap-1 mt-1">
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatMessageTime(msg.timestamp)}
-                    </span>
-                  </div>
-                  {/* Reactions Badge */}
-                  {msg.reactions && msg.reactions.length > 0 && (
-                    <div className="absolute -bottom-3 right-2 flex gap-0.5 z-10">
-                      {/* Group reactions by emoji and count */}
-                      {Object.entries(
-                        msg.reactions.reduce((acc: Record<string, number>, r) => {
-                          acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-                          return acc;
-                        }, {})
-                      ).map(([emoji, count]) => (
-                        <span
-                          key={emoji}
-                          className="bg-background border border-border rounded-full px-1.5 py-0.5 text-xs shadow-md flex items-center gap-0.5"
-                          title={`${count} reação(ões)`}
+                  <div
+                    className={cn(
+                      'max-w-[65%] px-3 py-2 rounded-lg shadow-sm relative transition-colors group',
+                      isSent
+                        ? 'bg-chat-sent rounded-tr-none ml-auto'
+                        : 'bg-chat-received rounded-tl-none mr-auto',
+                      isSelected && 'ring-2 ring-primary'
+                    )}
+                    style={messageStyle}
+                  >
+                    {/* Reply Action (Hover) */}
+                    {!isSelectionMode && (
+                      <div className={cn(
+                        "absolute top-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 z-20",
+                        isSent ? "left-1" : "right-1"
+                      )}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReplyTarget(msg);
+                            inputRef.current?.focus();
+                          }}
+                          className="p-1 bg-background/50 rounded-full shadow-sm hover:bg-background top-1"
+                          title="Responder"
                         >
-                          {emoji}
-                          {count > 1 && <span className="text-[10px] text-muted-foreground">{count}</span>}
-                        </span>
-                      ))}
+                          <Reply className="w-3 h-3" />
+                        </button>
+                        <ReactionPicker
+                          isOpen={activeReactionId === msg.id}
+                          onOpenChange={(open) => setActiveReactionId(open ? msg.id : null)}
+                          onSelect={(emoji) => {
+                            const selectedInstance = instances.find(i => i.id === selectedInstanceId);
+                            const instanceToUse = msg.instanceName || selectedInstance?.instance_name;
+
+                            if (!msg.waMessageId) {
+                              toast({ title: "Erro", description: "Mensagem sem ID do WhatsApp", variant: "destructive" });
+                              return;
+                            }
+                            if (!instanceToUse) {
+                              toast({ title: "Erro", description: "Nenhuma instância disponível", variant: "destructive" });
+                              return;
+                            }
+
+                            // Get remoteJid from contact phone
+                            const phone = conversation.contact.phoneE164 || conversation.contact.phone;
+                            const cleanPhone = phone?.replace(/\D/g, '') || '';
+                            const remoteJid = cleanPhone + '@s.whatsapp.net';
+
+                            onSendReaction?.(msg.id, msg.waMessageId, remoteJid, emoji, instanceToUse);
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Render Quoted Message */}
+                    {msg.replyTo && (
+                      <div
+                        className="mb-1 p-1 rounded bg-black/5 dark:bg-black/20 border-l-4 border-primary/50 text-xs cursor-pointer opacity-80"
+                        onClick={() => {
+                          if (msg.replyTo?.id) scrollToMessageById(msg.replyTo.id);
+                        }}
+                      >
+                        <div className="font-semibold text-primary">{msg.replyTo.senderName || (isSent ? 'Você' : conversation.contact.name)}</div>
+                        <div className="truncate text-muted-foreground">{msg.replyTo.type === 'text' ? msg.replyTo.content : (msg.replyTo.content || 'Mídia')}</div>
+                      </div>
+                    )}
+
+                    {/* Instance indicator for both sent and received messages */}
+                    {instanceNameDisplay && (
+                      <div className="text-[10px] font-bold opacity-70 mb-1" style={{ color: instanceColor || undefined }}>
+                        {instanceNameDisplay}
+                      </div>
+                    )}
+                    <MessageContent
+                      content={msg.content}
+                      isSent={isSent}
+                      onLoad={handleMediaLoad}
+                      attachmentUrl={msg.attachment_url}
+                      attachmentType={msg.attachment_type}
+                      attachmentReady={msg.attachment_ready}
+                      attachmentName={msg.attachment_name}
+                    />
+                    <div className="flex items-center justify-end gap-1 mt-1">
+                      <span className="text-[10px] text-muted-foreground">
+                        {formatMessageTime(msg.timestamp)}
+                      </span>
                     </div>
-                  )}
+                    {/* Reactions Badge */}
+                    {msg.reactions && msg.reactions.length > 0 && (
+                      <div className="absolute -bottom-3 right-2 flex gap-0.5 z-10">
+                        {/* Group reactions by emoji and count */}
+                        {Object.entries(
+                          msg.reactions.reduce((acc: Record<string, number>, r) => {
+                            acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                            return acc;
+                          }, {})
+                        ).map(([emoji, count]) => (
+                          <span
+                            key={emoji}
+                            className="bg-background border border-border rounded-full px-1.5 py-0.5 text-xs shadow-md flex items-center gap-0.5"
+                            title={`${count} reação(ões)`}
+                          >
+                            {emoji}
+                            {count > 1 && <span className="text-[10px] text-muted-foreground">{count}</span>}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {/* Spacer for reactions */}
+                  {msg.reactions && msg.reactions.length > 0 && <div className="h-3" />}
                 </div>
-                {/* Spacer for reactions */}
-                {msg.reactions && msg.reactions.length > 0 && <div className="h-3" />}
-              </div>
+              </React.Fragment>
             );
           })}
           <div ref={messagesEndRef} />

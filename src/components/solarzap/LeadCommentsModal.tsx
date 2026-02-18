@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { MessageSquare, Send, Loader2, Trash2, Calendar, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { format, isWithinInterval, startOfDay, endOfDay, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -32,6 +33,7 @@ interface LeadCommentsModalProps {
 }
 
 export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCommentsModalProps) {
+  const { orgId } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -122,6 +124,14 @@ export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCom
 
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
+    if (!orgId) {
+      toast({
+        title: "Erro ao adicionar",
+        description: "Organizacao nao vinculada ao usuario.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsSending(true);
     try {
@@ -149,6 +159,7 @@ export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCom
         .from('comentarios_leads')
         .insert([
           {
+            org_id: orgId,
             lead_id: leadIdNum,
             texto: newComment,
             autor: authorName,

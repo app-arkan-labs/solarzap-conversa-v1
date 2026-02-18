@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { evolutionApi } from '@/lib/evolutionApi';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,7 +21,7 @@ export interface UserWhatsAppInstance {
 }
 
 export function useUserWhatsAppInstances() {
-  const { user } = useAuth();
+  const { user, orgId } = useAuth();
   const [instances, setInstances] = useState<UserWhatsAppInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -29,7 +29,7 @@ export function useUserWhatsAppInstances() {
 
   // Fetch instances from Supabase filtered by user_id
   const fetchInstances = useCallback(async () => {
-    if (!user) {
+    if (!user || !orgId) {
       setInstances([]);
       setLoading(false);
       return;
@@ -116,10 +116,10 @@ export function useUserWhatsAppInstances() {
 
     } catch (error) {
       console.error('Error fetching instances:', error);
-      toast.error('Erro ao carregar instâncias');
+      toast.error('Erro ao carregar instÃ¢ncias');
       setLoading(false);
     }
-  }, [user]);
+  }, [user, orgId]);
 
   // Initial fetch
   useEffect(() => {
@@ -128,17 +128,17 @@ export function useUserWhatsAppInstances() {
 
   // Real-time subscription
   useEffect(() => {
-    if (!user) return;
+    if (!user || !orgId) return;
 
     const channel = supabase
-      .channel(`whatsapp-instances-${user.id}`)
+      .channel(`whatsapp-instances-${orgId}-${user.id}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'whatsapp_instances',
-          filter: `user_id=eq.${user.id}`
+          filter: `org_id=eq.${orgId}`
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
@@ -166,17 +166,21 @@ export function useUserWhatsAppInstances() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, orgId]);
 
   // Create new instance
   const createInstance = useCallback(async (displayName: string): Promise<{ qrCode?: string; instance?: UserWhatsAppInstance } | null> => {
     if (!user) {
-      toast.error('Você precisa estar logado');
+      toast.error('Voce precisa estar logado');
+      return null;
+    }
+    if (!orgId) {
+      toast.error('Organizacao nao vinculada ao usuario');
       return null;
     }
 
     if (!displayName.trim()) {
-      toast.error('Digite um nome para a instância');
+      toast.error('Digite um nome para a instÃ¢ncia');
       return null;
     }
 
@@ -191,7 +195,7 @@ export function useUserWhatsAppInstances() {
       const response = await evolutionApi.createInstance(instanceName);
 
       if (!response.success || !response.data) {
-        throw new Error(response.error || 'Falha ao criar instância na API');
+        throw new Error(response.error || 'Falha ao criar instÃ¢ncia na API');
       }
 
       // Configure Webhook Immediately
@@ -210,6 +214,7 @@ export function useUserWhatsAppInstances() {
       const { data: newInstance, error } = await supabase
         .from('whatsapp_instances')
         .insert({
+          org_id: orgId,
           user_id: user.id,
           instance_name: instanceName,
           display_name: displayName.trim(),
@@ -223,16 +228,16 @@ export function useUserWhatsAppInstances() {
       if (error) throw error;
 
       setInstances(prev => [newInstance, ...prev]);
-      toast.success('Instância criada! Escaneie o QR Code.');
+      toast.success('InstÃ¢ncia criada! Escaneie o QR Code.');
       return { qrCode, instance: newInstance };
     } catch (error) {
       console.error('Error creating instance:', error);
-      toast.error(error instanceof Error ? error.message : 'Erro ao criar instância');
+      toast.error(error instanceof Error ? error.message : 'Erro ao criar instÃ¢ncia');
       return null;
     } finally {
       setCreating(false);
     }
-  }, [user]);
+  }, [user, orgId]);
 
   // Refresh QR Code
   const refreshQrCode = useCallback(async (instanceName: string): Promise<string | null> => {
@@ -290,7 +295,7 @@ export function useUserWhatsAppInstances() {
       }
 
       if (!response.data) {
-        throw new Error('Dados inválidos recebidos da API');
+        throw new Error('Dados invÃ¡lidos recebidos da API');
       }
 
       const state = response.data.instance.state;
@@ -324,7 +329,7 @@ export function useUserWhatsAppInstances() {
         inst.instance_name === instanceName ? { ...inst, status: newStatus } : inst
       ));
 
-      // toast.success(`Status da instância: ${newStatus === 'connected' ? 'Conectado' : 'Desconectado'}`);
+      // toast.success(`Status da instÃ¢ncia: ${newStatus === 'connected' ? 'Conectado' : 'Desconectado'}`);
     } catch (error) {
       console.error('Error checking status:', error);
       // If network error, we don't change status to avoid flapping
@@ -356,10 +361,10 @@ export function useUserWhatsAppInstances() {
       } catch (e) {
         console.error('Error deleting from API', e);
         if (!force) {
-          toast.error('Falha ao deletar na API. Tente novamente ou use "Forçar Exclusão" se disponível.');
+          toast.error('Falha ao deletar na API. Tente novamente ou use "ForÃ§ar ExclusÃ£o" se disponÃ­vel.');
           throw e; // Stop execution to prevent desync
         }
-        toast.warning('Erro na API ignorado (Forçar Exclusão).');
+        toast.warning('Erro na API ignorado (ForÃ§ar ExclusÃ£o).');
       }
 
       // 2. Soft delete from Supabase (set is_active = false)
@@ -371,7 +376,7 @@ export function useUserWhatsAppInstances() {
       if (error) throw error;
 
       setInstances(prev => prev.filter(i => i.id !== instance.id));
-      toast.success('Instância removida com sucesso');
+      toast.success('InstÃ¢ncia removida com sucesso');
       return true;
     } catch (error) {
       console.error('Error deleting instance:', error);
@@ -399,7 +404,7 @@ export function useUserWhatsAppInstances() {
         })
         .eq('instance_name', instanceName);
 
-      toast.success('Instância desconectada');
+      toast.success('InstÃ¢ncia desconectada');
 
       setInstances(prev => prev.map(inst =>
         inst.instance_name === instanceName
@@ -431,7 +436,7 @@ export function useUserWhatsAppInstances() {
       setInstances(prev => prev.map(inst =>
         inst.id === instanceId ? { ...inst, display_name: newName } : inst
       ));
-      toast.success('Instância renomeada');
+      toast.success('InstÃ¢ncia renomeada');
       return true;
     } catch (error) {
       console.error('Error renaming:', error);
@@ -525,7 +530,7 @@ export function useUserWhatsAppInstances() {
         if (error) throw error;
         if (!data || data.length === 0) {
           console.error('Update returned 0 rows. RLS mismatch?');
-          throw new Error('Falha ao atualizar: Permissão negada ou instância não encontrada.');
+          throw new Error('Falha ao atualizar: PermissÃ£o negada ou instÃ¢ncia nÃ£o encontrada.');
         }
 
         // Optimistic update
@@ -540,7 +545,7 @@ export function useUserWhatsAppInstances() {
         return true;
       } catch (error) {
         console.error('Error updating AI enabled:', error);
-        toast.error('Erro ao atualizar IA da instância');
+        toast.error('Erro ao atualizar IA da instÃ¢ncia');
         return false;
       } finally {
         setActionLoading(null);
@@ -561,11 +566,11 @@ export function useUserWhatsAppInstances() {
         setInstances(prev => prev.map(inst => ({ ...inst, ai_enabled: enabled })));
 
         await fetchInstances();
-        toast.success(enabled ? 'Todas as instâncias ativadas' : 'Todas as instâncias desativadas');
+        toast.success(enabled ? 'Todas as instÃ¢ncias ativadas' : 'Todas as instÃ¢ncias desativadas');
         return true;
       } catch (error) {
         console.error('Error toggling all instances:', error);
-        toast.error('Erro ao atualizar instâncias');
+        toast.error('Erro ao atualizar instÃ¢ncias');
         return false;
       } finally {
         setLoading(false);
@@ -609,3 +614,5 @@ export function useUserWhatsAppInstances() {
     }
   };
 }
+
+

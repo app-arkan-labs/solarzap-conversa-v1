@@ -43,17 +43,21 @@ const interacaoToMessage = (interacao: InteracaoDB): Message => {
 };
 
 export function useChat(contacts: Contact[] = []) {
-    const { user } = useAuth();
+    const { user, orgId } = useAuth();
     const queryClient = useQueryClient();
+    const interactionsQueryKey = useMemo(
+        () => ['interactions', orgId, user?.id] as const,
+        [orgId, user?.id]
+    );
 
     // Derived state: Conversations
     // We memoize this to prevent unnecessary re-renders, but ensure it updates when `contacts` changes
     // The `contacts` from useLeads SHOULD update when deleteLead invalidates the query.
 
     const messagesQuery = useQuery({
-        queryKey: ['interactions', user?.id],
+        queryKey: interactionsQueryKey,
         queryFn: async () => {
-            if (!user) return [];
+            if (!user || !orgId) return [];
             console.log('[FETCH] Fetching latest interactions...');
             // CRITICAL FIX: Fetch NEWEST 1000 messages (descending), then reverse to chronological
             // Supabase default limit is 1000 - we want the NEWEST, not oldest
@@ -69,18 +73,18 @@ export function useChat(contacts: Contact[] = []) {
             // Reverse to get chronological order (oldest->newest for display)
             return (data || []).reverse().map(interacaoToMessage);
         },
-        enabled: !!user,
+        enabled: !!user && !!orgId,
         staleTime: 5000,
         refetchInterval: 3000,
     });
 
     // --- REALTIME & POLLING LOGIC ---
     useEffect(() => {
-        if (!user) return;
+        if (!user || !orgId) return;
 
         // 1. Single Channel Global Subscription (User Scoped)
-        console.log('[RT] Setting up robust subscription for user:', user.id);
-        const channelName = `rt:interacoes:${user.id}`;
+        console.log('[RT] Setting up robust subscription for org:', orgId);
+        const channelName = `rt:interacoes:${orgId}:${user.id}`;
 
         const subscription = supabase
             .channel(channelName)
@@ -90,12 +94,12 @@ export function useChat(contacts: Contact[] = []) {
                     event: 'INSERT',
                     schema: 'public',
                     table: 'interacoes',
-                    filter: `user_id=eq.${user.id}`,
+                    filter: `org_id=eq.${orgId}`,
                 },
                 (payload) => {
                     console.log('🔴 [RT INSERT]', payload.new.id);
                     const newMessage = interacaoToMessage(payload.new as InteracaoDB);
-                    queryClient.setQueryData(['interactions', user?.id], (old: Message[] | undefined) => {
+                    queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
                         if (!old) return [newMessage];
                         if (old.some(m => m.id === newMessage.id)) return old;
                         return [...old, newMessage];
@@ -108,13 +112,13 @@ export function useChat(contacts: Contact[] = []) {
                     event: 'UPDATE',
                     schema: 'public',
                     table: 'interacoes',
-                    filter: `user_id=eq.${user.id}`,
+                    filter: `org_id=eq.${orgId}`,
                 },
                 (payload) => {
                     console.log('🟡 [RT UPDATE]', payload.new.id, payload.new.attachment_ready);
                     const updatedMessage = interacaoToMessage(payload.new as InteracaoDB);
 
-                    queryClient.setQueryData(['interactions', user?.id], (old: Message[] | undefined) => {
+                    queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
                         if (!old) return [updatedMessage];
                         return old.map(m => m.id === updatedMessage.id ? updatedMessage : m);
                     });
@@ -136,7 +140,7 @@ export function useChat(contacts: Contact[] = []) {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
                 console.log('[RT] Tab active, reconciling...');
-                queryClient.invalidateQueries({ queryKey: ['interactions'] });
+                queryClient.invalidateQueries({ queryKey: ['interactions', orgId] });
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -147,11 +151,12 @@ export function useChat(contacts: Contact[] = []) {
             clearInterval(pollingId);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [user, queryClient]);
+    }, [user, orgId, queryClient, interactionsQueryKey]);
 
     const sendMessageMutation = useMutation({
         mutationFn: async ({ conversationId, content, instanceName, replyTo }: { conversationId: string; content: string; instanceName?: string, replyTo?: { id: string } }) => {
             if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             // 1. Get Lead Phone
             const { data: lead, error: leadError } = await supabase
@@ -286,6 +291,7 @@ export function useChat(contacts: Contact[] = []) {
                 .from('interacoes')
                 .insert({
                     lead_id: isNaN(leadIdCheck) ? null : leadIdCheck,
+                    org_id: orgId,
                     user_id: user.id,
                     mensagem: content,
                     tipo: 'mensagem_vendedor',
@@ -311,7 +317,7 @@ export function useChat(contacts: Contact[] = []) {
             console.log('✅ [SEND SUCCESS] Message sent, updating cache immediately:', newMessage?.id);
             // Optimistic update: Add message to cache immediately
             if (newMessage) {
-                queryClient.setQueryData(['interactions', user?.id], (old: Message[] | undefined) => {
+                queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
                     if (!old) return [newMessage];
                     // Avoid duplicates
                     if (old.some(m => m.id === newMessage.id)) return old;
@@ -357,7 +363,7 @@ export function useChat(contacts: Contact[] = []) {
                         } else {
                             console.log('[HumanTakeover] AI Paused successfully');
                             // Strict invalidation to reflect UI toggle
-                            queryClient.invalidateQueries({ queryKey: ['leads'] });
+                            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
                             queryClient.invalidateQueries({ queryKey: ['lead', String(leadId)] });
                         }
                     } else {
@@ -380,6 +386,7 @@ export function useChat(contacts: Contact[] = []) {
     const sendAttachmentMutation = useMutation({
         mutationFn: async ({ conversationId, file, fileType, caption, instanceName }: { conversationId: string, file: File, fileType: string, caption?: string, instanceName?: string }) => {
             if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             const trimmedCaption = (caption || '').trim();
 
@@ -613,6 +620,7 @@ export function useChat(contacts: Contact[] = []) {
                 .from('interacoes')
                 .insert({
                     lead_id: Number(conversationId),
+                    org_id: orgId,
                     user_id: user.id,
                     mensagem: messageContent,
                     tipo: tipointeracao,
@@ -637,7 +645,7 @@ export function useChat(contacts: Contact[] = []) {
         onSuccess: async (newMessage) => {
             console.log('✅ [ATTACHMENT SUCCESS] Attachment sent:', newMessage?.id);
             if (newMessage) {
-                queryClient.setQueryData(['interactions', user?.id], (old: Message[] | undefined) => {
+                queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
                     if (!old) return [newMessage];
                     if (old.some(m => m.id === newMessage.id)) return old;
                     return [...old, newMessage];
@@ -681,7 +689,7 @@ export function useChat(contacts: Contact[] = []) {
                             });
                         } else {
                             console.log('[HumanTakeover] AI Paused successfully');
-                            queryClient.invalidateQueries({ queryKey: ['leads'] });
+                            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
                             queryClient.invalidateQueries({ queryKey: ['lead', String(leadId)] });
                         }
                     }
@@ -701,6 +709,7 @@ export function useChat(contacts: Contact[] = []) {
     const sendAudioMutation = useMutation({
         mutationFn: async ({ conversationId, audioBlob, duration, instanceName }: { conversationId: string, audioBlob: Blob, duration: number, instanceName?: string }) => {
             if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             // 1. Get Lead Phone
             const { data: lead, error: leadError } = await supabase
@@ -825,6 +834,7 @@ export function useChat(contacts: Contact[] = []) {
             const messageContent = `🎤 Áudio (${duration}s)\n${publicUrl}`;
             const { data, error } = await supabase.from('interacoes').insert({
                 lead_id: Number(conversationId),
+                org_id: orgId,
                 user_id: user.id,
                 mensagem: messageContent,
                 tipo: 'audio_vendedor',
@@ -850,7 +860,7 @@ export function useChat(contacts: Contact[] = []) {
         onSuccess: async (newMessage) => {
             console.log('✅ [AUDIO SUCCESS] Audio sent:', newMessage?.id);
             if (newMessage) {
-                queryClient.setQueryData(['interactions', user?.id], (old: Message[] | undefined) => {
+                queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
                     if (!old) return [newMessage];
                     if (old.some(m => m.id === newMessage.id)) return old;
                     return [...old, newMessage];
@@ -892,7 +902,7 @@ export function useChat(contacts: Contact[] = []) {
                             });
                         } else {
                             console.log('[HumanTakeover] AI Paused successfully (Audio)');
-                            queryClient.invalidateQueries({ queryKey: ['leads'] });
+                            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
                             queryClient.invalidateQueries({ queryKey: ['lead', String(leadId)] });
                         }
                     }
@@ -964,6 +974,7 @@ export function useChat(contacts: Contact[] = []) {
             instanceName: string;
         }) => {
             if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             console.log(`[REACTION] Sending ${emoji} to message ${waMessageId} via ${instanceName}`);
 
@@ -1024,7 +1035,7 @@ export function useChat(contacts: Contact[] = []) {
         onSuccess: ({ messageId, emoji }) => {
             console.log(`[REACTION] Successfully sent ${emoji} to message ${messageId}`);
             // Invalidate to refresh reactions
-            queryClient.invalidateQueries({ queryKey: ['interactions', user?.id] });
+            queryClient.invalidateQueries({ queryKey: interactionsQueryKey });
         }
     });
 
@@ -1038,3 +1049,5 @@ export function useChat(contacts: Contact[] = []) {
         sendReaction: sendReactionMutation.mutateAsync,
     };
 }
+
+

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -171,74 +171,48 @@ export interface LeadPatch {
 }
 
 export function useLeads() {
-    const { user } = useAuth();
+    const { user, orgId, canViewTeamLeads } = useAuth();
     const queryClient = useQueryClient();
     const [showTeamLeads, setShowTeamLeads] = useState(false);
-    const [canViewTeam, setCanViewTeam] = useState(false);
+    const canViewTeam = canViewTeamLeads;
+    const leadsQueryKey = useMemo(
+        () => ['leads', orgId, user?.id, showTeamLeads, canViewTeam] as const,
+        [orgId, user?.id, showTeamLeads, canViewTeam]
+    );
 
     useEffect(() => {
-        let cancelled = false;
-        const loadVisibilityPermission = async () => {
-            if (!user) {
-                setCanViewTeam(false);
-                return;
-            }
-
-            try {
-                const { data, error } = await supabase
-                    .from('organization_members')
-                    .select('role, can_view_team_leads')
-                    .eq('user_id', user.id);
-
-                if (error) throw error;
-
-                const canView = (data || []).some((m: any) =>
-                    m?.role === 'owner' || m?.role === 'admin' || m?.can_view_team_leads === true
-                );
-
-                if (!cancelled) {
-                    setCanViewTeam(canView);
-                    if (!canView) setShowTeamLeads(false);
-                }
-            } catch {
-                if (!cancelled) {
-                    setCanViewTeam(false);
-                    setShowTeamLeads(false);
-                }
-            }
-        };
-
-        loadVisibilityPermission();
-        return () => { cancelled = true; };
-    }, [user]);
+        if (!canViewTeam) {
+            setShowTeamLeads(false);
+        }
+    }, [canViewTeam]);
 
     // Real-time subscription for leads
     useEffect(() => {
-        if (!user) return;
+        if (!user || !orgId) return;
 
         const subscription = supabase
-            .channel('leads-realtime')
+            .channel(`leads-realtime-${orgId}`)
             .on(
                 'postgres_changes',
                 {
                     event: '*',
                     schema: 'public',
                     table: 'leads',
-                    filter: `user_id=eq.${user.id}`,
+                    filter: `org_id=eq.${orgId}`,
                 },
                 (payload) => {
                     if (payload.eventType === 'INSERT') {
                         const newLead = payload.new;
                         const newContact = leadToContact(newLead);
                         toast.success(`Novo Lead recebido: ${newContact.name}`);
-                        queryClient.setQueryData(['leads', user.id, showTeamLeads, canViewTeam], (oldData: Contact[] | undefined) => {
+                        queryClient.setQueryData(leadsQueryKey, (oldData: Contact[] | undefined) => {
                             if (!oldData) return [newContact];
                             if (oldData.some(c => c.id === newContact.id)) return oldData;
                             return [newContact, ...oldData];
                         });
                     } else if (payload.eventType === 'DELETE') {
                         const deletedId = String(payload.old.id);
-                        queryClient.setQueryData(['leads', user.id, showTeamLeads, canViewTeam], (oldData: Contact[] | undefined) => {
+                        queryClient.setQueryData(leadsQueryKey, (oldData: Contact[] | undefined) => {
                             if (!oldData) return [];
                             return oldData.filter(c => c.id !== deletedId);
                         });
@@ -248,7 +222,7 @@ export function useLeads() {
                         // We could optimistically update here, but for now we just invalidate
                         // toast.info('Leads atualizados');
                     }
-                    queryClient.invalidateQueries({ queryKey: ['leads'] });
+                    queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
                 }
             )
             .subscribe();
@@ -256,12 +230,12 @@ export function useLeads() {
         return () => {
             subscription.unsubscribe();
         };
-    }, [user, queryClient, showTeamLeads, canViewTeam]);
+    }, [user, orgId, queryClient, leadsQueryKey]);
 
     const leadsQuery = useQuery({
-        queryKey: ['leads', user?.id, showTeamLeads, canViewTeam],
+        queryKey: leadsQueryKey,
         queryFn: async () => {
-            if (!user) return [];
+            if (!user || !orgId) return [];
             const query = supabase
                 .from('leads')
                 .select('*')
@@ -286,7 +260,7 @@ export function useLeads() {
             }
             return contacts.filter((c) => (c.assignedToUserId || '') === user.id);
         },
-        enabled: !!user,
+        enabled: !!user && !!orgId,
         refetchInterval: 5000,
     });
 
@@ -348,8 +322,10 @@ export function useLeads() {
     const createLeadMutation = useMutation({
         mutationFn: async (data: LeadPatch) => {
             if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             const basePayload = {
+                org_id: orgId,
                 user_id: user.id,
                 assigned_to_user_id: user.id,
                 nome: data.nome,
@@ -376,13 +352,14 @@ export function useLeads() {
             return leadToContact(newLead);
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['leads'] });
+            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
         },
     });
 
     const updateLeadMutation = useMutation({
         mutationFn: async ({ contactId, data }: { contactId: string; data: LeadPatch }) => {
             if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             const basePayload: any = {};
             if (data.nome !== undefined) {
@@ -411,13 +388,14 @@ export function useLeads() {
             return { contactId, ...data };
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['leads'] });
+            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
         },
     });
 
     const importContactsMutation = useMutation({
         mutationFn: async (contacts: any[]) => {
             if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
             // Simplified import handling (batch imports handled individually for safety or via simple batch if columns trusted)
             // For now, retaining existing batch logic but adding type_cliente if it exists in DB
 
@@ -433,6 +411,7 @@ export function useLeads() {
                 // We try to include tipo_cliente
                 const { error } = await supabase.from('leads').insert(
                     chunk.map(c => ({
+                        org_id: orgId,
                         user_id: user.id,
                         assigned_to_user_id: user.id,
                         nome: c.nome,
@@ -459,13 +438,14 @@ export function useLeads() {
             return Promise.resolve();
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['leads'] });
+            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
         }
     });
 
     const deleteLeadMutation = useMutation({
         mutationFn: async (leadId: string) => {
             if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
             const { data: lead } = await supabase.from('leads').select('phone_e164, instance_name').eq('id', Number(leadId)).single();
 
             if (lead?.phone_e164) {
@@ -486,10 +466,10 @@ export function useLeads() {
         },
         onSuccess: (deletedId) => {
             toast.success('Contato excluído permanentemente');
-            queryClient.setQueriesData({ queryKey: ['leads'] }, (old: Contact[] | undefined) =>
+            queryClient.setQueriesData({ queryKey: ['leads', orgId] }, (old: Contact[] | undefined) =>
                 Array.isArray(old) ? old.filter(c => c.id !== deletedId) : old
             );
-            queryClient.invalidateQueries({ queryKey: ['leads'] });
+            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
         },
         onError: (error) => {
             console.error('Error deleting lead:', error);
@@ -500,6 +480,7 @@ export function useLeads() {
     const toggleLeadAiMutation = useMutation({
         mutationFn: async ({ leadId, enabled, reason }: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => {
             if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
             const updatePayload: any = {
                 ai_enabled: enabled,
                 ai_paused_reason: enabled ? null : (reason || 'manual'),
@@ -510,7 +491,7 @@ export function useLeads() {
             return { leadId, enabled };
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['leads'] });
+            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
         }
     });
 
@@ -528,3 +509,5 @@ export function useLeads() {
         toggleLeadAi: toggleLeadAiMutation.mutateAsync,
     };
 }
+
+

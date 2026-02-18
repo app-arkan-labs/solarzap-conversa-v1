@@ -1,5 +1,5 @@
 import React, { createContext, useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
-import { PipelineStage } from '@/types/solarzap';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface AutomationSettings {
     // Drag & Drop Automations
@@ -53,7 +53,7 @@ export const DEFAULT_SETTINGS: AutomationSettings = {
     askForReferralMessage: 'Olá! Gostaria de pedir uma indicação. Você conhece alguém que também gostaria de economizar com energia solar?',
 };
 
-const STORAGE_KEY = 'solarzap_automation_settings';
+const LEGACY_STORAGE_KEY = 'solarzap_automation_settings';
 
 interface AutomationContextType {
     activeSettings: AutomationSettings; // The committed/saved settings used by the app logic
@@ -69,22 +69,41 @@ interface AutomationContextType {
 export const AutomationContext = createContext<AutomationContextType | undefined>(undefined);
 
 export function AutomationProvider({ children }: { children: ReactNode }) {
-    // Load saved settings
-    const [savedSettings, setSavedSettings] = useState<AutomationSettings>(() => {
+    const { orgId } = useAuth();
+    const storageKey = orgId ? `solarzap_automation_settings_${orgId}` : LEGACY_STORAGE_KEY;
+
+    const [savedSettings, setSavedSettings] = useState<AutomationSettings>(DEFAULT_SETTINGS);
+
+    // Current editable settings (before saving)
+    const [pendingSettings, setPendingSettings] = useState<AutomationSettings>(DEFAULT_SETTINGS);
+
+    useEffect(() => {
         try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            console.log('AutomationProvider: loading from localStorage', stored);
-            if (stored) {
-                return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+            const scopedStored = localStorage.getItem(storageKey);
+            if (scopedStored) {
+                const parsed = { ...DEFAULT_SETTINGS, ...JSON.parse(scopedStored) };
+                setSavedSettings(parsed);
+                setPendingSettings(parsed);
+                return;
+            }
+
+            if (orgId) {
+                const legacyStored = localStorage.getItem(LEGACY_STORAGE_KEY);
+                if (legacyStored) {
+                    localStorage.setItem(storageKey, legacyStored);
+                    const parsed = { ...DEFAULT_SETTINGS, ...JSON.parse(legacyStored) };
+                    setSavedSettings(parsed);
+                    setPendingSettings(parsed);
+                    return;
+                }
             }
         } catch (e) {
             console.error('Error loading automation settings:', e);
         }
-        return DEFAULT_SETTINGS;
-    });
 
-    // Current editable settings (before saving)
-    const [pendingSettings, setPendingSettings] = useState<AutomationSettings>(savedSettings);
+        setSavedSettings(DEFAULT_SETTINGS);
+        setPendingSettings(DEFAULT_SETTINGS);
+    }, [orgId, storageKey]);
 
     // Track if there are unsaved changes
     const hasChanges = useMemo(() => {
@@ -104,12 +123,12 @@ export function AutomationProvider({ children }: { children: ReactNode }) {
     const saveChanges = useCallback(() => {
         try {
             console.log('AutomationProvider: saving changes', pendingSettings);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(pendingSettings));
+            localStorage.setItem(storageKey, JSON.stringify(pendingSettings));
             setSavedSettings(pendingSettings);
         } catch (e) {
             console.error('Error saving automation settings:', e);
         }
-    }, [pendingSettings]);
+    }, [pendingSettings, storageKey]);
 
 
     // Cancel pending changes (revert to saved)

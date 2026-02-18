@@ -48,6 +48,7 @@ const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'comercial', label: 'Comercial' },
   { value: 'industrial', label: 'Industrial' },
   { value: 'rural', label: 'Rural' },
+  { value: 'usina', label: 'Usina Solar' },
 ];
 
 const initialFormData: CreateLeadData = {
@@ -339,7 +340,7 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
             <Button type="button" variant="outline" onClick={handleClose} disabled={isLoading}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={isLoading || !formData.nome || !formData.telefone} className="gap-2">
+            <Button type="submit" data-testid="submit-create-lead" disabled={isLoading || !formData.nome || !formData.telefone} className="gap-2">
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
