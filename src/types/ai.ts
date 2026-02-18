@@ -1,6 +1,6 @@
 export interface AISettings {
     id: number;
-    company_id?: string;
+    org_id?: string;
     is_active: boolean; // Master switch
     personality_tone: string; // Legacy field, might be used or replaced by assistant_identity_name
     assistant_identity_name?: string;
@@ -16,7 +16,7 @@ export interface AISettings {
 
 export interface AIStageConfig {
     id: number;
-    company_id?: string;
+    org_id?: string;
     status_pipeline: string;
     is_active: boolean;
     agent_goal: string;

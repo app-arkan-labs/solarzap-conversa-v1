@@ -1135,8 +1135,8 @@ Deno.serve(async (req) => {
         let kbBlock = '';
 
         // INCREMENT 5A: Unbreakable Org ID Logic (Admin Lookup)
-        let kbOrgId = settings.company_id;
-        let kbOrgIdSource = settings.company_id ? 'settings.company_id' : 'none';
+        let kbOrgId = settings.org_id;
+        let kbOrgIdSource = settings.org_id ? 'settings.org_id' : 'none';
 
         if (!kbOrgId && lead.user_id) {
             try {
@@ -1148,9 +1148,9 @@ Deno.serve(async (req) => {
                     kbOrgIdSource = 'auth.user_metadata.org_id';
 
                     // HEALING: Optimistically update settings
-                    console.log(`🔧 [${runId}] Healing: Auto-updating settings.company_id to ${kbOrgId}`);
+                    console.log(`🔧 [${runId}] Healing: Auto-updating settings.org_id to ${kbOrgId}`);
                     // Non-awaiting promise to not block
-                    supabase.from('ai_settings').update({ company_id: kbOrgId }).eq('id', settings.id).then();
+                    supabase.from('ai_settings').update({ org_id: kbOrgId }).eq('id', settings.id).then();
                 } else {
                     // Final fallback: use user_id itself (common for single-user orgs)
                     kbOrgId = lead.user_id;
@@ -2110,7 +2110,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
         // 11. LOG RUN (Include instance info + input_snapshot)
         try {
             await supabase.from('ai_agent_runs').insert({
-                company_id: settings.company_id,
+                org_id: settings.org_id,
                 lead_id: leadId,
                 status: 'success',
                 llm_output: aiRes,

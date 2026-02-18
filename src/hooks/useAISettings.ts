@@ -5,7 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 
 const STAGE_COL = 'status_pipeline';
 const LEGACY_COL = 'pipeline' + '_stage';
-const STAGE_CONFIG_BASE_FIELDS = 'id, company_id, is_active, agent_goal, default_prompt, prompt_override, updated_at';
+const STAGE_CONFIG_BASE_FIELDS = 'id, org_id, is_active, agent_goal, default_prompt, prompt_override, updated_at';
 const STAGE_SCHEMA_ERRORS = new Set(['PGRST204', '42703']);
 
 const isStageSchemaMismatch = (error: any): boolean => {
@@ -29,7 +29,7 @@ export function useAISettings() {
     const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
 
-    const didInitCompanyId = useRef(false);
+    const didInitOrgId = useRef(false);
 
     const fetchSettings = useCallback(async () => {
         setIsLoading(true);
@@ -51,22 +51,22 @@ export function useAISettings() {
             } else {
                 setSettings(settingsData);
 
-                // Auto-fix company_id if missing (Hardening RAG)
-                if (!settingsData.company_id && !didInitCompanyId.current) {
-                    didInitCompanyId.current = true;
+                // Auto-fix org_id if missing (Hardening RAG)
+                if (!settingsData.org_id && !didInitOrgId.current) {
+                    didInitOrgId.current = true;
                     const { data: { user } } = await supabase.auth.getUser();
                     const orgId = user?.user_metadata?.org_id || user?.id;
 
                     if (orgId) {
-                        console.log('🔧 Auto-fixing missing company_id in settings to:', orgId);
+                        console.log('🔧 Auto-fixing missing org_id in settings to:', orgId);
                         const { error: updateErr } = await supabase
                             .from('ai_settings')
-                            .update({ company_id: orgId })
+                            .update({ org_id: orgId })
                             .eq('id', settingsData.id);
 
                         if (!updateErr) {
                             // Optimistic update locally to avoid reload loop
-                            setSettings({ ...settingsData, company_id: orgId });
+                            setSettings({ ...settingsData, org_id: orgId });
                         }
                     }
                 }
