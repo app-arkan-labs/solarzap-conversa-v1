@@ -10,6 +10,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 export interface LeadDB {
   id: number;                    // int8, não string!
   user_id: string;               // UUID do usuário (multi-tenancy)
+  assigned_to_user_id?: string | null;
   nome: string | null;
   empresa: string | null;
   telefone: string | null;
@@ -75,6 +76,35 @@ export interface PropostaDB {
   economia_mensal: number | null;
   payback_anos: number | null;
   status: string;                // default: 'Rascunho'
+  created_at: string;
+}
+
+export interface ProposalVersionDB {
+  id: string;
+  proposta_id: number;
+  lead_id: number;
+  user_id: string;
+  org_id?: string | null;
+  version_no: number;
+  status: 'draft' | 'ready' | 'sent' | 'accepted' | 'rejected' | 'archived';
+  segment: 'residencial' | 'empresarial' | 'agronegocio' | 'usina' | 'indefinido';
+  source: 'manual' | 'ai' | 'hybrid';
+  premium_payload: Record<string, unknown>;
+  context_snapshot: Record<string, unknown>;
+  generated_prompt?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProposalDeliveryEventDB {
+  id: string;
+  proposal_version_id: string;
+  proposta_id: number;
+  lead_id: number;
+  user_id: string;
+  channel: 'crm' | 'whatsapp' | 'email' | 'pdf_download' | 'web';
+  event_type: 'generated' | 'downloaded' | 'shared' | 'opened' | 'viewed' | 'signed' | 'accepted' | 'rejected' | 'expired';
+  metadata: Record<string, unknown>;
   created_at: string;
 }
 

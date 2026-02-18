@@ -1,9 +1,10 @@
-import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText } from 'lucide-react';
+import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Conversation, CHANNEL_INFO, PIPELINE_STAGES, PipelineStage, Contact, ChannelFilter } from '@/types/solarzap';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useState } from 'react';
@@ -47,6 +48,9 @@ interface ConversationListProps {
   onStageFilterChange: (stage: PipelineStage | 'todos') => void;
   onImportContacts?: (contacts: ImportedContact[]) => Promise<unknown>;
   onDeleteLead?: (contactId: string) => Promise<void>;
+  canViewTeam?: boolean;
+  showTeamLeads?: boolean;
+  onToggleTeamLeads?: (show: boolean) => void;
 }
 
 const channelFilters: { id: ChannelFilter; label: string }[] = [
@@ -81,6 +85,9 @@ export function ConversationList({
 
   onImportContacts,
   onDeleteLead,
+  canViewTeam = false,
+  showTeamLeads = false,
+  onToggleTeamLeads,
 }: ConversationListProps) {
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
   const [commentsContact, setCommentsContact] = useState<{ id: string; name: string } | null>(null);
@@ -301,6 +308,17 @@ export function ConversationList({
         </div>
       )}
 
+      {canViewTeam && onToggleTeamLeads && (
+        <div className="px-3 py-2 border-b border-border flex items-center justify-between bg-muted/20">
+          <span className="text-xs font-medium text-muted-foreground">Meus ↔ Empresa</span>
+          <Switch
+            data-testid="toggle-team-leads"
+            checked={showTeamLeads}
+            onCheckedChange={onToggleTeamLeads}
+          />
+        </div>
+      )}
+
       {/* Channel Filters */}
       <div className="px-3 py-2 flex gap-2 overflow-x-auto border-b border-border">
         {channelFilters.map((filter) => (
@@ -329,10 +347,12 @@ export function ConversationList({
           conversations.map((conversation) => {
             const stage = PIPELINE_STAGES[conversation.contact.pipelineStage];
             const isSelected = selectedId === conversation.id;
+            const isAiActive = conversation.contact.aiEnabled !== false;
 
             return (
               <button
                 key={conversation.id}
+                data-testid="conversation-row"
                 onClick={() => onSelect(conversation)}
                 className={cn(
                   'w-full p-3 flex items-start gap-3 hover:bg-muted/50 transition-colors border-b border-border/50 group',
@@ -341,8 +361,12 @@ export function ConversationList({
               >
                 {/* Avatar */}
                 <div className="relative flex-shrink-0">
-                  <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-2xl">
-                    {conversation.contact.avatar || '👤'}
+                  <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center" title={isAiActive ? 'IA Ativa' : undefined}>
+                    {isAiActive ? (
+                      <Bot className="w-6 h-6 text-green-600" />
+                    ) : (
+                      <span className="text-2xl">{conversation.contact.avatar || '👤'}</span>
+                    )}
                   </div>
                   {conversation.isUrgent && (
                     <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-danger border-2 border-card" />

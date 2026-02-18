@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { supabase, LeadDB } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Contact, Channel, PipelineStage, ClientType } from '@/types/solarzap';
 
@@ -25,7 +25,9 @@ const parseLeadMeta = (obs: string | null | undefined): ExtendedLeadFields => {
         const parts = obs.split(META_TAG);
         if (parts.length < 2) return {};
         // The JSON is strictly after the tag
-        const jsonStr = parts[1].trim();
+        let jsonStr = parts[1].trim();
+        // Backwards compatibility: some payloads include a leading ':' (e.g. '[[LEAD_META_JSON]]:{...}').
+        if (jsonStr.startsWith(':')) jsonStr = jsonStr.slice(1).trim();
         return JSON.parse(jsonStr) || {};
     } catch (e) {
         // console.warn('Failed to parse LEAD_META_JSON', e);
@@ -141,6 +143,7 @@ export const leadToContact = (lead: any): Contact => {
         stageChangedAt: lead.stage_changed_at ? new Date(lead.stage_changed_at) : new Date(lead.created_at),
         phoneE164: lead.phone_e164 || undefined,
         instanceName: lead.instance_name || undefined,
+        assignedToUserId: lead.assigned_to_user_id || null,
 
         notes: visibleNotes,
 
@@ -170,6 +173,44 @@ export interface LeadPatch {
 export function useLeads() {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const [showTeamLeads, setShowTeamLeads] = useState(false);
+    const [canViewTeam, setCanViewTeam] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadVisibilityPermission = async () => {
+            if (!user) {
+                setCanViewTeam(false);
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('organization_members')
+                    .select('role, can_view_team_leads')
+                    .eq('user_id', user.id);
+
+                if (error) throw error;
+
+                const canView = (data || []).some((m: any) =>
+                    m?.role === 'owner' || m?.role === 'admin' || m?.can_view_team_leads === true
+                );
+
+                if (!cancelled) {
+                    setCanViewTeam(canView);
+                    if (!canView) setShowTeamLeads(false);
+                }
+            } catch {
+                if (!cancelled) {
+                    setCanViewTeam(false);
+                    setShowTeamLeads(false);
+                }
+            }
+        };
+
+        loadVisibilityPermission();
+        return () => { cancelled = true; };
+    }, [user]);
 
     // Real-time subscription for leads
     useEffect(() => {
@@ -190,14 +231,14 @@ export function useLeads() {
                         const newLead = payload.new;
                         const newContact = leadToContact(newLead);
                         toast.success(`Novo Lead recebido: ${newContact.name}`);
-                        queryClient.setQueryData(['leads', user.id], (oldData: Contact[] | undefined) => {
+                        queryClient.setQueryData(['leads', user.id, showTeamLeads, canViewTeam], (oldData: Contact[] | undefined) => {
                             if (!oldData) return [newContact];
                             if (oldData.some(c => c.id === newContact.id)) return oldData;
                             return [newContact, ...oldData];
                         });
                     } else if (payload.eventType === 'DELETE') {
                         const deletedId = String(payload.old.id);
-                        queryClient.setQueryData(['leads', user.id], (oldData: Contact[] | undefined) => {
+                        queryClient.setQueryData(['leads', user.id, showTeamLeads, canViewTeam], (oldData: Contact[] | undefined) => {
                             if (!oldData) return [];
                             return oldData.filter(c => c.id !== deletedId);
                         });
@@ -215,20 +256,35 @@ export function useLeads() {
         return () => {
             subscription.unsubscribe();
         };
-    }, [user, queryClient]);
+    }, [user, queryClient, showTeamLeads, canViewTeam]);
 
     const leadsQuery = useQuery({
-        queryKey: ['leads', user?.id],
+        queryKey: ['leads', user?.id, showTeamLeads, canViewTeam],
         queryFn: async () => {
             if (!user) return [];
-            const { data, error } = await supabase
+            const query = supabase
                 .from('leads')
                 .select('*')
-                .eq('user_id', user.id)
                 .order('created_at', { ascending: false });
 
+            let { data, error } = await query;
+            if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+                // Defensive fallback in case schema cache lags behind migration.
+                const fallback = await supabase
+                    .from('leads')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false });
+                data = fallback.data;
+                error = fallback.error;
+            }
+
             if (error) throw error;
-            return (data || []).map(leadToContact);
+            const contacts = (data || []).map(leadToContact);
+            if (showTeamLeads && canViewTeam) {
+                return contacts;
+            }
+            return contacts.filter((c) => (c.assignedToUserId || '') === user.id);
         },
         enabled: !!user,
         refetchInterval: 5000,
@@ -264,8 +320,14 @@ export function useLeads() {
 
         const { data, error } = await query;
 
-        // Check for specific Postgres error code 42703 (undefined_column)
-        if (error && error.code === '42703') {
+        const isMissingColumn =
+            // Postgres: undefined_column
+            error && (error.code === '42703' ||
+                // PostgREST: schema cache mismatch ("Could not find the 'xyz' column...")
+                error.code === 'PGRST204' ||
+                /schema cache/i.test(error.message || ''));
+
+        if (isMissingColumn) {
             console.warn('DB Column missing. Switching to Meta JSON storage. Error:', error.message);
             dbSupportsExtendedColumns = false; // Cache failure for session
 
@@ -289,6 +351,7 @@ export function useLeads() {
 
             const basePayload = {
                 user_id: user.id,
+                assigned_to_user_id: user.id,
                 nome: data.nome,
                 telefone: data.telefone,
                 email: data.email || null,
@@ -371,6 +434,7 @@ export function useLeads() {
                 const { error } = await supabase.from('leads').insert(
                     chunk.map(c => ({
                         user_id: user.id,
+                        assigned_to_user_id: user.id,
                         nome: c.nome,
                         telefone: c.telefone,
                         email: c.email || null,
@@ -422,8 +486,8 @@ export function useLeads() {
         },
         onSuccess: (deletedId) => {
             toast.success('Contato excluído permanentemente');
-            queryClient.setQueryData(['leads', user?.id], (old: Contact[] | undefined) =>
-                old ? old.filter(c => c.id !== deletedId) : []
+            queryClient.setQueriesData({ queryKey: ['leads'] }, (old: Contact[] | undefined) =>
+                Array.isArray(old) ? old.filter(c => c.id !== deletedId) : old
             );
             queryClient.invalidateQueries({ queryKey: ['leads'] });
         },
@@ -454,6 +518,9 @@ export function useLeads() {
         contacts: leadsQuery.data || [],
         isLoading: leadsQuery.isLoading && !!user,
         isError: leadsQuery.isError,
+        showTeamLeads,
+        setShowTeamLeads,
+        canViewTeam,
         createLead: createLeadMutation.mutateAsync,
         updateLead: updateLeadMutation.mutateAsync,
         deleteLead: deleteLeadMutation.mutateAsync,

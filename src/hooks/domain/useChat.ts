@@ -3,8 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '@/hooks/use-toast';
 import { supabase, InteracaoDB } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { Conversation, Message } from '@/types/solarzap';
-import { useLeads } from './useLeads';
+import { Contact, Conversation, Message } from '@/types/solarzap';
 
 const interacaoToMessage = (interacao: InteracaoDB): Message => {
     const vendedorTypes = [
@@ -43,11 +42,9 @@ const interacaoToMessage = (interacao: InteracaoDB): Message => {
     };
 };
 
-export function useChat() {
+export function useChat(contacts: Contact[] = []) {
     const { user } = useAuth();
     const queryClient = useQueryClient();
-    // Leverage cached leads - verify this is actually updating
-    const { contacts } = useLeads();
 
     // Derived state: Conversations
     // We memoize this to prevent unnecessary re-renders, but ensure it updates when `contacts` changes
@@ -381,61 +378,158 @@ export function useChat() {
     });
 
     const sendAttachmentMutation = useMutation({
-        mutationFn: async ({ conversationId, file, fileType }: { conversationId: string, file: File, fileType: string }) => {
+        mutationFn: async ({ conversationId, file, fileType, caption, instanceName }: { conversationId: string, file: File, fileType: string, caption?: string, instanceName?: string }) => {
             if (!user) throw new Error('User not authenticated');
+
+            const trimmedCaption = (caption || '').trim();
 
             // 1. Get Lead Phone & Instance (Refreshed Logic)
             const { data: lead, error: leadError } = await supabase
                 .from('leads')
-                .select('telefone')
+                .select('telefone, phone_e164')
                 .eq('id', conversationId)
                 .single();
 
             if (leadError || !lead) throw new Error('Lead not found');
 
-            const { data: instance, error: instanceError } = await supabase
-                .from('whatsapp_instances')
-                .select('instance_name')
-                .eq('user_id', user.id)
-                .eq('status', 'connected')
-                .limit(1)
-                .maybeSingle();
+            let instance: { instance_name: string } | null = null;
+            if (instanceName) {
+                const { data: specificInstance, error: specificErr } = await supabase
+                    .from('whatsapp_instances')
+                    .select('instance_name')
+                    .eq('user_id', user.id)
+                    .eq('instance_name', instanceName)
+                    .eq('status', 'connected')
+                    .eq('is_active', true)
+                    .single();
 
-            if (instanceError) throw instanceError;
-            if (!instance) throw new Error('Nenhuma instância do WhatsApp conectada. Conecte-se primeiro.');
-
-            // 2. Call Storage Intent (Server-Side Logic)
-            console.log('Requesting Storage Intent for:', file.name, file.size);
-            const { data: intentData, error: intentError } = await supabase.functions.invoke('storage-intent', {
-                body: {
-                    fileName: file.name,
-                    sizeBytes: file.size,
-                    mimeType: file.type,
-                    kind: fileType, // 'video', 'image', 'document'
-                    leadId: conversationId
+                if (specificErr || !specificInstance) {
+                    throw new Error(`Instância "${instanceName}" não encontrada ou não conectada.`);
                 }
-            });
+                instance = specificInstance;
+            } else {
+                const { data: defaultInstance, error: instanceError } = await supabase
+                    .from('whatsapp_instances')
+                    .select('instance_name')
+                    .eq('user_id', user.id)
+                    .eq('status', 'connected')
+                    .eq('is_active', true)
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
 
-            if (intentError || !intentData) {
-                console.error('Storage Intent Failed (Function not deployed?):', intentError);
-                // Fallback or Error? Error for now to force correct usage.
-                throw new Error('Falha ao preparar upload. Verifique se a função storage-intent está deployada.');
+                if (instanceError) {
+                    throw new Error((instanceError as any)?.message || 'Falha ao buscar instância do WhatsApp.');
+                }
+                instance = defaultInstance;
             }
 
-            const { uploadUrl, publicUrl, sendMode, path } = intentData;
-            console.log(`Intent Received: Mode=${sendMode}, Path=${path}`);
+            if (!instance) throw new Error('Nenhuma instância do WhatsApp conectada. Conecte-se primeiro.');
 
-            // 3. Perform Upload to Signed URL
-            const uploadResponse = await fetch(uploadUrl, {
-                method: 'PUT',
-                body: file,
-                headers: {
-                    'Content-Type': file.type || 'application/octet-stream' // Must match what we told the intent
+            // 2. Upload (prefer storage-intent; fallback to direct upload if the function isn't deployed)
+            const VIDEO_LIMIT = 90 * 1024 * 1024; // 90MB
+            // chat-delivery is the preferred public bucket (clean URLs); chat-attachments is a legacy/compat bucket.
+            const bucketCandidates = ['chat-delivery', 'chat-attachments'] as const;
+
+            const sanitizeFileName = (name: string) => name.replace(/[^a-zA-Z0-9.\\-_]/g, '_');
+            const ensureVideoExt = (name: string) => {
+                if (name.toLowerCase().endsWith('.mp4') || name.toLowerCase().endsWith('.mov')) return name;
+                return `${name}.mp4`;
+            };
+
+            const pickSendMode = (): 'image' | 'video' | 'document' => {
+                if (fileType === 'image') return 'image';
+                if (fileType === 'video') return file.size <= VIDEO_LIMIT ? 'video' : 'document';
+                return 'document';
+            };
+
+            let publicUrl = '';
+            let sendMode: 'image' | 'video' | 'document' = pickSendMode();
+            let path = '';
+            let usedIntent = false;
+            let usedBucket = '';
+
+            try {
+                console.log('Requesting Storage Intent for:', file.name, file.size);
+                const { data: intentData, error: intentError } = await supabase.functions.invoke('storage-intent', {
+                    body: {
+                        fileName: file.name,
+                        sizeBytes: file.size,
+                        mimeType: file.type,
+                        kind: fileType, // 'video', 'image', 'document'
+                        leadId: conversationId
+                    }
+                });
+
+                const hasValidIntent = Boolean(
+                    intentData?.uploadUrl &&
+                    intentData?.publicUrl &&
+                    intentData?.sendMode &&
+                    intentData?.path
+                );
+
+                if (!intentError && hasValidIntent) {
+                    const allowedModes = new Set(['image', 'video', 'document']);
+                    const intentMode = allowedModes.has(intentData.sendMode) ? intentData.sendMode : sendMode;
+                    console.log(`Intent Received: Mode=${intentMode}, Path=${intentData.path}`);
+
+                    const uploadResponse = await fetch(intentData.uploadUrl, {
+                        method: 'PUT',
+                        body: file,
+                        headers: {
+                            'Content-Type': file.type || 'application/octet-stream'
+                        }
+                    });
+
+                    if (!uploadResponse.ok) {
+                        throw new Error(`Upload falhou: ${uploadResponse.statusText}`);
+                    }
+
+                    publicUrl = String(intentData.publicUrl);
+                    sendMode = intentMode as 'image' | 'video' | 'document';
+                    path = String(intentData.path);
+                    usedIntent = true;
+                    usedBucket = typeof intentData.bucket === 'string' ? intentData.bucket : bucketCandidates[0];
+                } else {
+                    console.warn('Storage Intent unavailable, using direct upload fallback.', intentError);
                 }
-            });
+            } catch (err) {
+                console.warn('Storage Intent failed, using direct upload fallback.', err);
+            }
 
-            if (!uploadResponse.ok) {
-                throw new Error(`Upload falhou: ${uploadResponse.statusText}`);
+            if (!usedIntent) {
+                const finalName = sendMode === 'video' ? ensureVideoExt(file.name) : file.name;
+                path = `${user.id}/${conversationId}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${sanitizeFileName(finalName)}`;
+
+                let lastUploadError: { message?: string } | null = null;
+
+                for (const bucket of bucketCandidates) {
+                    const { error: uploadError } = await supabase.storage
+                        .from(bucket)
+                        .upload(path, file, { contentType: file.type || 'application/octet-stream' });
+
+                    if (!uploadError) {
+                        usedBucket = bucket;
+                        break;
+                    }
+
+                    lastUploadError = uploadError as { message?: string };
+                    console.warn(`Direct upload failed for bucket ${bucket}:`, uploadError);
+                }
+
+                if (!usedBucket) {
+                    const detail = lastUploadError?.message || 'Erro desconhecido';
+                    throw new Error(
+                        `Falha ao preparar upload. Deploy a função storage-intent ou crie/configure o bucket de mídia (${bucketCandidates.join(', ')}). Detalhe: ${detail}`
+                    );
+                }
+
+                const { data: publicData } = supabase.storage
+                    .from(usedBucket)
+                    .getPublicUrl(path);
+
+                publicUrl = publicData.publicUrl;
+                console.log(`Direct upload OK: Bucket=${usedBucket}, Path=${path}`);
             }
 
             // 4. Send via Evolution API
@@ -447,9 +541,12 @@ export function useChat() {
             };
 
             const formattedPhone = formatPhoneNumber(lead.telefone);
+            const finalPhoneE164 = (lead as any).phone_e164 || formattedPhone;
+            const fallbackRemoteJid = `${formattedPhone}@s.whatsapp.net`;
             let response;
             let fallbackOccurred = false;
             let currentSendMode = sendMode;
+            const captionToSend = trimmedCaption.length > 0 ? trimmedCaption : undefined;
 
             try {
                 // Strict Media Message
@@ -460,7 +557,7 @@ export function useChat() {
                     formattedPhone,
                     publicUrl,
                     currentSendMode,
-                    '',
+                    captionToSend,
                     file.name,
                     mimeType
                 );
@@ -482,7 +579,7 @@ export function useChat() {
                             formattedPhone,
                             publicUrl,
                             'document',
-                            '',
+                            captionToSend,
                             file.name,
                             file.type || 'video/mp4'
                         );
@@ -500,9 +597,9 @@ export function useChat() {
             let tipointeracao = 'anexo_vendedor';
 
             if (currentSendMode === 'image') {
-                messageContent = `🖼️ ${file.name}\n${publicUrl}`;
+                messageContent = `🖼️ ${trimmedCaption || file.name}\n${publicUrl}`;
             } else if (currentSendMode === 'video') {
-                messageContent = `🎬 ${file.name}\n${publicUrl}`;
+                messageContent = `🎬 ${trimmedCaption || file.name}\n${publicUrl}`;
                 tipointeracao = 'video_vendedor';
             } else {
                 if (fileType === 'video') {
@@ -520,11 +617,16 @@ export function useChat() {
                     mensagem: messageContent,
                     tipo: tipointeracao,
                     instance_name: instance.instance_name,
-                    file_name: file.name,
-                    file_size: file.size,
-                    mime_type: file.type,
-                    send_mode: currentSendMode,
-                    fallback_from: fallbackOccurred ? 'video' : null
+                    remote_jid: fallbackRemoteJid,
+                    phone_e164: finalPhoneE164,
+                    wa_message_id: (response as any)?.data?.key?.id || null,
+                    attachment_url: publicUrl,
+                    attachment_type: currentSendMode,
+                    attachment_ready: true,
+                    attachment_mimetype: file.type || null,
+                    attachment_name: file.name,
+                    attachment_size: file.size,
+                    wa_from_me: true
                 })
                 .select()
                 .single();
@@ -597,47 +699,83 @@ export function useChat() {
     });
 
     const sendAudioMutation = useMutation({
-        mutationFn: async ({ conversationId, audioBlob, duration }: { conversationId: string, audioBlob: Blob, duration: number }) => {
+        mutationFn: async ({ conversationId, audioBlob, duration, instanceName }: { conversationId: string, audioBlob: Blob, duration: number, instanceName?: string }) => {
             if (!user) throw new Error('User not authenticated');
 
             // 1. Get Lead Phone
             const { data: lead, error: leadError } = await supabase
                 .from('leads')
-                .select('telefone')
+                .select('telefone, phone_e164')
                 .eq('id', conversationId)
                 .single();
 
             if (leadError || !lead) throw new Error('Lead not found');
 
             // 2. Get Connected Instance
-            const { data: instance, error: instanceError } = await supabase
-                .from('whatsapp_instances')
-                .select('instance_name')
-                .eq('user_id', user.id)
-                .eq('status', 'connected')
-                .limit(1)
-                .maybeSingle();
+            let instance: { instance_name: string } | null = null;
+            if (instanceName) {
+                const { data: specificInstance, error: specificErr } = await supabase
+                    .from('whatsapp_instances')
+                    .select('instance_name')
+                    .eq('user_id', user.id)
+                    .eq('instance_name', instanceName)
+                    .eq('status', 'connected')
+                    .single();
 
-            if (instanceError) throw instanceError;
+                if (specificErr || !specificInstance) {
+                    throw new Error(`Instância "${instanceName}" não encontrada ou não conectada.`);
+                }
+                instance = specificInstance;
+            } else {
+                const { data: defaultInstance, error: instanceError } = await supabase
+                    .from('whatsapp_instances')
+                    .select('instance_name')
+                    .eq('user_id', user.id)
+                    .eq('status', 'connected')
+                    .limit(1)
+                    .maybeSingle();
+
+                if (instanceError) {
+                    throw new Error((instanceError as any)?.message || 'Falha ao buscar instância do WhatsApp.');
+                }
+                instance = defaultInstance;
+            }
+
             if (!instance) throw new Error('Nenhuma instância do WhatsApp conectada. Conecte-se primeiro.');
 
             // 3. Upload Audio
             const fileName = `${conversationId}/${Date.now()}.webm`;
-            const { error: uploadError } = await supabase.storage
-                .from('chat-attachments')
-                .upload(fileName, audioBlob, { contentType: 'audio/webm' });
+            const bucketCandidates = ['chat-attachments', 'chat-delivery'] as const;
+            let usedBucket = '';
+            let lastUploadError: { message?: string } | null = null;
 
-            if (uploadError) {
-                console.error('Error uploading audio:', uploadError);
-                throw new Error(`Failed to upload audio: ${uploadError.message}`);
+            for (const bucket of bucketCandidates) {
+                const { error: uploadError } = await supabase.storage
+                    .from(bucket)
+                    .upload(fileName, audioBlob, { contentType: 'audio/webm' });
+
+                if (!uploadError) {
+                    usedBucket = bucket;
+                    break;
+                }
+
+                lastUploadError = uploadError as { message?: string };
+                console.warn(`Error uploading audio to bucket ${bucket}:`, uploadError);
             }
 
-            const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(fileName);
+            if (!usedBucket) {
+                const detail = lastUploadError?.message || 'Erro desconhecido';
+                throw new Error(
+                    `Falha ao enviar áudio. Verifique o bucket de mídia (${bucketCandidates.join(', ')}). Detalhe: ${detail}`
+                );
+            }
+
+            const { data: urlData } = supabase.storage.from(usedBucket).getPublicUrl(fileName);
             const publicUrl = urlData.publicUrl;
 
             // Generate Signed URL for Evolution API
             const { data: signedData, error: signedError } = await supabase.storage
-                .from('chat-attachments')
+                .from(usedBucket)
                 .createSignedUrl(fileName, 300);
 
             const sendUrl = signedData?.signedUrl || publicUrl;
@@ -651,6 +789,8 @@ export function useChat() {
             };
 
             const formattedPhone = formatPhoneNumber(lead.telefone);
+            const finalPhoneE164 = (lead as any).phone_e164 || formattedPhone;
+            const fallbackRemoteJid = `${formattedPhone}@s.whatsapp.net`;
             console.log('Sending audio via Evolution API:', sendUrl);
 
             const response = await evolutionApi.sendAudio(
@@ -689,9 +829,22 @@ export function useChat() {
                 mensagem: messageContent,
                 tipo: 'audio_vendedor',
                 instance_name: instance.instance_name,
+                remote_jid: fallbackRemoteJid,
+                phone_e164: finalPhoneE164,
+                wa_message_id: (response as any)?.data?.key?.id || null,
+                attachment_url: publicUrl,
+                attachment_type: 'audio',
+                attachment_ready: true,
+                attachment_mimetype: audioBlob.type || 'audio/webm',
+                attachment_name: `Áudio (${duration}s)`,
+                attachment_size: audioBlob.size,
+                wa_from_me: true,
             }).select().single();
 
-            if (error) throw error;
+            if (error) {
+                console.error('Supabase Insert Error (Audio):', error);
+                throw new Error((error as any)?.message || 'Falha ao salvar o anexo.');
+            }
             return interacaoToMessage(data);
         },
         onSuccess: async (newMessage) => {

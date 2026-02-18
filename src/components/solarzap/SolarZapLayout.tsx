@@ -74,6 +74,9 @@ export function SolarZapLayout() {
   const {
     contacts,
     isLoading: isLoadingLeads,
+    showTeamLeads,
+    setShowTeamLeads,
+    canViewTeam,
     createLead,
     updateLead,
     deleteLead,
@@ -89,7 +92,7 @@ export function SolarZapLayout() {
     sendAttachment,
     sendAudio,
     sendReaction
-  } = useChat();
+  } = useChat(contacts);
 
   const {
     events,
@@ -268,9 +271,6 @@ export function SolarZapLayout() {
 
     switch (action) {
       case 'call':
-        if (targetContact?.phone) {
-          window.open(`tel:${targetContact.phone}`, '_blank');
-        }
         setPendingCallContact(targetContact || null);
         setCallConfirmOpen(true);
         break;
@@ -501,8 +501,32 @@ export function SolarZapLayout() {
 
   const handleProposal = async (data: ProposalData) => {
     console.log('📋 handleProposal called with:', data);
+    const selectedContact = actionContact || contacts.find(c => c.id === data.contactId);
+    const proposalSegment =
+      data.tipo_cliente === 'residencial'
+        ? 'residencial'
+        : data.tipo_cliente === 'rural'
+          ? 'agronegocio'
+          : data.tipo_cliente === 'usina'
+            ? 'usina'
+            : (data.tipo_cliente === 'comercial' || data.tipo_cliente === 'industrial')
+              ? 'empresarial'
+              : 'indefinido';
 
-    await saveProposal({
+    const premiumPayloadAny =
+      data.premiumPayload && typeof data.premiumPayload === 'object'
+        ? (data.premiumPayload as Record<string, unknown>)
+        : {};
+    const selectedVariant = String((premiumPayloadAny as any)?.selected_variant || '').toLowerCase();
+    const hasAI =
+      typeof (premiumPayloadAny as any)?.ai_model === 'string' ||
+      selectedVariant === 'a' ||
+      selectedVariant === 'b' ||
+      String((premiumPayloadAny as any)?.generatedBy || '').toLowerCase() === 'ai' ||
+      (Array.isArray((premiumPayloadAny as any)?.ai_variants) && (premiumPayloadAny as any)?.ai_variants?.length > 0);
+    const proposalSource: 'manual' | 'ai' | 'hybrid' = hasAI ? 'ai' : 'manual';
+
+    const saveResult = await saveProposal({
       leadId: data.contactId,
       valorProjeto: data.valorTotal,
       consumoKwh: data.consumoMensal,
@@ -511,6 +535,13 @@ export function SolarZapLayout() {
       economiaMensal: data.economiaAnual / 12,
       paybackAnos: data.paybackMeses / 12,
       status: 'Enviada',
+      tipoCliente: data.tipo_cliente,
+      contactName: selectedContact?.name,
+      observacoes: data.observacoes,
+      source: proposalSource,
+      segment: proposalSegment,
+      premiumPayload: data.premiumPayload,
+      contextEngine: data.contextEngine,
     });
 
     await handlePipelineStageChange(data.contactId, 'proposta_pronta');
@@ -523,13 +554,14 @@ export function SolarZapLayout() {
       }
     });
 
-    const contact = actionContact || contacts.find(c => c.id === data.contactId);
+    const contact = selectedContact;
 
     if (contact) {
       onProposalReady(contact);
     }
 
     // Modal state is centralized in handlePipelineStageChange for proposta_pronta.
+    return saveResult;
   };
 
   if (isInitialLoading) {
@@ -576,6 +608,9 @@ export function SolarZapLayout() {
             <ConversationList
               conversations={filteredConversations}
               contacts={contacts}
+              canViewTeam={canViewTeam}
+              showTeamLeads={showTeamLeads}
+              onToggleTeamLeads={setShowTeamLeads}
               selectedId={selectedConversation?.id || null}
               channelFilter={channelFilter}
               searchQuery={searchQuery}
@@ -614,15 +649,16 @@ export function SolarZapLayout() {
                 });
               }
             }}
-            onSendAttachment={async (id, file, type) => {
-              await sendAttachment({ conversationId: id, file, fileType: type });
+            onSendAttachment={async (id, file, type, caption, instanceName) => {
+              await sendAttachment({ conversationId: id, file, fileType: type, caption, instanceName });
               onSellerResponse(id);
             }}
-            onSendAudio={async (id, blob, duration) => {
-              await sendAudio({ conversationId: id, audioBlob: blob, duration });
+            onSendAudio={async (id, blob, duration, instanceName) => {
+              await sendAudio({ conversationId: id, audioBlob: blob, duration, instanceName });
               onSellerResponse(id);
             }}
             onOpenDetails={() => setIsDetailsPanelOpen(true)}
+            isDetailsOpen={isDetailsPanelOpen}
             onCallAction={(contact) => {
               setPendingCallContact(contact);
               setCallConfirmOpen(true);
@@ -696,6 +732,7 @@ export function SolarZapLayout() {
             onUpdateLead={async (contactId, data) => { await updateLead({ contactId, data }); }}
             onToggleLeadAi={toggleLeadAi}
             onGoToConversation={goToConversation}
+            onGenerateProposal={handleProposal}
             onImportContacts={importContacts}
             onDeleteLead={async (id) => { await deleteLead(id); }}
             onSchedule={(contact, type) => {
@@ -828,6 +865,7 @@ export function SolarZapLayout() {
         }}
         onConfirm={handleCallConfirm}
         contactName={pendingCallContact?.name || ''}
+        contactPhone={pendingCallContact?.phone || ''}
       />
 
       <MoveToProposalModal

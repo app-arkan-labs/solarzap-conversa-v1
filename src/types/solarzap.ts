@@ -26,7 +26,7 @@ export type PipelineStage =
   | 'contato_futuro'
   | 'perdido';
 
-export type ClientType = 'residencial' | 'comercial' | 'rural' | 'industrial';
+export type ClientType = 'residencial' | 'comercial' | 'industrial' | 'rural' | 'usina';
 
 export type EventType = 'chamada' | 'visita' | 'instalacao' | 'followup' | 'reuniao' | 'meeting';
 
@@ -52,6 +52,7 @@ export interface Contact {
   stageChangedAt?: Date;
   phoneE164?: string; // NEW
   instanceName?: string; // NEW
+  assignedToUserId?: string | null;
   notes?: string;
   // AI Control (New)
   aiEnabled?: boolean;
