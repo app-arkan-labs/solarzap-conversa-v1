@@ -114,7 +114,11 @@ async function fetchBase64FromEvolution(
     messageData: any
 ): Promise<{ base64: string; mimeType: string } | null> {
     const evolutionUrl = Deno.env.get('EVOLUTION_API_URL') || 'https://evo.arkanlabs.com.br'
-    const apiKey = Deno.env.get('EVOLUTION_API_KEY') || 'eef86d79f253d5f295edcd33b578c94b'
+    const apiKey = Deno.env.get('EVOLUTION_API_KEY')
+    if (!apiKey) {
+        console.error('❌ EVOLUTION_API_KEY not set')
+        return null
+    }
 
     console.log(`📡 Fetching base64 from Evolution for instance: ${instanceName}`)
 
@@ -158,6 +162,30 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url)
 
     try {
+        // --- M0 HARDENING: Validar Webhook Secret ---
+        const expectedSecret = Deno.env.get('ARKAN_WEBHOOK_SECRET');
+        if (expectedSecret) {
+            const receivedHeader = req.headers.get('x-arkan-webhook-secret');
+            const receivedQuery = url.searchParams.get('secret');
+
+            if (receivedHeader !== expectedSecret && receivedQuery !== expectedSecret) {
+                console.warn('⚠️ Invalid webhook secret (header and query check failed)');
+                return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+                    status: 401,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+        }
+
+        // --- M0 HARDENING: Check EVOLUTION_API_KEY ---
+        if (!Deno.env.get('EVOLUTION_API_KEY')) {
+            console.error('❌ EVOLUTION_API_KEY not set');
+            return new Response(JSON.stringify({ error: 'EVOLUTION_API_KEY not set' }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
         const body = await req.json()
         const eventRaw = body?.event ?? body?.data?.event ?? null
         const event = normalizeEvent(eventRaw) ?? inferEventFromPath(url.pathname)
@@ -178,6 +206,38 @@ Deno.serve(async (req: Request) => {
         )
 
         const data = body?.data ?? body
+        const { data: instanceCtx } = await supabase
+            .from('whatsapp_instances')
+            .select('org_id, user_id')
+            .eq('instance_name', instanceName)
+            .maybeSingle()
+        const resolvedOrgId = instanceCtx?.org_id ?? null
+
+        // Non-blocking webhook audit row; fallback to legacy schema if org_id column is not present yet.
+        try {
+            const baseAuditPayload = {
+                instance_name: instanceName,
+                event,
+                path: url.pathname,
+                headers: Object.fromEntries(req.headers.entries()),
+                payload: body
+            }
+
+            const { error: auditErr } = await supabase
+                .from('whatsapp_webhook_events')
+                .insert({
+                    ...baseAuditPayload,
+                    org_id: resolvedOrgId
+                })
+
+            if (auditErr && (auditErr.code === '42703' || auditErr.code === 'PGRST204' || String(auditErr.message || '').includes('org_id'))) {
+                await supabase.from('whatsapp_webhook_events').insert(baseAuditPayload)
+            } else if (auditErr) {
+                console.warn('⚠️ webhook audit insert failed:', auditErr)
+            }
+        } catch (auditEx) {
+            console.warn('⚠️ webhook audit exception (non-blocking):', auditEx)
+        }
 
         switch (event) {
             case 'QRCODE_UPDATED': {
@@ -363,7 +423,7 @@ Deno.serve(async (req: Request) => {
                 // Get instance and user
                 const { data: instanceRow } = await supabase
                     .from('whatsapp_instances')
-                    .select('user_id')
+                    .select('org_id, user_id')
                     .eq('instance_name', instanceName)
                     .single()
 
@@ -372,6 +432,7 @@ Deno.serve(async (req: Request) => {
                     break
                 }
                 const userId = instanceRow.user_id
+                const orgId = instanceRow.org_id ?? resolvedOrgId
 
                 // Get Lead
                 const rawRemoteJid = String(remoteJid).replace('@s.whatsapp.net', '')
@@ -491,6 +552,7 @@ Deno.serve(async (req: Request) => {
                 const { data: inserted, error: insertError } = await supabase
                     .from('interacoes')
                     .insert({
+                        org_id: orgId,
                         user_id: userId,
                         lead_id: leadId,
                         mensagem: finalText,

@@ -38,6 +38,60 @@ function normalizeStage(str: string | null | undefined): string {
         .replace(/[^a-z0-9_]/g, '')
 }
 
+function isMissingOrgIdColumnError(error: any): boolean {
+    if (!error) return false;
+    const code = String(error.code || '');
+    if (code === '42703' || code === 'PGRST204') return true;
+    return String(error.message || '').toLowerCase().includes('org_id');
+}
+
+async function tableHasOrgIdColumn(supabase: any, table: string): Promise<boolean> {
+    const { error } = await supabase.from(table).select('org_id').limit(1);
+    if (!error) return true;
+    if (isMissingOrgIdColumnError(error)) return false;
+    throw error;
+}
+
+function injectOrgIdIntoInsertPayload(payload: any, orgId: string | null): any {
+    if (!orgId) return payload;
+    if (Array.isArray(payload)) {
+        return payload.map((row) => (row && typeof row === 'object' && !('org_id' in row)) ? { ...row, org_id: orgId } : row);
+    }
+    if (payload && typeof payload === 'object' && !('org_id' in payload)) {
+        return { ...payload, org_id: orgId };
+    }
+    return payload;
+}
+
+function createOrgAwareSupabaseClient(
+    supabase: any,
+    getOrgId: () => string | null,
+    aiActionLogsHasOrgId: boolean
+) {
+    return new Proxy(supabase, {
+        get(target, prop, receiver) {
+            if (prop !== 'from') return Reflect.get(target, prop, receiver);
+            return (table: string) => {
+                const query = target.from(table);
+                return new Proxy(query, {
+                    get(queryTarget, queryProp, queryReceiver) {
+                        if (queryProp !== 'insert') return Reflect.get(queryTarget, queryProp, queryReceiver);
+                        return (values: any, ...rest: any[]) => {
+                            const shouldInject =
+                                table === 'ai_agent_runs' ||
+                                (table === 'ai_action_logs' && aiActionLogsHasOrgId);
+                            const patchedValues = shouldInject
+                                ? injectOrgIdIntoInsertPayload(values, getOrgId())
+                                : values;
+                            return queryTarget.insert(patchedValues, ...rest);
+                        };
+                    }
+                });
+            };
+        }
+    });
+}
+
 // --- INCREMENT 12: SOLAR BR PACK ---
 const SOLAR_BR_PACK = `
 CONTEXTO SOLAR BRASIL (LEI 14.300 & FLUXO REAL):
@@ -128,7 +182,7 @@ async function updateLeadStageSafe(
     leadId: string | number,
     targetStage: string,
     runId: string
-): Promise<void> {
+): Promise<{ success: boolean; error?: string }> {
     const isSchemaMismatch = (code: string | undefined) => code === '42703' || code === 'PGRST204';
     const timestamp = new Date().toISOString();
     // 1. Try updating everything (status_pipeline + pipeline_stage + stage_changed_at)
@@ -141,7 +195,7 @@ async function updateLeadStageSafe(
 
     if (!err1) {
         console.log(`✅ [${runId}] Stage updated (dual write): ${targetStage}`);
-        return;
+        return { success: true };
     }
 
     // 2. Fallback: If schema mismatch (42703 / PGRST204), retry with canonical 'status_pipeline' only
@@ -157,7 +211,7 @@ async function updateLeadStageSafe(
 
         if (!err2) {
             console.log(`✅ [${runId}] Stage updated (status_pipeline + date): ${targetStage}`);
-            return;
+            return { success: true };
         }
 
         // 3. Final Fallback: bare minimum
@@ -166,13 +220,19 @@ async function updateLeadStageSafe(
                 status_pipeline: targetStage
             }).eq('id', leadId);
 
-            if (err3) console.error(`❌ [${runId}] Failed strict backup update:`, err3);
-            else console.log(`✅ [${runId}] Stage updated (bare status_pipeline): ${targetStage}`);
+            if (err3) {
+                console.error(`❌ [${runId}] Failed strict backup update:`, err3);
+                return { success: false, error: err3?.message || 'bare_update_failed' };
+            }
+            console.log(`✅ [${runId}] Stage updated (bare status_pipeline): ${targetStage}`);
+            return { success: true };
         } else {
             console.error(`❌ [${runId}] Failed backup update:`, err2);
+            return { success: false, error: err2?.message || 'backup_update_failed' };
         }
     } else {
         console.error(`❌ [${runId}] Stage update failed (unknown error):`, err1);
+        return { success: false, error: err1?.message || 'unknown_error' };
     }
 }
 
@@ -530,6 +590,29 @@ async function executeLeadFieldUpdate(
     return result;
 }
 
+async function isAnchorLatestInbound(
+    supabase: any,
+    leadId: string | number,
+    anchorInteractionId: string | number | null
+): Promise<{ ok: boolean; latestId: any; latestCreatedAt: string | null }> {
+    const { data: latestInbound, error } = await supabase
+        .from('interacoes')
+        .select('id, created_at')
+        .eq('lead_id', leadId)
+        .eq('wa_from_me', false)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) throw error;
+
+    const latestId = latestInbound?.id ?? null;
+    const latestCreatedAt = latestInbound?.created_at ?? null;
+    const ok = !!anchorInteractionId && latestId !== null && String(latestId) === String(anchorInteractionId);
+
+    return { ok, latestId, latestCreatedAt };
+}
+
 // --- V7: ADD COMMENT executor (idempotente via ai_action_logs) ---
 async function executeAddComment(
     supabase: any,
@@ -771,9 +854,18 @@ Deno.serve(async (req) => {
         let v7CommentSkippedReason: string | null = null;
         let v7FollowupWritten = false;
         let v7FollowupSkippedReason: string | null = null;
+        // Stage move tracking (Tarefa 2)
+        let stageMoveResult: string | null = null;
+        // Tracks whether the agent actually sent an outbound reply this run (Tarefa 1)
+        let didSendOutbound = false;
 
         // 1. STRICT INSTANCE CHECK
-        const { leadId, interactionId, instanceName } = payload;
+        const { leadId, instanceName } = payload;
+        const inputInteractionId = payload.interactionId;
+        let interactionId = payload.interactionId;
+        let adoptedLatestOnce = false;
+        let adoptedFromInteractionId: string | number | null = null;
+        let adoptedToInteractionId: string | number | null = null;
         const forceSimulatedTransport = String(Deno.env.get('FORCE_SIMULATED_TRANSPORT') || '').toLowerCase() === 'true';
         const parsedMaxOutboundPerLeadPerMin = Number.parseInt(Deno.env.get('MAX_OUTBOUND_PER_LEAD_PER_MIN') || '3', 10);
         const maxOutboundPerLeadPerMin =
@@ -809,9 +901,21 @@ Deno.serve(async (req) => {
             return respondNoSend({ skipped: "missing_instanceName" }, 'missing_instanceName');
         }
 
-        const supabase = createClient(
+        const supabaseBase = createClient(
             Deno.env.get('SUPABASE_URL')!,
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+        );
+        let leadOrgId: string | null = null;
+        let aiActionLogsHasOrgId = false;
+        try {
+            aiActionLogsHasOrgId = await tableHasOrgIdColumn(supabaseBase, 'ai_action_logs');
+        } catch (schemaErr) {
+            console.warn(`[${runId}] ai_action_logs org_id schema probe failed (non-blocking):`, schemaErr);
+        }
+        const supabase = createOrgAwareSupabaseClient(
+            supabaseBase,
+            () => leadOrgId,
+            aiActionLogsHasOrgId
         );
 
         const logRateLimitedOutbound = async (recentCount: number, anchorInteractionId: string | number | null) => {
@@ -866,9 +970,38 @@ Deno.serve(async (req) => {
             return respondNoSend({ skipped: "instance_ai_disabled" }, 'instance_ai_disabled');
         }
 
-        // 3. LOAD LEAD & SETTINGS
-        const { data: lead } = await supabase.from('leads').select('*').eq('id', leadId).single();
-        const { data: settings } = await supabase.from('ai_settings').select('*').single();
+        // 3. LOAD LEAD & SETTINGS (org-scoped)
+        const { data: lead, error: leadErr } = await supabase
+            .from('leads')
+            .select('*')
+            .eq('id', leadId)
+            .single();
+        if (leadErr || !lead) {
+            console.log(`🛑 Lead not found: ${leadId}`);
+            return respondNoSend({ skipped: "lead_not_found" }, 'lead_not_found');
+        }
+
+        leadOrgId = lead.org_id ? String(lead.org_id) : null;
+        if (!leadOrgId) {
+            console.log(`🛑 Lead without org_id: ${leadId}`);
+            return respondNoSend({ skipped: "lead_without_org_id" }, 'lead_without_org_id');
+        }
+
+        const { data: settings, error: settingsErr } = await supabase
+            .from('ai_settings')
+            .select('*')
+            .eq('org_id', leadOrgId)
+            .order('id', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+        if (settingsErr) {
+            console.warn(`⚠️ [${runId}] Failed to load ai_settings for org ${leadOrgId}:`, settingsErr);
+            return respondNoSend({ skipped: "settings_query_failed" }, 'settings_query_failed');
+        }
+        if (!settings) {
+            return respondNoSend({ skipped: "settings_not_found_for_org" }, 'settings_not_found_for_org');
+        }
 
         if (!settings?.is_active) {
             return respondNoSend({ skipped: "System Inactive" }, 'system_inactive');
@@ -923,18 +1056,132 @@ Deno.serve(async (req) => {
 
             console.log(`Yield Debug: latest=${latestMsg.id}, anchor=${anchorInteractionId}, input=${interactionId}`);
 
-            // YIELD CHECK: if a newer message exists than ours, let the newer run handle it
-            if (interactionId && latestMsg.id !== interactionId) {
-                // A newer msg arrived → this run should yield to the run triggered by that msg
+            // YIELD CHECK: if a newer inbound exists, adopt it once; on second hop abort (loop guard)
+            if (interactionId && String(latestMsg.id) !== String(interactionId)) {
+                // If user is still typing (burst active), do NOT adopt/wait from an older run.
+                // Yield immediately and let a later call (after quiet window) handle the latest inbound deterministically.
+                if (lastInboundAgeMs !== null && lastInboundAgeMs < QUIET_WINDOW_MS) {
+                    decision = 'yield_to_newer';
+                    console.log(`🔄 [${runId}] Yielding: newer msg ${latestMsg.id} exists (ours was ${interactionId}) while burst active (age ${lastInboundAgeMs}ms < ${QUIET_WINDOW_MS}ms). Aborting this run.`);
+                    return respondNoSend({
+                        aborted: "yield_to_newer",
+                        runId,
+                        debug: {
+                            latest: latestMsg.id,
+                            anchor: anchorInteractionId,
+                            input: interactionId,
+                            adopted_from: adoptedFromInteractionId,
+                            adopted_to: adoptedToInteractionId
+                        }
+                    }, 'yield_to_newer');
+                }
+
+                // If this run started before the latest inbound existed, it must not adopt/respond after quiet.
+                // Yield so a newer call (triggered after the latest inbound) can handle deterministically.
+                if (debounceStart < inboundTime) {
+                    decision = 'yield_to_newer';
+                    console.log(`🔄 [${runId}] Yielding: newer msg ${latestMsg.id} exists (ours was ${interactionId}); run started before latest inbound (runStart<inbound). Aborting this run.`);
+                    return respondNoSend({
+                        aborted: "yield_to_newer",
+                        runId,
+                        debug: {
+                            latest: latestMsg.id,
+                            anchor: anchorInteractionId,
+                            input: interactionId,
+                            adopted_from: adoptedFromInteractionId,
+                            adopted_to: adoptedToInteractionId
+                        }
+                    }, 'yield_to_newer');
+                }
+
+                // If the newest inbound is part of a tight burst (very close to the previous inbound),
+                // do NOT adopt from an older run even if it's quiet now. Let the latest inbound call handle it.
+                // This prevents TEST 7 mid-burst leaks caused by late-start runs adopting and responding.
+                try {
+                    const { data: lastTwoInbounds } = await supabase
+                        .from('interacoes')
+                        .select('id, created_at')
+                        .eq('lead_id', leadId)
+                        .eq('instance_name', instanceName)
+                        .eq('tipo', 'mensagem_cliente')
+                        .order('id', { ascending: false })
+                        .limit(2);
+
+                    if (lastTwoInbounds && lastTwoInbounds.length >= 2) {
+                        const latestTs = new Date(lastTwoInbounds[0].created_at).getTime();
+                        const prevTs = new Date(lastTwoInbounds[1].created_at).getTime();
+                        const deltaMs = latestTs - prevTs;
+
+                        if (Number.isFinite(deltaMs) && deltaMs < QUIET_WINDOW_MS) {
+                            decision = 'yield_to_newer';
+                            console.log(`🔄 [${runId}] Yielding: newer msg ${latestMsg.id} exists (ours was ${interactionId}); quiet now but burst detected (delta ${deltaMs}ms < ${QUIET_WINDOW_MS}ms). Aborting this run.`);
+                            return respondNoSend({
+                                aborted: "yield_to_newer",
+                                runId,
+                                debug: {
+                                    latest: latestMsg.id,
+                                    anchor: anchorInteractionId,
+                                    input: interactionId,
+                                    adopted_from: adoptedFromInteractionId,
+                                    adopted_to: adoptedToInteractionId,
+                                    burst_delta_ms: deltaMs,
+                                    burst_latest_id: lastTwoInbounds[0]?.id,
+                                    burst_prev_id: lastTwoInbounds[1]?.id
+                                }
+                            }, 'yield_to_newer');
+                        }
+                    }
+                } catch (burstDeltaErr) {
+                    console.warn(`[${runId}] Burst delta check failed (non-blocking):`, burstDeltaErr);
+                }
+
+                if (!adoptedLatestOnce) {
+                    adoptedLatestOnce = true;
+                    adoptedFromInteractionId = interactionId;
+                    adoptedToInteractionId = latestMsg.id;
+
+                    interactionId = latestMsg.id;
+                    anchorInteractionId = latestMsg.id;
+                    anchorCreatedAt = latestMsg.created_at || null;
+                    anchorMsgCreatedAt = inboundTime;
+
+                    console.log(`🔄 [${runId}] Yield guard adopted latest inbound ${latestMsg.id} (from ${adoptedFromInteractionId}). Continuing this run.`);
+
+                    try {
+                        await supabase.from('ai_action_logs').insert({
+                            lead_id: Number(leadId),
+                            action_type: 'yield_adopt_latest',
+                            details: JSON.stringify({
+                                runId,
+                                from: adoptedFromInteractionId,
+                                to: adoptedToInteractionId,
+                                anchor: anchorInteractionId,
+                                latest: latestMsg.id
+                            }),
+                            success: true
+                        });
+                    } catch (yieldAdoptLogErr) {
+                        console.warn(`[${runId}] yield_adopt_latest log failed (non-blocking):`, yieldAdoptLogErr);
+                    }
+
+                    // Burst is already quiet here (see guard above), so we can stabilize and proceed immediately.
+                    stabilized = true;
+                    console.log(`✅ [${runId}] Stabilized after adopting latest (quiet ${lastInboundAgeMs}ms >= ${QUIET_WINDOW_MS}ms). Anchor: ${anchorInteractionId}`);
+                    break;
+                }
+
+                // A newer msg arrived again after one-hop adoption → abort to avoid infinite loops
                 decision = 'yield_to_newer';
-                console.log(`🔄 [${runId}] Yielding: newer msg ${latestMsg.id} exists (ours was ${interactionId}). Aborting this run.`);
+                console.log(`🔄 [${runId}] Yielding: newer msg ${latestMsg.id} exists (ours was ${interactionId}) after adopt hop. Aborting this run.`);
                 return respondNoSend({
                     aborted: "yield_to_newer",
                     runId,
                     debug: {
                         latest: latestMsg.id,
                         anchor: anchorInteractionId,
-                        input: interactionId
+                        input: interactionId,
+                        adopted_from: adoptedFromInteractionId,
+                        adopted_to: adoptedToInteractionId
                     }
                 }, 'yield_to_newer');
             }
@@ -963,6 +1210,164 @@ Deno.serve(async (req) => {
         if (!stabilized) {
             decision = 'not_stabilized';
             return respondNoSend({ aborted: "not_stabilized", runId }, 'not_stabilized');
+        }
+
+        // Post-stabilize recheck: avoid responding from an older run if a newer inbound became visible after we broke
+        // (e.g., DB visibility lag). This is critical for TEST 7 (No Response Mid-Burst).
+        try {
+            const { data: latestMsgPost } = await supabase
+                .from('interacoes')
+                .select('id, created_at')
+                .eq('lead_id', leadId)
+                .eq('instance_name', instanceName)
+                .eq('tipo', 'mensagem_cliente')
+                .order('id', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (latestMsgPost?.id && anchorInteractionId && String(latestMsgPost.id) !== String(anchorInteractionId)) {
+                const postInboundTime = latestMsgPost.created_at ? new Date(latestMsgPost.created_at).getTime() : NaN;
+                const postAgeMs = Number.isFinite(postInboundTime) ? Date.now() - postInboundTime : NaN;
+                if (Number.isFinite(postAgeMs)) lastInboundAgeMs = postAgeMs;
+
+                // Burst still active -> do NOT adopt/wait; yield immediately.
+                if (Number.isFinite(postAgeMs) && postAgeMs < QUIET_WINDOW_MS) {
+                    decision = 'yield_to_newer';
+                    console.log(`🔄 [${runId}] Yielding (post-stabilize): newer msg ${latestMsgPost.id} exists (ours was ${interactionId}) while burst active (age ${postAgeMs}ms < ${QUIET_WINDOW_MS}ms). Aborting this run.`);
+                    return respondNoSend({
+                        aborted: "yield_to_newer",
+                        runId,
+                        debug: {
+                            latest: latestMsgPost.id,
+                            anchor: anchorInteractionId,
+                            input: interactionId,
+                            adopted_from: adoptedFromInteractionId,
+                            adopted_to: adoptedToInteractionId
+                        }
+                    }, 'yield_to_newer');
+                }
+
+                // If this run started before the latest inbound existed, it must not adopt/respond after quiet.
+                if (Number.isFinite(postInboundTime) && debounceStart < postInboundTime) {
+                    decision = 'yield_to_newer';
+                    console.log(`🔄 [${runId}] Yielding (post-stabilize): newer msg ${latestMsgPost.id} exists (ours was ${interactionId}); run started before latest inbound (runStart<inbound). Aborting this run.`);
+                    return respondNoSend({
+                        aborted: "yield_to_newer",
+                        runId,
+                        debug: {
+                            latest: latestMsgPost.id,
+                            anchor: anchorInteractionId,
+                            input: interactionId,
+                            adopted_from: adoptedFromInteractionId,
+                            adopted_to: adoptedToInteractionId
+                        }
+                    }, 'yield_to_newer');
+                }
+
+                // If the newest inbound is part of a tight burst, do NOT adopt from an older run even if quiet now.
+                try {
+                    const { data: lastTwoInbounds } = await supabase
+                        .from('interacoes')
+                        .select('id, created_at')
+                        .eq('lead_id', leadId)
+                        .eq('instance_name', instanceName)
+                        .eq('tipo', 'mensagem_cliente')
+                        .order('id', { ascending: false })
+                        .limit(2);
+
+                    if (lastTwoInbounds && lastTwoInbounds.length >= 2) {
+                        const latestTs = new Date(lastTwoInbounds[0].created_at).getTime();
+                        const prevTs = new Date(lastTwoInbounds[1].created_at).getTime();
+                        const deltaMs = latestTs - prevTs;
+
+                        if (Number.isFinite(deltaMs) && deltaMs < QUIET_WINDOW_MS) {
+                            decision = 'yield_to_newer';
+                            console.log(`🔄 [${runId}] Yielding (post-stabilize): newer msg ${latestMsgPost.id} exists (ours was ${interactionId}); quiet now but burst detected (delta ${deltaMs}ms < ${QUIET_WINDOW_MS}ms). Aborting this run.`);
+                            return respondNoSend({
+                                aborted: "yield_to_newer",
+                                runId,
+                                debug: {
+                                    latest: latestMsgPost.id,
+                                    anchor: anchorInteractionId,
+                                    input: interactionId,
+                                    adopted_from: adoptedFromInteractionId,
+                                    adopted_to: adoptedToInteractionId,
+                                    burst_delta_ms: deltaMs,
+                                    burst_latest_id: lastTwoInbounds[0]?.id,
+                                    burst_prev_id: lastTwoInbounds[1]?.id
+                                }
+                            }, 'yield_to_newer');
+                        }
+                    }
+                } catch (burstDeltaErr) {
+                    console.warn(`[${runId}] Burst delta check failed (non-blocking):`, burstDeltaErr);
+                }
+
+                // Quiet -> allow one-hop adoption.
+                if (!adoptedLatestOnce) {
+                    adoptedLatestOnce = true;
+                    adoptedFromInteractionId = interactionId;
+                    adoptedToInteractionId = latestMsgPost.id;
+
+                    interactionId = latestMsgPost.id;
+                    anchorInteractionId = latestMsgPost.id;
+                    anchorCreatedAt = latestMsgPost.created_at || null;
+                    if (Number.isFinite(postInboundTime)) anchorMsgCreatedAt = postInboundTime;
+
+                    console.log(`🔄 [${runId}] Yield guard adopted latest inbound ${latestMsgPost.id} (from ${adoptedFromInteractionId}) post-stabilize. Continuing this run.`);
+
+                    try {
+                        await supabase.from('ai_action_logs').insert({
+                            lead_id: Number(leadId),
+                            action_type: 'yield_adopt_latest',
+                            details: JSON.stringify({
+                                runId,
+                                from: adoptedFromInteractionId,
+                                to: adoptedToInteractionId,
+                                anchor: anchorInteractionId,
+                                latest: latestMsgPost.id
+                            }),
+                            success: true
+                        });
+                    } catch (yieldAdoptLogErr) {
+                        console.warn(`[${runId}] yield_adopt_latest log failed (non-blocking):`, yieldAdoptLogErr);
+                    }
+                } else {
+                    decision = 'yield_to_newer';
+                    console.log(`🔄 [${runId}] Yielding (post-stabilize): newer msg ${latestMsgPost.id} exists (ours was ${interactionId}) after adopt hop. Aborting this run.`);
+                    return respondNoSend({
+                        aborted: "yield_to_newer",
+                        runId,
+                        debug: {
+                            latest: latestMsgPost.id,
+                            anchor: anchorInteractionId,
+                            input: interactionId,
+                            adopted_from: adoptedFromInteractionId,
+                            adopted_to: adoptedToInteractionId
+                        }
+                    }, 'yield_to_newer');
+                }
+            }
+        } catch (postStabilizeErr) {
+            console.warn(`[${runId}] Post-stabilize latest inbound check failed (fail-open):`, postStabilizeErr);
+        }
+
+        // If this run was invoked for an older interactionId than the stabilized anchor, yield.
+        // This keeps burst handling deterministic: only the call for the latest inbound should proceed.
+        if (!adoptedLatestOnce && inputInteractionId && anchorInteractionId && String(inputInteractionId) !== String(anchorInteractionId)) {
+            decision = 'yield_to_newer';
+            console.log(`🔄 [${runId}] Yielding: stabilized anchor ${anchorInteractionId} is newer than input ${inputInteractionId}. Aborting this run.`);
+            return respondNoSend({
+                aborted: "yield_to_newer",
+                runId,
+                debug: {
+                    latest: anchorInteractionId,
+                    anchor: anchorInteractionId,
+                    input: inputInteractionId,
+                    adopted_from: adoptedFromInteractionId,
+                    adopted_to: adoptedToInteractionId
+                }
+            }, 'yield_to_newer');
         }
 
         // 4a. Ensure anchorMsgCreatedAt is set
@@ -1038,11 +1443,20 @@ Deno.serve(async (req) => {
                     return respondNoSend({ skipped: "already_replied", runId }, 'already_replied');
                 }
 
-                // B) TIGHT LOOP GUARD: outbound < 5s ago (prevents immediate re-fire)
-                if ((nowTime - lastTime) < 5000) {
-                    decision = 'tight_loop_guard';
-                    console.warn(`🛑 [${runId}] Skipped: Tight loop guard. Last sent ${(nowTime - lastTime) / 1000}s ago.`);
-                    return respondNoSend({ skipped: "tight_loop_guard", runId }, 'tight_loop_guard');
+                // B) TIGHT LOOP GUARD: block only true re-entry (no newer inbound than last outbound)
+                const TIGHT_LOOP_GUARD_MS = 5000;
+                const lastOutboundAtMs = Date.parse(lastOutbound.created_at);
+                const anchorAtMs = anchorCreatedAt ? Date.parse(anchorCreatedAt) : NaN;
+                const ageMs = nowTime - lastOutboundAtMs;
+
+                if (ageMs < TIGHT_LOOP_GUARD_MS) {
+                    if (anchorCreatedAt && Number.isFinite(anchorAtMs) && anchorAtMs > lastOutboundAtMs) {
+                        console.log(`[${runId}] Tight-loop bypass: inbound(${anchorCreatedAt}) is newer than last outbound(${lastOutbound.created_at}).`);
+                    } else {
+                        decision = 'tight_loop_guard';
+                        console.warn(`🛑 [${runId}] Skipped: Tight loop guard. Last sent ${ageMs / 1000}s ago.`);
+                        return respondNoSend({ skipped: "tight_loop_guard", runId }, 'tight_loop_guard');
+                    }
                 }
 
                 // C) ANCHOR IS NEWER → new inbound after bot reply → ALLOW
@@ -1056,10 +1470,20 @@ Deno.serve(async (req) => {
 
         // 6. BUILD CONTEXT (Scoped History)
         const currentStage = normalizeStage(lead.status_pipeline) || lead.pipeline_stage || 'novo_lead';
-        let { data: stageConfig } = await supabase.from('ai_stage_config').select('*').eq('pipeline_stage', currentStage).maybeSingle();
+        let { data: stageConfig } = await supabase
+            .from('ai_stage_config')
+            .select('*')
+            .eq('org_id', leadOrgId)
+            .eq('pipeline_stage', currentStage)
+            .maybeSingle();
 
         if (!stageConfig) {
-            const { data: fallback } = await supabase.from('ai_stage_config').select('*').eq('pipeline_stage', 'novo_lead').maybeSingle();
+            const { data: fallback } = await supabase
+                .from('ai_stage_config')
+                .select('*')
+                .eq('org_id', leadOrgId)
+                .eq('pipeline_stage', 'novo_lead')
+                .maybeSingle();
             stageConfig = fallback;
         }
 
@@ -1131,12 +1555,73 @@ Deno.serve(async (req) => {
                 : ''
         );
 
+        // --- CRM COMMENTS CONTEXT ---
+        let crmCommentsBlock = '';
+        let crmCommentsCount = 0;
+        try {
+            const { data: crmComments, error: crmCommentsErr } = await supabase
+                .from('comentarios_leads')
+                .select('texto, autor, created_at')
+                .eq('lead_id', Number(leadId))
+                .order('created_at', { ascending: false })
+                .limit(12);
+
+            if (crmCommentsErr) {
+                console.warn(`⚠️ [${runId}] CRM comments load error (non-blocking):`, crmCommentsErr.message);
+            } else if (crmComments && crmComments.length > 0) {
+                crmCommentsCount = crmComments.length;
+                crmCommentsBlock = crmComments
+                    .slice()
+                    .reverse()
+                    .map((c: any) => {
+                        const author = String(c?.autor || 'CRM').trim();
+                        const text = String(c?.texto || '').replace(/\s+/g, ' ').trim().substring(0, 220);
+                        const at = c?.created_at ? String(c.created_at).substring(0, 19) : 'sem_data';
+                        return `- [${at}] ${author}: ${text}`;
+                    })
+                    .join('\n');
+                console.log(`🗂️ [${runId}] CRM comments loaded: ${crmCommentsCount}`);
+            }
+        } catch (crmCommentErr: any) {
+            console.warn(`⚠️ [${runId}] CRM comments exception (non-blocking):`, crmCommentErr?.message || crmCommentErr);
+        }
+
+        // --- LATEST PROPOSAL SNAPSHOT (avoid repeated asks / preserve continuity) ---
+        let latestProposalBlock = '';
+        try {
+            const { data: latestProposal, error: latestProposalErr } = await supabase
+                .from('propostas')
+                .select('id, status, valor_projeto, consumo_kwh, potencia_kw, paineis_qtd, economia_mensal, payback_anos, created_at')
+                .eq('lead_id', Number(leadId))
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (latestProposalErr) {
+                console.warn(`⚠️ [${runId}] Latest proposal load error (non-blocking):`, latestProposalErr.message);
+            } else if (latestProposal) {
+                latestProposalBlock =
+                    `id=${latestProposal.id}, status=${latestProposal.status}, valor_projeto=${latestProposal.valor_projeto}, ` +
+                    `consumo_kwh=${latestProposal.consumo_kwh}, potencia_kw=${latestProposal.potencia_kw}, ` +
+                    `paineis_qtd=${latestProposal.paineis_qtd}, economia_mensal=${latestProposal.economia_mensal}, ` +
+                    `payback_anos=${latestProposal.payback_anos}, created_at=${latestProposal.created_at}`;
+            }
+        } catch (latestProposalErr: any) {
+            console.warn(`⚠️ [${runId}] Latest proposal exception (non-blocking):`, latestProposalErr?.message || latestProposalErr);
+        }
+
         // --- RAG: INTERNAL KB SEARCH ---
         let kbBlock = '';
 
         // INCREMENT 5A: Unbreakable Org ID Logic (Admin Lookup)
-        let kbOrgId = settings.org_id;
-        let kbOrgIdSource = settings.org_id ? 'settings.org_id' : 'none';
+        let kbOrgId = leadOrgId || settings.org_id;
+        let kbOrgIdSource = leadOrgId ? 'lead.org_id' : (settings.org_id ? 'settings.org_id' : 'none');
+
+        if (settings.org_id && leadOrgId && String(settings.org_id) !== String(leadOrgId)) {
+            console.warn(`⚠️ [${runId}] ai_settings.org_id (${settings.org_id}) differs from lead.org_id (${leadOrgId}). Using lead.org_id.`);
+            kbOrgId = leadOrgId;
+            kbOrgIdSource = 'lead.org_id';
+        }
 
         if (!kbOrgId && lead.user_id) {
             try {
@@ -1150,7 +1635,12 @@ Deno.serve(async (req) => {
                     // HEALING: Optimistically update settings
                     console.log(`🔧 [${runId}] Healing: Auto-updating settings.org_id to ${kbOrgId}`);
                     // Non-awaiting promise to not block
-                    supabase.from('ai_settings').update({ org_id: kbOrgId }).eq('id', settings.id).then();
+                    supabase
+                        .from('ai_settings')
+                        .update({ org_id: kbOrgId })
+                        .eq('id', settings.id)
+                        .eq('org_id', leadOrgId)
+                        .then();
                 } else {
                     // Final fallback: use user_id itself (common for single-user orgs)
                     kbOrgId = lead.user_id;
@@ -1166,7 +1656,7 @@ Deno.serve(async (req) => {
 
         try {
             if (lastUserText && kbOrgId) {
-                const { data: kbResults, error: kbErr } = await supabase.rpc('knowledge_search_v2', {
+                const { data: kbResults, error: kbErr } = await supabase.rpc('knowledge_search_v3', {
                     p_org_id: kbOrgId,
                     p_query_text: lastUserText,
                     p_limit: 6
@@ -1452,6 +1942,12 @@ REGRA DE AGENDAMENTO:
 PROTOCOLO DA ETAPA:
 ${stagePromptText}
 
+COMENTARIOS_CRM_RECENTES:
+${crmCommentsBlock || '(sem comentários internos disponíveis)'}
+
+RESUMO_PROPOSTA_ATUAL:
+${latestProposalBlock || '(sem proposta registrada)'}
+
 CONHECIMENTO_INTERNO:
 ${kbBlock || '(sem dados internos disponíveis)'}
 
@@ -1466,6 +1962,7 @@ Source: "user" se veio direto do que o cliente escreveu, "inferred" se você ded
 Campos possíveis: consumption_kwh_month, estimated_value_brl, customer_type, city, zip, roof_type, utility_company, grid_connection_type, financing_interest, installation_site_type, average_bill_context.
 
 COMENTÁRIOS INTERNOS E FOLLOW-UPS (V7):
+- Antes de pedir dados novamente, confira COMENTARIOS_CRM_RECENTES e RESUMO_PROPOSTA_ATUAL para não repetir perguntas já respondidas pelo lead.
 - Após coletar uma informação importante ou definir próximo passo, registre um comentário interno via add_comment. Use comment_type: "summary" para resumos, "next_step" para próximo passo, "note" para observações gerais.
 - Quando houver ação pendente (documentos, retorno, confirmação do cliente), crie um follow-up via create_followup com título claro e due_at se possível.
 - Nunca crie tarefas/comentários duplicados no mesmo contexto; um por burst/âncora.
@@ -1475,6 +1972,7 @@ FORMATO DE SAÍDA (JSON ESTRITO, sem markdown, sem explicação fora do JSON):
 {"action": "send_message"|"move_stage"|"update_lead_fields"|"add_comment"|"create_followup"|"none", "content": "Texto humano aqui...", "target_stage": "next_stage_id", "fields": {"campo": {"value": "...", "confidence": "high"|"medium"|"low", "source": "user"|"inferred"|"confirmed"}}, "comment": {"text": "Resumo/nota interna", "type": "summary|note|next_step"}, "task": {"title": "Título do follow-up", "notes": "Detalhes", "due_at": "ISO", "priority": "low|medium|high", "channel": "whatsapp|call|email"}}
 
 Se action for "move_stage", DEVE incluir "target_stage".
+Se currentStage for "novo_lead" e action for "send_message", DEVE incluir "target_stage": "respondeu" (obrigatorio - lead respondeu pela primeira vez).
 Se action for "send_message", "content" é obrigatório.
 Você pode combinar: action="send_message" + "fields" para responder E extrair dados ao mesmo tempo.
 Se action for "add_comment", inclua "content" com o texto do comentário.
@@ -1590,6 +2088,12 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
 
         // DEBUG: Attach aggregated text
         aiRes._debug_aggregated = lastUserTextAggregated;
+        if (adoptedLatestOnce) {
+            (aiRes as any)._debug_yield_adopted = {
+                from: adoptedFromInteractionId,
+                to: adoptedToInteractionId
+            };
+        }
         if (webSearchStatus && !(aiRes as any)?._web_search) {
             (aiRes as any)._web_search = webSearchStatus;
         }
@@ -1604,12 +2108,56 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
         // --- V6: EXTRACT AND SAVE LEAD FIELDS (side-effect, non-blocking) ---
         if (aiRes.fields && typeof aiRes.fields === 'object' && Object.keys(aiRes.fields).length > 0) {
             try {
-                // Re-fetch lead for freshest data (avoid stale overwrite)
-                const { data: freshLead } = await supabase.from('leads').select('*').eq('id', leadId).single();
-                if (freshLead) {
-                    const v6Result = await executeLeadFieldUpdate(supabase, leadId, aiRes.fields, freshLead, runId, lastUserTextAggregated);
-                    v6FieldsCandidateCount = v6Result.candidateCount;
-                    v6FieldsWrittenCount = v6Result.writtenCount;
+                let skipV6Writes = false;
+                const v6CandidateCount = Object.keys(aiRes.fields).length;
+
+                try {
+                    const anchorLatest = await isAnchorLatestInbound(supabase, leadId, anchorInteractionId);
+                    if (!anchorLatest.ok) {
+                        skipV6Writes = true;
+                        v6FieldsCandidateCount = v6CandidateCount;
+                        v6FieldsWrittenCount = 0;
+                        (aiRes as any)._debug_overwrite_skipped = {
+                            reason: 'stale_anchor',
+                            anchor: anchorInteractionId || null,
+                            latest: anchorLatest.latestId,
+                            latestCreatedAt: anchorLatest.latestCreatedAt
+                        };
+
+                        console.warn(`⚠️ [${runId}] V6 overwrite skipped: stale anchor ${anchorInteractionId} (latest inbound ${anchorLatest.latestId}).`);
+
+                        try {
+                            await supabase.from('ai_action_logs').insert({
+                                lead_id: Number(leadId),
+                                action_type: 'lead_fields_skipped_stale_anchor',
+                                details: JSON.stringify({
+                                    runId,
+                                    anchorInteractionId: anchorInteractionId || null,
+                                    latestInboundId: anchorLatest.latestId,
+                                    latestInboundCreatedAt: anchorLatest.latestCreatedAt
+                                }),
+                                success: false,
+                            });
+                        } catch (staleLogErr: any) {
+                            console.warn(`⚠️ [${runId}] V6 stale-anchor skip log failed (non-blocking):`, staleLogErr?.message || staleLogErr);
+                        }
+                    }
+                } catch (anchorCheckErr: any) {
+                    console.warn(`⚠️ [${runId}] V6 stale-anchor check failed (fail-open):`, anchorCheckErr?.message || anchorCheckErr);
+                    (aiRes as any)._debug_overwrite_skipped = {
+                        reason: 'check_failed',
+                        anchor: anchorInteractionId || null
+                    };
+                }
+
+                if (!skipV6Writes) {
+                    // Re-fetch lead for freshest data (avoid stale overwrite)
+                    const { data: freshLead } = await supabase.from('leads').select('*').eq('id', leadId).single();
+                    if (freshLead) {
+                        const v6Result = await executeLeadFieldUpdate(supabase, leadId, aiRes.fields, freshLead, runId, lastUserTextAggregated);
+                        v6FieldsCandidateCount = v6Result.candidateCount;
+                        v6FieldsWrittenCount = v6Result.writtenCount;
+                    }
                 }
             } catch (v6Err: any) {
                 console.error(`⚠️ [${runId}] V6: Field extraction failed (non-blocking):`, v6Err?.message || v6Err);
@@ -1797,9 +2345,13 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                             .limit(1)
                             .maybeSingle();
 
-                        if (latestClientAtSend?.id && String(latestClientAtSend.id) !== String(interactionId)) {
+                        // In burst mode, only the call that was invoked with the latest inbound id is allowed to send.
+                        // This prevents older runs (even if they adopted latest) from winning and sending before the final quiet-window call.
+                        const raceInteractionId = burstMode ? (inputInteractionId ?? interactionId) : interactionId;
+
+                        if (latestClientAtSend?.id && String(latestClientAtSend.id) !== String(raceInteractionId)) {
                             decision = 'lost_latest_race';
-                            console.warn(`[${runId}] Skipped (Final Check): interaction ${interactionId} lost race to latest ${latestClientAtSend.id}.`);
+                            console.warn(`[${runId}] Skipped (Final Check): interaction ${raceInteractionId} lost race to latest ${latestClientAtSend.id}.`);
                             return respondNoSend({ skipped: "lost_latest_race", runId }, 'lost_latest_race');
                         }
 
@@ -1897,6 +2449,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                     if (insErr) console.error('DB Insert Error (Smoke):', insErr);
                     else {
                         console.log(`Outbound inserted id (Smoke): ${ins?.id} (Instance: ${instanceName})`);
+                        didSendOutbound = true; // Tarefa 1: mark reply as sent (simulated)
                         try {
                             await supabase.from('ai_action_logs').insert({
                                 lead_id: Number(leadId),
@@ -2012,7 +2565,10 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                         }).select('id').single();
 
                         if (insErr) console.error('❌ DB Insert Error:', insErr);
-                        else console.log(`💾 Outbound inserted id: ${ins?.id} (Instance: ${instanceName})`);
+                        else {
+                            console.log(`💾 Outbound inserted id: ${ins?.id} (Instance: ${instanceName})`);
+                            didSendOutbound = true; // Tarefa 1: mark reply as sent (live)
+                        }
 
                     } else {
                         const errText = await sendResp.text();
@@ -2037,7 +2593,6 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             let gateCheck = true;
             if (target === 'chamada_agendada') {
                 // Gated: only move if appointment was written OR duplicate
-                // Also allow if appointmentSkippedReason is 'skipped_duplicate'
                 if (appointmentWritten || appointmentSkippedReason === 'skipped_duplicate') {
                     gateCheck = true;
                 } else {
@@ -2049,12 +2604,36 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             // Verify transition (allow if valid, irrespective of action='move_stage' or 'send_message')
             if (gateCheck && target !== currentStage && isValidTransition(currentStage, target)) {
 
-                // INCREMENT 10: Safe Update
-                await updateLeadStageSafe(supabase, leadId, target, runId);
-                console.log(`🚚 [${runId}] Moved stage request: ${currentStage} -> ${target}`);
+                // INCREMENT 10: Safe Update (Tarefa 3: check return value)
+                const stageResult = await updateLeadStageSafe(supabase, leadId, target, runId);
+                if (stageResult.success) {
+                    console.log(`🚚 [${runId}] Moved stage: ${currentStage} -> ${target}`);
+                    stageMoveResult = `${currentStage}_to_${target}`; // Tarefa 2
+                } else {
+                    console.error(`❌ [${runId}] Stage update FAILED: ${stageResult.error}`);
+                    stageMoveResult = `error:${currentStage}_to_${target}:${stageResult.error}`; // Tarefa 2
+                }
 
             } else if (target !== currentStage) {
                 console.warn(`⚠️ [${runId}] Invalid transition blocked (or Gated): ${currentStage} -> ${target}`);
+                stageMoveResult = `blocked:${currentStage}_to_${target}`; // Tarefa 2
+            }
+        }
+
+        // --- TAREFA 1: DETERMINISTIC FALLBACK — novo_lead → respondeu ---
+        // Guarantees the stage move even when the LLM omits target_stage from its JSON response.
+        // Only fires if: (a) LLM did NOT provide target_stage, (b) current stage is novo_lead,
+        // (c) the agent actually sent an outbound reply this run (didSendOutbound=true).
+        // Does NOT fire for aborted/yielded runs (those return via respondNoSend before reaching here).
+        if (!aiRes.target_stage && currentStage === 'novo_lead' && didSendOutbound) {
+            console.log(`🔧 [${runId}] Deterministic fallback: novo_lead → respondeu (LLM omitted target_stage, didSendOutbound=true)`);
+            const fallbackResult = await updateLeadStageSafe(supabase, leadId, 'respondeu', runId);
+            if (fallbackResult.success) {
+                stageMoveResult = 'novo_lead_to_respondeu_deterministic'; // Tarefa 2
+                (aiRes as any)._deterministic_stage_move = 'novo_lead_to_respondeu';
+            } else {
+                console.error(`❌ [${runId}] Deterministic fallback stage update FAILED: ${fallbackResult.error}`);
+                stageMoveResult = `error:novo_lead_to_respondeu_deterministic:${fallbackResult.error}`; // Tarefa 2
             }
         }
 
@@ -2078,8 +2657,8 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             kb_hits_count: kbHitsCount,
             kb_chars: kbChars,
             kb_error: kbError,
-            kb_org_id_used: kbOrgId,       // NEW
-            kb_org_id_source: kbOrgIdSource, // NEW
+            kb_org_id_used: kbOrgId,
+            kb_org_id_source: kbOrgIdSource,
             web_used: webUsed,
             web_results_count: webResultsCount,
             web_error: webError,
@@ -2089,6 +2668,11 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             solar_gate_intent: gate?.intent || null,
             solar_gate_missing: gate?.missing?.join(',') || null,
             solar_gate_applied: gateApplied || false,
+            // Stage move observability (Tarefa 2)
+            stage_move_result: stageMoveResult,
+            stage_current: currentStage,
+            stage_target_from_llm: (aiRes as any)?.target_stage || null,
+            did_send_outbound: didSendOutbound,
             // V6
             v6_fields_candidate_count: v6FieldsCandidateCount,
             v6_fields_written_count: v6FieldsWrittenCount,
@@ -2110,11 +2694,12 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
         // 11. LOG RUN (Include instance info + input_snapshot)
         try {
             await supabase.from('ai_agent_runs').insert({
-                org_id: settings.org_id,
+                org_id: leadOrgId,
                 lead_id: leadId,
+                trigger_type: payload?.triggerType || 'incoming_message',
                 status: 'success',
                 llm_output: aiRes,
-                actions_executed: [aiRes.action, `instance:${instanceName}`, ...(v6FieldsWrittenCount > 0 ? ['update_lead_fields'] : []), ...(v7CommentWritten ? ['add_comment'] : []), ...(v7FollowupWritten ? ['create_followup'] : []), ...(appointmentWritten ? ['create_appointment'] : []), ...(proposalWritten ? ['create_proposal_draft'] : [])],
+                actions_executed: [aiRes.action, `instance:${instanceName}`, ...(v6FieldsWrittenCount > 0 ? ['update_lead_fields'] : []), ...(v7CommentWritten ? ['add_comment'] : []), ...(v7FollowupWritten ? ['create_followup'] : []), ...(appointmentWritten ? ['create_appointment'] : []), ...(proposalWritten ? ['create_proposal_draft'] : []), ...(stageMoveResult ? [`stage_move:${stageMoveResult}`] : [])], // Tarefa 6
                 input_snapshot: {
                     runId,
                     anchorInteractionId,
@@ -2282,6 +2867,15 @@ async function executeCreateAppointment(
     }
 }
 
+function mapCustomerTypeToSegment(customerType: string | null | undefined): 'residencial' | 'empresarial' | 'agronegocio' | 'usina' | 'indefinido' {
+    const normalized = String(customerType || '').toLowerCase().trim();
+    if (normalized === 'residencial') return 'residencial';
+    if (normalized === 'comercial' || normalized === 'industrial') return 'empresarial';
+    if (normalized === 'rural') return 'agronegocio';
+    if (normalized === 'usina') return 'usina';
+    return 'indefinido';
+}
+
 // --- V10: CREATE PROPOSAL DRAFT executor ---
 async function executeCreateProposalDraft(
     supabase: any,
@@ -2377,6 +2971,98 @@ async function executeCreateProposalDraft(
             const { data: ins, error: insErr } = await supabase.from('propostas').insert(payload).select('id').single();
             if (insErr) throw insErr;
             proposalId = ins.id;
+        }
+
+        // Premium/versioned proposal snapshot (non-blocking)
+        try {
+            let orgId: string | null = userId || null;
+            try {
+                const { data: userData, error: userErr } = await supabase.auth.admin.getUserById(userId);
+                if (!userErr && userData?.user?.user_metadata?.org_id) {
+                    orgId = String(userData.user.user_metadata.org_id);
+                }
+            } catch (orgLookupErr) {
+                console.warn(`[${runId}] V10: org_id lookup failed (non-blocking):`, orgLookupErr);
+            }
+
+            const segment = mapCustomerTypeToSegment(proposal.customer_type?.value);
+            const versionStatus = existing && existing.status === 'Rascunho' ? 'draft' : 'ready';
+            const premiumPayload = {
+                persuasion_pillars: ['custo', 'economia', 'confianca'],
+                objective: 'gerar_rascunho_ia_com_contexto',
+                cta: 'confirmar_dados_para_apresentacao',
+                assumptions: typeof proposal.assumptions === 'string' ? proposal.assumptions : null,
+            };
+
+            const contextSnapshot = {
+                generated_at: new Date().toISOString(),
+                source: 'ai',
+                segment,
+                lead_id: Number(leadId),
+                proposal_values: {
+                    valor_projeto: valorProjeto,
+                    consumo_kwh: consumoKwh,
+                    potencia_kw: Number(proposal.potencia_kw?.value || 0),
+                    paineis_qtd: Number(proposal.paineis_qtd?.value || 0),
+                    economia_mensal: Number(proposal.economia_mensal?.value || 0),
+                    payback_anos: Number(proposal.payback_anos?.value || 0),
+                },
+            };
+
+            let nextVersionNo = 1;
+            try {
+                const { data: lastVersion } = await supabase
+                    .from('proposal_versions')
+                    .select('version_no')
+                    .eq('proposta_id', proposalId)
+                    .order('version_no', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (lastVersion?.version_no && Number(lastVersion.version_no) > 0) {
+                    nextVersionNo = Number(lastVersion.version_no) + 1;
+                }
+            } catch (versionLookupErr) {
+                console.warn(`[${runId}] V10: version lookup failed (non-blocking):`, versionLookupErr);
+            }
+
+            const { data: version, error: versionErr } = await supabase
+                .from('proposal_versions')
+                .insert({
+                    proposta_id: proposalId,
+                    lead_id: Number(leadId),
+                    user_id: userId,
+                    org_id: orgId,
+                    version_no: nextVersionNo,
+                    status: versionStatus,
+                    segment,
+                    source: 'ai',
+                    premium_payload: premiumPayload,
+                    context_snapshot: contextSnapshot,
+                })
+                .select('id')
+                .single();
+
+            if (versionErr) {
+                console.warn(`[${runId}] V10: proposal_versions insert failed (non-blocking):`, versionErr);
+            } else if (version?.id) {
+                const { error: deliveryErr } = await supabase.from('proposal_delivery_events').insert({
+                    proposal_version_id: version.id,
+                    proposta_id: proposalId,
+                    lead_id: Number(leadId),
+                    user_id: userId,
+                    channel: 'crm',
+                    event_type: 'generated',
+                    metadata: {
+                        generated_by: 'ai',
+                        proposal_status: payload.status
+                    },
+                });
+                if (deliveryErr) {
+                    console.warn(`[${runId}] V10: proposal_delivery_events insert failed (non-blocking):`, deliveryErr);
+                }
+            }
+        } catch (premiumErr) {
+            console.warn(`[${runId}] V10: premium proposal snapshot skipped (non-blocking):`, premiumErr);
         }
 
         // Handle Assumptions (save as comment)

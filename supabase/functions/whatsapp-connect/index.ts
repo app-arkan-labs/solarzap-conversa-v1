@@ -52,6 +52,18 @@ Deno.serve(async (req) => {
             throw new Error('Invalid User Token')
         }
 
+        const { data: member, error: memberError } = await supabaseClient
+            .from('organization_members')
+            .select('org_id')
+            .eq('user_id', user.id)
+            .limit(1)
+            .single()
+
+        if (memberError || !member?.org_id) {
+            throw new Error('Organization membership not found for authenticated user')
+        }
+        const orgId = member.org_id
+
         const { action, instanceId, newName, displayName, instanceName, key, reaction } = await req.json()
 
         // Base Response if config is missing (for 'list' or others)
@@ -142,6 +154,7 @@ Deno.serve(async (req) => {
             const { data: newInstance, error: insertError } = await supabaseClient
                 .from('whatsapp_instances')
                 .insert({
+                    org_id: orgId,
                     user_id: user.id,
                     instance_name: realInstanceName,
                     display_name: displayName || 'WhatsApp',
