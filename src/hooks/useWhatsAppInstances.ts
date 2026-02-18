@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { USE_MOCK_DATA, EDGE_FUNCTION_FALLBACK } from '@/config/devMode';
 
@@ -24,33 +25,33 @@ const createMockQrCode = () => {
   const size = 200;
   const cellSize = 8;
   const cells = 21;
-  
+
   const seed = Date.now();
   const pattern: boolean[][] = [];
   for (let i = 0; i < cells; i++) {
     pattern[i] = [];
     for (let j = 0; j < cells; j++) {
-      const isFinderPattern = 
-        (i < 7 && j < 7) || 
-        (i < 7 && j >= cells - 7) || 
+      const isFinderPattern =
+        (i < 7 && j < 7) ||
+        (i < 7 && j >= cells - 7) ||
         (i >= cells - 7 && j < 7);
-      
+
       if (isFinderPattern) {
         const inOuter = i === 0 || i === 6 || j === 0 || j === 6 ||
-                       (i < 7 && (j === cells - 7 || j === cells - 1)) ||
-                       (i < 7 && j >= cells - 7 && (i === 0 || i === 6)) ||
-                       (i >= cells - 7 && j < 7 && (j === 0 || j === 6)) ||
-                       (i >= cells - 7 && j < 7 && (i === cells - 7 || i === cells - 1));
+          (i < 7 && (j === cells - 7 || j === cells - 1)) ||
+          (i < 7 && j >= cells - 7 && (i === 0 || i === 6)) ||
+          (i >= cells - 7 && j < 7 && (j === 0 || j === 6)) ||
+          (i >= cells - 7 && j < 7 && (i === cells - 7 || i === cells - 1));
         const inCenter = (i >= 2 && i <= 4 && j >= 2 && j <= 4) ||
-                        (i >= 2 && i <= 4 && j >= cells - 5 && j <= cells - 3) ||
-                        (i >= cells - 5 && i <= cells - 3 && j >= 2 && j <= 4);
+          (i >= 2 && i <= 4 && j >= cells - 5 && j <= cells - 3) ||
+          (i >= cells - 5 && i <= cells - 3 && j >= 2 && j <= 4);
         pattern[i][j] = inOuter || inCenter;
       } else {
         pattern[i][j] = ((seed * (i + 1) * (j + 1)) % 7) < 3;
       }
     }
   }
-  
+
   let rects = '';
   for (let i = 0; i < cells; i++) {
     for (let j = 0; j < cells; j++) {
@@ -61,12 +62,12 @@ const createMockQrCode = () => {
       }
     }
   }
-  
+
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
     <rect width="${size}" height="${size}" fill="#fff"/>
     ${rects}
   </svg>`;
-  
+
   const base64 = btoa(svg);
   return `data:image/svg+xml;base64,${base64}`;
 };
@@ -130,7 +131,7 @@ export function useWhatsAppInstances() {
       }
 
       console.log('[useWhatsAppInstances] Fetching instances...');
-      
+
       const { data, error } = await supabase.functions.invoke('whatsapp-connect', {
         body: { action: 'list' },
         headers
@@ -140,19 +141,19 @@ export function useWhatsAppInstances() {
 
       if (error) {
         // Check if it's a connection/deployment error
-        const isConnectionError = error.message?.includes('Failed to send') || 
-                                   error.message?.includes('FetchError') ||
-                                   error.message?.includes('NetworkError');
-        
+        const isConnectionError = error.message?.includes('Failed to send') ||
+          error.message?.includes('FetchError') ||
+          error.message?.includes('NetworkError');
+
         if (isConnectionError) {
           console.warn('[useWhatsAppInstances] Edge Function not deployed or unreachable.');
-          
+
           // Enable fallback mode if configured
           if (EDGE_FUNCTION_FALLBACK && !fallbackAttempted.current) {
             fallbackAttempted.current = true;
             setUseFallback(true);
             toast.info(
-              'Edge Function indisponível. Usando modo demonstração local.', 
+              'Edge Function indisponível. Usando modo demonstração local.',
               { duration: 5000 }
             );
             const mockInstances = loadMockInstances();
@@ -168,7 +169,7 @@ export function useWhatsAppInstances() {
         }
         throw error;
       }
-      
+
       if (!data?.configured) {
         console.log('[useWhatsAppInstances] Evolution API not configured');
         setInstances([]);
@@ -189,18 +190,20 @@ export function useWhatsAppInstances() {
     fetchInstances();
   }, [fetchInstances]);
 
-  // Subscribe to realtime changes
+  const { orgId } = useAuth(); // Assume useAuth is available or needs to be imported
+
   useEffect(() => {
-    if (USE_MOCK_DATA) return;
+    if (USE_MOCK_DATA || !orgId) return;
 
     const channel = supabase
-      .channel('whatsapp-instances-multi')
+      .channel(`whatsapp-instances-multi-${orgId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'whatsapp_instances'
+          table: 'whatsapp_instances',
+          filter: `org_id=eq.${orgId}`
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
@@ -211,7 +214,7 @@ export function useWhatsAppInstances() {
           } else if (payload.eventType === 'UPDATE') {
             const updatedInstance = payload.new as WhatsAppInstance;
             if (updatedInstance.is_active) {
-              setInstances(prev => prev.map(inst => 
+              setInstances(prev => prev.map(inst =>
                 inst.id === updatedInstance.id ? updatedInstance : inst
               ));
             } else {
@@ -228,7 +231,7 @@ export function useWhatsAppInstances() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [orgId]);
 
   // Create new instance
   const createInstance = useCallback(async (displayName?: string): Promise<{ qrCode?: string; instance?: WhatsAppInstance } | null> => {
@@ -238,7 +241,7 @@ export function useWhatsAppInstances() {
       // Use mock data if USE_MOCK_DATA is true OR if fallback is active
       if (USE_MOCK_DATA || useFallback) {
         await new Promise(resolve => setTimeout(resolve, 800));
-        
+
         const newInstance: WhatsAppInstance = {
           id: generateMockId(),
           user_id: 'mock-user',
@@ -253,9 +256,9 @@ export function useWhatsAppInstances() {
 
         const updatedInstances = [newInstance, ...instances];
         saveMockInstances(updatedInstances);
-        
-        toast.success(useFallback 
-          ? 'Instância criada em modo demonstração! (Edge Function indisponível)' 
+
+        toast.success(useFallback
+          ? 'Instância criada em modo demonstração! (Edge Function indisponível)'
           : 'Instância criada! Escaneie o QR Code. (Modo de teste)'
         );
         return { qrCode: newInstance.qr_code, instance: newInstance };
@@ -276,7 +279,7 @@ export function useWhatsAppInstances() {
 
       if (error) {
         console.error('Function invoke error:', error);
-        
+
         // Provide more helpful error message
         if (error.message?.includes('Failed to send') || error.message?.includes('FetchError')) {
           toast.error(
@@ -287,7 +290,7 @@ export function useWhatsAppInstances() {
           );
           return null;
         }
-        
+
         throw new Error(error.message || 'Erro na chamada da função');
       }
 
@@ -295,7 +298,7 @@ export function useWhatsAppInstances() {
         console.error('API returned error:', data.error);
         throw new Error(data.error);
       }
-      
+
       if (!data?.configured) {
         toast.info('WhatsApp ainda não configurado. Configure EVOLUTION_API_URL e EVOLUTION_API_KEY nos Secrets do Supabase.');
         return null;
@@ -322,7 +325,7 @@ export function useWhatsAppInstances() {
       if (USE_MOCK_DATA) {
         await new Promise(resolve => setTimeout(resolve, 500));
         const newQr = createMockQrCode();
-        const updatedInstances = instances.map(inst => 
+        const updatedInstances = instances.map(inst =>
           inst.id === instanceId ? { ...inst, qr_code: newQr, updated_at: new Date().toISOString() } : inst
         );
         saveMockInstances(updatedInstances);
@@ -351,21 +354,21 @@ export function useWhatsAppInstances() {
   // Simulate connection (only works with USE_MOCK_DATA)
   const simulateConnection = useCallback(async (instanceId: string, phoneNumber?: string): Promise<boolean> => {
     if (!USE_MOCK_DATA) return false;
-    
+
     try {
       setActionLoading(instanceId);
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const updatedInstances = instances.map(inst => 
-        inst.id === instanceId 
-          ? { 
-              ...inst, 
-              status: 'connected' as const, 
-              phone_number: phoneNumber || '+55 11 99999-' + Math.floor(1000 + Math.random() * 9000),
-              qr_code: undefined,
-              connected_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            } 
+
+      const updatedInstances = instances.map(inst =>
+        inst.id === instanceId
+          ? {
+            ...inst,
+            status: 'connected' as const,
+            phone_number: phoneNumber || '+55 11 99999-' + Math.floor(1000 + Math.random() * 9000),
+            qr_code: undefined,
+            connected_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
           : inst
       );
       saveMockInstances(updatedInstances);
@@ -386,15 +389,15 @@ export function useWhatsAppInstances() {
 
       if (USE_MOCK_DATA) {
         await new Promise(resolve => setTimeout(resolve, 500));
-        const updatedInstances = instances.map(inst => 
-          inst.id === instanceId 
-            ? { 
-                ...inst, 
-                status: 'disconnected' as const, 
-                phone_number: undefined,
-                connected_at: undefined,
-                updated_at: new Date().toISOString(),
-              } 
+        const updatedInstances = instances.map(inst =>
+          inst.id === instanceId
+            ? {
+              ...inst,
+              status: 'disconnected' as const,
+              phone_number: undefined,
+              connected_at: undefined,
+              updated_at: new Date().toISOString(),
+            }
             : inst
         );
         saveMockInstances(updatedInstances);
@@ -462,9 +465,9 @@ export function useWhatsAppInstances() {
 
       if (USE_MOCK_DATA) {
         await new Promise(resolve => setTimeout(resolve, 300));
-        const updatedInstances = instances.map(inst => 
-          inst.id === instanceId 
-            ? { ...inst, display_name: newName, updated_at: new Date().toISOString() } 
+        const updatedInstances = instances.map(inst =>
+          inst.id === instanceId
+            ? { ...inst, display_name: newName, updated_at: new Date().toISOString() }
             : inst
         );
         saveMockInstances(updatedInstances);

@@ -506,7 +506,8 @@ export function useChat(contacts: Contact[] = []) {
 
             if (!usedIntent) {
                 const finalName = sendMode === 'video' ? ensureVideoExt(file.name) : file.name;
-                path = `${user.id}/${conversationId}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${sanitizeFileName(finalName)}`;
+                const safeLeadId = String(conversationId || 'general').replace(/[^a-zA-Z0-9_-]/g, '_');
+                path = `${orgId}/chat/${safeLeadId}/${Date.now()}_${sanitizeFileName(finalName)}`;
 
                 let lastUploadError: { message?: string } | null = null;
 
@@ -753,7 +754,8 @@ export function useChat(contacts: Contact[] = []) {
             if (!instance) throw new Error('Nenhuma instância do WhatsApp conectada. Conecte-se primeiro.');
 
             // 3. Upload Audio
-            const fileName = `${conversationId}/${Date.now()}.webm`;
+            const safeLeadId = String(conversationId || 'general').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const fileName = `${orgId}/chat/${safeLeadId}/${Date.now()}_audio.webm`;
             const bucketCandidates = ['chat-attachments', 'chat-delivery'] as const;
             let usedBucket = '';
             let lastUploadError: { message?: string } | null = null;

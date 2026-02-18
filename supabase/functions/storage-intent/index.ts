@@ -43,6 +43,20 @@ Deno.serve(async (req) => {
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
 
+        const { data: membership } = await supabaseAdmin
+            .from('organization_members')
+            .select('org_id, created_at')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: true })
+            .order('org_id', { ascending: true })
+            .limit(1)
+            .maybeSingle()
+
+        const orgId = membership?.org_id || (user.user_metadata as any)?.org_id
+        if (!orgId) {
+            throw new Error('User is not linked to an organization')
+        }
+
         // 5. Policy Logic (90MB Threshold)
         const VIDEO_LIMIT = 90 * 1024 * 1024; // 90MB
         let sendMode = 'document';
@@ -89,7 +103,8 @@ Deno.serve(async (req) => {
         }
         // Sanitize filename
         const sanitizedName = finalName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-        const path = `${user.id}/${leadId || 'general'}/${Date.now()}_${Math.random().toString(36).substring(7)}_${sanitizedName}`;
+        const safeLeadId = String(leadId || 'general').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const path = `${orgId}/chat/${safeLeadId}/${Date.now()}_${sanitizedName}`;
 
         // 8. Generate Signed Upload URL
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage

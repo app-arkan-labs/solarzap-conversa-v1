@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface Integration {
   id: string;
@@ -33,6 +34,7 @@ export interface WhatsAppInstance {
 }
 
 export function useIntegrations() {
+  const { orgId } = useAuth();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [whatsappInstance, setWhatsappInstance] = useState<WhatsAppInstance | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,7 +53,7 @@ export function useIntegrations() {
   const fetchIntegrations = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (!user || !orgId) {
         setIntegrations([]);
         setWhatsappInstance(null);
         setLoading(false);
@@ -66,6 +68,7 @@ export function useIntegrations() {
         supabase
           .from('whatsapp_instances')
           .select('*')
+          .eq('org_id', orgId)
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -88,7 +91,7 @@ export function useIntegrations() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [orgId]);
 
   // Initial fetch
   useEffect(() => {
@@ -97,14 +100,17 @@ export function useIntegrations() {
 
   // Subscribe to realtime changes for WhatsApp instances
   useEffect(() => {
+    if (!orgId) return;
+
     const channel = supabase
-      .channel('whatsapp-instances-changes')
+      .channel(`whatsapp-instances-changes-${orgId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'whatsapp_instances'
+          table: 'whatsapp_instances',
+          filter: `org_id=eq.${orgId}`
         },
         (payload) => {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
@@ -119,7 +125,7 @@ export function useIntegrations() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [orgId]);
 
   // Check for OAuth callback params in URL
   useEffect(() => {

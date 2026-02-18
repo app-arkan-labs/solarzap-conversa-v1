@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { AISettings, AIStageConfig, DEFAULT_AI_SETTINGS } from '@/types/ai';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 const STAGE_COL = 'status_pipeline';
 const LEGACY_COL = 'pipeline' + '_stage';
@@ -28,54 +29,54 @@ export function useAISettings() {
     const [stageConfigs, setStageConfigs] = useState<AIStageConfig[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
+    const { orgId } = useAuth();
 
     const didInitOrgId = useRef(false);
 
     const fetchSettings = useCallback(async () => {
+        if (!orgId) {
+            setSettings(null);
+            setStageConfigs([]);
+            setIsLoading(false);
+            return;
+        }
+
         setIsLoading(true);
         try {
-            // Fetch Global Settings
+            // Fetch org-scoped global settings
             const { data: settingsData, error: settingsError } = await supabase
                 .from('ai_settings')
                 .select('*')
-                .single();
+                .eq('org_id', orgId)
+                .limit(1)
+                .maybeSingle();
 
             if (settingsError) {
-                if (settingsError.code === 'PGRST116') {
-                    // Not found, assume default (will be created by migration or manually)
-                    // For UI purposes we can show defaults
-                    console.log('AI Settings not found, showing defaults');
-                } else {
-                    console.error('Error fetching AI settings:', settingsError);
-                }
+                console.error('Error fetching AI settings:', settingsError);
+            } else if (!settingsData) {
+                console.log('AI settings not found for org, using defaults in UI.');
+                setSettings(null);
             } else {
                 setSettings(settingsData);
 
-                // Auto-fix org_id if missing (Hardening RAG)
                 if (!settingsData.org_id && !didInitOrgId.current) {
                     didInitOrgId.current = true;
-                    const { data: { user } } = await supabase.auth.getUser();
-                    const orgId = user?.user_metadata?.org_id || user?.id;
+                    const { error: updateErr } = await supabase
+                        .from('ai_settings')
+                        .update({ org_id: orgId })
+                        .eq('id', settingsData.id);
 
-                    if (orgId) {
-                        console.log('🔧 Auto-fixing missing org_id in settings to:', orgId);
-                        const { error: updateErr } = await supabase
-                            .from('ai_settings')
-                            .update({ org_id: orgId })
-                            .eq('id', settingsData.id);
-
-                        if (!updateErr) {
-                            // Optimistic update locally to avoid reload loop
-                            setSettings({ ...settingsData, org_id: orgId });
-                        }
+                    if (!updateErr) {
+                        setSettings({ ...settingsData, org_id: orgId });
                     }
                 }
             }
 
-            // Fetch Stage Configs
+            // Fetch org-scoped stage configs
             let { data: stagesData, error: stagesError } = await supabase
                 .from('ai_stage_config')
                 .select(stageConfigSelect(STAGE_COL))
+                .eq('org_id', orgId)
                 .order('id');
 
             if (stagesError && isStageSchemaMismatch(stagesError)) {
@@ -83,6 +84,7 @@ export function useAISettings() {
                 const legacyFetch = await supabase
                     .from('ai_stage_config')
                     .select(stageConfigSelect(LEGACY_COL))
+                    .eq('org_id', orgId)
                     .order('id');
                 stagesData = legacyFetch.data;
                 stagesError = legacyFetch.error;
@@ -99,22 +101,24 @@ export function useAISettings() {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [orgId]);
 
     useEffect(() => {
         fetchSettings();
 
+        if (!orgId) return;
+
         // Subscription for real-time updates
         const settingsSub = supabase
-            .channel('ai_settings_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'ai_settings' }, () => {
+            .channel(`ai_settings_changes_${orgId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'ai_settings', filter: `org_id=eq.${orgId}` }, () => {
                 fetchSettings();
             })
             .subscribe();
 
         const stageSub = supabase
-            .channel('ai_stage_config_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'ai_stage_config' }, () => {
+            .channel(`ai_stage_config_changes_${orgId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'ai_stage_config', filter: `org_id=eq.${orgId}` }, () => {
                 fetchSettings();
             })
             .subscribe();
@@ -123,15 +127,17 @@ export function useAISettings() {
             supabase.removeChannel(settingsSub);
             supabase.removeChannel(stageSub);
         };
-    }, [fetchSettings]);
+    }, [fetchSettings, orgId]);
 
     const updateGlobalSettings = async (updates: Partial<AISettings>) => {
         try {
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+
             if (!settings?.id) {
                 // Create if doesn't exist (edge case)
                 const { error } = await supabase
                     .from('ai_settings')
-                    .insert([{ ...DEFAULT_AI_SETTINGS, ...updates }])
+                    .insert([{ ...DEFAULT_AI_SETTINGS, ...updates, org_id: orgId }])
                     .select()
                     .single();
 
@@ -140,7 +146,8 @@ export function useAISettings() {
                 const { error } = await supabase
                     .from('ai_settings')
                     .update(updates)
-                    .eq('id', settings.id);
+                    .eq('id', settings.id)
+                    .eq('org_id', orgId);
 
                 if (error) throw error;
             }
@@ -155,24 +162,29 @@ export function useAISettings() {
 
     const updateStageConfig = async (stage: string | number, updates: Partial<AIStageConfig>) => {
         try {
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+
             let error: any = null;
             if (typeof stage === 'number') {
                 ({ error } = await supabase
                     .from('ai_stage_config')
                     .update(updates)
-                    .eq('id', stage));
+                    .eq('id', stage)
+                    .eq('org_id', orgId));
             } else {
                 ({ error } = await supabase
                     .from('ai_stage_config')
                     .update(updates)
-                    .eq(STAGE_COL, stage));
+                    .eq(STAGE_COL, stage)
+                    .eq('org_id', orgId));
 
                 if (error && isStageSchemaMismatch(error)) {
                     console.warn(`[AISettings] fallback legacy stage col: ${LEGACY_COL}`, error.code);
                     ({ error } = await supabase
                         .from('ai_stage_config')
                         .update(updates)
-                        .eq(LEGACY_COL, stage));
+                        .eq(LEGACY_COL, stage)
+                        .eq('org_id', orgId));
                 }
             }
 
@@ -193,17 +205,21 @@ export function useAISettings() {
 
     const restoreDefaultPrompt = async (stage: string) => {
         try {
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+
             let { error } = await supabase
                 .from('ai_stage_config')
                 .update({ prompt_override: null }) // Setting to null restores usage of default_prompt in View logic
-                .eq(STAGE_COL, stage);
+                .eq(STAGE_COL, stage)
+                .eq('org_id', orgId);
 
             if (error && isStageSchemaMismatch(error)) {
                 console.warn(`[AISettings] fallback legacy stage col: ${LEGACY_COL}`, error.code);
                 ({ error } = await supabase
                     .from('ai_stage_config')
                     .update({ prompt_override: null })
-                    .eq(LEGACY_COL, stage));
+                    .eq(LEGACY_COL, stage)
+                    .eq('org_id', orgId));
             }
 
             if (error) throw error;
