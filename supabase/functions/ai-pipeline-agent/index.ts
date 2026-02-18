@@ -53,7 +53,9 @@ async function tableHasOrgIdColumn(supabase: any, table: string): Promise<boolea
 }
 
 function injectOrgIdIntoInsertPayload(payload: any, orgId: string | null): any {
-    if (!orgId) return payload;
+    if (!orgId) {
+        throw new Error('Missing org_id for AI insert payload');
+    }
     if (Array.isArray(payload)) {
         return payload.map((row) => (row && typeof row === 'object' && !('org_id' in row)) ? { ...row, org_id: orgId } : row);
     }
@@ -906,11 +908,9 @@ Deno.serve(async (req) => {
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
         );
         let leadOrgId: string | null = null;
-        let aiActionLogsHasOrgId = false;
-        try {
-            aiActionLogsHasOrgId = await tableHasOrgIdColumn(supabaseBase, 'ai_action_logs');
-        } catch (schemaErr) {
-            console.warn(`[${runId}] ai_action_logs org_id schema probe failed (non-blocking):`, schemaErr);
+        const aiActionLogsHasOrgId = await tableHasOrgIdColumn(supabaseBase, 'ai_action_logs');
+        if (!aiActionLogsHasOrgId) {
+            throw new Error('Schema hardening violation: ai_action_logs.org_id column is required');
         }
         const supabase = createOrgAwareSupabaseClient(
             supabaseBase,
@@ -983,8 +983,20 @@ Deno.serve(async (req) => {
 
         leadOrgId = lead.org_id ? String(lead.org_id) : null;
         if (!leadOrgId) {
-            console.log(`🛑 Lead without org_id: ${leadId}`);
-            return respondNoSend({ skipped: "lead_without_org_id" }, 'lead_without_org_id');
+            console.error(`🛑 [${runId}] lead_without_org_id`, { leadId, instanceName, interactionId });
+            return new Response(
+                JSON.stringify({
+                    error: 'lead_without_org_id',
+                    runId,
+                    leadId,
+                    instanceName,
+                    interactionId
+                }),
+                {
+                    status: 422,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                }
+            );
         }
 
         const { data: settings, error: settingsErr } = await supabase
@@ -1613,45 +1625,14 @@ Deno.serve(async (req) => {
         // --- RAG: INTERNAL KB SEARCH ---
         let kbBlock = '';
 
-        // INCREMENT 5A: Unbreakable Org ID Logic (Admin Lookup)
-        let kbOrgId = leadOrgId || settings.org_id;
-        let kbOrgIdSource = leadOrgId ? 'lead.org_id' : (settings.org_id ? 'settings.org_id' : 'none');
+        // M7.2: strict org source (no silent fallback to user_id/user metadata).
+        let kbOrgId = leadOrgId;
+        let kbOrgIdSource = 'lead.org_id';
 
         if (settings.org_id && leadOrgId && String(settings.org_id) !== String(leadOrgId)) {
             console.warn(`⚠️ [${runId}] ai_settings.org_id (${settings.org_id}) differs from lead.org_id (${leadOrgId}). Using lead.org_id.`);
             kbOrgId = leadOrgId;
             kbOrgIdSource = 'lead.org_id';
-        }
-
-        if (!kbOrgId && lead.user_id) {
-            try {
-                // FALLBACK: Lookup user metadata via Admin API
-                const { data: userData, error: userError } = await supabase.auth.admin.getUserById(lead.user_id);
-
-                if (userData?.user?.user_metadata?.org_id) {
-                    kbOrgId = userData.user.user_metadata.org_id;
-                    kbOrgIdSource = 'auth.user_metadata.org_id';
-
-                    // HEALING: Optimistically update settings
-                    console.log(`🔧 [${runId}] Healing: Auto-updating settings.org_id to ${kbOrgId}`);
-                    // Non-awaiting promise to not block
-                    supabase
-                        .from('ai_settings')
-                        .update({ org_id: kbOrgId })
-                        .eq('id', settings.id)
-                        .eq('org_id', leadOrgId)
-                        .then();
-                } else {
-                    // Final fallback: use user_id itself (common for single-user orgs)
-                    kbOrgId = lead.user_id;
-                    kbOrgIdSource = 'lead.user_id';
-                }
-            } catch (err) {
-                console.error(`⚠️ [${runId}] Admin User Lookup Failed:`, err);
-                // Graceful degradation
-                kbOrgId = lead.user_id;
-                kbOrgIdSource = 'lead.user_id (fallback_error)';
-            }
         }
 
         try {
@@ -2191,7 +2172,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             try {
                 const v7fResult = await executeCreateFollowup(
                     supabase, leadId, aiRes.task, runId, anchorCreatedAt, anchorInteractionId,
-                    kbOrgId || lead.user_id, lead.user_id
+                    leadOrgId, lead.user_id
                 );
                 v7FollowupWritten = v7fResult.written;
                 v7FollowupSkippedReason = v7fResult.skippedReason;
@@ -2213,7 +2194,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                 const apptData = aiRes.appointment || {};
                 const v9Result = await executeCreateAppointment(
                     supabase, leadId, apptData, runId, anchorCreatedAt, anchorInteractionId,
-                    kbOrgId || lead.user_id, lead.user_id
+                    leadOrgId, lead.user_id
                 );
                 appointmentWritten = v9Result.written;
                 appointmentSkippedReason = v9Result.skippedReason;
@@ -2237,7 +2218,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                 // But the function handles validation.
                 const proposalData = aiRes.proposal || {};
                 const v10Result = await executeCreateProposalDraft(
-                    supabase, leadId, proposalData, runId, anchorInteractionId, lead.user_id
+                    supabase, leadId, proposalData, runId, anchorInteractionId, lead.user_id, leadOrgId
                 );
                 proposalWritten = v10Result.written;
                 proposalSkippedReason = v10Result.skippedReason;
@@ -2267,7 +2248,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             try {
                 const v7fResult = await executeCreateFollowup(
                     supabase, leadId, aiRes.task || {}, runId, anchorCreatedAt, anchorInteractionId,
-                    kbOrgId || lead.user_id, lead.user_id
+                    leadOrgId, lead.user_id
                 );
                 v7FollowupWritten = v7fResult.written;
                 v7FollowupSkippedReason = v7fResult.skippedReason;
@@ -2883,7 +2864,8 @@ async function executeCreateProposalDraft(
     proposal: any,
     runId: string,
     anchorInteractionId: string | number | null,
-    userId: string
+    userId: string,
+    orgId: string
 ): Promise<{ written: boolean; skippedReason: string | null; proposalId: string | null }> {
     // Basic validation
     if (!proposal || typeof proposal !== 'object') {
@@ -2975,16 +2957,6 @@ async function executeCreateProposalDraft(
 
         // Premium/versioned proposal snapshot (non-blocking)
         try {
-            let orgId: string | null = userId || null;
-            try {
-                const { data: userData, error: userErr } = await supabase.auth.admin.getUserById(userId);
-                if (!userErr && userData?.user?.user_metadata?.org_id) {
-                    orgId = String(userData.user.user_metadata.org_id);
-                }
-            } catch (orgLookupErr) {
-                console.warn(`[${runId}] V10: org_id lookup failed (non-blocking):`, orgLookupErr);
-            }
-
             const segment = mapCustomerTypeToSegment(proposal.customer_type?.value);
             const versionStatus = existing && existing.status === 'Rascunho' ? 'draft' : 'ready';
             const premiumPayload = {

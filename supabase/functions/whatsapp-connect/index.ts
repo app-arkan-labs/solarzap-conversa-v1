@@ -54,15 +54,19 @@ Deno.serve(async (req) => {
 
         const { data: member, error: memberError } = await supabaseClient
             .from('organization_members')
-            .select('org_id')
+            .select('org_id, role, created_at')
             .eq('user_id', user.id)
+            .order('created_at', { ascending: true })
+            .order('org_id', { ascending: true })
             .limit(1)
-            .single()
+            .maybeSingle()
 
         if (memberError || !member?.org_id) {
             throw new Error('Organization membership not found for authenticated user')
         }
         const orgId = member.org_id
+        const role = String(member.role || 'user').toLowerCase()
+        const isOrgManager = role === 'owner' || role === 'admin'
 
         const { action, instanceId, newName, displayName, instanceName, key, reaction } = await req.json()
 
@@ -87,16 +91,22 @@ Deno.serve(async (req) => {
            ACTION: LIST
            ========================== */
         if (action === 'list') {
-            console.log(`fetching instances for user: ${user.id}`)
+            console.log(`fetching instances for user: ${user.id}, org: ${orgId}, role: ${role}`)
             // Fetch from Supabase DB which is the "Source of Truth" for our app
             // (Evolution API might have instances not belonging to this user or app, but we only show what's in DB)
             // Wait, for 'list', usually we rely on DB state updated by webhooks.
 
-            const { data: instances, error: dbError } = await supabaseClient
+            let listQuery = supabaseClient
                 .from('whatsapp_instances')
                 .select('*')
-                .eq('user_id', user.id) // Only users instances
+                .eq('org_id', orgId)
                 .order('created_at', { ascending: false })
+
+            if (!isOrgManager) {
+                listQuery = listQuery.eq('user_id', user.id)
+            }
+
+            const { data: instances, error: dbError } = await listQuery
 
             if (dbError) throw dbError
 
@@ -197,12 +207,17 @@ Deno.serve(async (req) => {
             if (!instanceId) throw new Error('Instance ID required')
 
             // Get Instance Name
-            const { data: instance, error: fetchError } = await supabaseClient
+            let instanceQuery = supabaseClient
                 .from('whatsapp_instances')
-                .select('instance_name')
+                .select('instance_name, user_id')
                 .eq('id', instanceId)
-                .eq('user_id', user.id)
-                .single()
+                .eq('org_id', orgId)
+
+            if (!isOrgManager) {
+                instanceQuery = instanceQuery.eq('user_id', user.id)
+            }
+
+            const { data: instance, error: fetchError } = await instanceQuery.single()
 
             if (fetchError || !instance) throw new Error('Instance not found')
 
@@ -216,7 +231,16 @@ Deno.serve(async (req) => {
                 })
 
                 // Delete from DB
-                await supabaseClient.from('whatsapp_instances').delete().eq('id', instanceId)
+                let deleteQuery = supabaseClient
+                    .from('whatsapp_instances')
+                    .delete()
+                    .eq('id', instanceId)
+                    .eq('org_id', orgId)
+
+                if (!isOrgManager) {
+                    deleteQuery = deleteQuery.eq('user_id', user.id)
+                }
+                await deleteQuery
             }
             else if (action === 'disconnect') {
                 // Logout from Evolution
@@ -226,10 +250,16 @@ Deno.serve(async (req) => {
                 })
 
                 // Update DB
-                await supabaseClient
+                let disconnectQuery = supabaseClient
                     .from('whatsapp_instances')
                     .update({ status: 'disconnected', qr_code: null, phone_number: null, connected_at: null })
                     .eq('id', instanceId)
+                    .eq('org_id', orgId)
+
+                if (!isOrgManager) {
+                    disconnectQuery = disconnectQuery.eq('user_id', user.id)
+                }
+                await disconnectQuery
             }
 
             return new Response(
@@ -244,11 +274,17 @@ Deno.serve(async (req) => {
         if (action === 'refresh_qr') {
             if (!instanceId) throw new Error('Instance ID required')
 
-            const { data: instance } = await supabaseClient
+            let instanceQuery = supabaseClient
                 .from('whatsapp_instances')
-                .select('instance_name')
+                .select('instance_name, user_id')
                 .eq('id', instanceId)
-                .single()
+                .eq('org_id', orgId)
+
+            if (!isOrgManager) {
+                instanceQuery = instanceQuery.eq('user_id', user.id)
+            }
+
+            const { data: instance } = await instanceQuery.single()
 
             if (!instance) throw new Error('Instance not found')
 
@@ -264,10 +300,16 @@ Deno.serve(async (req) => {
             const qr = connectData.base64 || connectData.qrcode?.base64 || null
 
             if (qr) {
-                await supabaseClient
+                let refreshUpdateQuery = supabaseClient
                     .from('whatsapp_instances')
                     .update({ qr_code: qr, status: 'connecting' })
                     .eq('id', instanceId)
+                    .eq('org_id', orgId)
+
+                if (!isOrgManager) {
+                    refreshUpdateQuery = refreshUpdateQuery.eq('user_id', user.id)
+                }
+                await refreshUpdateQuery
             }
 
             return new Response(
@@ -282,11 +324,16 @@ Deno.serve(async (req) => {
         if (action === 'rename') {
             if (!instanceId || !newName) throw new Error('Missing parameters')
 
-            await supabaseClient
+            let renameQuery = supabaseClient
                 .from('whatsapp_instances')
                 .update({ display_name: newName })
                 .eq('id', instanceId)
-                .eq('user_id', user.id)
+                .eq('org_id', orgId)
+
+            if (!isOrgManager) {
+                renameQuery = renameQuery.eq('user_id', user.id)
+            }
+            await renameQuery
 
             return new Response(
                 JSON.stringify({ success: true }),
@@ -303,6 +350,24 @@ Deno.serve(async (req) => {
                 return new Response(
                     JSON.stringify({ error: 'Missing parameters: instanceName, key, reaction' }),
                     { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
+
+            let reactionScopeQuery = supabaseClient
+                .from('whatsapp_instances')
+                .select('id')
+                .eq('org_id', orgId)
+                .eq('instance_name', instanceName)
+
+            if (!isOrgManager) {
+                reactionScopeQuery = reactionScopeQuery.eq('user_id', user.id)
+            }
+
+            const { data: scopedInstance, error: scopedInstanceError } = await reactionScopeQuery.maybeSingle()
+            if (scopedInstanceError || !scopedInstance) {
+                return new Response(
+                    JSON.stringify({ error: 'Instance not found in organization scope' }),
+                    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 )
             }
 
