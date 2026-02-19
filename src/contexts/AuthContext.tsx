@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { bootstrapSelf } from '@/lib/orgAdminClient';
 
 interface AuthContextType {
   user: User | null;
@@ -98,7 +99,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      const membership = await resolveMembership(nextUser.id);
+      let membership = await resolveMembership(nextUser.id);
+      if (!membership.orgId) {
+        try {
+          await bootstrapSelf();
+          membership = await resolveMembership(nextUser.id);
+        } catch (bootstrapError) {
+          console.error('Membership bootstrap error:', bootstrapError);
+        }
+      }
       if (!mounted) return;
       setMembershipState(membership);
     };

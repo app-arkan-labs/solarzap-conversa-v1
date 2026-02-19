@@ -27,6 +27,7 @@ import { ReactionPicker } from './ReactionPicker';
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
 
 import { supabase } from '@/lib/supabase'; // Imported for Internal Forwarding
+import { listMembers } from '@/lib/orgAdminClient';
 
 interface ChatAreaProps {
   conversation: Conversation | null;
@@ -704,28 +705,20 @@ export function ChatArea({
     if (!content) return;
 
     let successCount = 0;
+    const memberLabelById: Record<string, string> = {};
 
-    // Import mockTeamMembers locally if needed, or better, assume IDs imply names if mapped?
-    // Since we can't easily import from sibling without modifying imports at top, 
-    // we'll assume the IDs match our mock expectations or just log generic.
-    // Actually, we added export to ForwardMessageModal, so we should import it at top.
-    // But to avoid "Multi-chunk edit" complexity, I will hardcode the lookup here or try to import dynamically?
-    // "Max 2 files". I touched ForwardMessageModal. So I can touch ChatArea.
-    // I will add the import at the top in a separate chunk or... 
-    // Wait, simple solution: Copy the minimal mock list here or just use IDs?
-    // User wants "Internamente: o destinatário vê".
-    // I'll try to resolve name.
-
-    // Quick mock map since I can't easily change top imports in this single replace block without context errors
-    const teamMap: Record<string, string> = {
-      'team-1': 'Carlos Vendedor',
-      'team-2': 'Ana Suporte',
-      'team-3': 'Pedro Gerente',
-      'team-4': 'Julia Marketing'
-    };
+    try {
+      const response = await listMembers();
+      for (const member of response.members) {
+        const label = member.email || `user-${member.user_id.slice(0, 8)}`;
+        memberLabelById[member.user_id] = label;
+      }
+    } catch (error) {
+      console.warn('Failed to resolve team members from org-admin:', error);
+    }
 
     for (const memberId of teamMemberIds) {
-      const memberName = teamMap[memberId] || 'Membro da Equipe';
+      const memberName = memberLabelById[memberId] || 'Membro da Equipe';
       const note = `[Encaminhado para ${memberName}]:\n${content}`;
 
       const { error } = await supabase

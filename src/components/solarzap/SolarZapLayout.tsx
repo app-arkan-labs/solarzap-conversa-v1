@@ -1,4 +1,5 @@
 import { Component, ReactNode, useState, useCallback, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLeads } from '@/hooks/domain/useLeads';
 import { useChat } from '@/hooks/domain/useChat';
@@ -71,7 +72,9 @@ class AppointmentModalErrorBoundary extends Component<AppointmentModalErrorBound
 }
 
 export function SolarZapLayout() {
-  const { orgId } = useAuth();
+  const { orgId, role } = useAuth();
+  const navigate = useNavigate();
+  const canAccessAdmin = role === 'owner' || role === 'admin';
   // Domain Hooks
   const {
     contacts,
@@ -585,6 +588,8 @@ export function SolarZapLayout() {
         onTabChange={setActiveTab}
         unreadNotifications={unreadNotifications}
         onNotificationsClick={() => setIsNotificationsPanelOpen(true)}
+        isAdminUser={canAccessAdmin}
+        onAdminMembersClick={() => navigate('/admin/members')}
       />
 
       <NotificationsPanel

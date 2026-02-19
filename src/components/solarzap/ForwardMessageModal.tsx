@@ -1,11 +1,12 @@
-import React, { useState, useMemo } from 'react';
-import { X, Search, Users, Building2, Check, MessageSquare } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Search, Building2, Check, MessageSquare, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Conversation } from '@/types/solarzap';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 
 interface ForwardMessageModalProps {
   isOpen: boolean;
@@ -16,15 +17,15 @@ interface ForwardMessageModalProps {
   onForwardInternally: (teamMemberIds: string[]) => void;
 }
 
-// Mock equipe interna (placeholder)
-export const mockTeamMembers = [
-  { id: 'team-1', name: 'Carlos Vendedor', role: 'Vendedor', avatar: '👨‍💼' },
-  { id: 'team-2', name: 'Ana Suporte', role: 'Suporte', avatar: '👩‍💻' },
-  { id: 'team-3', name: 'Pedro Gerente', role: 'Gerente', avatar: '👨‍💼' },
-  { id: 'team-4', name: 'Julia Marketing', role: 'Marketing', avatar: '👩' },
-];
-
 type ForwardMode = 'select' | 'contacts' | 'internal';
+
+function memberDisplayName(member: MemberDto) {
+  if (member.email) {
+    const [prefix] = member.email.split('@');
+    return prefix || member.email;
+  }
+  return `user-${member.user_id.slice(0, 8)}`;
+}
 
 export function ForwardMessageModal({
   isOpen,
@@ -38,14 +39,53 @@ export function ForwardMessageModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [selectedTeamMembers, setSelectedTeamMembers] = useState<string[]>([]);
+  const [teamMembers, setTeamMembers] = useState<MemberDto[]>([]);
+  const [loadingTeamMembers, setLoadingTeamMembers] = useState(false);
+  const [teamLoadError, setTeamLoadError] = useState<string | null>(null);
 
   const handleClose = () => {
     setMode('select');
     setSearchQuery('');
     setSelectedContacts([]);
     setSelectedTeamMembers([]);
+    setTeamLoadError(null);
     onClose();
   };
+
+  useEffect(() => {
+    const shouldLoadTeam = isOpen && mode === 'internal';
+    if (!shouldLoadTeam) {
+      return;
+    }
+
+    let active = true;
+    const loadTeamMembers = async () => {
+      setLoadingTeamMembers(true);
+      setTeamLoadError(null);
+
+      try {
+        const response = await listMembers();
+        if (!active) return;
+        setTeamMembers(response.members);
+      } catch (error) {
+        if (!active) return;
+        const message =
+          error instanceof Error ? error.message : 'Nao foi possivel carregar membros da equipe.';
+        setTeamLoadError(message);
+        setTeamMembers([]);
+      } finally {
+        if (active) {
+          setLoadingTeamMembers(false);
+        }
+      }
+    };
+
+    void loadTeamMembers();
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, mode]);
 
   const filteredConversations = useMemo(() => {
     if (!searchQuery.trim()) return conversations;
@@ -54,33 +94,29 @@ export function ForwardMessageModal({
       (conv) =>
         conv.contact.name.toLowerCase().includes(query) ||
         conv.contact.phone.includes(query) ||
-        conv.contact.company?.toLowerCase().includes(query)
+        conv.contact.company?.toLowerCase().includes(query),
     );
   }, [conversations, searchQuery]);
 
   const filteredTeamMembers = useMemo(() => {
-    if (!searchQuery.trim()) return mockTeamMembers;
+    if (!searchQuery.trim()) return teamMembers;
     const query = searchQuery.toLowerCase();
-    return mockTeamMembers.filter(
-      (member) =>
-        member.name.toLowerCase().includes(query) ||
-        member.role.toLowerCase().includes(query)
-    );
-  }, [searchQuery]);
+    return teamMembers.filter((member) => {
+      const displayName = memberDisplayName(member).toLowerCase();
+      const email = (member.email || '').toLowerCase();
+      return displayName.includes(query) || email.includes(query) || member.role.includes(query);
+    });
+  }, [searchQuery, teamMembers]);
 
   const toggleContact = (contactId: string) => {
     setSelectedContacts((prev) =>
-      prev.includes(contactId)
-        ? prev.filter((id) => id !== contactId)
-        : [...prev, contactId]
+      prev.includes(contactId) ? prev.filter((id) => id !== contactId) : [...prev, contactId],
     );
   };
 
   const toggleTeamMember = (memberId: string) => {
     setSelectedTeamMembers((prev) =>
-      prev.includes(memberId)
-        ? prev.filter((id) => id !== memberId)
-        : [...prev, memberId]
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId],
     );
   };
 
@@ -119,7 +155,8 @@ export function ForwardMessageModal({
           </div>
           {mode === 'select' && (
             <p className="text-sm text-muted-foreground mt-1">
-              {selectedMessagesCount} {selectedMessagesCount === 1 ? 'mensagem selecionada' : 'mensagens selecionadas'}
+              {selectedMessagesCount}{' '}
+              {selectedMessagesCount === 1 ? 'mensagem selecionada' : 'mensagens selecionadas'}
             </p>
           )}
         </DialogHeader>
@@ -150,9 +187,7 @@ export function ForwardMessageModal({
               </div>
               <div>
                 <p className="font-medium text-foreground">Internamente</p>
-                <p className="text-sm text-muted-foreground">
-                  Encaminhar para membros da equipe
-                </p>
+                <p className="text-sm text-muted-foreground">Encaminhar para membros reais da org</p>
               </div>
             </button>
           </div>
@@ -160,7 +195,6 @@ export function ForwardMessageModal({
 
         {mode === 'contacts' && (
           <div className="flex flex-col h-[400px]">
-            {/* Search bar */}
             <div className="p-3 border-b border-border">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -173,7 +207,6 @@ export function ForwardMessageModal({
               </div>
             </div>
 
-            {/* Contacts list */}
             <ScrollArea className="flex-1">
               <div className="p-2">
                 {filteredConversations.map((conv) => {
@@ -184,53 +217,40 @@ export function ForwardMessageModal({
                       onClick={() => toggleContact(conv.contact.id)}
                       className={cn(
                         'w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left',
-                        isSelected ? 'bg-primary/10' : 'hover:bg-muted'
+                        isSelected ? 'bg-primary/10' : 'hover:bg-muted',
                       )}
                     >
                       <div
                         className={cn(
                           'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors',
-                          isSelected
-                            ? 'bg-primary border-primary'
-                            : 'border-muted-foreground'
+                          isSelected ? 'bg-primary border-primary' : 'border-muted-foreground',
                         )}
                       >
                         {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
                       </div>
                       <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-lg">
-                        {conv.contact.avatar || '👤'}
+                        {conv.contact.avatar || 'C'}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground truncate">
-                          {conv.contact.name}
-                        </p>
+                        <p className="font-medium text-foreground truncate">{conv.contact.name}</p>
                         {conv.contact.company && (
-                          <p className="text-sm text-muted-foreground truncate">
-                            {conv.contact.company}
-                          </p>
+                          <p className="text-sm text-muted-foreground truncate">{conv.contact.company}</p>
                         )}
                       </div>
                     </button>
                   );
                 })}
                 {filteredConversations.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Nenhum contato encontrado
-                  </div>
+                  <div className="text-center py-8 text-muted-foreground">Nenhum contato encontrado</div>
                 )}
               </div>
             </ScrollArea>
 
-            {/* Footer with send button */}
             <div className="p-3 border-t border-border flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
                 {selectedContacts.length} {selectedContacts.length === 1 ? 'selecionado' : 'selecionados'}
               </span>
-              <Button
-                onClick={handleForward}
-                disabled={selectedContacts.length === 0}
-                className="min-w-[100px]"
-              >
+              <Button onClick={handleForward} disabled={selectedContacts.length === 0} className="min-w-[100px]">
                 Enviar
               </Button>
             </div>
@@ -239,7 +259,6 @@ export function ForwardMessageModal({
 
         {mode === 'internal' && (
           <div className="flex flex-col h-[400px]">
-            {/* Search bar */}
             <div className="p-3 border-b border-border">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -252,63 +271,73 @@ export function ForwardMessageModal({
               </div>
             </div>
 
-            {/* Team members list */}
             <ScrollArea className="flex-1">
               <div className="p-2">
                 <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Equipe Interna
+                  Equipe interna
                 </div>
-                {filteredTeamMembers.map((member) => {
-                  const isSelected = selectedTeamMembers.includes(member.id);
-                  return (
-                    <button
-                      key={member.id}
-                      onClick={() => toggleTeamMember(member.id)}
-                      className={cn(
-                        'w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left',
-                        isSelected ? 'bg-primary/10' : 'hover:bg-muted'
-                      )}
-                    >
-                      <div
+
+                {loadingTeamMembers && (
+                  <div className="px-3 py-8 text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Carregando membros...
+                  </div>
+                )}
+
+                {!loadingTeamMembers && teamLoadError && (
+                  <div className="px-3 py-6 text-sm text-destructive">
+                    {teamLoadError}
+                  </div>
+                )}
+
+                {!loadingTeamMembers &&
+                  !teamLoadError &&
+                  filteredTeamMembers.map((member) => {
+                    const isSelected = selectedTeamMembers.includes(member.user_id);
+                    return (
+                      <button
+                        key={member.user_id}
+                        onClick={() => toggleTeamMember(member.user_id)}
                         className={cn(
-                          'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors',
-                          isSelected
-                            ? 'bg-primary border-primary'
-                            : 'border-muted-foreground'
+                          'w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left',
+                          isSelected ? 'bg-primary/10' : 'hover:bg-muted',
                         )}
                       >
-                        {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
-                      </div>
-                      <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-lg">
-                        {member.avatar}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground truncate">
-                          {member.name}
-                        </p>
-                        <p className="text-sm text-muted-foreground truncate">
-                          {member.role}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-                {filteredTeamMembers.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Nenhum membro encontrado
-                  </div>
+                        <div
+                          className={cn(
+                            'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors',
+                            isSelected ? 'bg-primary border-primary' : 'border-muted-foreground',
+                          )}
+                        >
+                          {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
+                        </div>
+                        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs uppercase font-semibold">
+                          {memberDisplayName(member).slice(0, 2)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-foreground truncate">{memberDisplayName(member)}</p>
+                          <p className="text-sm text-muted-foreground truncate">
+                            {member.role} {member.email ? `• ${member.email}` : ''}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                {!loadingTeamMembers && !teamLoadError && filteredTeamMembers.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">Nenhum membro encontrado</div>
                 )}
               </div>
             </ScrollArea>
 
-            {/* Footer with send button */}
             <div className="p-3 border-t border-border flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
-                {selectedTeamMembers.length} {selectedTeamMembers.length === 1 ? 'selecionado' : 'selecionados'}
+                {selectedTeamMembers.length}{' '}
+                {selectedTeamMembers.length === 1 ? 'selecionado' : 'selecionados'}
               </span>
               <Button
                 onClick={handleForward}
-                disabled={selectedTeamMembers.length === 0}
+                disabled={selectedTeamMembers.length === 0 || loadingTeamMembers}
                 className="min-w-[100px]"
               >
                 Enviar

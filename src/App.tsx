@@ -11,6 +11,8 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import CallQrRedirect from "./pages/CallQrRedirect";
+import AdminMembersPage from "./pages/AdminMembersPage";
 import { supabase } from "@/lib/supabase";
 
 const handleGlobalError = (error: Error) => {
@@ -57,11 +59,20 @@ const App = () => (
               <BrowserRouter>
                 <Routes>
                   <Route path="/login" element={<Login />} />
+                  <Route path="/qr/call" element={<CallQrRedirect />} />
                   <Route
                     path="/"
                     element={
                       <ProtectedRoute>
                         <Index />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/members"
+                    element={
+                      <ProtectedRoute requiredRoles={['owner', 'admin']}>
+                        <AdminMembersPage />
                       </ProtectedRoute>
                     }
                   />

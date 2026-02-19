@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { ActiveTab } from '@/types/solarzap';
-import { MessageCircle, Kanban, Calendar, Users, BarChart3, Sun, Bell, Settings, Plug, Zap, Brain, BrainCircuit, Bot } from 'lucide-react';
+import { MessageCircle, Kanban, Calendar, Users, BarChart3, Sun, Bell, Settings, Plug, Zap, Brain, Bot, UserCog } from 'lucide-react';
 import { GoogleAccountButton } from './GoogleAccountButton';
 import {
   Popover,
@@ -13,6 +13,8 @@ interface SolarZapNavProps {
   onTabChange: (tab: ActiveTab) => void;
   unreadNotifications?: number;
   onNotificationsClick?: () => void;
+  isAdminUser?: boolean;
+  onAdminMembersClick?: () => void;
 }
 
 const navItems: { id: ActiveTab; icon: typeof MessageCircle; label: string }[] = [
@@ -27,7 +29,9 @@ export function SolarZapNav({
   activeTab,
   onTabChange,
   unreadNotifications = 0,
-  onNotificationsClick
+  onNotificationsClick,
+  isAdminUser = false,
+  onAdminMembersClick,
 }: SolarZapNavProps) {
   return (
     <nav className="w-[60px] h-full bg-secondary flex flex-col items-center py-4">
@@ -99,6 +103,19 @@ export function SolarZapNav({
           </PopoverTrigger>
           <PopoverContent side="right" align="end" className="w-64 p-3">
             <div className="space-y-2">
+              {isAdminUser && (
+                <button
+                  data-testid="nav-admin-members"
+                  onClick={onAdminMembersClick}
+                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <UserCog className="w-4 h-4 text-primary" />
+                  </div>
+                  Equipe (Admin)
+                </button>
+              )}
+
               <button
                 data-testid="nav-ia-agentes"
                 onClick={() => onTabChange('ia_agentes')}
