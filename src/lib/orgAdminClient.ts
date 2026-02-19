@@ -64,9 +64,16 @@ type OrgAdminErrorResponse = {
   code?: string;
 };
 
+const getRequestId = (response: Response): string | null =>
+  response.headers.get('x-request-id') ||
+  response.headers.get('x-supabase-request-id') ||
+  response.headers.get('cf-ray') ||
+  null;
+
 async function invokeOrgAdmin<TExpected extends OrgAdminSuccessResponse>(
   body: OrgAdminRequest,
 ): Promise<TExpected> {
+  const action = body.action;
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -80,32 +87,44 @@ async function invokeOrgAdmin<TExpected extends OrgAdminSuccessResponse>(
   if (error) {
     const functionError = error as { message?: string; context?: Response };
     let detailedMessage: string | null = null;
+    let status: number | null = null;
+    let code: string | undefined;
+    let requestId: string | null = null;
 
     if (functionError.context) {
       try {
-        const payload = (await functionError.context.json()) as OrgAdminErrorResponse;
-        if (payload?.error) {
-          detailedMessage = payload.error;
-        }
+        status = functionError.context.status;
+        requestId = getRequestId(functionError.context);
+        const rawBody = await functionError.context.text();
+        const payload = JSON.parse(rawBody) as OrgAdminErrorResponse;
+        if (payload?.error) detailedMessage = payload.error;
+        if (payload?.code) code = payload.code;
       } catch {
-        // Fall through to generic message below.
+        status = functionError.context.status;
+        requestId = getRequestId(functionError.context);
       }
     }
 
-    throw new Error(detailedMessage || functionError.message || 'Falha ao chamar org-admin');
+    const statusPart = status ? `HTTP ${status}` : 'invoke_error';
+    const codePart = code ? ` code=${code}` : '';
+    const requestIdPart = requestId ? ` request_id=${requestId}` : '';
+    throw new Error(
+      `[org-admin:${action}] ${statusPart}${codePart}${requestIdPart}: ${detailedMessage || functionError.message || 'Falha ao chamar org-admin'}`,
+    );
   }
 
   const payload = data as OrgAdminSuccessResponse | OrgAdminErrorResponse | null;
   if (!payload) {
-    throw new Error('Resposta vazia da org-admin');
+    throw new Error(`[org-admin:${action}] resposta vazia`);
   }
 
   if ('ok' in payload && payload.ok === false) {
-    throw new Error(payload.error || 'Erro desconhecido na org-admin');
+    const codePart = payload.code ? ` code=${payload.code}` : '';
+    throw new Error(`[org-admin:${action}]${codePart}: ${payload.error || 'Erro desconhecido na org-admin'}`);
   }
 
   if (!('ok' in payload) || payload.ok !== true) {
-    throw new Error('Formato de resposta inválido da org-admin');
+    throw new Error(`[org-admin:${action}] formato de resposta invalido`);
   }
 
   return payload as TExpected;

@@ -1,7 +1,7 @@
 // SolarZap CRM Types
 
 
-export type ActiveTab = 'conversas' | 'pipelines' | 'calendario' | 'contatos' | 'dashboard' | 'integracoes' | 'automacoes' | 'banco_ia' | 'ia_agentes';
+export type ActiveTab = 'conversas' | 'pipelines' | 'calendario' | 'contatos' | 'dashboard' | 'integracoes' | 'automacoes' | 'banco_ia' | 'ia_agentes' | 'admin_members';
 
 
 

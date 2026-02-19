@@ -24,3 +24,27 @@ verify_jwt = false
 
 [functions.integration-disconnect]
 verify_jwt = false
+
+[functions.proposal-copy-generator]
+verify_jwt = false
+
+[functions.proposal-context-engine]
+verify_jwt = false
+
+[functions.kb-ingest]
+verify_jwt = false
+
+[functions.proposal-composer]
+verify_jwt = false
+
+[functions.proposal-storage-intent]
+verify_jwt = false
+
+[functions.proposal-share-link]
+verify_jwt = false
+
+[functions.proposal-share]
+verify_jwt = false
+
+[functions.org-admin]
+verify_jwt = false

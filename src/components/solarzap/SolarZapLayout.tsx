@@ -1,5 +1,5 @@
 import { Component, ReactNode, useState, useCallback, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLeads } from '@/hooks/domain/useLeads';
 import { useChat } from '@/hooks/domain/useChat';
@@ -35,6 +35,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Contact, PipelineStage, ChannelFilter, ActiveTab, Conversation } from '@/types/solarzap';
 import { useAuth } from '@/contexts/AuthContext';
+import AdminMembersPage from '@/pages/AdminMembersPage';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -71,9 +72,13 @@ class AppointmentModalErrorBoundary extends Component<AppointmentModalErrorBound
   }
 }
 
+const tabFromPath = (pathname: string): ActiveTab =>
+  pathname === '/admin/members' ? 'admin_members' : 'conversas';
+
 export function SolarZapLayout() {
   const { orgId, role } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const canAccessAdmin = role === 'owner' || role === 'admin';
   // Domain Hooks
   const {
@@ -117,11 +122,25 @@ export function SolarZapLayout() {
     (isLoadingEvents && events.length === 0);
 
   // UI State
-  const [activeTab, setActiveTab] = useState<ActiveTab>('conversas');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => tabFromPath(location.pathname));
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('todos');
   const [stageFilter, setStageFilter] = useState<PipelineStage | 'todos'>('todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+
+  useEffect(() => {
+    const nextTab = tabFromPath(location.pathname);
+    if (nextTab !== activeTab) {
+      setActiveTab(nextTab);
+    }
+  }, [activeTab, location.pathname]);
+
+  const handleTabChange = useCallback((tab: ActiveTab) => {
+    setActiveTab(tab);
+    if (location.pathname !== '/') {
+      navigate('/');
+    }
+  }, [location.pathname, navigate]);
 
   // Derivar a conversa ativa da lista atualizada de conversas para garantir que temos as mensagens mais recentes
   const activeConversation = useMemo(() => {
@@ -585,7 +604,7 @@ export function SolarZapLayout() {
     <div className="h-screen w-full flex bg-background overflow-hidden">
       <SolarZapNav
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
         unreadNotifications={unreadNotifications}
         onNotificationsClick={() => setIsNotificationsPanelOpen(true)}
         isAdminUser={canAccessAdmin}
@@ -603,7 +622,7 @@ export function SolarZapLayout() {
         onGoToContact={(contactId) => {
           const conv = conversations.find(c => c.id === contactId);
           if (conv) {
-            setActiveTab('conversas');
+            handleTabChange('conversas');
             setSelectedConversation(conv);
             markAsRead(conv.id);
           }
@@ -785,7 +804,13 @@ export function SolarZapLayout() {
       )}
 
       {activeTab === 'dashboard' && (
-        <DashboardView onNavigate={(tab) => setActiveTab(tab as any)} />
+        <DashboardView onNavigate={(tab) => handleTabChange(tab as any)} />
+      )}
+
+      {activeTab === 'admin_members' && (
+        <div className="flex-1 h-full overflow-hidden">
+          <AdminMembersPage embedded />
+        </div>
       )}
 
       {activeTab === 'integracoes' && (

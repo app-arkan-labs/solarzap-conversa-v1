@@ -16,6 +16,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 type InviteMode = 'create' | 'invite';
+type AdminMembersPageProps = {
+  embedded?: boolean;
+};
 
 type DraftByUserId = Record<
   string,
@@ -34,7 +37,7 @@ function fallbackMemberLabel(member: MemberDto) {
   return member.user_id;
 }
 
-export default function AdminMembersPage() {
+export default function AdminMembersPage({ embedded = false }: AdminMembersPageProps) {
   const { loading: authLoading, role } = useAuth();
   const { toast } = useToast();
 
@@ -239,7 +242,7 @@ export default function AdminMembersPage() {
 
   if (authLoading || loadingMembers) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className={`${embedded ? 'h-full' : 'min-h-screen'} bg-background flex items-center justify-center`}>
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-muted-foreground">Carregando painel de membros...</p>
@@ -250,7 +253,7 @@ export default function AdminMembersPage() {
 
   if (!canAccessAdmin) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className={`${embedded ? 'h-full' : 'min-h-screen'} bg-background flex items-center justify-center p-6`}>
         <Card className="w-full max-w-xl">
           <CardHeader>
             <CardTitle>Acesso restrito</CardTitle>
@@ -269,7 +272,10 @@ export default function AdminMembersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6 md:p-8" data-testid="admin-members-page">
+    <div
+      className={`${embedded ? 'h-full flex-1 overflow-y-auto' : 'min-h-screen'} bg-background p-6 md:p-8`}
+      data-testid="admin-members-page"
+    >
       <div className="mx-auto w-full max-w-6xl space-y-6">
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
@@ -286,9 +292,11 @@ export default function AdminMembersPage() {
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               Atualizar
             </Button>
-            <Button asChild variant="secondary">
-              <Link to="/">Voltar</Link>
-            </Button>
+            {!embedded && (
+              <Button asChild variant="secondary">
+                <Link to="/">Voltar</Link>
+              </Button>
+            )}
           </div>
         </header>
 
