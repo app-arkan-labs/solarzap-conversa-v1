@@ -1,52 +1,53 @@
-import React, { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Phone, X, Check, Send, Loader2, ArrowRight } from 'lucide-react';
+import { ArrowRight, Check, Copy, MessageCircle, Phone, QrCode, X, Loader2, Smartphone } from 'lucide-react';
+import QRCode from 'react-qr-code';
+import { useToast } from '@/hooks/use-toast';
+import { formatPhoneForDisplay } from '@/lib/phoneUtils';
 
 interface CallConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (completed: boolean, feedback?: string) => void;
   contactName: string;
+  contactPhone?: string;
 }
 
-type Step = 'confirm' | 'feedback';
+type Step = 'method' | 'qr' | 'confirm';
+type CallMethod = 'tel' | 'whatsapp';
 
-export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName }: CallConfirmModalProps) {
-  const [step, setStep] = useState<Step>('confirm');
-  const [feedback, setFeedback] = useState('');
+function normalizeBrazilPhoneDigits(raw: string | undefined | null) {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.startsWith('55') ? digits : `55${digits}`;
+}
+
+export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, contactPhone }: CallConfirmModalProps) {
+  const { toast } = useToast();
+
+  const [step, setStep] = useState<Step>('method');
+  const [method, setMethod] = useState<CallMethod | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleNotCompleted = () => {
-    onConfirm(false);
-    resetState();
-  };
+  const phoneDigits = useMemo(() => normalizeBrazilPhoneDigits(contactPhone), [contactPhone]);
+  const phoneDisplay = useMemo(() => formatPhoneForDisplay(phoneDigits), [phoneDigits]);
 
-  const handleCompleted = () => {
-    setStep('feedback');
-  };
+  const telUrl = useMemo(() => (phoneDigits ? `tel:+${phoneDigits}` : ''), [phoneDigits]);
+  const whatsappUrl = useMemo(() => (phoneDigits ? `https://wa.me/${phoneDigits}` : ''), [phoneDigits]);
 
-  const handleSubmitFeedback = async () => {
-    if (!feedback.trim()) return;
-    setIsSubmitting(true);
-    await onConfirm(true, feedback);
-    setIsSubmitting(false);
-    resetState();
-  };
+  const directUrl = method === 'tel' ? telUrl : method === 'whatsapp' ? whatsappUrl : '';
+  const methodLabel = method === 'tel' ? 'Telefone' : method === 'whatsapp' ? 'WhatsApp' : '';
 
   const resetState = () => {
-    setStep('confirm');
-    setFeedback('');
+    setStep('method');
+    setMethod(null);
     setIsSubmitting(false);
   };
+
+  useEffect(() => {
+    if (!isOpen) resetState();
+  }, [isOpen]);
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
@@ -55,39 +56,179 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName }: Ca
     }
   };
 
+  const copyToClipboard = async (text: string) => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: 'Copiado!', description: 'Copiado para a area de transferencia.' });
+    } catch {
+      toast({
+        title: 'Nao foi possivel copiar',
+        description: 'Seu navegador bloqueou o acesso a area de transferencia.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleChooseMethod = (nextMethod: CallMethod) => {
+    if (!phoneDigits) {
+      toast({
+        title: 'Telefone indisponivel',
+        description: 'Este lead nao possui um numero de telefone valido para ligacao.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setMethod(nextMethod);
+    setStep('qr');
+  };
+
+  const handleProceedToConfirm = () => {
+    setStep('confirm');
+  };
+
+  const handleNotCompleted = () => {
+    onConfirm(false);
+    resetState();
+  };
+
+  const handleCompleted = () => {
+    setIsSubmitting(true);
+    Promise.resolve(onConfirm(true)).finally(() => {
+      setIsSubmitting(false);
+      resetState();
+    });
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md">
-        {step === 'confirm' ? (
+        {step === 'method' ? (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-lg">
-                <Phone className="w-5 h-5 text-blue-500" />
-                Confirmar Ligação
+                <Phone className="w-5 h-5 text-primary" />
+                Ligar para {contactName}
               </DialogTitle>
             </DialogHeader>
 
-            <div className="py-4">
-              <p className="text-foreground">
-                A ligação para <span className="font-semibold">{contactName}</span> foi realizada com sucesso?
-              </p>
+            <div className="py-4 space-y-4">
+              <p className="text-sm text-muted-foreground">Escolha como voce quer iniciar a ligacao no celular.</p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => handleChooseMethod('whatsapp')}
+                  className="h-14 justify-start gap-3 bg-accent/60 text-accent-foreground hover:bg-accent/80 border-border"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  <div className="text-left leading-tight">
+                    <div className="text-sm font-semibold">WhatsApp</div>
+                    <div className="text-xs text-muted-foreground">Abrir conversa</div>
+                  </div>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={() => handleChooseMethod('tel')}
+                  className="h-14 justify-start gap-3 bg-accent/60 text-accent-foreground hover:bg-accent/80 border-border"
+                >
+                  <Phone className="w-5 h-5" />
+                  <div className="text-left leading-tight">
+                    <div className="text-sm font-semibold">Telefone</div>
+                    <div className="text-xs text-muted-foreground">Abrir discador</div>
+                  </div>
+                </Button>
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Smartphone className="w-4 h-4" />
+                  <span>
+                    Numero: <span className="text-foreground font-medium">{phoneDisplay || '-'}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>
+                Fechar
+              </Button>
+            </DialogFooter>
+          </>
+        ) : step === 'qr' ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-lg">
+                <QrCode className="w-5 h-5 text-primary" />
+                Escaneie para abrir no celular
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="py-2 space-y-4">
+              <div className="space-y-1">
+                <p className="text-sm text-foreground">
+                  {methodLabel} para <span className="font-semibold">{contactName}</span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Aponte a camera do celular para o QR Code.
+                  {method === 'whatsapp'
+                    ? ' O WhatsApp abrira na conversa do cliente.'
+                    : ' O discador abrira com o numero preenchido.'}
+                </p>
+              </div>
+
+              <div className="flex justify-center">
+                <div className="bg-white p-3 rounded-xl border shadow-sm">
+                  <QRCode value={directUrl || ''} size={212} />
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">Numero</div>
+                    <div className="text-sm font-medium truncate">{phoneDisplay || '-'}</div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => copyToClipboard(phoneDigits ? `+${phoneDigits}` : '')}
+                    disabled={!phoneDigits}
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copiar
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs text-muted-foreground">Link</div>
+                    <div className="text-xs font-mono truncate">{directUrl || '-'}</div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => copyToClipboard(directUrl)}
+                    disabled={!directUrl}
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copiar
+                  </Button>
+                </div>
+              </div>
             </div>
 
             <DialogFooter className="flex gap-2 sm:gap-2">
-              <Button
-                variant="outline"
-                onClick={handleNotCompleted}
-                className="flex-1 gap-2"
-              >
-                <X className="w-4 h-4" />
-                Não Realizei
+              <Button variant="outline" onClick={() => setStep('method')} className="flex-1">
+                Voltar
               </Button>
-              <Button
-                onClick={handleCompleted}
-                className="flex-1 gap-2 bg-green-500 hover:bg-green-600"
-              >
-                <Check className="w-4 h-4" />
-                Sim, Realizei
+              <Button onClick={handleProceedToConfirm} className="flex-1 gap-2">
+                Ja abri no celular
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </DialogFooter>
@@ -96,48 +237,26 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName }: Ca
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-lg">
-                <Phone className="w-5 h-5 text-green-500" />
-                Como foi a ligação?
+                <Phone className="w-5 h-5 text-primary" />
+                Confirmar Ligacao
               </DialogTitle>
             </DialogHeader>
 
-            <div className="py-4 space-y-4">
-              <p className="text-muted-foreground text-sm">
-                Descreva como foi a ligação com <span className="font-semibold text-foreground">{contactName}</span>
+            <div className="py-4">
+              <p className="text-foreground">
+                A ligacao para <span className="font-semibold">{contactName}</span> foi realizada com sucesso?
               </p>
-              
-              <div className="space-y-2">
-                <Label htmlFor="feedback">Descrição da ligação</Label>
-                <Textarea
-                  id="feedback"
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  placeholder="Ex: Cliente demonstrou interesse no projeto de 5kWp. Solicitou proposta com financiamento..."
-                  rows={4}
-                  className="resize-none"
-                />
-              </div>
             </div>
 
-            <DialogFooter>
-              <Button 
-                variant="outline" 
-                onClick={() => setStep('confirm')} 
-                disabled={isSubmitting}
-              >
-                Voltar
+            <DialogFooter className="flex gap-2 sm:gap-2">
+              <Button variant="outline" onClick={handleNotCompleted} className="flex-1 gap-2">
+                <X className="w-4 h-4" />
+                Nao Realizei
               </Button>
-              <Button 
-                onClick={handleSubmitFeedback} 
-                disabled={!feedback.trim() || isSubmitting}
-                className="gap-2 bg-green-500 hover:bg-green-600"
-              >
-                {isSubmitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-                Enviar
+              <Button onClick={handleCompleted} disabled={isSubmitting} className="flex-1 gap-2">
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Sim, Realizei
+                {!isSubmitting && <ArrowRight className="w-4 h-4" />}
               </Button>
             </DialogFooter>
           </>

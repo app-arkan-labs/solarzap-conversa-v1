@@ -359,31 +359,34 @@ export function SolarZapLayout() {
   };
 
   const handleCallConfirm = async (completed: boolean, feedback?: string) => {
+    const contact = pendingCallContact;
     setCallConfirmOpen(false);
 
-    if (completed && pendingCallContact) {
-      // Move to chamada_realizada
-      await handlePipelineStageChange(pendingCallContact.id, 'chamada_realizada', { skipMoveToProposalModal: true });
+    if (!completed || !contact) {
+      setPendingCallContact(null);
+      return;
+    }
+
+    try {
+      await handlePipelineStageChange(contact.id, 'chamada_realizada', { skipMoveToProposalModal: true });
       toast({
         title: "Chamada registrada!",
-        description: `${pendingCallContact.name} movido para "Chamada Realizada"`,
+        description: `${contact.name} movido para "Chamada Realizada"`,
       });
 
-      onCallCompleted(pendingCallContact);
+      onCallCompleted(contact);
 
       if (feedback) {
-        console.log('Call feedback:', { contactId: pendingCallContact.id, feedback });
+        console.log('Call feedback:', { contactId: contact.id, feedback });
 
-        // Added: Save to Lead Comments
-        if (pendingCallContact.id && orgId) {
-          // Dynamic import to avoid top-level dependency issues if circular
+        if (contact.id && orgId) {
           import('@/lib/supabase').then(async (m) => {
             const { error: commentError } = await m.supabase
               .from('comentarios_leads')
               .insert([{
                 org_id: orgId,
-                lead_id: parseInt(pendingCallContact.id),
-                texto: `[Feedback Ligação]: ${feedback}`,
+                lead_id: parseInt(contact.id),
+                texto: `[Feedback Ligacao]: ${feedback}`,
                 autor: 'Vendedor'
               }]);
             if (commentError) console.error("Error saving call comment:", commentError);
@@ -392,16 +395,26 @@ export function SolarZapLayout() {
 
         toast({
           title: "Feedback registrado!",
-          description: "A descrição da ligação foi salva.",
+          description: "A descricao da ligacao foi salva.",
         });
       }
 
-      setActionContact(pendingCallContact);
+      setActionContact(contact);
       setMoveToProposalOpen(true);
-
+    } catch (error) {
+      console.error('Call confirmation stage transition failed', {
+        contactId: contact.id,
+        targetStage: 'chamada_realizada',
+        error,
+      });
+      toast({
+        title: "Falha ao mover lead",
+        description: "Nao foi possivel atualizar a etapa do lead apos confirmar a ligacao.",
+        variant: "destructive",
+      });
+    } finally {
+      setPendingCallContact(null);
     }
-
-    setPendingCallContact(null);
   };
 
   const handleMoveToProposalConfirm = async (moveToProposal: boolean) => {
@@ -766,6 +779,10 @@ export function SolarZapLayout() {
             onUpdateLead={async (contactId, data) => { await updateLead({ contactId, data }); }}
             onToggleLeadAi={toggleLeadAi}
             onGoToConversation={goToConversation}
+            onCallAction={(contact) => {
+              setPendingCallContact(contact);
+              setCallConfirmOpen(true);
+            }}
             onGenerateProposal={handleProposal}
             onImportContacts={importContacts}
             onDeleteLead={async (id) => { await deleteLead(id); }}

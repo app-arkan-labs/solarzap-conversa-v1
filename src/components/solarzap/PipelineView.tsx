@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
 import { Contact, PIPELINE_STAGES, PipelineStage, CalendarEvent } from '@/types/solarzap';
 import { Badge } from '@/components/ui/badge';
-import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog } from 'lucide-react';
+import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog, MapPin, MessageSquareQuote } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -10,9 +10,6 @@ import { useAutomationSettings } from '@/hooks/useAutomationSettings';
 import { EditLeadModal, UpdateLeadData } from './EditLeadModal';
 
 import { ProposalModal, ProposalData } from './ProposalModal';
-import { CallConfirmModal } from './CallConfirmModal';
-import { MoveToProposalModal } from './MoveToProposalModal';
-import { GenerateProposalPromptModal } from './GenerateProposalPromptModal';
 import { ProposalReadyModal } from './ProposalReadyModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
@@ -41,6 +38,8 @@ interface PipelineViewProps {
   onMoveToPipeline: (contactId: string, stage: PipelineStage) => void;
   onUpdateLead?: (contactId: string, data: UpdateLeadData) => Promise<void>;
   onGoToConversation?: (contactId: string, prefilledMessage: string, shouldAutoMoveToVisita?: boolean) => void;
+  onCallAction?: (contact: Contact) => void;
+  onGenerateProposal?: (data: ProposalData) => Promise<unknown>;
 
   onImportContacts?: (contacts: ImportedContact[]) => Promise<unknown>;
   onDeleteLead?: (contactId: string) => Promise<void>;
@@ -71,7 +70,7 @@ const STAGE_COLORS: Record<PipelineStage, string> = {
   perdido: '#424242',
 };
 
-export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead, onGoToConversation, onImportContacts, onDeleteLead, onSchedule, onToggleLeadAi }: PipelineViewProps) {
+export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead, onGoToConversation, onCallAction, onGenerateProposal, onImportContacts, onDeleteLead, onSchedule, onToggleLeadAi }: PipelineViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [draggedContact, setDraggedContact] = useState<Contact | null>(null);
   const [dragOverStage, setDragOverStage] = useState<PipelineStage | null>(null);
@@ -88,12 +87,7 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
   const proposalContactIdRef = useRef<string>('');
   const proposalContactNameRef = useRef<string>('');
 
-  // New confirmation modals state
-  const [callConfirmOpen, setCallConfirmOpen] = useState(false);
-  const [moveToProposalOpen, setMoveToProposalOpen] = useState(false);
-  const [generateProposalPromptOpen, setGenerateProposalPromptOpen] = useState(false);
   const [proposalReadyOpen, setProposalReadyOpen] = useState(false);
-  const [pendingCallContact, setPendingCallContact] = useState<Contact | null>(null);
 
   // Comments modal state
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
@@ -174,14 +168,15 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
     e.stopPropagation();
 
     switch (action) {
-      case 'call':
-        // Open dialer first
-        if (contact.phone) {
-          window.open(`tel:${contact.phone}`, '_blank');
+      case 'conversation':
+        if (onGoToConversation) {
+          onGoToConversation(contact.id, '');
         }
-        // Then ask for confirmation
-        setPendingCallContact(contact);
-        setCallConfirmOpen(true);
+        break;
+      case 'call':
+        if (onCallAction) {
+          onCallAction(contact);
+        }
         break;
       case 'schedule':
         if (onSchedule) onSchedule(contact, 'reuniao');
@@ -204,64 +199,13 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
     }
   };
 
-  // Handle call confirmation with feedback
-  const handleCallConfirm = (completed: boolean, feedback?: string) => {
-    setCallConfirmOpen(false);
-
-    if (completed && pendingCallContact) {
-      // Move to chamada_realizada
-      onMoveToPipeline(pendingCallContact.id, 'chamada_realizada');
-      toast({
-        title: "Chamada registrada!",
-        description: `${pendingCallContact.name} movido para "Chamada Realizada"`,
-      });
-
-      // Save the feedback if provided
-      if (feedback) {
-        console.log('Call feedback:', { contactId: pendingCallContact.id, feedback });
-        toast({
-          title: "Feedback registrado!",
-          description: "A descrição da ligação foi salva.",
-        });
-      }
-
-      // Ask if should move to "Aguardando Proposta"
-      setActionContact(pendingCallContact);
-      setMoveToProposalOpen(true);
-    }
-
-    setPendingCallContact(null);
-  };
-
-  // Handle move to proposal confirmation
-  const handleMoveToProposalConfirm = (moveToProposal: boolean) => {
-    setMoveToProposalOpen(false);
-
-    if (moveToProposal && actionContact) {
-      onMoveToPipeline(actionContact.id, 'aguardando_proposta');
-      toast({
-        title: "Lead movido!",
-        description: `${actionContact.name} movido para "Aguardando Proposta"`,
-      });
-
-      // After 3 seconds, ask to generate proposal
-      setTimeout(() => {
-        setGenerateProposalPromptOpen(true);
-      }, 3000);
-    } else {
-      setActionContact(null);
-    }
-  };
-
-  // Handle generate proposal prompt
-  const handleGenerateProposalPrompt = () => {
-    setGenerateProposalPromptOpen(false);
-    setProposalModalOpen(true);
-  };
-
   // handleSchedule REMOVED
 
   const handleProposal = async (data: ProposalData) => {
+    if (onGenerateProposal) {
+      return onGenerateProposal(data);
+    }
+
     // Store contactId and name in refs BEFORE any state changes - this survives batching
     proposalContactIdRef.current = data.contactId;
     const contact = contacts.find(c => c.id === data.contactId);
@@ -379,12 +323,10 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
         if (onSchedule) onSchedule(contact, 'reuniao');
         break;
       case 'chamada_agendada':
-        // Realizar chamada -> ligar
-        if (contact.phone) {
-          window.open(`tel:${contact.phone}`, '_blank');
+        // Realizar chamada -> delega para orquestrador central no layout
+        if (onCallAction) {
+          onCallAction(contact);
         }
-        setPendingCallContact(contact);
-        setCallConfirmOpen(true);
         break;
       case 'chamada_realizada':
         // Enviar proposta -> abrir modal de proposta
@@ -726,43 +668,18 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
                         >
                           {/* Header with Drag Handle and Actions Button */}
                           <div className="flex items-start justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-2xl">{contact.avatar || '👤'}</span>
-                              <div>
-                                <div className="font-semibold text-foreground text-sm">{contact.name}</div>
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <span className="text-2xl flex-shrink-0">{contact.avatar || '👤'}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-semibold text-foreground text-sm truncate">{contact.name}</div>
                                 {contact.company && (
-                                  <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                    🏢 {contact.company}
+                                  <div className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                                    <span className="flex-shrink-0">🏢</span> {contact.company}
                                   </div>
                                 )}
                               </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                              {/* Comments Button */}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                                onClick={(e) => handleQuickAction('comments', contact, e)}
-                              >
-                                <MessageSquare className="w-4 h-4" />
-                              </Button>
-
-                              {onToggleLeadAi && (
-                                <div className="flex items-center gap-1.5 mx-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                                  <Switch
-                                    checked={contact.aiEnabled !== false}
-                                    onCheckedChange={(checked) => onToggleLeadAi({ leadId: contact.id, enabled: checked })}
-                                    className="scale-75 data-[state=checked]:bg-green-600"
-                                    title={contact.aiEnabled !== false ? 'IA Ativa' : 'IA Pausada'}
-                                  />
-                                  {contact.aiEnabled !== false ? (
-                                    <Bot className="w-3.5 h-3.5 text-green-600" />
-                                  ) : (
-                                    <UserCog className="w-3.5 h-3.5 text-orange-500" />
-                                  )}
-                                </div>
-                              )}
+                            <div className="flex items-center gap-0 flex-shrink-0">
                               {/* Actions Dropdown Button */}
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -770,11 +687,28 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
                                     variant="ghost"
                                     size="icon"
                                     className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted"
+                                    data-testid={`lead-actions-${contact.id}`}
+                                    aria-label={`Ações do lead ${contact.name}`}
                                   >
                                     <MoreVertical className="w-4 h-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-48 bg-popover">
+                                  <DropdownMenuItem
+                                    onClick={(e) => handleQuickAction('conversation', contact, e as unknown as React.MouseEvent)}
+                                    className="gap-2 cursor-pointer"
+                                  >
+                                    <MessageSquare className="w-4 h-4 text-primary" />
+                                    <span>Ver Conversa</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={(e) => handleQuickAction('comments', contact, e)}
+                                    className="gap-2 cursor-pointer"
+                                  >
+                                    <MessageSquareQuote className="w-4 h-4 text-amber-500" />
+                                    <span>Ver Comentários</span>
+                                  </DropdownMenuItem>
+                                  <div className="h-px bg-muted my-1" />
                                   <DropdownMenuItem
                                     onClick={(e) => handleQuickAction('call', contact, e as unknown as React.MouseEvent)}
                                     className="gap-2 cursor-pointer"
@@ -792,6 +726,7 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
                                   <DropdownMenuItem
                                     onClick={(e) => handleQuickAction('proposal', contact, e as unknown as React.MouseEvent)}
                                     className="gap-2 cursor-pointer"
+                                    data-testid={`lead-action-proposal-${contact.id}`}
                                   >
                                     <FileText className="w-4 h-4 text-green-500" />
                                     <span>Gerar Proposta</span>
@@ -800,7 +735,7 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
                                     onClick={(e) => handleQuickAction('visit', contact, e as unknown as React.MouseEvent)}
                                     className="gap-2 cursor-pointer"
                                   >
-                                    <Home className="w-4 h-4 text-orange-500" />
+                                    <MapPin className="w-4 h-4 text-orange-500" />
                                     <span>Agendar Visita</span>
                                   </DropdownMenuItem>
                                   {onDeleteLead && (
@@ -811,14 +746,33 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
                                         className="gap-2 cursor-pointer text-destructive focus:text-destructive"
                                       >
                                         <Trash2 className="w-4 h-4" />
-                                        <span>Excluir</span>
+                                        <span>Excluir Lead</span>
                                       </DropdownMenuItem>
                                     </>
                                   )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                              <GripVertical className="w-4 h-4 text-muted-foreground/50" />
+                              <GripVertical className="w-4 h-4 text-muted-foreground/30 ml-0.5 cursor-grab active:cursor-grabbing flex-shrink-0" />
                             </div>
+                          </div>
+
+                          {/* IA Control Row below name */}
+                          <div className="flex items-center gap-2 mb-3">
+                            {onToggleLeadAi && (
+                              <div className="flex items-center gap-1.5 p-1 bg-muted/30 rounded-md border border-border/40 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                <Switch
+                                  checked={contact.aiEnabled !== false}
+                                  onCheckedChange={(checked) => onToggleLeadAi({ leadId: contact.id, enabled: checked })}
+                                  className="scale-75 data-[state=checked]:bg-green-600"
+                                  title={contact.aiEnabled !== false ? 'IA Ativa' : 'IA Pausada'}
+                                />
+                                {contact.aiEnabled !== false ? (
+                                  <Bot className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                                ) : (
+                                  <UserCog className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           {/* Value */}
@@ -880,39 +834,6 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
         onGenerate={handleProposal}
       />
 
-      {/* Call Confirmation Modal */}
-      <CallConfirmModal
-        isOpen={callConfirmOpen}
-        onClose={() => {
-          setCallConfirmOpen(false);
-          setPendingCallContact(null);
-        }}
-        onConfirm={handleCallConfirm}
-        contactName={pendingCallContact?.name || ''}
-      />
-
-      {/* Move to Proposal Modal */}
-      <MoveToProposalModal
-        isOpen={moveToProposalOpen}
-        onClose={() => {
-          setMoveToProposalOpen(false);
-          setActionContact(null);
-        }}
-        onConfirm={handleMoveToProposalConfirm}
-        contactName={actionContact?.name || ''}
-      />
-
-      {/* Generate Proposal Prompt Modal */}
-      <GenerateProposalPromptModal
-        isOpen={generateProposalPromptOpen}
-        onClose={() => {
-          setGenerateProposalPromptOpen(false);
-          setActionContact(null);
-        }}
-        onGenerate={handleGenerateProposalPrompt}
-        contactName={actionContact?.name || ''}
-      />
-
       {/* Proposal Ready Modal */}
       <ProposalReadyModal
         isOpen={proposalReadyOpen}
@@ -957,3 +878,5 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
     </div>
   );
 }
+
+
