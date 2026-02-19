@@ -112,13 +112,32 @@ Commands executed:
 - `cmd /c npx playwright test tests/e2e/m7-final-hardening.spec.ts --reporter=line`
 - `cmd /c npx playwright test tests/e2e/m7_2-ai-settings-write.spec.ts --reporter=line`
 
-Results:
-- `m2-ia-smoke`: `1 passed`
-- `m4-leads-visibility`: `2 passed`
-- `m5-frontend-org`: `1 passed`
-- `m7-final-hardening`: `1 passed`
-- `m7_2-ai-settings-write`: `1 failed` after 2 remediation cycles (timeout/flaky nav interaction)
-- Post-failure adjustment applied in spec: retry guard for IA nav click; no extra rerun executed (2-cycle cap respected).
+## 7.1) M7.2.1 Stability Hotfix (E2E)
+Root cause:
+- Flakiness in `m7_2-ai-settings-write.spec.ts` due to timing race between:
+- `AuthContext` async org resolution (layout/nav not ready yet),
+- Radix Popover portal mount/animation (`nav-ia-agentes` detach/unstable on click).
+
+Fix applied (spec only):
+- Wait explicit for `nav-settings-trigger` after login and after reload.
+- In `openAiSettings`, wait visible for `nav-settings-trigger` and `nav-ia-agentes`.
+- Add portal-safe retry loop for clicking `nav-ia-agentes`.
+- Wait explicit for switch visible before clicking.
+- Deterministic baseline: ensure `ai_settings` row exists for test org in `beforeAll`.
+- Click specific master switch (`Sistema AI Mestre`) instead of generic first switch.
+
+Evidence (3x consecutive PASS):
+- `_deploy_tmp/m7_2_ai_settings_write_run1_retry.txt` -> `1 passed`
+- `_deploy_tmp/m7_2_ai_settings_write_run2_retry.txt` -> `1 passed`
+- `_deploy_tmp/m7_2_ai_settings_write_run3_retry.txt` -> `1 passed`
+
+Regression evidence (bundle):
+- `_deploy_tmp/m7_2_regression_bundle.txt` -> `5 passed`
+
+Final release gate evidence (this round):
+- `_deploy_tmp/m7_2_1_tsc.txt` -> `EXIT_CODE:0`
+- `_deploy_tmp/m7_2_1_pw_ai_settings_once.txt` -> `1 passed`
+- `_deploy_tmp/m7_2_1_pw_m7_final.txt` -> `1 passed`
 
 ## 8) Files added/updated in M7.2 scope
 - `supabase/functions/whatsapp-connect/index.ts`

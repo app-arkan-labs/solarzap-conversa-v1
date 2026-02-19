@@ -31,23 +31,55 @@ async function login(page: Page, email: string, password: string) {
   await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await page.waitForURL('**/', { timeout: 30_000 });
+
+  // Wait until AuthContext resolves orgId and the main layout/nav is mounted.
+  await page.getByTestId('nav-settings-trigger').waitFor({ state: 'visible', timeout: 30_000 });
 }
 
+/**
+ * openAiSettings — deterministic flow using data-testid anchors.
+ *
+ * Root cause of previous flakiness:
+ *   The "Inteligência Artificial" button lives inside a Radix UI <PopoverContent>
+ *   which is portal-mounted with a CSS enter animation when the trigger is clicked.
+ *   Playwright's auto-retry click was racing against the Radix animation and detecting
+ *   the element as "not stable" or "detached from DOM" every time.
+ *
+ * Fix:
+ *   1. Click the Settings trigger via stable data-testid.
+ *   2. Wait for the IA button to be *attached* AND *stable* before clicking
+ *      (use waitFor({ state: 'visible' }) which implies stable+attached).
+ *   3. Use force: false (default) so Playwright still validates the element is
+ *      interactable, but we have already given it time to become stable.
+ */
 async function openAiSettings(page: Page) {
-  await page.locator('button[title*="Configura"], button[aria-label*="Configura"]').first().click();
-  const aiNavButton = page.getByRole('button', { name: /Intelig/i }).first();
-  await aiNavButton.waitFor({ state: 'visible', timeout: 30_000 });
+  // 1. Wait for fully mounted layout and open the settings popover.
+  const settingsTrigger = page.getByTestId('nav-settings-trigger');
+  await settingsTrigger.waitFor({ state: 'visible', timeout: 30_000 });
+  await settingsTrigger.click();
 
+  // 2. Wait for Radix PopoverContent portal + animation.
+  let iaOpened = false;
   for (let attempt = 0; attempt < 3; attempt++) {
+    const iaButton = page.getByTestId('nav-ia-agentes');
+    await iaButton.waitFor({ state: 'visible', timeout: 15_000 });
+
     try {
-      await aiNavButton.click({ timeout: 10_000 });
+      await iaButton.click({ timeout: 10_000 });
+      iaOpened = true;
       break;
     } catch (err) {
       if (attempt === 2) throw err;
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(200);
+      await settingsTrigger.click();
     }
   }
 
+  if (!iaOpened) {
+    throw new Error('Failed to open IA settings after retries');
+  }
+
+  // 4. Wait for the IA view heading to confirm navigation succeeded
   await expect(page.getByRole('heading', { name: /Intelig/i })).toBeVisible({ timeout: 30_000 });
 }
 
@@ -82,6 +114,24 @@ test.beforeAll(async () => {
     can_view_team_leads: true,
   });
   if (memberErr) throw new Error(`Failed to create M7.2 e2e membership: ${memberErr.message}`);
+
+  // Deterministic baseline for the test: ensure ai_settings row exists for org.
+  const { data: existingSettings, error: existingSettingsErr } = await admin
+    .from('ai_settings')
+    .select('id')
+    .eq('org_id', state.orgId)
+    .limit(1)
+    .maybeSingle();
+  if (existingSettingsErr) throw new Error(`Failed to read ai_settings baseline: ${existingSettingsErr.message}`);
+
+  if (!existingSettings?.id) {
+    const { error: settingsInsertErr } = await admin.from('ai_settings').insert({
+      org_id: state.orgId,
+      is_active: false,
+      assistant_identity_name: 'M7.2 E2E',
+    });
+    if (settingsInsertErr) throw new Error(`Failed to create ai_settings baseline: ${settingsInsertErr.message}`);
+  }
 });
 
 test.afterAll(async () => {
@@ -109,7 +159,14 @@ test('M7.2 smoke: IA settings write persists with org_id', async ({ page }) => {
 
   await login(page, state.email, state.password);
   await openAiSettings(page);
-  await page.getByRole('switch').first().click();
+  const switchEl = page
+    .locator('div')
+    .filter({ hasText: 'Sistema AI Mestre' })
+    .first()
+    .locator('[role="switch"]')
+    .first();
+  await switchEl.waitFor({ state: 'visible', timeout: 15_000 });
+  await switchEl.click();
 
   await expect
     .poll(async () => {
@@ -127,8 +184,17 @@ test('M7.2 smoke: IA settings write persists with org_id', async ({ page }) => {
     .toBe(`${state.orgId}|${expectedIsActive}`);
 
   await page.reload();
+
+  // Wait again after reload because AuthContext resolves orgId asynchronously.
+  await page.getByTestId('nav-settings-trigger').waitFor({ state: 'visible', timeout: 30_000 });
   await openAiSettings(page);
-  await expect(page.getByRole('switch').first()).toHaveAttribute(
+  const switchAfterReload = page
+    .locator('div')
+    .filter({ hasText: 'Sistema AI Mestre' })
+    .first()
+    .locator('[role="switch"]')
+    .first();
+  await expect(switchAfterReload).toHaveAttribute(
     'data-state',
     expectedIsActive ? 'checked' : 'unchecked'
   );
