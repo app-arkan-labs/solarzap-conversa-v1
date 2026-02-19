@@ -72,8 +72,7 @@ class AppointmentModalErrorBoundary extends Component<AppointmentModalErrorBound
   }
 }
 
-const tabFromPath = (pathname: string): ActiveTab =>
-  pathname === '/admin/members' ? 'admin_members' : 'conversas';
+const isAdminMembersPath = (pathname: string): boolean => pathname === '/admin/members';
 
 export function SolarZapLayout() {
   const { orgId, role } = useAuth();
@@ -122,16 +121,24 @@ export function SolarZapLayout() {
     (isLoadingEvents && events.length === 0);
 
   // UI State
-  const [activeTab, setActiveTab] = useState<ActiveTab>(() => tabFromPath(location.pathname));
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() =>
+    isAdminMembersPath(location.pathname) ? 'admin_members' : 'conversas',
+  );
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('todos');
   const [stageFilter, setStageFilter] = useState<PipelineStage | 'todos'>('todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
 
   useEffect(() => {
-    const nextTab = tabFromPath(location.pathname);
-    if (nextTab !== activeTab) {
-      setActiveTab(nextTab);
+    if (isAdminMembersPath(location.pathname)) {
+      if (activeTab !== 'admin_members') {
+        setActiveTab('admin_members');
+      }
+      return;
+    }
+
+    if (activeTab === 'admin_members') {
+      setActiveTab('conversas');
     }
   }, [activeTab, location.pathname]);
 

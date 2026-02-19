@@ -8,9 +8,8 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
-import { ScrollArea } from '../ui/scroll-area';
 import { PIPELINE_STAGES, PipelineStage } from '../../types/solarzap';
-import { BrainCircuit, AlertTriangle, RefreshCcw, Save, Bot } from 'lucide-react';
+import { AlertTriangle, RefreshCcw, Save, Bot } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
@@ -23,7 +22,7 @@ import { Textarea } from '../ui/textarea';
 
 export function AIAgentsView() {
     const { settings, stageConfigs, updateGlobalSettings, updateStageConfig, loading, restoreDefaultPrompt } = useAISettings();
-    const { instances: whatsappInstances, toggleAllInstances, setInstanceAiEnabled, activateAiForAllLeads } = useUserWhatsAppInstances();
+    const { instances: whatsappInstances, setInstanceAiEnabled, activateAiForAllLeads } = useUserWhatsAppInstances();
     const [editingStage, setEditingStage] = useState<PipelineStage | null>(null);
 
     const [isWarningOpen, setIsWarningOpen] = useState(false);
@@ -94,8 +93,19 @@ export function AIAgentsView() {
         'aguardando_instalacao', 'projeto_instalado', 'coletar_avaliacao', 'contato_futuro', 'perdido'
     ];
 
+    const getFallbackGoal = (stage: PipelineStage) => {
+        const title = PIPELINE_STAGES[stage]?.title || stage;
+        return `Conduzir o lead com clareza na etapa ${title}.`;
+    };
+
+    const getFallbackPrompt = (stage: PipelineStage, fallbackGoal: string) => {
+        const title = PIPELINE_STAGES[stage]?.title || stage;
+        return `Objetivo: ${fallbackGoal}\n\nAtue como consultor solar na etapa ${title}. Responda com objetividade, prossiga para o proximo passo e mantenha contexto comercial.`;
+    };
+
     return (
-        <div className="flex flex-col h-full bg-slate-50 p-6 space-y-6 overflow-y-auto relative">
+        <div className="h-full w-full min-h-0 overflow-x-hidden overflow-y-auto bg-slate-50">
+            <div className="mx-auto w-full max-w-[1400px] space-y-6 p-4 md:p-6 pb-24">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
@@ -243,11 +253,18 @@ export function AIAgentsView() {
                         const config = stageConfigs.find(c => c.status_pipeline === stage);
                         const stageInfo = PIPELINE_STAGES[stage];
                         const isEnabled = config?.is_active || false;
-                        // Effective prompt: override > default > empty
-                        const effectivePrompt = config?.prompt_override || config?.default_prompt || '';
+                        const fallbackGoal = config?.agent_goal || getFallbackGoal(stage);
+                        const effectivePrompt =
+                            config?.prompt_override ||
+                            config?.default_prompt ||
+                            getFallbackPrompt(stage, fallbackGoal);
 
                         return (
-                            <Card key={stage} className={`border-l-4 ${isEnabled ? 'border-l-green-500' : 'border-l-slate-300'} hover:shadow-md transition-shadow`}>
+                            <Card
+                                key={stage}
+                                className={`border-l-4 ${isEnabled ? 'border-l-green-500' : 'border-l-slate-300'} hover:shadow-md transition-shadow`}
+                                data-testid={`ai-stage-card-${stage}`}
+                            >
                                 <CardHeader className="pb-3">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
@@ -264,7 +281,7 @@ export function AIAgentsView() {
                                 <CardContent className="space-y-4">
                                     <div className="text-sm text-slate-600 min-h-[40px]">
                                         <span className="font-semibold text-xs uppercase text-slate-400">Objetivo:</span>
-                                        <p className="line-clamp-2">{config?.agent_goal || 'Sem objetivo configurado.'}</p>
+                                        <p className="line-clamp-2">{fallbackGoal}</p>
                                     </div>
 
                                     <div className="flex items-center justify-between pt-2 border-t">
@@ -374,6 +391,7 @@ export function AIAgentsView() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div >
+            </div>
+        </div>
     );
 }
