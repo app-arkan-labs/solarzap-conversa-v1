@@ -33,7 +33,7 @@ envContent.replace(/\r\n/g, '\n').split('\n').forEach(line => {
 
 const INSTANCE_NAME = 'solarzap-instanciateste-829711';
 const API_URL = env.EVOLUTION_API_URL || 'https://evo.arkanlabs.com.br';
-const API_KEY = env.EVOLUTION_API_KEY || 'eef86d79f253d5f295edcd33b578c94b';
+const API_KEY = env.EVOLUTION_API_KEY || 'YOUR_EVOLUTION_API_KEY';
 
 console.log(`\n--- Fetching Settings for ${INSTANCE_NAME} ---`);
 

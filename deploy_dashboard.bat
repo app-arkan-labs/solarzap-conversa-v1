@@ -1,5 +1,5 @@
 @echo off
-set SUPABASE_ACCESS_TOKEN=sbp_40bff86a03226780255872224ab05d365ff85d85
+set SUPABASE_ACCESS_TOKEN=YOUR_SUPABASE_ACCESS_TOKEN
 echo Deploying Dashboard Functions...
 
 echo Deploying reports-dashboard...

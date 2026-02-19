@@ -1,6 +1,6 @@
 
 const EVOLUTION_URL = 'https://evo.arkanlabs.com.br';
-const API_KEY = 'eef86d79f253d5f295edcd33b578c94b';
+const API_KEY = 'YOUR_EVOLUTION_API_KEY';
 const INSTANCES = ['solarzap-rodrigoarkan-226512']; // Main instance
 const TARGET_URL = 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/evolution-webhook';
 

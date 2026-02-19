@@ -3,7 +3,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 
 const API_URL = 'https://evo.arkanlabs.com.br';
-const API_KEY = 'eef86d79f253d5f295edcd33b578c94b';
+const API_KEY = 'YOUR_EVOLUTION_API_KEY';
 
 async function checkWebhook(instanceName) {
     console.log(`Checking webhook for ${instanceName}...`);

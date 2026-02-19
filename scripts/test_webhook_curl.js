@@ -43,7 +43,7 @@ envContent.replace(/\r\n/g, '\n').split('\n').forEach(line => {
 console.log('Keys loaded:', Object.keys(env).join(', '));
 
 const SUPABASE_FUNCTION_URL = env.SUPABASE_FUNCTION_URL || (env.VITE_SUPABASE_URL ? `${env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect` : null);
-const WEBHOOK_SECRET = env.WEBHOOK_SECRET || 'arkan_secure_2026'; // Fallback to hardcoded if missing
+const WEBHOOK_SECRET = env.WEBHOOK_SECRET || 'YOUR_WEBHOOK_SECRET'; // Fallback to hardcoded if missing
 const INSTANCE_NAME = env.INSTANCE_NAME || 'solarzap_test_instance';
 
 if (!SUPABASE_FUNCTION_URL) {

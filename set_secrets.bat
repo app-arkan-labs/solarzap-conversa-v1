@@ -1,5 +1,6 @@
 @echo off
-set SUPABASE_ACCESS_TOKEN=sbp_40bff86a03226780255872224ab05d365ff85d85
+set SUPABASE_ACCESS_TOKEN=YOUR_SUPABASE_ACCESS_TOKEN
 echo Setting secrets...
-call npx supabase secrets set EVOLUTION_API_URL=https://evo.arkanlabs.com.br EVOLUTION_API_KEY=eef86d79f253d5f295edcd33b578c94b --project-ref ucwmcmdwbvrwotuzlmxh
+REM FORCE_SIMULATED_TRANSPORT=true makes the AI agent log messages in the CRM but NOT send via WhatsApp.
+call npx supabase secrets set EVOLUTION_API_URL=https://evo.arkanlabs.com.br EVOLUTION_API_KEY=YOUR_EVOLUTION_API_KEY FORCE_SIMULATED_TRANSPORT=false --project-ref ucwmcmdwbvrwotuzlmxh
 echo Done.

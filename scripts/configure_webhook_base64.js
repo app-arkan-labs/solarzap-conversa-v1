@@ -25,7 +25,7 @@ envContent.split('\n').forEach(line => {
 });
 
 const API_URL = "https://evo.arkanlabs.com.br";
-const API_KEY = "eef86d79f253d5f295edcd33b578c94b";
+const API_KEY = "YOUR_EVOLUTION_API_KEY";
 const SUPABASE_FUNCTION_URL = "https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/whatsapp-connect";
 const WEBHOOK_SECRET = "sec_21312312-3232-4232-a232-323232323232";
 

@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // Configuration
 const FUNCTION_URL = 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/evolution-webhook';
-const WEBHOOK_SECRET = 'arkan_secure_2026';
+const WEBHOOK_SECRET = 'YOUR_WEBHOOK_SECRET';
 
 // Payload imitating Evolution API with Base64
 const payload = {

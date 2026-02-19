@@ -41,6 +41,7 @@ async function login(page: Page, email: string, password: string) {
 async function openAiSettings(page: Page) {
   const settingsTrigger = page.getByTestId('nav-settings-trigger');
   const aiButton = page.getByTestId('nav-ia-agentes');
+  const aiCards = page.locator('[data-testid^="ai-stage-card-"]');
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     await settingsTrigger.click();
@@ -61,11 +62,18 @@ async function openAiSettings(page: Page) {
       .catch(() => false);
 
     if (clicked) {
-      break;
+      const opened = await aiCards
+        .first()
+        .waitFor({ state: 'visible', timeout: 8_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (opened) {
+        return;
+      }
     }
   }
 
-  await page.getByRole('heading', { name: /Intelig/i }).waitFor({ state: 'visible', timeout: 30_000 });
+  throw new Error('Unable to open IA settings view.');
 }
 
 test.beforeAll(async () => {

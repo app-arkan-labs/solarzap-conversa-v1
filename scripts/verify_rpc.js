@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // User Provided Service Role Key
 const supabaseUrl = 'https://ucwmcmdwbvrwotuzlmxh.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8';
+const supabaseKey = 'YOUR_SUPABASE_SERVICE_ROLE_KEY';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 

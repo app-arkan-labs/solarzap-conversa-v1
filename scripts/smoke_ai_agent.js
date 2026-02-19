@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIG ---
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ucwmcmdwbvrwotuzlmxh.supabase.co';
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'YOUR_SUPABASE_SERVICE_ROLE_KEY';
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/ai-pipeline-agent`;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -853,6 +853,8 @@ async function main() {
         await test16_homologationGate(lead.id); // V12 (Safety)
         await test17_sizingGate(lead.id);       // V12 (Safety)
         await test18_humanization(lead.id);     // V13 (Humanization)
+        await test19_stageMoveSendMessage(lead.id); // Stage Move Fix (T19)
+        await test20_burstStillMovesStage(lead.id); // Stage Move Fix Burst (T20)
 
 
     } catch (err) {
@@ -1367,5 +1369,134 @@ async function test18_humanization(leadId) {
     report('V13 Humanization', pass, `No Forbidden Emoji: ${!hasForbiddenEmoji}. Split Applied: ${hasSplit} (${parts.length} parts).`);
 }
 
+// ================================================================
+// TEST 19: STAGE MOVE — novo_lead → respondeu (Deterministic Fallback)
+// Verifies the core bug fix: AI sends message → lead moves to respondeu
+// WITHOUT depending on LLM including target_stage in its JSON.
+// ================================================================
+async function test19_stageMoveSendMessage(leadId) {
+    console.log('\n========================================');
+    console.log('TEST 19: Stage Move — novo_lead → respondeu (Deterministic)');
+    console.log('========================================');
+
+    await cleanupTestData(leadId);
+
+    // Reset lead to novo_lead (the bug scenario)
+    await supabase.from('leads').update({ status_pipeline: 'novo_lead', ai_enabled: true }).eq('id', leadId);
+    await sleep(500);
+
+    // Verify initial stage
+    const { data: before } = await supabase.from('leads').select('status_pipeline').eq('id', leadId).single();
+    console.log(`   Initial stage: ${before?.status_pipeline}`);
+    if (before?.status_pipeline !== 'novo_lead') {
+        report('Stage Move: novo_lead→respondeu', false, `Setup failed: stage is ${before?.status_pipeline}, expected novo_lead`);
+        return;
+    }
+
+    // Insert inbound message (simulating new lead contacting)
+    const msg = await insertClientMessage(leadId, TEST_INSTANCE, TEST_REMOTE_JID,
+        'Oi, vi o anúncio de vocês sobre energia solar. Gostaria de saber mais!');
+    console.log(`   Inbound message inserted: ${msg.id}`);
+
+    // Call agent (simulated transport — dry_run=true, source=smoke)
+    const resp = await callAgent(leadId, msg.id, TEST_INSTANCE, TEST_REMOTE_JID);
+    console.log(`   Agent response: action=${resp.body?.action}, status=${resp.status}`);
+    console.log(`   Content preview: "${(resp.body?.content || '').substring(0, 100)}"`);
+
+    const agentReplied = resp.body?.action === 'send_message' && !!resp.body?.content;
+
+    // Wait for DB write to propagate
+    await sleep(3000);
+
+    // Check DB stage
+    const { data: after } = await supabase.from('leads').select('status_pipeline').eq('id', leadId).single();
+    console.log(`   Stage after agent run: ${after?.status_pipeline}`);
+
+    const stageMoved = after?.status_pipeline === 'respondeu';
+
+    // Also check ai_agent_runs for stage_move_result
+    const { data: runLog } = await supabase.from('ai_agent_runs')
+        .select('actions_executed, llm_output')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    const actionsExec = runLog?.actions_executed || [];
+    const hasStageMoveLog = actionsExec.some(a => String(a).startsWith('stage_move:'));
+    console.log(`   ai_agent_runs actions_executed: ${JSON.stringify(actionsExec)}`);
+    console.log(`   stage_move logged: ${hasStageMoveLog}`);
+
+    const pass = agentReplied && stageMoved;
+    report('Stage Move: novo_lead→respondeu (Deterministic)', pass,
+        `Agent replied: ${agentReplied}. Stage moved: ${stageMoved} (${before?.status_pipeline} → ${after?.status_pipeline}). ` +
+        `stage_move in log: ${hasStageMoveLog}. ` +
+        `${pass ? '✅ Deterministic fallback WORKED!' : '❌ Stage did NOT move — fallback failed!'}`);
+
+    // Restore stage for subsequent tests
+    await supabase.from('leads').update({ status_pipeline: 'novo_lead' }).eq('id', leadId);
+}
+
+// ================================================================
+// TEST 20: STAGE MOVE — BURST SCENARIO (quiet-window winner still moves stage)
+// Verifies that even in a burst (3 rapid messages), the winning run
+// still transitions novo_lead → respondeu after the quiet window.
+// ================================================================
+async function test20_burstStillMovesStage(leadId) {
+    console.log('\n========================================');
+    console.log('TEST 20: Stage Move — Burst Scenario (quiet-window winner moves stage)');
+    console.log('========================================');
+
+    await cleanupTestData(leadId);
+
+    // Reset lead to novo_lead
+    await supabase.from('leads').update({ status_pipeline: 'novo_lead', ai_enabled: true }).eq('id', leadId);
+    await sleep(500);
+
+    const { data: before } = await supabase.from('leads').select('status_pipeline').eq('id', leadId).single();
+    console.log(`   Initial stage: ${before?.status_pipeline}`);
+
+    // Insert 3 rapid messages (burst)
+    const msg1 = await insertClientMessage(leadId, TEST_INSTANCE, TEST_REMOTE_JID, 'Oi');
+    await sleep(400);
+    const msg2 = await insertClientMessage(leadId, TEST_INSTANCE, TEST_REMOTE_JID, 'Quero saber sobre energia solar');
+    await sleep(400);
+    const msg3 = await insertClientMessage(leadId, TEST_INSTANCE, TEST_REMOTE_JID, 'Minha conta vem 500 reais');
+    console.log(`   3 burst messages inserted: ${msg1.id}, ${msg2.id}, ${msg3.id}`);
+
+    // Fire 3 parallel agent calls (simulating webhook burst)
+    const [r1, r2, r3] = await Promise.all([
+        callAgent(leadId, msg1.id, TEST_INSTANCE, TEST_REMOTE_JID),
+        callAgent(leadId, msg2.id, TEST_INSTANCE, TEST_REMOTE_JID),
+        callAgent(leadId, msg3.id, TEST_INSTANCE, TEST_REMOTE_JID),
+    ]);
+
+    const responses = [r1, r2, r3];
+    const skipped = responses.filter(r => r.body?.skipped || r.body?.aborted);
+    const replied = responses.filter(r => r.body?.action === 'send_message' && r.body?.content);
+    console.log(`   Burst results: ${replied.length} replied, ${skipped.length} skipped/aborted`);
+
+    // Wait for quiet-window + DB propagation
+    await sleep(8000);
+
+    // Check DB stage
+    const { data: after } = await supabase.from('leads').select('status_pipeline').eq('id', leadId).single();
+    console.log(`   Stage after burst: ${after?.status_pipeline}`);
+
+    const stageMoved = after?.status_pipeline === 'respondeu';
+
+    // At most 1 run should have sent a reply (burst dedup)
+    const atMostOneReply = replied.length <= 1;
+
+    const pass = stageMoved && atMostOneReply;
+    report('Stage Move: Burst Scenario (quiet-window winner)', pass,
+        `Stage moved: ${stageMoved} (${before?.status_pipeline} → ${after?.status_pipeline}). ` +
+        `Replies: ${replied.length}/3 (expected ≤1). Skipped: ${skipped.length}/3. ` +
+        `${pass ? '✅ Burst handled + stage moved!' : '❌ Stage did NOT move or burst leaked!'}`);
+
+    // Restore
+    await supabase.from('leads').update({ status_pipeline: 'novo_lead' }).eq('id', leadId);
+}
+
 main().catch(console.error);
+
 

@@ -2,8 +2,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // CONFIGURATION
 const API_URL = 'https://evo.arkanlabs.com.br';
-const API_KEY = 'eef86d79f253d5f295edcd33b578c94b';
-const CORRECT_WEBHOOK_URL = 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/evolution-webhook?token=arkan_secure_2026';
+const API_KEY = 'YOUR_EVOLUTION_API_KEY';
+const CORRECT_WEBHOOK_URL = 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/evolution-webhook?token=YOUR_WEBHOOK_SECRET';
 
 console.log('🚀 Starting Webhook Fix...');
 

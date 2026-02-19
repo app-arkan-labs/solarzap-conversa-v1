@@ -3,9 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 
 // Configuration
 const SUPABASE_URL = 'https://ucwmcmdwbvrwotuzlmxh.supabase.co'
-const SUPABASE_KEY = 'sb_secret_RKe8nY_5Eez8nQENWu3TSw_l81zxlN2'
+const SUPABASE_KEY = 'YOUR_SUPABASE_SECRET_KEY'
 const EVOLUTION_API_URL = 'https://evo.arkanlabs.com.br'
-const EVOLUTION_API_KEY = 'eef86d79f253d5f295edcd33b578c94b'
+const EVOLUTION_API_KEY = 'YOUR_EVOLUTION_API_KEY'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
@@ -37,7 +37,7 @@ async function main() {
         console.log(`Configuring webhook for: ${instanceName}`)
 
         try {
-            const webhookUrl = `${SUPABASE_URL}/functions/v1/whatsapp-connect?token=arkan_secure_2026`
+            const webhookUrl = `${SUPABASE_URL}/functions/v1/whatsapp-connect?token=YOUR_WEBHOOK_SECRET`
 
             // Try alternate payload structure based on error "instance requires property webhook"
             const body = {

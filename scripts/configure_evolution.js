@@ -34,11 +34,11 @@ envContent.replace(/\r\n/g, '\n').split('\n').forEach(line => {
 // Config - Updated with User Provided Instance
 const INSTANCE_NAME = 'solarzap-instanciateste-829711';
 const API_URL = env.EVOLUTION_API_URL || 'https://evo.arkanlabs.com.br';
-const API_KEY = env.EVOLUTION_API_KEY || 'eef86d79f253d5f295edcd33b578c94b';
+const API_KEY = env.EVOLUTION_API_KEY || 'YOUR_EVOLUTION_API_KEY';
 
 // Construct Webhook URL
 const SUPABASE_FUNCTION_URL = env.SUPABASE_FUNCTION_URL || (env.VITE_SUPABASE_URL ? `${env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect` : null);
-const WEBHOOK_SECRET = env.WEBHOOK_SECRET || 'arkan_secure_2026';
+const WEBHOOK_SECRET = env.WEBHOOK_SECRET || 'YOUR_WEBHOOK_SECRET';
 
 if (!SUPABASE_FUNCTION_URL) {
     console.error('Error: Could not determine Supabase Function URL.');
