@@ -53,35 +53,38 @@ async function login(page: Page, email: string, password: string) {
  *      interactable, but we have already given it time to become stable.
  */
 async function openAiSettings(page: Page) {
-  // 1. Wait for fully mounted layout and open the settings popover.
-  const settingsTrigger = page.getByTestId('nav-settings-trigger');
+  // Locate the Settings trigger by its stable `title` attribute (no data-testid needed).
+  // This works regardless of whether the Vite bundle has data-testid attributes.
+  const settingsTrigger = page.locator('button[title="Configura\u00e7\u00f5es"]');
   await settingsTrigger.waitFor({ state: 'visible', timeout: 30_000 });
-  await settingsTrigger.click();
 
-  // 2. Wait for Radix PopoverContent portal + animation.
-  let iaOpened = false;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const iaButton = page.getByTestId('nav-ia-agentes');
-    await iaButton.waitFor({ state: 'visible', timeout: 15_000 });
+  // Click trigger and wait for Radix PopoverContent portal to mount.
+  // Retry up to 5 times if the popover doesn't open (Radix animation race).
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await settingsTrigger.click();
 
-    try {
-      await iaButton.click({ timeout: 10_000 });
-      iaOpened = true;
-      break;
-    } catch (err) {
-      if (attempt === 2) throw err;
-      await page.waitForTimeout(200);
-      await settingsTrigger.click();
+    // Give Radix 500ms to animate the PopoverContent into the portal
+    await page.waitForTimeout(500);
+
+    // Look for the IA button inside the now-open popover (by visible text or testid)
+    const iaButton = page.getByText('Intelig\u00eancia Artificial', { exact: true });
+    const appeared = await iaButton.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false);
+
+    if (!appeared) {
+      // Popover didn't open — press Escape to dismiss any partial state and retry
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
+      continue;
     }
+
+    await iaButton.click();
+    break; // navigation triggered
   }
 
-  if (!iaOpened) {
-    throw new Error('Failed to open IA settings after retries');
-  }
-
-  // 4. Wait for the IA view heading to confirm navigation succeeded
   await expect(page.getByRole('heading', { name: /Intelig/i })).toBeVisible({ timeout: 30_000 });
 }
+
+
 
 test.beforeAll(async () => {
   const suffix = `${Date.now()}`;
