@@ -87,6 +87,7 @@ export function SolarZapNav({
         <Popover>
           <PopoverTrigger asChild>
             <button
+              data-testid="nav-settings-trigger"
               className={cn(
                 'w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-200',
                 'hover:bg-sidebar-accent text-whatsapp-gray hover:text-sidebar-foreground'
@@ -99,6 +100,7 @@ export function SolarZapNav({
           <PopoverContent side="right" align="end" className="w-64 p-3">
             <div className="space-y-2">
               <button
+                data-testid="nav-ia-agentes"
                 onClick={() => onTabChange('ia_agentes')}
                 className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
               >
@@ -109,6 +111,7 @@ export function SolarZapNav({
               </button>
 
               <button
+                data-testid="nav-automacoes"
                 onClick={() => onTabChange('automacoes')}
                 className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
               >
