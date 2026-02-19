@@ -1,0 +1,17 @@
+{
+  email {$CADDY_EMAIL}
+}
+
+:80 {
+  root * /srv
+  encode zstd gzip
+  try_files {path} /index.html
+  file_server
+}
+
+{$SOLARZAP_DOMAIN} {
+  root * /srv
+  encode zstd gzip
+  try_files {path} /index.html
+  file_server
+}

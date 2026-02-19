@@ -1,0 +1,12 @@
+node_modules
+dist
+test-results
+playwright-report
+_deploy_tmp
+.git
+.gitignore
+.vscode
+.idea
+.env
+.env.production
+*.log

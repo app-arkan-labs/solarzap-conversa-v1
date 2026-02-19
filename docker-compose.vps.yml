@@ -1,0 +1,30 @@
+name: solarzap
+
+services:
+  web:
+    container_name: solarzap-web
+    image: solarzap-web:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
+        VITE_EVOLUTION_API_URL: ${VITE_EVOLUTION_API_URL}
+    env_file:
+      - .env.production
+    environment:
+      SOLARZAP_DOMAIN: ${SOLARZAP_DOMAIN}
+      CADDY_EMAIL: ${CADDY_EMAIL}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
