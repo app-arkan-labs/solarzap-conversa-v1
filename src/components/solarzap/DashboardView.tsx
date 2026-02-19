@@ -43,7 +43,6 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
     compare: true,
     filters: { calendarFilter }
   });
-
   // Handlers
   const handlePeriodChange = (val: string) => {
     setPeriodLabel(val);
@@ -79,7 +78,6 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
   if (error) {
     return <div className="p-8 text-red-500">Erro ao carregar dashboard: {(error as Error).message}</div>;
   }
-
   return (
     <div className="flex-1 flex flex-col bg-muted/30 overflow-y-auto">
       {/* Premium Header */}
@@ -168,7 +166,6 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
 
       <div className="max-w-7xl mx-auto w-full px-6 py-6 space-y-6">
         <KpiCards data={data?.kpis} isLoading={isLoading} />
-
         <DashboardCharts data={data?.charts} isLoading={isLoading} />
 
         <Tabs defaultValue="operacional" className="space-y-4">
