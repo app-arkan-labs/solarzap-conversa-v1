@@ -1,10 +1,12 @@
 import { supabase } from '@/lib/supabase';
+import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
 
 export type OrgRole = 'owner' | 'admin' | 'user' | 'consultant';
 
 export interface MemberDto {
   user_id: string;
   email: string | null;
+  display_name: string | null;
   role: OrgRole;
   can_view_team_leads: boolean;
   joined_at: string;
@@ -14,48 +16,49 @@ type OrgAdminRequest =
   | { action: 'bootstrap_self' }
   | { action: 'list_members' }
   | {
-      action: 'invite_member';
-      email: string;
-      role: OrgRole;
-      can_view_team_leads?: boolean;
-      mode?: 'create' | 'invite';
-    }
+    action: 'invite_member';
+    email: string;
+    role: OrgRole;
+    can_view_team_leads?: boolean;
+    mode?: 'create' | 'invite';
+  }
   | {
-      action: 'update_member';
-      user_id: string;
-      role: OrgRole;
-      can_view_team_leads: boolean;
-    }
+    action: 'update_member';
+    user_id: string;
+    role: OrgRole;
+    can_view_team_leads: boolean;
+  }
   | { action: 'remove_member'; user_id: string };
 
 type OrgAdminSuccessResponse =
   | {
-      ok: true;
-      action: 'bootstrap_self';
-      created: boolean;
-      org_id: string;
-      role: OrgRole;
-    }
+    ok: true;
+    action: 'bootstrap_self';
+    created: boolean;
+    org_id: string;
+    role: OrgRole;
+  }
   | {
-      ok: true;
-      action: 'list_members';
-      members: MemberDto[];
-    }
+    ok: true;
+    action: 'list_members';
+    members: MemberDto[];
+  }
   | {
-      ok: true;
-      action: 'invite_member';
-      user_id: string;
-      email: string;
-      mode: 'create' | 'invite';
-      temp_password?: string;
-    }
+    ok: true;
+    action: 'invite_member';
+    user_id: string;
+    email: string;
+    mode: 'create' | 'invite';
+    temp_password?: string;
+    invite_link?: string;
+  }
   | {
-      ok: true;
-      action: 'update_member';
-      user_id: string;
-      role: OrgRole;
-      can_view_team_leads: boolean;
-    }
+    ok: true;
+    action: 'update_member';
+    user_id: string;
+    role: OrgRole;
+    can_view_team_leads: boolean;
+  }
   | { ok: true; action: 'remove_member'; user_id: string };
 
 type OrgAdminErrorResponse = {
@@ -137,9 +140,31 @@ export async function bootstrapSelf() {
 }
 
 export async function listMembers() {
-  return invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'list_members' }>>({
+  const response = await invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'list_members' }>>({
     action: 'list_members',
   });
+
+  const { data } = await supabase.auth.getUser();
+  const currentUser = data.user;
+  if (!currentUser) {
+    return response;
+  }
+
+  const currentDisplayName = getAuthUserDisplayName(currentUser);
+  if (!currentDisplayName) {
+    return response;
+  }
+
+  return {
+    ...response,
+    members: response.members.map((member) =>
+      member.user_id === currentUser.id
+        ? {
+          ...member,
+          display_name: currentDisplayName,
+        }
+        : member),
+  };
 }
 
 export async function inviteMember(input: {

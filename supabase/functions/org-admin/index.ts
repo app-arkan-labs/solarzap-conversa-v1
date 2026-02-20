@@ -35,6 +35,35 @@ function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function metadataDisplayName(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== 'object') {
+    return null;
+  }
+
+  const data = metadata as Record<string, unknown>;
+  return (
+    nonEmptyString(data.display_name) ??
+    nonEmptyString(data.name) ??
+    nonEmptyString(data.full_name)
+  );
+}
+
+function resolveUserDisplayName(user: { user_metadata?: unknown; app_metadata?: unknown } | null | undefined): string | null {
+  if (!user) {
+    return null;
+  }
+
+  return metadataDisplayName(user.user_metadata) ?? metadataDisplayName(user.app_metadata);
+}
+
 function generateTempPassword() {
   const randomPart = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
   return `Tmp!${randomPart}Aa1`;
@@ -203,6 +232,7 @@ async function listMembers(
   }
 
   const emailByUserId: Record<string, string | null> = {};
+  const displayNameByUserId: Record<string, string | null> = {};
 
   for (const member of members ?? []) {
     const userId = String(member.user_id || '');
@@ -212,6 +242,7 @@ async function listMembers(
 
     const { data: userData } = await adminClient.auth.admin.getUserById(userId);
     emailByUserId[userId] = userData.user?.email ?? null;
+    displayNameByUserId[userId] = resolveUserDisplayName(userData.user ?? null);
   }
 
   return {
@@ -224,6 +255,7 @@ async function listMembers(
       return {
         user_id: userId,
         email: emailByUserId[userId] ?? null,
+        display_name: displayNameByUserId[userId] ?? null,
         role,
         can_view_team_leads: member.can_view_team_leads === true,
         joined_at: member.created_at ?? new Date().toISOString(),
@@ -254,6 +286,7 @@ async function inviteMember(
 
   let user = await findUserByEmail(adminClient, email);
   let tempPassword: string | undefined;
+  let inviteLink: string | undefined;
 
   if (!user) {
     if (mode === 'invite') {
@@ -266,6 +299,16 @@ async function inviteMember(
         user = fallbackUser;
       } else {
         user = data.user ?? (await findUserByEmail(adminClient, email));
+      }
+
+      if (user?.email) {
+        const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+          type: 'invite',
+          email: user.email,
+        });
+        if (!linkError && linkData?.properties?.action_link) {
+          inviteLink = linkData.properties.action_link;
+        }
       }
     } else {
       tempPassword = generateTempPassword();
@@ -343,6 +386,7 @@ async function inviteMember(
     email,
     mode,
     ...(tempPassword ? { temp_password: tempPassword } : {}),
+    ...(inviteLink ? { invite_link: inviteLink } : {}),
   });
 }
 
@@ -527,17 +571,17 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === 'list_members') {
+      const result = await listMembers(adminClient, callerMembership);
+      return jsonResponse(200, result);
+    }
+
     if (!(callerMembership.role === 'owner' || callerMembership.role === 'admin')) {
       return jsonResponse(403, {
         ok: false,
         code: 'forbidden_role',
         error: 'Apenas owner/admin podem executar esta acao.',
       });
-    }
-
-    if (action === 'list_members') {
-      const result = await listMembers(adminClient, callerMembership);
-      return jsonResponse(200, result);
     }
 
     if (action === 'invite_member') {
