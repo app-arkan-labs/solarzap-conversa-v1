@@ -280,13 +280,27 @@ function sanitizeQuery(text: string): string {
 function repairMojibake(text: string): string {
     if (!text) return text;
     if (!/[ÃÂ]/.test(text)) return text;
-    try {
-        const bytes = new Uint8Array(Array.from(text).map((ch) => ch.charCodeAt(0) & 0xff));
-        const repaired = new TextDecoder('utf-8').decode(bytes);
-        return repaired || text;
-    } catch (_) {
-        return text;
+    const replacements: Array<[string, string]> = [
+        ['Ã¡', 'á'], ['Ã¢', 'â'], ['Ã£', 'ã'], ['Ã¤', 'ä'],
+        ['Ã©', 'é'], ['Ãª', 'ê'], ['Ã«', 'ë'],
+        ['Ã­', 'í'], ['Ã®', 'î'], ['Ã¯', 'ï'],
+        ['Ã³', 'ó'], ['Ã´', 'ô'], ['Ãµ', 'õ'], ['Ã¶', 'ö'],
+        ['Ãº', 'ú'], ['Ã»', 'û'], ['Ã¼', 'ü'],
+        ['Ã§', 'ç'], ['Ã±', 'ñ'],
+        ['Ã', 'Á'], ['Ã‚', 'Â'], ['Ãƒ', 'Ã'], ['Ã„', 'Ä'],
+        ['Ã‰', 'É'], ['ÃŠ', 'Ê'], ['Ã‹', 'Ë'],
+        ['Ã', 'Í'], ['ÃŽ', 'Î'], ['Ã', 'Ï'],
+        ['Ã“', 'Ó'], ['Ã”', 'Ô'], ['Ã•', 'Õ'], ['Ã–', 'Ö'],
+        ['Ãš', 'Ú'], ['Ã›', 'Û'], ['Ãœ', 'Ü'],
+        ['Ã‡', 'Ç'], ['Ã‘', 'Ñ'],
+        ['â€™', '’'], ['â€œ', '“'], ['â€', '”'], ['â€“', '–'], ['â€”', '—'],
+        ['Â', '']
+    ];
+    let repaired = text;
+    for (const [from, to] of replacements) {
+        repaired = repaired.replaceAll(from, to);
     }
+    return repaired;
 }
 
 // --- HELPER: Check if message looks like a real question ---
