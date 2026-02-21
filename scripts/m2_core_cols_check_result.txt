@@ -1,0 +1,31 @@
+﻿HTTP 201
+[
+  {
+    "table_name": "propostas",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "lead_stage_history",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "leads",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "deals",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "appointments",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "whatsapp_instances",
+    "column_name": "user_id"
+  },
+  {
+    "table_name": "interacoes",
+    "column_name": "user_id"
+  }
+]

@@ -1,0 +1,177 @@
+﻿HTTP 201
+[
+  {
+    "tablename": "ai_action_logs",
+    "policyname": "ai_action_logs_auth_read",
+    "cmd": "SELECT",
+    "qual": "(auth.role() = ANY (ARRAY['authenticated'::text, 'service_role'::text]))"
+  },
+  {
+    "tablename": "ai_action_logs",
+    "policyname": "ai_action_logs_svc_delete",
+    "cmd": "DELETE",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_action_logs",
+    "policyname": "ai_action_logs_svc_update",
+    "cmd": "UPDATE",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_action_logs",
+    "policyname": "ai_action_logs_svc_write",
+    "cmd": "INSERT",
+    "qual": null
+  },
+  {
+    "tablename": "ai_agent_runs",
+    "policyname": "ai_agent_runs_auth_read",
+    "cmd": "SELECT",
+    "qual": "(auth.role() = ANY (ARRAY['authenticated'::text, 'service_role'::text]))"
+  },
+  {
+    "tablename": "ai_agent_runs",
+    "policyname": "ai_agent_runs_svc_delete",
+    "cmd": "DELETE",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_agent_runs",
+    "policyname": "ai_agent_runs_svc_update",
+    "cmd": "UPDATE",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_agent_runs",
+    "policyname": "ai_agent_runs_svc_write",
+    "cmd": "INSERT",
+    "qual": null
+  },
+  {
+    "tablename": "ai_settings",
+    "policyname": "ai_settings_auth_read",
+    "cmd": "SELECT",
+    "qual": "(auth.role() = ANY (ARRAY['authenticated'::text, 'service_role'::text]))"
+  },
+  {
+    "tablename": "ai_settings",
+    "policyname": "ai_settings_svc_delete",
+    "cmd": "DELETE",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_settings",
+    "policyname": "ai_settings_svc_update",
+    "cmd": "UPDATE",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_settings",
+    "policyname": "ai_settings_svc_write",
+    "cmd": "INSERT",
+    "qual": null
+  },
+  {
+    "tablename": "ai_stage_config",
+    "policyname": "ai_stage_config_auth_read",
+    "cmd": "SELECT",
+    "qual": "(auth.role() = ANY (ARRAY['authenticated'::text, 'service_role'::text]))"
+  },
+  {
+    "tablename": "ai_stage_config",
+    "policyname": "ai_stage_config_svc_delete",
+    "cmd": "DELETE",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_stage_config",
+    "policyname": "ai_stage_config_svc_update",
+    "cmd": "UPDATE",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_stage_config",
+    "policyname": "ai_stage_config_svc_write",
+    "cmd": "INSERT",
+    "qual": null
+  },
+  {
+    "tablename": "ai_summaries",
+    "policyname": "ai_summaries_auth_read",
+    "cmd": "SELECT",
+    "qual": "(auth.role() = ANY (ARRAY['authenticated'::text, 'service_role'::text]))"
+  },
+  {
+    "tablename": "ai_summaries",
+    "policyname": "ai_summaries_svc_delete",
+    "cmd": "DELETE",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_summaries",
+    "policyname": "ai_summaries_svc_update",
+    "cmd": "UPDATE",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_summaries",
+    "policyname": "ai_summaries_svc_write",
+    "cmd": "INSERT",
+    "qual": null
+  },
+  {
+    "tablename": "company_profile",
+    "policyname": "company_profile_auth_read",
+    "cmd": "SELECT",
+    "qual": "(auth.role() = 'authenticated'::text)"
+  },
+  {
+    "tablename": "company_profile",
+    "policyname": "company_profile_svc",
+    "cmd": "ALL",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "kb_items",
+    "policyname": "kb_items_owner",
+    "cmd": "ALL",
+    "qual": "(auth.uid() = created_by)"
+  },
+  {
+    "tablename": "kb_items",
+    "policyname": "kb_items_svc",
+    "cmd": "ALL",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "objection_responses",
+    "policyname": "objection_responses_auth_read",
+    "cmd": "SELECT",
+    "qual": "(auth.role() = 'authenticated'::text)"
+  },
+  {
+    "tablename": "objection_responses",
+    "policyname": "objection_responses_svc",
+    "cmd": "ALL",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "testimonials",
+    "policyname": "testimonials_owner",
+    "cmd": "ALL",
+    "qual": "(auth.uid() = created_by)"
+  },
+  {
+    "tablename": "testimonials",
+    "policyname": "testimonials_svc",
+    "cmd": "ALL",
+    "qual": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "whatsapp_webhook_events",
+    "policyname": "service_role_only",
+    "cmd": "ALL",
+    "qual": "(auth.role() = 'service_role'::text)"
+  }
+]

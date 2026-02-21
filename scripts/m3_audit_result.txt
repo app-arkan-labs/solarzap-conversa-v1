@@ -1,0 +1,427 @@
+﻿HTTP 201
+[
+  {
+    "tablename": "leads",
+    "policyname": "leads_public_select",
+    "cmd": "SELECT",
+    "roles": "{anon,authenticated}",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "leads",
+    "policyname": "leads_public_insert",
+    "cmd": "INSERT",
+    "roles": "{anon,authenticated}",
+    "qual": null,
+    "with_check": "true"
+  },
+  {
+    "tablename": "leads",
+    "policyname": "leads_public_update",
+    "cmd": "UPDATE",
+    "roles": "{anon,authenticated}",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "leads",
+    "policyname": "leads_public_delete",
+    "cmd": "DELETE",
+    "roles": "{anon,authenticated}",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "interacoes",
+    "policyname": "interacoes_public_select",
+    "cmd": "SELECT",
+    "roles": "{anon,authenticated}",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "interacoes",
+    "policyname": "interacoes_public_insert",
+    "cmd": "INSERT",
+    "roles": "{anon,authenticated}",
+    "qual": null,
+    "with_check": "true"
+  },
+  {
+    "tablename": "interacoes",
+    "policyname": "interacoes_public_update",
+    "cmd": "UPDATE",
+    "roles": "{anon,authenticated}",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "propostas",
+    "policyname": "propostas_public_select",
+    "cmd": "SELECT",
+    "roles": "{anon,authenticated}",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "propostas",
+    "policyname": "propostas_public_insert",
+    "cmd": "INSERT",
+    "roles": "{anon,authenticated}",
+    "qual": null,
+    "with_check": "true"
+  },
+  {
+    "tablename": "propostas",
+    "policyname": "propostas_public_update",
+    "cmd": "UPDATE",
+    "roles": "{anon,authenticated}",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "comentarios_leads",
+    "policyname": "Permitir acesso aos coment├írios",
+    "cmd": "ALL",
+    "roles": "{public}",
+    "qual": "true",
+    "with_check": "true"
+  },
+  {
+    "tablename": "whatsapp_instances",
+    "policyname": "Users manage own whatsapp",
+    "cmd": "ALL",
+    "roles": "{authenticated}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "leads",
+    "policyname": "Users can view own leads",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "leads",
+    "policyname": "Users can insert own leads",
+    "cmd": "INSERT",
+    "roles": "{public}",
+    "qual": null,
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "leads",
+    "policyname": "Users can update own leads",
+    "cmd": "UPDATE",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "leads",
+    "policyname": "Users can delete own leads",
+    "cmd": "DELETE",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "interacoes",
+    "policyname": "Users can view own interacoes",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "interacoes",
+    "policyname": "Users can insert own interacoes",
+    "cmd": "INSERT",
+    "roles": "{public}",
+    "qual": null,
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "propostas",
+    "policyname": "Users can view own propostas",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "propostas",
+    "policyname": "Users can insert own propostas",
+    "cmd": "INSERT",
+    "roles": "{public}",
+    "qual": null,
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "whatsapp_instances",
+    "policyname": "Users can view own instances",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "whatsapp_instances",
+    "policyname": "Users can insert own instances",
+    "cmd": "INSERT",
+    "roles": "{public}",
+    "qual": null,
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "whatsapp_instances",
+    "policyname": "Users can update own instances",
+    "cmd": "UPDATE",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "leads",
+    "policyname": "Service Role Full Access Leads",
+    "cmd": "ALL",
+    "roles": "{service_role}",
+    "qual": "true",
+    "with_check": "true"
+  },
+  {
+    "tablename": "interacoes",
+    "policyname": "Service Role Full Access Interacoes",
+    "cmd": "ALL",
+    "roles": "{service_role}",
+    "qual": "true",
+    "with_check": "true"
+  },
+  {
+    "tablename": "appointments",
+    "policyname": "Allow public access to appointments",
+    "cmd": "ALL",
+    "roles": "{public}",
+    "qual": "true",
+    "with_check": "true"
+  },
+  {
+    "tablename": "lead_stage_history",
+    "policyname": "Users can view their own lead history",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "deals",
+    "policyname": "Users can view their own deals",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "deals",
+    "policyname": "Users can insert their own deals",
+    "cmd": "INSERT",
+    "roles": "{public}",
+    "qual": null,
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "deals",
+    "policyname": "Users can update their own deals",
+    "cmd": "UPDATE",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "deals",
+    "policyname": "Users can delete their own deals",
+    "cmd": "DELETE",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "whatsapp_instances",
+    "policyname": "Allow public read",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "propostas",
+    "policyname": "Usuarios veem suas proprias propostas",
+    "cmd": "ALL",
+    "roles": "{public}",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "ai_settings",
+    "policyname": "ai_settings_auth_read",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "(auth.role() = ANY (ARRAY['authenticated'::text, 'service_role'::text]))",
+    "with_check": null
+  },
+  {
+    "tablename": "ai_settings",
+    "policyname": "ai_settings_svc_write",
+    "cmd": "INSERT",
+    "roles": "{public}",
+    "qual": null,
+    "with_check": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_settings",
+    "policyname": "ai_settings_svc_update",
+    "cmd": "UPDATE",
+    "roles": "{public}",
+    "qual": "(auth.role() = 'service_role'::text)",
+    "with_check": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_settings",
+    "policyname": "ai_settings_svc_delete",
+    "cmd": "DELETE",
+    "roles": "{public}",
+    "qual": "(auth.role() = 'service_role'::text)",
+    "with_check": null
+  },
+  {
+    "tablename": "ai_stage_config",
+    "policyname": "ai_stage_config_auth_read",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "(auth.role() = ANY (ARRAY['authenticated'::text, 'service_role'::text]))",
+    "with_check": null
+  },
+  {
+    "tablename": "ai_stage_config",
+    "policyname": "ai_stage_config_svc_write",
+    "cmd": "INSERT",
+    "roles": "{public}",
+    "qual": null,
+    "with_check": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_stage_config",
+    "policyname": "ai_stage_config_svc_update",
+    "cmd": "UPDATE",
+    "roles": "{public}",
+    "qual": "(auth.role() = 'service_role'::text)",
+    "with_check": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_stage_config",
+    "policyname": "ai_stage_config_svc_delete",
+    "cmd": "DELETE",
+    "roles": "{public}",
+    "qual": "(auth.role() = 'service_role'::text)",
+    "with_check": null
+  },
+  {
+    "tablename": "ai_action_logs",
+    "policyname": "ai_action_logs_auth_read",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "(auth.role() = ANY (ARRAY['authenticated'::text, 'service_role'::text]))",
+    "with_check": null
+  },
+  {
+    "tablename": "ai_action_logs",
+    "policyname": "ai_action_logs_svc_write",
+    "cmd": "INSERT",
+    "roles": "{public}",
+    "qual": null,
+    "with_check": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_action_logs",
+    "policyname": "ai_action_logs_svc_update",
+    "cmd": "UPDATE",
+    "roles": "{public}",
+    "qual": "(auth.role() = 'service_role'::text)",
+    "with_check": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_action_logs",
+    "policyname": "ai_action_logs_svc_delete",
+    "cmd": "DELETE",
+    "roles": "{public}",
+    "qual": "(auth.role() = 'service_role'::text)",
+    "with_check": null
+  },
+  {
+    "tablename": "ai_agent_runs",
+    "policyname": "ai_agent_runs_auth_read",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "(auth.role() = ANY (ARRAY['authenticated'::text, 'service_role'::text]))",
+    "with_check": null
+  },
+  {
+    "tablename": "ai_agent_runs",
+    "policyname": "ai_agent_runs_svc_write",
+    "cmd": "INSERT",
+    "roles": "{public}",
+    "qual": null,
+    "with_check": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_agent_runs",
+    "policyname": "ai_agent_runs_svc_update",
+    "cmd": "UPDATE",
+    "roles": "{public}",
+    "qual": "(auth.role() = 'service_role'::text)",
+    "with_check": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_agent_runs",
+    "policyname": "ai_agent_runs_svc_delete",
+    "cmd": "DELETE",
+    "roles": "{public}",
+    "qual": "(auth.role() = 'service_role'::text)",
+    "with_check": null
+  },
+  {
+    "tablename": "ai_summaries",
+    "policyname": "ai_summaries_auth_read",
+    "cmd": "SELECT",
+    "roles": "{public}",
+    "qual": "(auth.role() = ANY (ARRAY['authenticated'::text, 'service_role'::text]))",
+    "with_check": null
+  },
+  {
+    "tablename": "ai_summaries",
+    "policyname": "ai_summaries_svc_write",
+    "cmd": "INSERT",
+    "roles": "{public}",
+    "qual": null,
+    "with_check": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_summaries",
+    "policyname": "ai_summaries_svc_update",
+    "cmd": "UPDATE",
+    "roles": "{public}",
+    "qual": "(auth.role() = 'service_role'::text)",
+    "with_check": "(auth.role() = 'service_role'::text)"
+  },
+  {
+    "tablename": "ai_summaries",
+    "policyname": "ai_summaries_svc_delete",
+    "cmd": "DELETE",
+    "roles": "{public}",
+    "qual": "(auth.role() = 'service_role'::text)",
+    "with_check": null
+  }
+]

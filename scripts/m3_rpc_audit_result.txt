@@ -1,0 +1,29 @@
+﻿HTTP 201
+[
+  {
+    "proname": "knowledge_search_v2",
+    "proargnames": [
+      "p_org_id",
+      "p_query_text",
+      "p_limit",
+      "item_id",
+      "item_type",
+      "title_or_name",
+      "content_snippet",
+      "priority"
+    ]
+  },
+  {
+    "proname": "knowledge_search_v3",
+    "proargnames": [
+      "p_org_id",
+      "p_query_text",
+      "p_limit",
+      "item_id",
+      "item_type",
+      "title_or_name",
+      "content_snippet",
+      "priority"
+    ]
+  }
+]

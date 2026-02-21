@@ -1,0 +1,13 @@
+﻿HTTP 201
+[
+  {
+    "table_name": "leads",
+    "column_name": "user_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "whatsapp_instances",
+    "column_name": "user_id",
+    "data_type": "uuid"
+  }
+]

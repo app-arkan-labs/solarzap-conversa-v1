@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Plus, Phone, Mail, MapPin, Zap, DollarSign, Calendar, Clock, Timer, Save, Loader2, MessageSquare, Upload, Download, Trash2, Bot, UserCog } from 'lucide-react';
+import { Search, Plus, Phone, Mail, MapPin, Zap, DollarSign, Calendar, Clock, Timer, Save, Loader2, MessageSquare, Upload, Download, Trash2, Bot, UserCog, CheckSquare } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import {
   AlertDialog,
@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface ContactsViewProps {
   contacts: Contact[];
@@ -80,6 +81,10 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
 
   // Modal states
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
@@ -203,6 +208,93 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
     c.company?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const visibleContactIds = filteredContacts.map((contact) => contact.id);
+  const selectedVisibleCount = visibleContactIds.filter((contactId) => selectedContactIds.has(contactId)).length;
+  const allVisibleSelected = visibleContactIds.length > 0 && selectedVisibleCount === visibleContactIds.length;
+  const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
+  const selectAllState: boolean | 'indeterminate' = allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false;
+
+  useEffect(() => {
+    if (selectedContactIds.size === 0) return;
+    const visibleSet = new Set(visibleContactIds);
+    setSelectedContactIds((prev) => {
+      const next = new Set([...prev].filter((contactId) => visibleSet.has(contactId)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [selectedContactIds.size, searchTerm, contacts]);
+
+  const toggleSelectionMode = () => {
+    if (isSelectionMode) {
+      setIsSelectionMode(false);
+      setSelectedContactIds(new Set());
+      return;
+    }
+    setIsSelectionMode(true);
+  };
+
+  const toggleContactSelection = (contactId: string) => {
+    setSelectedContactIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(contactId)) {
+        next.delete(contactId);
+      } else {
+        next.add(contactId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAllVisible = () => {
+    setSelectedContactIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleContactIds.forEach((contactId) => next.delete(contactId));
+      } else {
+        visibleContactIds.forEach((contactId) => next.add(contactId));
+      }
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!onDeleteLead || selectedContactIds.size === 0) return;
+
+    setIsBulkDeleting(true);
+    const failedIds: string[] = [];
+    const deletedIds: string[] = [];
+
+    for (const contactId of selectedContactIds) {
+      try {
+        await onDeleteLead(contactId);
+        deletedIds.push(contactId);
+      } catch (error) {
+        failedIds.push(contactId);
+      }
+    }
+
+    if (selectedContact && deletedIds.includes(selectedContact.id)) {
+      const remaining = contacts.filter((contact) => !deletedIds.includes(contact.id));
+      setSelectedContact(remaining[0] || null);
+    }
+
+    setIsBulkDeleting(false);
+    setBulkDeleteDialogOpen(false);
+    setSelectedContactIds(new Set(failedIds));
+
+    if (failedIds.length === 0) {
+      toast({
+        title: `${deletedIds.length} contato(s) excluído(s)`,
+      });
+      return;
+    }
+
+    toast({
+      title: `${deletedIds.length} contato(s) excluído(s), ${failedIds.length} falharam`,
+      description: 'Tente novamente para os itens que falharam.',
+      variant: 'destructive',
+    });
+  };
+
   const getStageColor = (stageId: string) => {
     return STAGE_COLORS[stageId] || 'bg-primary';
   };
@@ -262,18 +354,69 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
           </div>
         </div>
 
+        {onDeleteLead && (
+          <div className="px-3 py-2 border-b border-border bg-muted/20 flex items-center gap-2">
+            <Button
+              type="button"
+              variant={isSelectionMode ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={toggleSelectionMode}
+            >
+              <CheckSquare className="w-4 h-4" />
+              {isSelectionMode ? 'Cancelar' : 'Selecionar'}
+            </Button>
+
+            {isSelectionMode && (
+              <>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                  <Checkbox checked={selectAllState} onCheckedChange={handleToggleSelectAllVisible} />
+                  <span>Todos</span>
+                </label>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="h-8 ml-auto"
+                  disabled={selectedContactIds.size === 0}
+                  onClick={() => setBulkDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Excluir ({selectedContactIds.size})
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Contact List */}
         <div className="flex-1 overflow-auto">
-          {filteredContacts.map(contact => (
-            <div
+          {filteredContacts.map((contact) => {
+            const isRowSelected = selectedContactIds.has(contact.id);
+            return (
+              <div
               key={contact.id}
-              onClick={() => setSelectedContact(contact)}
+              onClick={() => {
+                if (isSelectionMode) {
+                  toggleContactSelection(contact.id);
+                  return;
+                }
+                setSelectedContact(contact);
+              }}
               className={`
                 flex items-center gap-3 p-3 cursor-pointer border-b border-border group
                 hover:bg-muted/50 transition-colors
-                ${selectedContact?.id === contact.id ? 'bg-muted' : ''}
+                ${isSelectionMode ? (isRowSelected ? 'bg-primary/5' : '') : (selectedContact?.id === contact.id ? 'bg-muted' : '')}
               `}
             >
+              {isSelectionMode && (
+                <Checkbox
+                  checked={isRowSelected}
+                  onCheckedChange={() => toggleContactSelection(contact.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={`Selecionar ${contact.name}`}
+                />
+              )}
               <Avatar className="h-10 w-10">
                 <AvatarFallback className="bg-primary/10 text-primary text-lg">
                   {contact.avatar || contact.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
@@ -290,6 +433,7 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
                 </div>
               </div>
               {/* Buttons on hover */}
+              {!isSelectionMode && (
               <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button
                   variant="ghost"
@@ -316,8 +460,10 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
                   </Button>
                 )}
               </div>
-            </div>
-          ))}
+              )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -591,6 +737,28 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
         onClose={() => setExportModalOpen(false)}
         contacts={contacts}
       />
+
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir contatos selecionados?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação vai excluir {selectedContactIds.size} contato(s). Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting || selectedContactIds.size === 0}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isBulkDeleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Excluir selecionados
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

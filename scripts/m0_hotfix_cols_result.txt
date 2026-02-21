@@ -1,0 +1,24 @@
+﻿HTTP 201
+[
+  {
+    "column_name": "received_at"
+  },
+  {
+    "column_name": "headers"
+  },
+  {
+    "column_name": "payload"
+  },
+  {
+    "column_name": "id"
+  },
+  {
+    "column_name": "event"
+  },
+  {
+    "column_name": "instance_name"
+  },
+  {
+    "column_name": "path"
+  }
+]

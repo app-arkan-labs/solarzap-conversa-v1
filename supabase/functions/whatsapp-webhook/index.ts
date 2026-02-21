@@ -26,6 +26,129 @@ function inferEventFromPath(pathname: string) {
     return known.has(maybe || '') ? maybe : null
 }
 
+function parseBooleanFlag(value: unknown): boolean | null {
+    if (typeof value === 'boolean') return value
+    if (typeof value === 'number') {
+        if (value === 1) return true
+        if (value === 0) return false
+        return null
+    }
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase()
+        if (['true', '1', 'yes', 'y', 'sim'].includes(normalized)) return true
+        if (['false', '0', 'no', 'n', 'nao', 'não'].includes(normalized)) return false
+    }
+    return null
+}
+
+function asMessageObject(candidate: any): any | null {
+    if (Array.isArray(candidate)) {
+        for (const row of candidate) {
+            if (row && typeof row === 'object') return row
+        }
+        return null
+    }
+    return candidate && typeof candidate === 'object' ? candidate : null
+}
+
+function resolveMessagePayload(body: any, data: any): any | null {
+    const candidates = [
+        data?.data,
+        data?.messages,
+        data?.message,
+        data,
+        body?.data?.data,
+        body?.data?.messages,
+        body?.data?.message,
+        body?.message,
+        body?.messages,
+        body
+    ]
+
+    for (const candidate of candidates) {
+        const msg = asMessageObject(candidate)
+        if (!msg) continue
+        if (
+            msg?.key ||
+            msg?.message ||
+            msg?.messageType ||
+            msg?.type ||
+            msg?.remoteJid ||
+            msg?.remote_jid ||
+            msg?.fromMe !== undefined ||
+            msg?.from_me !== undefined
+        ) {
+            return msg
+        }
+    }
+    return null
+}
+
+function resolveRemoteJid(msg: any, data: any, body: any): string | null {
+    const raw =
+        msg?.key?.remoteJid ??
+        msg?.remoteJid ??
+        msg?.key?.remote_jid ??
+        msg?.remote_jid ??
+        data?.key?.remoteJid ??
+        data?.remoteJid ??
+        body?.data?.key?.remoteJid ??
+        body?.key?.remoteJid ??
+        body?.remoteJid ??
+        null
+    if (raw) return String(raw)
+
+    const numberRaw =
+        msg?.number ??
+        data?.number ??
+        body?.data?.number ??
+        body?.number ??
+        null
+    const digits = onlyDigits(numberRaw ? String(numberRaw) : '')
+    if (!digits) return null
+
+    return `${digits}@s.whatsapp.net`
+}
+
+function resolveMessageId(msg: any, data: any, body: any): string | null {
+    const raw =
+        msg?.key?.id ??
+        msg?.id ??
+        data?.key?.id ??
+        data?.id ??
+        body?.data?.key?.id ??
+        body?.key?.id ??
+        body?.id ??
+        null
+    return raw ? String(raw) : null
+}
+
+function resolveFromMe(msg: any, data: any, body: any): boolean {
+    const candidates = [
+        msg?.key?.fromMe,
+        msg?.fromMe,
+        msg?.key?.from_me,
+        msg?.from_me,
+        data?.key?.fromMe,
+        data?.fromMe,
+        data?.key?.from_me,
+        data?.from_me,
+        body?.data?.key?.fromMe,
+        body?.data?.fromMe,
+        body?.key?.fromMe,
+        body?.fromMe,
+        body?.sendByMe,
+        body?.data?.sendByMe
+    ]
+
+    for (const candidate of candidates) {
+        const parsed = parseBooleanFlag(candidate)
+        if (parsed !== null) return parsed
+    }
+
+    return false
+}
+
 function extractMessageContent(msg: any) {
     const m = msg?.message || {}
     const type = msg?.messageType || msg?.type || Object.keys(m)[0]
@@ -54,6 +177,11 @@ function extractMessageContent(msg: any) {
     if (m?.extendedTextMessage?.text) return m.extendedTextMessage.text
 
     return `Mensagem recebida (tipo: ${type || 'desconhecido'})`
+}
+
+function normalizeProtocolVersion(raw: any): 'legacy' | 'pipeline_pdf_v1' {
+    const value = String(raw || '').trim().toLowerCase()
+    return value === 'pipeline_pdf_v1' ? 'pipeline_pdf_v1' : 'legacy'
 }
 
 async function uploadMedia(
@@ -89,7 +217,8 @@ async function uploadMedia(
         const ext = mimeType.split('/')[1] || 'bin'
         const fileName = `${Math.random().toString(36).substring(2, 10)}.${ext}`
         const safeInstanceName = sanitizePathPart(instanceName)
-        const filePath = `${orgId}/instances/${safeInstanceName}/${Date.now()}_${fileName}`
+        // Runtime-proof hardening: explicit org namespace prefix to avoid any legacy path fallback.
+        const filePath = `org/${orgId}/instances/${safeInstanceName}/${Date.now()}_${fileName}`
 
         console.log(`📦 Uploading to storage path: ${filePath}`)
 
@@ -220,6 +349,29 @@ Deno.serve(async (req: Request) => {
             })
         }
 
+        let protocolVersion: 'legacy' | 'pipeline_pdf_v1' = 'legacy'
+        let supportAiEnabled = false
+        let supportAiAutoDisableOnSellerMessage = true
+
+        try {
+            const { data: aiSettings } = await supabase
+                .from('ai_settings')
+                .select('protocol_version, support_ai_enabled, support_ai_auto_disable_on_seller_message')
+                .eq('org_id', orgId)
+                .order('id', { ascending: true })
+                .limit(1)
+                .maybeSingle()
+
+            if (aiSettings) {
+                protocolVersion = normalizeProtocolVersion((aiSettings as any).protocol_version)
+                supportAiEnabled = (aiSettings as any).support_ai_enabled === true
+                supportAiAutoDisableOnSellerMessage =
+                    (aiSettings as any).support_ai_auto_disable_on_seller_message !== false
+            }
+        } catch (settingsErr) {
+            console.warn('âš ï¸ Failed to load ai_settings for webhook takeover context:', settingsErr)
+        }
+
         // Audit Webhook (M7 hardening)
         await supabase.from('whatsapp_webhook_events').insert({
             org_id: orgId,
@@ -266,9 +418,15 @@ Deno.serve(async (req: Request) => {
                 break
             }
             case 'MESSAGES_UPSERT': {
-                const msg = data?.data || data || body?.data
-                const remoteJid = msg?.key?.remoteJid || msg?.remoteJid || null
-                const isFromMe = msg?.key?.fromMe ?? msg?.fromMe ?? false
+                const msg = resolveMessagePayload(body, data)
+                if (!msg) {
+                    console.warn('⚠️ MESSAGES_UPSERT without message payload shape, skipping')
+                    break
+                }
+
+                const remoteJid = resolveRemoteJid(msg, data, body)
+                const isFromMe = resolveFromMe(msg, data, body)
+                const waMessageId = resolveMessageId(msg, data, body)
                 let pushName = msg?.pushName || msg?.notifyName || null
                 if (isFromMe) pushName = null
 
@@ -300,7 +458,7 @@ Deno.serve(async (req: Request) => {
 
                     if (!originalMsg) break
 
-                    const participantCandidate = data?.participant || msg?.key?.participant || (String(remoteJid).endsWith('@g.us') ? null : remoteJid)
+                    const participantCandidate = msg?.participant || data?.participant || msg?.key?.participant || (String(remoteJid).endsWith('@g.us') ? null : remoteJid)
                     const ownerDigits = onlyDigits(instanceRow?.phone_number)
                     const participantDigits = onlyDigits(participantCandidate)
                     const isReactorMe = !!(ownerDigits && participantDigits && ownerDigits === participantDigits)
@@ -345,7 +503,7 @@ Deno.serve(async (req: Request) => {
                     p_source: 'whatsapp'
                 }).single()
                 if (upsertLeadError) {
-                    console.error('❌ upsert_lead_canonical failed in evolution-webhook', {
+                    console.error('❌ upsert_lead_canonical failed in whatsapp-webhook', {
                         userId,
                         instanceName,
                         phoneE164,
@@ -389,12 +547,121 @@ Deno.serve(async (req: Request) => {
                     instance_name: instanceName,
                     remote_jid: remoteJid,
                     phone_e164: phoneE164,
-                    wa_message_id: msg?.key?.id,
+                    wa_message_id: waMessageId,
                     attachment_url: dbPublicUrl,
                     attachment_type: dbAttachmentType,
                     attachment_ready: true,
                     wa_from_me: isFromMe
                 }).select('id').single()
+
+                if (isFromMe && leadId) {
+                    const takeoverEnabled = supportAiAutoDisableOnSellerMessage === true
+                    let leadStage: string | null = null
+                    let leadWasAlreadyPaused = false
+                    let sellerMessageAutoDisabledAI = false
+                    let takeoverError: string | null = null
+                    let takeoverSuppressedReason: string | null = null
+
+                    try {
+                        const { data: leadBefore, error: leadBeforeErr } = await supabase
+                            .from('leads')
+                            .select('id, status_pipeline, ai_enabled')
+                            .eq('id', Number(leadId))
+                            .maybeSingle()
+
+                        if (leadBeforeErr) {
+                            takeoverError = leadBeforeErr.message
+                        } else {
+                            leadStage = (leadBefore as any)?.status_pipeline || null
+                            leadWasAlreadyPaused = (leadBefore as any)?.ai_enabled === false
+
+                            const shouldEvaluatePause = takeoverEnabled && !leadWasAlreadyPaused
+                            let likelyAiEcho = false
+
+                            if (shouldEvaluatePause) {
+                                try {
+                                    const nowMinus45sIso = new Date(Date.now() - 45_000).toISOString()
+                                    const { data: duplicateOutbound } = await supabase
+                                        .from('interacoes')
+                                        .select('id, created_at')
+                                        .eq('lead_id', Number(leadId))
+                                        .eq('instance_name', instanceName)
+                                        .eq('wa_from_me', true)
+                                        .in('tipo', ['mensagem_vendedor', 'audio_vendedor', 'video_vendedor', 'anexo_vendedor'])
+                                        .eq('mensagem', text)
+                                        .gte('created_at', nowMinus45sIso)
+                                        .neq('id', Number(inserted?.id || 0))
+                                        .order('id', { ascending: false })
+                                        .limit(1)
+                                        .maybeSingle()
+
+                                    likelyAiEcho = Boolean(duplicateOutbound)
+                                } catch (dupErr: any) {
+                                    console.warn('Failed to check duplicate outbound before takeover pause:', dupErr?.message || dupErr)
+                                }
+
+                                if (likelyAiEcho) {
+                                    takeoverSuppressedReason = 'likely_ai_echo'
+                                } else {
+                                    const { error: pauseErr } = await supabase
+                                        .from('leads')
+                                        .update({
+                                            ai_enabled: false,
+                                            ai_paused_reason: 'human_takeover',
+                                            ai_paused_at: new Date().toISOString()
+                                        })
+                                        .eq('id', Number(leadId))
+
+                                    if (pauseErr) {
+                                        takeoverError = pauseErr.message
+                                    } else {
+                                        sellerMessageAutoDisabledAI = true
+                                    }
+                                }
+                            } else if (!takeoverEnabled) {
+                                takeoverSuppressedReason = 'auto_disable_off'
+                            } else if (leadWasAlreadyPaused) {
+                                takeoverSuppressedReason = 'already_paused'
+                            }
+                        }
+                    } catch (pauseErr: any) {
+                        takeoverError = pauseErr?.message || String(pauseErr)
+                    }
+
+                    try {
+                        await supabase.from('ai_action_logs').insert({
+                            org_id: orgId,
+                            lead_id: Number(leadId),
+                            action_type: 'seller_message_takeover',
+                            details: JSON.stringify({
+                                protocol_version: protocolVersion,
+                                agent_mode: 'none',
+                                stage_key: leadStage,
+                                support_ai_enabled: supportAiEnabled,
+                                support_ai_stage_allowed: false,
+                                support_ai_decision: 'no_reply',
+                                support_ai_handoff_reason: null,
+                                did_send_outbound: false,
+                                seller_message_auto_disabled_ai: sellerMessageAutoDisabledAI,
+                                seller_message_auto_disabled_support_ai: sellerMessageAutoDisabledAI,
+                                takeover_source: 'webhook_fromMe',
+                                blocked_prompt_override: false,
+                                blocked_prompt_override_reason: null,
+                                support_ai_auto_disable_on_seller_message: supportAiAutoDisableOnSellerMessage,
+                                lead_was_already_paused: leadWasAlreadyPaused,
+                                takeover_enabled: takeoverEnabled,
+                                takeover_suppressed_reason: takeoverSuppressedReason,
+                                instance_name: instanceName,
+                                interaction_id: inserted?.id || null,
+                                wa_message_id: waMessageId,
+                                error: takeoverError
+                            }),
+                            success: !takeoverError
+                        })
+                    } catch (takeoverLogErr) {
+                        console.warn('Failed to insert seller_message_takeover log:', takeoverLogErr)
+                    }
+                }
 
                 // AI Trigger
                 if (!isFromMe && leadId && inserted?.id) {
@@ -404,7 +671,7 @@ Deno.serve(async (req: Request) => {
                         })
                         .then(async ({ error: invokeError }) => {
                             if (!invokeError) return
-                            console.error('❌ Failed to invoke ai-pipeline-agent from evolution-webhook', {
+                            console.error('❌ Failed to invoke ai-pipeline-agent from whatsapp-webhook', {
                                 leadId,
                                 interactionId: inserted.id,
                                 instanceName,
@@ -416,7 +683,7 @@ Deno.serve(async (req: Request) => {
                                     lead_id: Number(leadId),
                                     action_type: 'agent_invoke_failed',
                                     details: JSON.stringify({
-                                        source: 'evolution-webhook',
+                                        source: 'whatsapp-webhook',
                                         triggerType: 'incoming_message',
                                         interactionId: inserted.id,
                                         instanceName,
@@ -425,11 +692,11 @@ Deno.serve(async (req: Request) => {
                                     success: false
                                 })
                             } catch (logErr) {
-                                console.warn('Failed to log agent_invoke_failed (evolution-webhook):', logErr)
+                                console.warn('Failed to log agent_invoke_failed (whatsapp-webhook):', logErr)
                             }
                         })
                         .catch(async (invokeErr) => {
-                            console.error('❌ Exception invoking ai-pipeline-agent from evolution-webhook', {
+                            console.error('❌ Exception invoking ai-pipeline-agent from whatsapp-webhook', {
                                 leadId,
                                 interactionId: inserted.id,
                                 instanceName,
@@ -441,7 +708,7 @@ Deno.serve(async (req: Request) => {
                                     lead_id: Number(leadId),
                                     action_type: 'agent_invoke_failed',
                                     details: JSON.stringify({
-                                        source: 'evolution-webhook',
+                                        source: 'whatsapp-webhook',
                                         triggerType: 'incoming_message',
                                         interactionId: inserted.id,
                                         instanceName,
@@ -450,7 +717,7 @@ Deno.serve(async (req: Request) => {
                                     success: false
                                 })
                             } catch (logErr) {
-                                console.warn('Failed to log agent_invoke_failed exception (evolution-webhook):', logErr)
+                                console.warn('Failed to log agent_invoke_failed exception (whatsapp-webhook):', logErr)
                             }
                         })
                 }
@@ -469,3 +736,4 @@ Deno.serve(async (req: Request) => {
         })
     }
 })
+

@@ -1,4 +1,4 @@
-import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText, Bot } from 'lucide-react';
+import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText, Bot, CheckSquare, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Conversation, CHANNEL_INFO, PIPELINE_STAGES, PipelineStage, Contact, ChannelFilter } from '@/types/solarzap';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +34,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useToast } from '@/hooks/use-toast';
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -89,6 +91,7 @@ export function ConversationList({
   showTeamLeads = false,
   onToggleTeamLeads,
 }: ConversationListProps) {
+  const { toast } = useToast();
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
   const [commentsContact, setCommentsContact] = useState<{ id: string; name: string } | null>(null);
 
@@ -99,6 +102,10 @@ export function ConversationList({
   const [stageFilterOpen, setStageFilterOpen] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
 
   const formatTime = (date: Date) => {
     const now = new Date();
@@ -134,6 +141,93 @@ export function ConversationList({
     await onDeleteLead(contactToDelete.id);
     setDeleteDialogOpen(false);
     setContactToDelete(null);
+  };
+
+  const visibleLeadIds = useMemo(() => conversations.map((conversation) => conversation.contact.id), [conversations]);
+
+  const selectedVisibleCount = useMemo(
+    () => visibleLeadIds.filter((leadId) => selectedLeadIds.has(leadId)).length,
+    [visibleLeadIds, selectedLeadIds],
+  );
+
+  const allVisibleSelected = visibleLeadIds.length > 0 && selectedVisibleCount === visibleLeadIds.length;
+  const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
+  const selectAllState: boolean | 'indeterminate' = allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false;
+
+  useEffect(() => {
+    if (selectedLeadIds.size === 0) return;
+    const visibleSet = new Set(visibleLeadIds);
+    setSelectedLeadIds((prev) => {
+      const next = new Set([...prev].filter((leadId) => visibleSet.has(leadId)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visibleLeadIds, selectedLeadIds.size]);
+
+  const toggleSelectionMode = () => {
+    if (isSelectionMode) {
+      setIsSelectionMode(false);
+      setSelectedLeadIds(new Set());
+      return;
+    }
+    setIsSelectionMode(true);
+  };
+
+  const toggleLeadSelection = (leadId: string) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(leadId)) {
+        next.delete(leadId);
+      } else {
+        next.add(leadId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAllVisible = () => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleLeadIds.forEach((leadId) => next.delete(leadId));
+      } else {
+        visibleLeadIds.forEach((leadId) => next.add(leadId));
+      }
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!onDeleteLead || selectedLeadIds.size === 0) return;
+    setIsBulkDeleting(true);
+
+    const failedIds: string[] = [];
+    let deletedCount = 0;
+
+    for (const leadId of selectedLeadIds) {
+      try {
+        await onDeleteLead(leadId);
+        deletedCount += 1;
+      } catch (error) {
+        failedIds.push(leadId);
+      }
+    }
+
+    setIsBulkDeleting(false);
+    setBulkDeleteDialogOpen(false);
+    setSelectedLeadIds(new Set(failedIds));
+
+    if (failedIds.length === 0) {
+      toast({
+        title: `${deletedCount} lead(s) excluído(s)`,
+      });
+      return;
+    }
+
+    toast({
+      title: `${deletedCount} lead(s) excluído(s), ${failedIds.length} falharam`,
+      description: 'Tente novamente para os itens que falharam.',
+      variant: 'destructive',
+    });
   };
 
   const selectedStage = stageOptions.find(s => s.id === stageFilter) || stageOptions[0];
@@ -337,6 +431,41 @@ export function ConversationList({
         ))}
       </div>
 
+      {onDeleteLead && (
+        <div className="px-3 py-2 border-b border-border bg-muted/20 flex items-center gap-2">
+          <Button
+            type="button"
+            variant={isSelectionMode ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={toggleSelectionMode}
+          >
+            <CheckSquare className="w-4 h-4" />
+            {isSelectionMode ? 'Cancelar' : 'Selecionar'}
+          </Button>
+
+          {isSelectionMode && (
+            <>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                <Checkbox checked={selectAllState} onCheckedChange={handleToggleSelectAllVisible} />
+                <span>Todos</span>
+              </label>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="h-8 ml-auto"
+                disabled={selectedLeadIds.size === 0}
+                onClick={() => setBulkDeleteDialogOpen(true)}
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                Excluir ({selectedLeadIds.size})
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Conversation List */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         {conversations.length === 0 ? (
@@ -348,17 +477,34 @@ export function ConversationList({
             const stage = PIPELINE_STAGES[conversation.contact.pipelineStage];
             const isSelected = selectedId === conversation.id;
             const isAiActive = conversation.contact.aiEnabled !== false;
+            const isRowSelected = selectedLeadIds.has(conversation.contact.id);
 
             return (
               <button
                 key={conversation.id}
                 data-testid="conversation-row"
-                onClick={() => onSelect(conversation)}
+                onClick={() => {
+                  if (isSelectionMode) {
+                    toggleLeadSelection(conversation.contact.id);
+                    return;
+                  }
+                  onSelect(conversation);
+                }}
                 className={cn(
                   'w-full p-3 flex items-start gap-3 hover:bg-muted/50 transition-colors border-b border-border/50 group',
-                  isSelected && 'bg-muted'
+                  isSelectionMode ? isRowSelected && 'bg-primary/5' : isSelected && 'bg-muted'
                 )}
               >
+                {isSelectionMode && (
+                  <Checkbox
+                    checked={isRowSelected}
+                    onCheckedChange={() => toggleLeadSelection(conversation.contact.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Selecionar ${conversation.contact.name}`}
+                    className="mt-3"
+                  />
+                )}
+
                 {/* Avatar */}
                 <div className="relative flex-shrink-0">
                   <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center" title={isAiActive ? 'IA Ativa' : undefined}>
@@ -383,7 +529,7 @@ export function ConversationList({
                       {conversation.contact.name}
                     </span>
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      {/* Actions Dropdown */}
+                      {!isSelectionMode && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -411,6 +557,7 @@ export function ConversationList({
                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      )}
                       <span className="text-xs text-muted-foreground">
                         {conversation.lastMessage && formatTime(conversation.lastMessage.timestamp)}
                       </span>
@@ -525,6 +672,28 @@ export function ConversationList({
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive hover:bg-destructive/90">
               Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir leads selecionados?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação vai excluir {selectedLeadIds.size} lead(s) e seus históricos de conversa. Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting || selectedLeadIds.size === 0}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isBulkDeleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Excluir selecionados
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

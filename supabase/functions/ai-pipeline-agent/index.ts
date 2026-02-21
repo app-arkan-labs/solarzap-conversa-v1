@@ -276,6 +276,19 @@ function sanitizeQuery(text: string): string {
         .substring(0, 200);
 }
 
+// Fix common UTF-8 mojibake patterns like "vocÃª", "mÃ©dia".
+function repairMojibake(text: string): string {
+    if (!text) return text;
+    if (!/[ÃÂ]/.test(text)) return text;
+    try {
+        const bytes = new Uint8Array(Array.from(text).map((ch) => ch.charCodeAt(0) & 0xff));
+        const repaired = new TextDecoder('utf-8').decode(bytes);
+        return repaired || text;
+    } catch (_) {
+        return text;
+    }
+}
+
 // --- HELPER: Check if message looks like a real question ---
 function looksLikeQuestion(text: string): boolean {
     if (!text || text.length < 8) return false;
@@ -2307,8 +2320,9 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             for (let i = 0; i < parts.length; i++) {
                 const partContent = parts[i];
                 if (!partContent) continue;
+                const outboundText = repairMojibake(partContent);
 
-                const typingDuration = Math.min(6000, 2000 + (partContent.length * 50));
+                const typingDuration = Math.min(6000, 2000 + (outboundText.length * 50));
                 if (!isSimulatedTransport) {
                     await sendTypingIndicator(instanceName, resolvedRemoteJid, typingDuration);
                 }
@@ -2419,7 +2433,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                     const { data: ins, error: insErr } = await supabase.from('interacoes').insert({
                         lead_id: leadId,
                         user_id: lead.user_id,
-                        mensagem: partContent,
+                        mensagem: outboundText,
                         tipo: 'mensagem_vendedor',
                         instance_name: instanceName,
                         phone_e164: numberToSend,
@@ -2442,7 +2456,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                                     reason: transportSimReason,
                                     remote_jid: resolvedRemoteJid,
                                     message_id: ins?.id || null,
-                                    message_preview: partContent.substring(0, 120)
+                                    message_preview: outboundText.substring(0, 120)
                                 }),
                                 success: true
                             });
@@ -2521,11 +2535,11 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
 
                     const sendResp = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
                         method: 'POST',
-                        headers: { 'apikey': evoKey, 'Content-Type': 'application/json' },
+                        headers: { 'apikey': evoKey, 'Content-Type': 'application/json; charset=utf-8' },
                         body: JSON.stringify({
                             number: numberToSend,
-                            text: partContent,
-                            textMessage: { text: partContent }
+                            text: outboundText,
+                            textMessage: { text: outboundText }
                         })
                     });
 
@@ -2537,7 +2551,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                         const { data: ins, error: insErr } = await supabase.from('interacoes').insert({
                             lead_id: leadId,
                             user_id: lead.user_id,
-                            mensagem: partContent,
+                            mensagem: outboundText,
                             tipo: 'mensagem_vendedor',
                             instance_name: instanceName, // STRICT
                             phone_e164: numberToSend,

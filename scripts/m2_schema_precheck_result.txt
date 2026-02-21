@@ -1,0 +1,23 @@
+﻿HTTP 201
+[
+  {
+    "table_name": "ai_agent_runs",
+    "column_name": "company_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "ai_settings",
+    "column_name": "company_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "ai_stage_config",
+    "column_name": "company_id",
+    "data_type": "uuid"
+  },
+  {
+    "table_name": "ai_summaries",
+    "column_name": "company_id",
+    "data_type": "uuid"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "applied_at": "2026-02-21T02:42:08.041Z",
+  "org_count": 26,
+  "rows_upserted": 130,
+  "hasPdfColumn": false,
+  "hasRespondeuModeColumn": false,
+  "reusedManualOverride": 6,
+  "clearedGenericOverride": 0,
+  "snapshot": "docs\\baseline_apply_pdf_prompts_2026-02-21T02-42-06-089Z.json"
+}
