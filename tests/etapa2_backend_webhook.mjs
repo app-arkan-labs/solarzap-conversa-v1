@@ -67,7 +67,8 @@ async function runWebhookMock() {
         }
     };
 
-    const webhookUrl = `${SUPABASE_URL}/functions/v1/evolution-webhook?secret=${WEBHOOK_SECRET}`;
+    // canonical webhook URL after consolidation
+    const webhookUrl = `${SUPABASE_URL}/functions/v1/whatsapp-webhook?secret=${WEBHOOK_SECRET}`;
     console.log(`-> Disparando Webhook: ${msgId}`);
 
     const r1 = await fetch(webhookUrl, {

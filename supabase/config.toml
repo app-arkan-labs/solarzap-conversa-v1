@@ -1,8 +1,8 @@
 [functions.meta-webhook]
 verify_jwt = false
 
-[functions.evolution-webhook]
-verify_jwt = false
+# [functions.evolution-webhook]  # deprecated in favor of whatsapp-webhook
+# verify_jwt = false
 
 [functions.evolution-api]
 verify_jwt = false

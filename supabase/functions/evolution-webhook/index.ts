@@ -1,9 +1,10 @@
+// DEPRECATED: this function has been replaced by `whatsapp-webhook`
+// The new webhook consolidates logic and uses a safer secret validation.
+// For now we proxy all requests to the canonical endpoint so old URLs continue to work.
+
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-arkan-webhook-secret',
-}
+// CORS headers are irrelevant since we simply forward to the other function
 
 function onlyDigits(str: string | null | undefined): string {
     if (!str) return ''
@@ -159,45 +160,13 @@ async function fetchBase64FromEvolution(
     }
 }
 
+// DEPRECATED handler: simply proxy all requests to whatsapp-webhook
 Deno.serve(async (req: Request) => {
-    if (req.method === 'OPTIONS') {
-        return new Response(null, { headers: corsHeaders })
-    }
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') || new URL(req.url).origin;
+  const target = supabaseUrl.replace(/\/$/, '') + '/functions/v1/whatsapp-webhook' + new URL(req.url).search;
+  return await fetch(target, { method: req.method, headers: req.headers, body: req.body });
+});
 
-    const url = new URL(req.url)
-
-    try {
-        const expectedSecret = Deno.env.get('ARKAN_WEBHOOK_SECRET');
-        if (expectedSecret) {
-            const receivedHeader = req.headers.get('x-arkan-webhook-secret');
-            const receivedQuery = url.searchParams.get('secret');
-
-            if (receivedHeader !== expectedSecret && receivedQuery !== expectedSecret) {
-                console.warn('⚠️ Invalid webhook secret');
-                return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-                    status: 401,
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                });
-            }
-        }
-
-        const body = await req.json()
-        const eventRaw = body?.event ?? body?.data?.event ?? null
-        const event = normalizeEvent(eventRaw) ?? inferEventFromPath(url.pathname)
-        const instanceName = body?.instance || body?.instanceName || body?.data?.instance || body?.data?.instanceName || null
-
-        if (!instanceName || !event) {
-            return new Response(JSON.stringify({ received: true }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            })
-        }
-
-        const supabase = createClient(
-            Deno.env.get('SUPABASE_URL')!,
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-        )
-
-        const { data: instanceRow } = await supabase
             .from('whatsapp_instances')
             .select('org_id, user_id, phone_number')
             .eq('instance_name', instanceName)

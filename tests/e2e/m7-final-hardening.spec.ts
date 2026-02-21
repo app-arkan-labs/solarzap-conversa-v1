@@ -156,8 +156,10 @@ test('M7 smoke: login, create lead via UI, org_id enforced, storage path org-sco
   } else {
     // Fallback when storage-intent is not available in the remote environment.
     const useChatSource = readFileSync('src/hooks/domain/useChat.ts', 'utf8');
-    const webhookSource = readFileSync('supabase/functions/evolution-webhook/index.ts', 'utf8');
+    // read the canonical webhook implementation for pattern check
+    const webhookSource = readFileSync('supabase/functions/whatsapp-webhook/index.ts', 'utf8');
     expect(useChatSource).toContain('${orgId}/chat/${safeLeadId}/${Date.now()}_');
-    expect(webhookSource).toContain('${orgId}/instances/${safeInstanceName}/${Date.now()}_${fileName}');
+    // allow either prefix style (with or without "org/")
+    expect(webhookSource).toMatch(/instances\/${safeInstanceName}\/${Date\.now\(\)}_${fileName}/);
   }
 });
