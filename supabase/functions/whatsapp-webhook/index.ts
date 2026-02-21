@@ -299,9 +299,8 @@ Deno.serve(async (req: Request) => {
         const expectedSecret = Deno.env.get('ARKAN_WEBHOOK_SECRET');
         if (expectedSecret) {
             const receivedHeader = req.headers.get('x-arkan-webhook-secret');
-            const receivedQuery = url.searchParams.get('secret');
 
-            if (receivedHeader !== expectedSecret && receivedQuery !== expectedSecret) {
+            if (receivedHeader !== expectedSecret) {
                 console.warn('⚠️ Invalid webhook secret');
                 return new Response(JSON.stringify({ error: 'Unauthorized' }), {
                     status: 401,

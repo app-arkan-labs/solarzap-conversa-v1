@@ -129,20 +129,9 @@ async function evolutionRequest(
   return parsed
 }
 
-function withWebhookSecret(url: string): string {
-  const secret = Deno.env.get('ARKAN_WEBHOOK_SECRET')
-  if (!secret) return url
-
-  const parsed = new URL(url)
-  if (!parsed.searchParams.get('secret')) {
-    parsed.searchParams.set('secret', secret)
-  }
-  return parsed.toString()
-}
-
 async function canonicalWebhookUrl(req: Request): Promise<string> {
   const explicit = Deno.env.get('WHATSAPP_WEBHOOK_URL')
-  if (explicit) return withWebhookSecret(explicit)
+  if (explicit) return explicit
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const origin = (supabaseUrl || new URL(req.url).origin).replace(/\/$/, '')
@@ -155,14 +144,14 @@ async function canonicalWebhookUrl(req: Request): Promise<string> {
     try {
       const response = await fetch(candidate, { method: 'OPTIONS' })
       if (response.status !== 404) {
-        return withWebhookSecret(candidate)
+        return candidate
       }
     } catch (_error) {
       // Try next candidate
     }
   }
 
-  return withWebhookSecret(candidates[0])
+  return candidates[0]
 }
 
 async function resolveContext(

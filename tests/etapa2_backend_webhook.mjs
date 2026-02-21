@@ -67,13 +67,16 @@ async function runWebhookMock() {
         }
     };
 
-    // canonical webhook URL after consolidation
-    const webhookUrl = `${SUPABASE_URL}/functions/v1/whatsapp-webhook?secret=${WEBHOOK_SECRET}`;
+    // canonical webhook URL after consolidation (header-only secret)
+    const webhookUrl = `${SUPABASE_URL}/functions/v1/whatsapp-webhook`;
     console.log(`-> Disparando Webhook: ${msgId}`);
 
     const r1 = await fetch(webhookUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'x-arkan-webhook-secret': WEBHOOK_SECRET,
+        },
         body: JSON.stringify(payload)
     });
     console.log("-> Webhook HTTP Status:", r1.status);
@@ -109,7 +112,14 @@ async function runWebhookMock() {
     }));
 
     for (const p of burstPayloads) {
-        await fetch(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) });
+        await fetch(webhookUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-arkan-webhook-secret': WEBHOOK_SECRET,
+            },
+            body: JSON.stringify(p)
+        });
         await sleep(200);
     }
 
