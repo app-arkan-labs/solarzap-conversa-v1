@@ -234,15 +234,12 @@ async function resolveContext(
     throw new Error('Invalid user token')
   }
 
-  const requestedOrgId = String(payload.orgId || '').trim() || null
-  let memberQuery = supabaseAdmin
+  // for normal user tokens we ignore any orgId sent in the POST body; 
+  // organization is derived solely from the authenticated user membership.
+  const memberQuery = supabaseAdmin
     .from('organization_members')
     .select('org_id, role, created_at')
     .eq('user_id', user.id)
-
-  if (requestedOrgId) {
-    memberQuery = memberQuery.eq('org_id', requestedOrgId)
-  }
 
   const { data: member, error: memberError } = await memberQuery
     .order('created_at', { ascending: true })

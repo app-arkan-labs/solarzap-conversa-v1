@@ -1,7 +1,9 @@
 import { supabase } from './supabase';
 
-const DIRECT_API_URL = 'https://evo.arkanlabs.com.br';
-const DIRECT_API_KEY = 'eef86d79f253d5f295edcd33b578c94b';
+// Evolution API credentials have been removed from frontend.  
+// All calls now go through the `evolution-proxy` edge function.
+// The proxy holds the actual EVOLUTION_API_URL and EVOLUTION_API_KEY in its env.
+
 
 export interface EvolutionApiResponse<T = unknown> {
   success: boolean;
@@ -51,125 +53,27 @@ export interface SendMessageResponse {
 
 // Helper function to call Evolution API via Supabase Edge Function (Proxy)
 // OR Direct Bypass if Proxy is down (Emergency Mode)
+// The client no longer communicates with Evolution directly.  
+// All interactions happen through the `evolution-proxy` edge function
+// which holds the real credentials in its environment.
+
 async function callEvolutionApi<T>(
   action: string,
   params: Record<string, any> = {}
 ): Promise<EvolutionApiResponse<T>> {
   try {
-    console.log(`[${new Date().toISOString()}] Calling Evolution API (Direct Bypass): ${action}`, params);
-
-    // MAPPING ACTION TO ENDPOINT
-    let endpoint = '';
-    let method = 'POST';
-    let body: any = {};
-    const instance = params.instanceName;
-
-    switch (action) {
-      case 'createInstance':
-        endpoint = '/instance/create';
-        body = {
-          instanceName: instance,
-          qrcode: true,
-          integration: 'WHATSAPP-BAILEYS',
-          webhook: params.webhookUrl ? {
-            url: params.webhookUrl,
-            enabled: true,
-            events: ['QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT', 'SEND_MESSAGE']
-          } : undefined
-        };
-        break;
-      case 'connectInstance':
-        endpoint = `/instance/connect/${instance}`;
-        method = 'GET';
-        break;
-      case 'getInstanceStatus':
-        endpoint = `/instance/connectionState/${instance}`;
-        method = 'GET';
-        break;
-      case 'fetchInstances':
-        endpoint = '/instance/fetchInstances';
-        method = 'GET';
-        break;
-      case 'sendMessage':
-        endpoint = `/message/sendText/${instance}`;
-        body = {
-          number: params.phone.replace(/\D/g, ''),
-          text: params.message,
-          quoted: params.quoted
-        };
-        break;
-      case 'sendMedia':
-        endpoint = `/message/sendMedia/${instance}`;
-        body = {
-          number: params.phone.replace(/\D/g, ''),
-          mediatype: params.mediaType,
-          media: params.mediaUrl,
-          caption: params.caption,
-          fileName: params.fileName,
-          mimetype: params.mimetype
-        };
-        break;
-      case 'sendAudio':
-        endpoint = `/message/sendWhatsAppAudio/${instance}`;
-        body = {
-          number: params.phone.replace(/\D/g, ''),
-          audio: params.audioUrl
-        };
-        break;
-      case 'logoutInstance':
-        endpoint = `/instance/logout/${instance}`;
-        method = 'DELETE';
-        break;
-      case 'deleteInstance':
-        endpoint = `/instance/delete/${instance}`;
-        method = 'DELETE';
-        break;
-      default:
-        throw new Error(`Unknown action: ${action}`);
+    const { data, error } = await supabase.functions.invoke('evolution-proxy', {
+      body: JSON.stringify({ action, payload: params }),
+    });
+    if (error) {
+      console.error('evolution-proxy error', error);
+      return { success: false, error: error.message || 'Unknown proxy error' };
     }
-
-    const url = `${DIRECT_API_URL}${endpoint}`;
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-
-    const options: RequestInit = {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': DIRECT_API_KEY
-      },
-      signal: controller.signal
-    };
-
-    if (method !== 'GET' && method !== 'HEAD') {
-      options.body = JSON.stringify(body);
-    }
-
-    try {
-      const response = await fetch(url, options);
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Direct API Error:', response.status, errorText);
-        return { success: false, error: `API Error ${response.status}: ${errorText}` };
-      }
-
-      const data = await response.json();
-      return { success: true, data };
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        console.error('Evolution API Timeout:', action);
-        return { success: false, error: 'Timeout ao conectar com Evolution API' };
-      }
-      throw fetchError;
-    }
-
+    // proxy returns raw evolution API result or DB rows depending on action
+    return { success: true, data: data as T };
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Evolution API Client Error:', err);
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error('Evolution proxy invocation failed', err);
     return { success: false, error: errorMessage };
   }
 }

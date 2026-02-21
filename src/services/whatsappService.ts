@@ -8,52 +8,28 @@ interface WhatsAppInstance {
   createdAt: string;
 }
 
+import { supabase } from '@/lib/supabase';
+
 class WhatsAppService {
-  private baseUrl = 'https://evo.arkanlabs.com.br';
-  private apiKey = 'eef86d79f253d5f295edcd33b578c94b';
+  // evolution-proxy edge function handles all communication with Evolution API.
+  // Credentials are stored server-side; frontend never sees them.
 
-  private async request(endpoint: string, options: RequestInit = {}) {
-    const url = `${this.baseUrl}${endpoint}`;
-
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': this.apiKey,
-        ...options.headers,
-      },
+  private async proxyRequest<T>(action: string, payload: Record<string, any> = {}): Promise<T> {
+    const { data, error } = await supabase.functions.invoke('evolution-proxy', {
+      body: JSON.stringify({ action, payload }),
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Erro na Evolution API: ${response.status} - ${errorText}`);
+    if (error) {
+      // supabase-js returns an object with `error` when invocation fails
+      throw new Error(error.message || 'Evolution proxy invocation failed');
     }
-
-    return await response.json();
+    return data as T;
   }
 
   async createInstance(instanceName: string, displayName: string): Promise<WhatsAppInstance> {
+    // Use proxy action; the server will build/create and return raw result
+    await this.proxyRequest('createInstance', { instanceName });
 
-    // Criar instância
-    await this.request('/instance/create', {
-      method: 'POST',
-      body: JSON.stringify({
-        instanceName,
-        token: instanceName,
-        qrcode: true,
-        integration: 'WHATSAPP-BAILEYS',
-        reject_call: false,
-        msgRetry: true,
-        alwaysOnline: true,
-        mobile: false,
-        browserName: 'SolarZap'
-        // note: browserName support depends on Evolution API version
-        // newer versions might require different config for display name
-      })
-    });
-
-    // Pegar QR Code
-    const qrData = await this.request(`/instance/connect/${instanceName}`);
+    const qrData: any = await this.proxyRequest('connectInstance', { instanceName });
 
     return {
       id: instanceName,
@@ -61,67 +37,59 @@ class WhatsAppService {
       displayName,
       status: 'connecting',
       qrCode: qrData.base64 || qrData.qrcode?.base64 || null,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
   }
 
   async listInstances(): Promise<unknown[]> {
-    return this.request('/instance/fetchInstances');
+    return this.proxyRequest('fetchInstances');
   }
 
   async getInstanceStatus(instanceName: string) {
-    return this.request(`/instance/connectionState/${instanceName}`);
+    return this.proxyRequest('getInstanceStatus', { instanceName });
   }
 
   async refreshQrCode(instanceName: string) {
-    const qrData = await this.request(`/instance/connect/${instanceName}`);
+    const qrData: any = await this.proxyRequest('connectInstance', { instanceName });
     return qrData.base64 || qrData.qrcode?.base64 || null;
   }
 
   async sendMessage(instanceName: string, phone: string, message: string) {
-    return this.request(`/message/sendText/${instanceName}`, {
-      method: 'POST',
-      body: JSON.stringify({
-        number: phone,
-        textMessage: { text: message }
-      })
+    return this.proxyRequest('sendMessage', {
+      instanceName,
+      phone,
+      message,
     });
   }
 
   async disconnectInstance(instanceName: string) {
-    return this.request(`/instance/logout/${instanceName}`, {
-      method: 'DELETE'
-    });
+    return this.proxyRequest('logoutInstance', { instanceName });
   }
 
   async deleteInstance(instanceName: string) {
     console.log(`[WhatsAppService] Deleting instance: ${instanceName}`);
     try {
-      // Tentar logout primeiro
-      await this.request(`/instance/logout/${instanceName}`, { method: 'DELETE' });
+      await this.proxyRequest('logoutInstance', { instanceName });
     } catch (e) {
       console.warn(`[WhatsAppService] Logout failed for ${instanceName} (might be already closed):`, e);
     }
 
-    // Deletar de fato
-    return this.request(`/instance/delete/${instanceName}`, {
-      method: 'DELETE'
-    });
+    return this.proxyRequest('deleteInstance', { instanceName });
   }
 
-  // Testar conexão com a Evolution API
+  // Testar conexão via proxy
   async testConnection(): Promise<{ success: boolean; message: string; data?: unknown }> {
     try {
       const instances = await this.listInstances();
       return {
         success: true,
         message: `Conexão OK! ${Array.isArray(instances) ? instances.length : 0} instâncias encontradas.`,
-        data: instances
+        data: instances,
       };
     } catch (error) {
       return {
         success: false,
-        message: error instanceof Error ? error.message : 'Erro desconhecido'
+        message: error instanceof Error ? error.message : 'Erro desconhecido',
       };
     }
   }
