@@ -129,7 +129,7 @@ Após "sim":
 4. **Estrutura:** "Já tem área? Seria solo ou telhado?"
 
 ### Fechamento — Modo A (Agendar Ligação)
-"Perfeito. Com R${{VALOR}} e seu perfil, dá pra fazer uma simulação bem forte ✅
+"Perfeito. Com R$ {{VALOR}} e seu perfil, dá pra fazer uma simulação bem forte ✅
 Pra eu te passar o número preciso e já deixar a visita técnica gratuita alinhada, o especialista precisa de 5 min por telefone (bem direto).
 Melhor ele te ligar hoje mais pra {{HORÁRIO1}} ou {{HORÁRIO2}}?"
 
@@ -270,7 +270,7 @@ Política comercial: opções de pagamento, financiamento, desconto à vista, en
 
 ### 1) Abrir negociação (pós-visita)
 "Oi, {{NOME}}! Tudo certo após a visita?
-O projeto ficou em R${{VALOR}} e a estimativa é reduzir sua conta para {{RESULTADO}} com instalação em {{PRAZO}}.
+O projeto ficou em R$ {{VALOR}} e a estimativa é reduzir sua conta para {{RESULTADO}} com instalação em {{PRAZO}}.
 Pra eu te encaminhar do jeito correto: você pretende fechar no financiamento ou sem financiamento?"
 
 ### 2) Se FINANCIAMENTO
@@ -294,8 +294,8 @@ Posso considerar o projeto aprovado e te mandar o contrato?"
 Se entrada + restante:
 "Beleza. Qual entrada você consegue dar hoje?"
 "Perfeito. Com a política da {{EMPRESA}}, consigo te oferecer:
-Opção 1) Entrada R${{E1}} + {{X}}x de R${{P1}}
-Opção 2) Entrada R${{E2}} + {{Y}}x de R${{P2}}
+Opção 1) Entrada R$ {{E1}} + {{X}}x de R$ {{P1}}
+Opção 2) Entrada R$ {{E2}} + {{Y}}x de R$ {{P2}}
 Qual fica melhor pra você?"
 
 3.2 Fechamento:
