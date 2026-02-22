@@ -15,6 +15,13 @@ interface SolarZapNavProps {
   onNotificationsClick?: () => void;
   isAdminUser?: boolean;
   onAdminMembersClick?: () => void;
+  tabPermissions?: {
+    ia_agentes: boolean;
+    automacoes: boolean;
+    integracoes: boolean;
+    banco_ia: boolean;
+    minha_conta: boolean;
+  };
 }
 
 const navItems: { id: ActiveTab; icon: typeof MessageCircle; label: string }[] = [
@@ -33,7 +40,9 @@ export function SolarZapNav({
   onNotificationsClick,
   isAdminUser = false,
   onAdminMembersClick,
+  tabPermissions,
 }: SolarZapNavProps) {
+  const tp = tabPermissions ?? { ia_agentes: true, automacoes: true, integracoes: true, banco_ia: true, minha_conta: true };
   return (
     <nav className="w-[60px] h-full bg-secondary flex flex-col items-center py-4">
       {/* Logo */}
@@ -115,6 +124,7 @@ export function SolarZapNav({
                 </button>
               )}
 
+              {tp.ia_agentes ? (
               <button
                 data-testid="nav-ia-agentes"
                 onClick={() => onTabChange('ia_agentes')}
@@ -125,7 +135,9 @@ export function SolarZapNav({
                 </div>
                 Inteligência Artificial
               </button>
+            ) : null}
 
+            {tp.automacoes ? (
               <button
                 data-testid="nav-automacoes"
                 onClick={() => onTabChange('automacoes')}
@@ -136,7 +148,9 @@ export function SolarZapNav({
                 </div>
                 Automações
               </button>
+            ) : null}
 
+            {tp.integracoes ? (
               <button
                 onClick={() => onTabChange('integracoes')}
                 className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
@@ -146,7 +160,9 @@ export function SolarZapNav({
                 </div>
                 Central de Integrações
               </button>
+            ) : null}
 
+            {tp.banco_ia ? (
               <button
                 onClick={() => onTabChange('banco_ia')}
                 className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
@@ -156,9 +172,11 @@ export function SolarZapNav({
                 </div>
                 Banco de Dados
               </button>
+            ) : null}
 
               <div className="border-t my-1" />
 
+            {tp.minha_conta ? (
               <button
                 onClick={() => onTabChange('minha_conta')}
                 className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
@@ -168,21 +186,24 @@ export function SolarZapNav({
                 </div>
                 Minha Conta
               </button>
+            ) : null}
             </div>
           </PopoverContent>
         </Popover>
       </div>
 
       {/* User avatar */}
-      <div className="pb-4">
-        <button
-          onClick={() => onTabChange('minha_conta')}
-          className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer"
-          title="Minha Conta"
-        >
-          <User className="w-4 h-4 text-sidebar-foreground" />
-        </button>
-      </div>
+      {tp.minha_conta && (
+        <div className="pb-4">
+          <button
+            onClick={() => onTabChange('minha_conta')}
+            className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer"
+            title="Minha Conta"
+          >
+            <User className="w-4 h-4 text-sidebar-foreground" />
+          </button>
+        </div>
+      )}
     </nav>
   );
 }

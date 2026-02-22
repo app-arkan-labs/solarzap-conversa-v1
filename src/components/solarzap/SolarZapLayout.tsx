@@ -39,6 +39,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Contact, PipelineStage, ChannelFilter, ActiveTab, Conversation } from '@/types/solarzap';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppointments } from '@/hooks/useAppointments';
+import { useSellerPermissions } from '@/hooks/useSellerPermissions';
 import { supabase } from '@/lib/supabase';
 import AdminMembersPage from '@/pages/AdminMembersPage';
 
@@ -84,6 +85,7 @@ export function SolarZapLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const canAccessAdmin = role === 'owner' || role === 'admin';
+  const { permissions: sellerPerms } = useSellerPermissions();
   // Domain Hooks
   const {
     contacts,
@@ -771,6 +773,13 @@ export function SolarZapLayout() {
         onNotificationsClick={() => setIsNotificationsPanelOpen(true)}
         isAdminUser={canAccessAdmin}
         onAdminMembersClick={() => navigate('/admin/members')}
+        tabPermissions={{
+          ia_agentes: sellerPerms.tab_ia_agentes,
+          automacoes: sellerPerms.tab_automacoes,
+          integracoes: sellerPerms.tab_integracoes,
+          banco_ia: sellerPerms.tab_banco_ia,
+          minha_conta: sellerPerms.tab_minha_conta,
+        }}
       />
 
       <NotificationsPanel
@@ -809,7 +818,7 @@ export function SolarZapLayout() {
               onSearchChange={setSearchQuery}
               onStageFilterChange={setStageFilter}
               onImportContacts={importContacts}
-              onDeleteLead={async (id) => { await deleteLead(id); }}
+              onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
             />
             <Button
               onClick={() => setIsCreateLeadOpen(true)}
@@ -823,7 +832,7 @@ export function SolarZapLayout() {
           <ChatArea
             conversation={activeConversation}
             conversations={conversations}
-            onToggleLeadAi={toggleLeadAi}
+            onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
             onSendMessage={async (conversationId, content, instanceName, replyTo) => {
               console.log('SolarZapLayout: onSendMessage called', { conversationId, contentLength: content.length, instanceName, replyTo });
               try {
@@ -919,7 +928,7 @@ export function SolarZapLayout() {
             events={events}
             onMoveToPipeline={handlePipelineStageChange}
             onUpdateLead={async (contactId, data) => { await updateLead({ contactId, data }); }}
-            onToggleLeadAi={toggleLeadAi}
+            onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
             onGoToConversation={goToConversation}
             onCallAction={(contact) => {
               setPendingCallContact(contact);
@@ -927,7 +936,7 @@ export function SolarZapLayout() {
             }}
             onGenerateProposal={handleProposal}
             onImportContacts={importContacts}
-            onDeleteLead={async (id) => { await deleteLead(id); }}
+            onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
             onSchedule={(contact, type) => {
               setActionContact(contact);
               setScheduleType(type === 'reuniao' ? 'reuniao' : 'visita');
@@ -955,8 +964,8 @@ export function SolarZapLayout() {
             contacts={contacts}
             onUpdateLead={async (contactId, data) => { await updateLead({ contactId, data }); }}
             onImportContacts={importContacts}
-            onDeleteLead={async (id) => { await deleteLead(id); }}
-            onToggleLeadAi={toggleLeadAi}
+            onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
+            onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
           />
           <Button
             onClick={() => setIsCreateLeadOpen(true)}

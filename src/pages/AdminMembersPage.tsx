@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, RefreshCw, Users, UserPlus, Shield, Eye, Trash2, Save } from 'lucide-react';
+import { Loader2, RefreshCw, Users, UserPlus, Shield, Eye, Trash2, Save, Settings2, Bot, Zap, Plug, Brain, User, Ban, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSellerPermissions, type SellerPermissions } from '@/hooks/useSellerPermissions';
 import {
   inviteMember,
   listMembers,
@@ -72,6 +73,13 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
   const [lastTempPassword, setLastTempPassword] = useState<string | null>(null);
 
   const canAccessAdmin = role === 'owner' || role === 'admin';
+
+  const {
+    sellerPermissions,
+    loading: permissionsLoading,
+    saving: permissionsSaving,
+    updateSellerPermissions,
+  } = useSellerPermissions();
 
   const ownerCount = useMemo(
     () => members.filter((member) => member.role === 'owner').length,
@@ -522,7 +530,160 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
             </table>
           </CardContent>
         </Card>
+        {/* Seller Permissions Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Settings2 className="h-5 w-5 text-primary" />
+              Permissões de Vendedores
+            </CardTitle>
+            <CardDescription>
+              Defina o que os vendedores e consultores podem acessar e fazer.{' '}
+              Proprietários e Administradores sempre têm acesso total.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {permissionsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : (
+              <>
+                {/* Settings Tabs Access */}
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <Settings2 className="h-4 w-4" />
+                    Acesso às Abas de Configurações
+                  </h3>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Escolha quais abas os vendedores podem ver no menu de configurações.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <PermissionToggle
+                      icon={<Bot className="h-4 w-4" />}
+                      label="Inteligência Artificial"
+                      description="Configurações de agentes IA"
+                      checked={sellerPermissions?.tab_ia_agentes ?? true}
+                      saving={permissionsSaving}
+                      onChange={(v) => void updateSellerPermissions({ tab_ia_agentes: v })}
+                    />
+                    <PermissionToggle
+                      icon={<Zap className="h-4 w-4" />}
+                      label="Automações"
+                      description="Mensagens automáticas"
+                      checked={sellerPermissions?.tab_automacoes ?? true}
+                      saving={permissionsSaving}
+                      onChange={(v) => void updateSellerPermissions({ tab_automacoes: v })}
+                    />
+                    <PermissionToggle
+                      icon={<Plug className="h-4 w-4" />}
+                      label="Central de Integrações"
+                      description="WhatsApp, Google, etc."
+                      checked={sellerPermissions?.tab_integracoes ?? true}
+                      saving={permissionsSaving}
+                      onChange={(v) => void updateSellerPermissions({ tab_integracoes: v })}
+                    />
+                    <PermissionToggle
+                      icon={<Brain className="h-4 w-4" />}
+                      label="Banco de Dados IA"
+                      description="Base de conhecimento"
+                      checked={sellerPermissions?.tab_banco_ia ?? true}
+                      saving={permissionsSaving}
+                      onChange={(v) => void updateSellerPermissions({ tab_banco_ia: v })}
+                    />
+                    <PermissionToggle
+                      icon={<User className="h-4 w-4" />}
+                      label="Minha Conta"
+                      description="Perfil e senha"
+                      checked={sellerPermissions?.tab_minha_conta ?? true}
+                      saving={permissionsSaving}
+                      onChange={(v) => void updateSellerPermissions({ tab_minha_conta: v })}
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t" />
+
+                {/* Action Permissions */}
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Permissões de Ações
+                  </h3>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Controle quais ações os vendedores podem executar.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <PermissionToggle
+                      icon={<Trash2 className="h-4 w-4" />}
+                      label="Deletar Leads"
+                      description="Excluir leads permanentemente"
+                      checked={sellerPermissions?.can_delete_leads ?? true}
+                      saving={permissionsSaving}
+                      onChange={(v) => void updateSellerPermissions({ can_delete_leads: v })}
+                    />
+                    <PermissionToggle
+                      icon={<Ban className="h-4 w-4" />}
+                      label="Deletar Propostas"
+                      description="Excluir propostas existentes"
+                      checked={sellerPermissions?.can_delete_proposals ?? true}
+                      saving={permissionsSaving}
+                      onChange={(v) => void updateSellerPermissions({ can_delete_proposals: v })}
+                    />
+                    <PermissionToggle
+                      icon={<Sparkles className="h-4 w-4" />}
+                      label="Ligar/Desligar IA"
+                      description="Ativar ou pausar IA nos leads"
+                      checked={sellerPermissions?.can_toggle_ai ?? true}
+                      saving={permissionsSaving}
+                      onChange={(v) => void updateSellerPermissions({ can_toggle_ai: v })}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
+    </div>
+  );
+}
+
+/* ── Permission Toggle Card ── */
+function PermissionToggle({
+  icon,
+  label,
+  description,
+  checked,
+  saving,
+  onChange,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  description: string;
+  checked: boolean;
+  saving: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors">
+      <div className="flex items-center gap-3">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+          checked ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+        }`}>
+          {icon}
+        </div>
+        <div>
+          <p className="text-sm font-medium">{label}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <Switch
+        checked={checked}
+        onCheckedChange={onChange}
+        disabled={saving}
+        className="scale-90"
+      />
     </div>
   );
 }
