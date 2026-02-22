@@ -19,7 +19,6 @@ import { AIAgentsView } from './AIAgentsView';
 import { KnowledgeBaseView } from './KnowledgeBaseView';
 import { ProposalsView } from './ProposalsView';
 import { ConfiguracoesContaView } from './ConfiguracoesContaView';
-import { NotificationSettingsCard } from './NotificationSettingsCard';
 import { NotificationsPanel } from './NotificationsPanel';
 import { CreateLeadModal, CreateLeadData } from './CreateLeadModal';
 import { AppointmentModal } from './AppointmentModal';
@@ -993,14 +992,7 @@ export function SolarZapLayout() {
       )}
 
       {activeTab === 'automacoes' && (
-        <>
-          <AutomationsView />
-          <div className="px-6 pb-6 bg-muted/30">
-            <div className="max-w-4xl mx-auto">
-              <NotificationSettingsCard />
-            </div>
-          </div>
-        </>
+        <AutomationsView />
       )}
 
       {activeTab === 'ia_agentes' && (

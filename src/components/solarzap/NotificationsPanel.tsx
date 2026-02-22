@@ -1,10 +1,12 @@
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Notification, NOTIFICATION_CONFIG } from '@/types/notifications';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { X, Check, CheckCheck, Trash2, Bell, BellOff } from 'lucide-react';
+import { X, Check, CheckCheck, Trash2, Bell, BellOff, Settings2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { NotificationConfigPanel } from './NotificationConfigPanel';
 
 interface NotificationsPanelProps {
   notifications: Notification[];
@@ -27,6 +29,8 @@ export function NotificationsPanel({
   onClearAll,
   onGoToContact,
 }: NotificationsPanelProps) {
+  const [showConfig, setShowConfig] = useState(false);
+
   if (!isOpen) return null;
 
   const unreadNotifications = notifications.filter(n => !n.isRead);
@@ -120,102 +124,126 @@ export function NotificationsPanel({
     );
   };
 
+  const handleClose = () => {
+    setShowConfig(false);
+    onClose();
+  };
+
   return (
     <>
       {/* Backdrop */}
-      <div 
+      <div
         className="fixed inset-0 bg-black/20 z-40"
-        onClick={onClose}
+        onClick={handleClose}
       />
-      
-      {/* Panel */}
-      <div className="fixed left-[60px] top-0 h-full w-80 bg-background border-r border-border shadow-xl z-50 flex flex-col animate-in slide-in-from-left-2 duration-200">
-        {/* Header */}
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bell className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold text-foreground">Notificações</h2>
-            {unreadNotifications.length > 0 && (
-              <span className="px-2 py-0.5 text-xs font-medium bg-primary text-primary-foreground rounded-full">
-                {unreadNotifications.length}
-              </span>
-            )}
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
 
-        {/* Actions bar */}
-        {notifications.length > 0 && (
-          <div className="px-4 py-2 border-b border-border flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs h-7 gap-1.5"
-              onClick={onMarkAllAsRead}
-              disabled={unreadNotifications.length === 0}
-            >
-              <CheckCheck className="h-3.5 w-3.5" />
-              Marcar todas como lidas
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs h-7 gap-1.5 text-muted-foreground hover:text-destructive"
-              onClick={onClearAll}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Limpar
-            </Button>
-          </div>
-        )}
+      {/* Panel container — expands when config is open */}
+      <div className="fixed left-[60px] top-0 h-full z-50 flex shadow-xl animate-in slide-in-from-left-2 duration-200">
 
-        {/* Notifications list */}
-        <ScrollArea className="flex-1">
-          {notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 px-4">
-              <BellOff className="h-12 w-12 text-muted-foreground/30 mb-3" />
-              <p className="text-sm text-muted-foreground text-center">
-                Nenhuma notificação
-              </p>
-              <p className="text-xs text-muted-foreground/70 text-center mt-1">
-                Você receberá alertas quando houver ações importantes
-              </p>
-            </div>
-          ) : (
-            <div>
-              {/* Unread notifications */}
+        {/* ── Notifications list (always visible) ── */}
+        <div className="w-80 bg-background border-r border-border flex flex-col">
+          {/* Header */}
+          <div className="p-4 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Bell className="h-5 w-5 text-primary" />
+              <h2 className="font-semibold text-foreground">Notificações</h2>
               {unreadNotifications.length > 0 && (
-                <div>
-                  <div className="px-4 py-2 bg-muted/30">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Novas ({unreadNotifications.length})
-                    </span>
-                  </div>
-                  {unreadNotifications.map(renderNotification)}
-                </div>
+                <span className="px-2 py-0.5 text-xs font-medium bg-primary text-primary-foreground rounded-full">
+                  {unreadNotifications.length}
+                </span>
               )}
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn('h-8 w-8', showConfig && 'bg-primary/10 text-primary')}
+                onClick={() => setShowConfig(!showConfig)}
+                title="Configurações de Notificações"
+              >
+                <Settings2 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleClose}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
 
-              {/* Read notifications */}
-              {readNotifications.length > 0 && (
-                <div>
-                  <div className="px-4 py-2 bg-muted/30">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Anteriores
-                    </span>
-                  </div>
-                  {readNotifications.slice(0, 20).map(renderNotification)}
-                </div>
-              )}
+          {/* Actions bar */}
+          {notifications.length > 0 && (
+            <div className="px-4 py-2 border-b border-border flex items-center justify-between">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs h-7 gap-1.5"
+                onClick={onMarkAllAsRead}
+                disabled={unreadNotifications.length === 0}
+              >
+                <CheckCheck className="h-3.5 w-3.5" />
+                Marcar todas como lidas
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs h-7 gap-1.5 text-muted-foreground hover:text-destructive"
+                onClick={onClearAll}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Limpar
+              </Button>
             </div>
           )}
-        </ScrollArea>
+
+          {/* Notifications list */}
+          <ScrollArea className="flex-1">
+            {notifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 px-4">
+                <BellOff className="h-12 w-12 text-muted-foreground/30 mb-3" />
+                <p className="text-sm text-muted-foreground text-center">
+                  Nenhuma notificação
+                </p>
+                <p className="text-xs text-muted-foreground/70 text-center mt-1">
+                  Você receberá alertas quando houver ações importantes
+                </p>
+              </div>
+            ) : (
+              <div>
+                {unreadNotifications.length > 0 && (
+                  <div>
+                    <div className="px-4 py-2 bg-muted/30">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Novas ({unreadNotifications.length})
+                      </span>
+                    </div>
+                    {unreadNotifications.map(renderNotification)}
+                  </div>
+                )}
+                {readNotifications.length > 0 && (
+                  <div>
+                    <div className="px-4 py-2 bg-muted/30">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Anteriores
+                      </span>
+                    </div>
+                    {readNotifications.slice(0, 20).map(renderNotification)}
+                  </div>
+                )}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+
+        {/* ── Config panel (slides in alongside) ── */}
+        {showConfig && (
+          <div className="w-[360px] animate-in slide-in-from-left-4 duration-300">
+            <NotificationConfigPanel onClose={() => setShowConfig(false)} />
+          </div>
+        )}
       </div>
     </>
   );
