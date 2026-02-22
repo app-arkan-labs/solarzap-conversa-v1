@@ -993,14 +993,14 @@ export function SolarZapLayout() {
       )}
 
       {activeTab === 'automacoes' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
+        <>
           <AutomationsView />
           <div className="px-6 pb-6 bg-muted/30">
             <div className="max-w-4xl mx-auto">
               <NotificationSettingsCard />
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {activeTab === 'ia_agentes' && (
