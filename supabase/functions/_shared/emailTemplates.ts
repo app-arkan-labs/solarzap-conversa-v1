@@ -155,6 +155,32 @@ export interface TemplateContext {
   toStage?: string
 }
 
+export interface SystemAccessTemplateContext {
+  senderName?: string | null
+  orgName?: string | null
+  role?: 'owner' | 'admin' | 'user' | 'consultant' | string
+  inviteLink?: string
+  loginUrl?: string
+  tempPassword?: string
+  recipientEmail?: string
+}
+
+function roleLabel(role?: 'owner' | 'admin' | 'user' | 'consultant' | string): string {
+  const normalized = String(role || '').trim().toLowerCase()
+  switch (normalized) {
+    case 'owner':
+      return 'Proprietário'
+    case 'admin':
+      return 'Administrador'
+    case 'consultant':
+      return 'Consultor'
+    case 'user':
+      return 'Usuário'
+    default:
+      return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : 'Usuário'
+  }
+}
+
 /* ── 1. NOVO LEAD ── */
 
 export function novoLeadEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
@@ -500,6 +526,129 @@ export function digestEmail(opts: {
       subtitle: `${opts.leads.length} lead${opts.leads.length !== 1 ? 's' : ''} com atividade — ${opts.dateBucket}`,
       bodyHtml,
       senderName: opts.senderName,
+    }),
+    text: textLines.join('\n'),
+  }
+}
+
+/* ── SYSTEM AUTH: CONVITE DE ACESSO ── */
+
+export function systemInviteEmail(ctx: SystemAccessTemplateContext): { subject: string; html: string; text: string } {
+  const subject = '🔐 Convite de acesso — SolarZap'
+  const org = ctx.orgName || 'Sua organização'
+  const role = roleLabel(ctx.role)
+
+  const ctaHtml = ctx.inviteLink
+    ? `
+    <div style="margin-top:20px;text-align:center;">
+      <a href="${esc(ctx.inviteLink)}" style="display:inline-block;padding:11px 18px;border-radius:10px;background-color:#16a34a;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">Aceitar convite</a>
+    </div>`
+    : ''
+
+  const bodyHtml = `
+    <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
+      Você recebeu um convite para acessar o <strong>SolarZap</strong>.
+    </p>
+    ${infoTable(
+      infoRow('Organização', org) +
+      infoRow('Perfil', role) +
+      infoRow('E-mail', ctx.recipientEmail || 'Não informado')
+    )}
+    ${ctaHtml}
+    <p style="margin:18px 0 0;font-size:12px;color:#71717a;line-height:1.5;">
+      Se o botão não funcionar, copie e cole o link abaixo no navegador:<br>
+      <span style="word-break:break-all;color:#3f3f46;">${esc(ctx.inviteLink || '')}</span>
+    </p>`
+
+  const textLines = [
+    'Convite de acesso — SolarZap',
+    `Organização: ${org}`,
+    `Perfil: ${role}`,
+    `E-mail: ${ctx.recipientEmail || 'Não informado'}`,
+    '',
+    'Acesse seu convite:',
+    ctx.inviteLink || '(link não informado)',
+  ]
+
+  return {
+    subject,
+    html: baseLayout({
+      iconEmoji: '🔐',
+      iconBg: '#dcfce7',
+      title: 'Convite de Acesso',
+      subtitle: `${org} • ${role}`,
+      bodyHtml,
+      senderName: ctx.senderName,
+    }),
+    text: textLines.join('\n'),
+  }
+}
+
+/* ── SYSTEM AUTH: CONTA CRIADA ── */
+
+export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { subject: string; html: string; text: string } {
+  const subject = '✅ Conta criada — acesso ao SolarZap'
+  const org = ctx.orgName || 'Sua organização'
+  const role = roleLabel(ctx.role)
+
+  const passwordHtml = ctx.tempPassword
+    ? `
+    <div style="margin-top:16px;padding:12px 14px;border-radius:10px;background-color:#fefce8;border:1px solid #fde68a;">
+      <p style="margin:0 0 6px;font-size:12px;color:#854d0e;font-weight:700;">Senha temporária</p>
+      <p style="margin:0;font-size:16px;color:#18181b;font-weight:700;letter-spacing:0.2px;">${esc(ctx.tempPassword)}</p>
+    </div>`
+    : ''
+
+  const loginCtaHtml = ctx.loginUrl
+    ? `
+    <div style="margin-top:20px;text-align:center;">
+      <a href="${esc(ctx.loginUrl)}" style="display:inline-block;padding:11px 18px;border-radius:10px;background-color:#16a34a;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">Acessar SolarZap</a>
+    </div>`
+    : ''
+
+  const bodyHtml = `
+    <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
+      Sua conta foi criada com sucesso para acesso ao <strong>SolarZap</strong>.
+    </p>
+    ${infoTable(
+      infoRow('Organização', org) +
+      infoRow('Perfil', role) +
+      infoRow('E-mail', ctx.recipientEmail || 'Não informado')
+    )}
+    ${passwordHtml}
+    ${loginCtaHtml}
+    <div style="margin-top:16px;padding:14px 16px;border-radius:10px;background-color:#fef2f2;border:1px solid #fecaca;">
+      <p style="margin:0;font-size:13px;color:#991b1b;line-height:1.5;">
+        <strong>⚠️ Segurança:</strong> altere sua senha imediatamente após o primeiro acesso.
+      </p>
+    </div>
+    <p style="margin:14px 0 0;font-size:12px;color:#71717a;line-height:1.5;">
+      Se o botão não funcionar, use este link:<br>
+      <span style="word-break:break-all;color:#3f3f46;">${esc(ctx.loginUrl || '')}</span>
+    </p>`
+
+  const textLines = [
+    'Conta criada — acesso ao SolarZap',
+    `Organização: ${org}`,
+    `Perfil: ${role}`,
+    `E-mail: ${ctx.recipientEmail || 'Não informado'}`,
+    ...(ctx.tempPassword ? [`Senha temporária: ${ctx.tempPassword}`] : []),
+    '',
+    'Acesse o sistema:',
+    ctx.loginUrl || '(link não informado)',
+    '',
+    'Segurança: altere sua senha imediatamente após o primeiro acesso.',
+  ]
+
+  return {
+    subject,
+    html: baseLayout({
+      iconEmoji: '✅',
+      iconBg: '#dcfce7',
+      title: 'Conta Criada',
+      subtitle: `${org} • ${role}`,
+      bodyHtml,
+      senderName: ctx.senderName,
     }),
     text: textLines.join('\n'),
   }

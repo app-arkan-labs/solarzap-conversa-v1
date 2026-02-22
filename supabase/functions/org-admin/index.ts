@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { systemAccountCreatedEmail, systemInviteEmail } from '../_shared/emailTemplates.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -67,6 +68,75 @@ function resolveUserDisplayName(user: { user_metadata?: unknown; app_metadata?: 
 function generateTempPassword() {
   const randomPart = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
   return `Tmp!${randomPart}Aa1`;
+}
+
+function resolveAppUrl(): string {
+  const rawUrl =
+    Deno.env.get('APP_URL') ||
+    Deno.env.get('PUBLIC_APP_URL') ||
+    Deno.env.get('SITE_URL') ||
+    'https://app.solarzap.com.br';
+
+  return rawUrl.replace(/\/+$/, '');
+}
+
+async function sendEmailViaResend(
+  recipient: string,
+  content: { subject: string; html: string; text: string },
+  senderName?: string | null,
+  replyTo?: string | null,
+) {
+  const resendKey = Deno.env.get('RESEND_API_KEY') || '';
+  if (!resendKey) {
+    throw new Error('missing_resend_api_key');
+  }
+
+  const defaultFrom = Deno.env.get('RESEND_FROM_EMAIL') || '';
+  if (!defaultFrom) {
+    throw new Error('missing_resend_from_email');
+  }
+
+  let fromEmail = defaultFrom;
+  if (senderName) {
+    const emailMatch = defaultFrom.match(/<([^>]+)>/) || [null, defaultFrom];
+    const rawEmail = (emailMatch[1] || defaultFrom).trim();
+    fromEmail = `${senderName} <${rawEmail}>`;
+  }
+
+  const body: Record<string, unknown> = {
+    from: fromEmail,
+    to: [recipient],
+    subject: content.subject,
+    html: content.html,
+    text: content.text,
+  };
+
+  if (replyTo) {
+    body.reply_to = replyTo;
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${resendKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const raw = await response.text();
+  let parsed: unknown = raw;
+  try {
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch {
+    parsed = raw;
+  }
+
+  if (!response.ok) {
+    throw new Error(`resend_http_${response.status}:${typeof parsed === 'string' ? parsed : JSON.stringify(parsed)}`);
+  }
+
+  return parsed;
 }
 
 async function findUserByEmail(
@@ -284,30 +354,80 @@ async function inviteMember(
     return jsonResponse(400, { ok: false, code: 'invalid_role', error: 'Role invalida para convite.' });
   }
 
+  const { data: orgData, error: orgError } = await adminClient
+    .from('organizations')
+    .select('name')
+    .eq('id', callerMembership.org_id)
+    .maybeSingle();
+
+  if (orgError) {
+    throw orgError;
+  }
+
+  const orgName = nonEmptyString(orgData?.name) ?? null;
+
   let user = await findUserByEmail(adminClient, email);
   let tempPassword: string | undefined;
   let inviteLink: string | undefined;
 
   if (!user) {
     if (mode === 'invite') {
-      const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email);
-      if (error) {
-        const fallbackUser = await findUserByEmail(adminClient, email);
-        if (!fallbackUser) {
-          throw error;
-        }
-        user = fallbackUser;
-      } else {
-        user = data.user ?? (await findUserByEmail(adminClient, email));
+      const { data: primaryLinkData, error: primaryLinkError } = await adminClient.auth.admin.generateLink({
+        type: 'invite',
+        email,
+      });
+
+      if (!primaryLinkError && primaryLinkData?.properties?.action_link) {
+        inviteLink = primaryLinkData.properties.action_link;
       }
 
-      if (user?.email) {
-        const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-          type: 'invite',
-          email: user.email,
-        });
-        if (!linkError && linkData?.properties?.action_link) {
-          inviteLink = linkData.properties.action_link;
+      if (primaryLinkError) {
+        const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email);
+        if (error) {
+          const fallbackUser = await findUserByEmail(adminClient, email);
+          if (!fallbackUser) {
+            throw error;
+          }
+          user = fallbackUser;
+        } else {
+          user = data.user ?? (await findUserByEmail(adminClient, email));
+        }
+
+        if (!inviteLink && user?.email) {
+          const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+            type: 'invite',
+            email: user.email,
+          });
+          if (!linkError && linkData?.properties?.action_link) {
+            inviteLink = linkData.properties.action_link;
+          }
+        }
+      }
+
+      if (!user) {
+        user = await findUserByEmail(adminClient, email);
+      }
+
+      if (!user) {
+        const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email);
+        if (error) {
+          const fallbackUser = await findUserByEmail(adminClient, email);
+          if (!fallbackUser) {
+            throw error;
+          }
+          user = fallbackUser;
+        } else {
+          user = data.user ?? (await findUserByEmail(adminClient, email));
+        }
+
+        if (!inviteLink && user?.email) {
+          const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+            type: 'invite',
+            email: user.email,
+          });
+          if (!linkError && linkData?.properties?.action_link) {
+            inviteLink = linkData.properties.action_link;
+          }
         }
       }
     } else {
@@ -379,12 +499,47 @@ async function inviteMember(
     throw upsertError;
   }
 
+  const senderName = nonEmptyString(Deno.env.get('RESEND_SYSTEM_SENDER_NAME')) ?? 'SolarZap';
+  const replyTo = nonEmptyString(Deno.env.get('RESEND_SYSTEM_REPLY_TO'));
+  const loginUrl = `${resolveAppUrl()}/login`;
+  const recipientEmail = user.email || email;
+
+  let systemEmailSent = false;
+  let systemEmailError: string | undefined;
+
+  try {
+    const content = mode === 'invite'
+      ? systemInviteEmail({
+        senderName,
+        orgName,
+        role,
+        inviteLink,
+        loginUrl,
+        recipientEmail,
+      })
+      : systemAccountCreatedEmail({
+        senderName,
+        orgName,
+        role,
+        tempPassword,
+        loginUrl,
+        recipientEmail,
+      });
+
+    await sendEmailViaResend(recipientEmail, content, senderName, replyTo ?? null);
+    systemEmailSent = true;
+  } catch (error) {
+    systemEmailError = error instanceof Error ? error.message : String(error);
+  }
+
   return jsonResponse(200, {
     ok: true,
     action: 'invite_member',
     user_id: user.id,
     email,
     mode,
+    system_email_sent: systemEmailSent,
+    ...(systemEmailError ? { system_email_error: systemEmailError } : {}),
     ...(tempPassword ? { temp_password: tempPassword } : {}),
     ...(inviteLink ? { invite_link: inviteLink } : {}),
   });
