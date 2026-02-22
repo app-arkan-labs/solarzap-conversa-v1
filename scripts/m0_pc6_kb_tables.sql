@@ -1,1 +1,0 @@
-SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('kb_items','testimonials','kb_assets','asset_annotations','company_profile','objection_responses') ORDER BY table_name;

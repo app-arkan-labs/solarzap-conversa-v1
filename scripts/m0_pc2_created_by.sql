@@ -1,1 +1,0 @@
-SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('kb_items','testimonials','kb_assets','asset_annotations','company_profile','objection_responses') AND column_name='created_by' ORDER BY table_name;

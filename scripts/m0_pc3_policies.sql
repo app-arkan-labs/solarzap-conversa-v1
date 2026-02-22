@@ -1,1 +1,0 @@
-SELECT tablename, policyname, cmd, qual FROM pg_policies WHERE tablename IN ('whatsapp_webhook_events','ai_settings','ai_stage_config','ai_action_logs','ai_agent_runs','ai_summaries','kb_items','testimonials','kb_assets','asset_annotations','company_profile','objection_responses') ORDER BY tablename, policyname;

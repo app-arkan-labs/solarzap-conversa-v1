@@ -21,7 +21,7 @@ if (!ACCESS_TOKEN) {
   exit(1);
 }
 
-const sql = readFileSync(sqlFile, 'utf8');
+const sql = readFileSync(sqlFile, 'utf8').replace(/\r\n/g, '\n').replace(/^\uFEFF/, '');
 
 const res = await fetch(API_URL, {
   method: 'POST',

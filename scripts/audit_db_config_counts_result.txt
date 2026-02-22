@@ -1,7 +1,0 @@
-﻿HTTP 201
-[
-  {
-    "source": "whatsapp_instances.instance_token",
-    "configured_count": 0
-  }
-]

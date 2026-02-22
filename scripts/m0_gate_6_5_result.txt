@@ -1,7 +1,0 @@
-﻿HTTP 201
-[
-  {
-    "conname": "uq_instance_name_global",
-    "contype": "u"
-  }
-]

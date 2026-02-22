@@ -1,6 +1,0 @@
-﻿HTTP 201
-[
-  {
-    "pg_get_functiondef": "CREATE OR REPLACE FUNCTION public.hard_delete_thread(p_user_id uuid, p_instance_name text, p_phone_e164 text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\r\nBEGIN\r\n  -- M0 SECURITY: caller must match p_user_id (service_role has auth.uid()=NULL ÔåÆ skip)\r\n  IF auth.uid() IS NOT NULL AND p_user_id != auth.uid() THEN\r\n    RAISE EXCEPTION 'Unauthorized: p_user_id must match auth.uid()';\r\n  END IF;\r\n\r\n  -- Original body preserved exactly:\r\n  INSERT INTO deleted_threads (user_id, instance_name, phone_e164)\r\n  VALUES (p_user_id, COALESCE(p_instance_name, ''), p_phone_e164)\r\n  ON CONFLICT (user_id, instance_name, phone_e164) DO UPDATE\r\n    SET deleted_at = NOW();\r\n\r\n  DELETE FROM interacoes\r\n  WHERE user_id = p_user_id\r\n    AND phone_e164 = p_phone_e164;\r\n\r\n  DELETE FROM interacoes i\r\n  USING leads l\r\n  WHERE i.lead_id = l.id\r\n    AND l.user_id = p_user_id\r\n    AND l.phone_e164 = p_phone_e164;\r\n\r\n  DELETE FROM public.appointments a\r\n  USING leads l\r\n  WHERE a.lead_id = l.id\r\n    AND l.user_id = p_user_id\r\n    AND l.phone_e164 = p_phone_e164;\r\n\r\n  DELETE FROM leads\r\n  WHERE user_id = p_user_id\r\n    AND phone_e164 = p_phone_e164;\r\nEND;\r\n$function$\n"
-  }
-]
