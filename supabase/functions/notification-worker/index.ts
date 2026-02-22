@@ -24,6 +24,15 @@ type NotificationSettingsRow = {
   enabled_reminders: boolean
   whatsapp_instance_name: string | null
   email_recipients: string[]
+  email_sender_name: string | null
+  email_reply_to: string | null
+  evt_novo_lead: boolean
+  evt_stage_changed: boolean
+  evt_visita_agendada: boolean
+  evt_visita_realizada: boolean
+  evt_chamada_agendada: boolean
+  evt_chamada_realizada: boolean
+  evt_financiamento_update: boolean
 }
 
 function toDigits(value: unknown): string {
@@ -143,13 +152,33 @@ async function sendEmailViaResend(
   recipient: string,
   subject: string,
   text: string,
+  senderName?: string | null,
+  replyTo?: string | null,
 ) {
   const resendKey = Deno.env.get('RESEND_API_KEY') || ''
   if (!resendKey) {
     throw new Error('missing_resend_api_key')
   }
 
-  const fromEmail = Deno.env.get('RESEND_FROM_EMAIL') || 'SolarZap <notificacoes@resend.dev>'
+  const defaultFrom = Deno.env.get('RESEND_FROM_EMAIL') || 'SolarZap <notificacoes@resend.dev>'
+  // If org has a custom sender name, override the display name while keeping the platform domain
+  let fromEmail = defaultFrom
+  if (senderName) {
+    // Extract the email portion from the default ("Name <email>" or just "email")
+    const emailMatch = defaultFrom.match(/<([^>]+)>/) || [null, defaultFrom.replace(/^[^<]*$/, '$&')]
+    const rawEmail = emailMatch[1] || defaultFrom
+    fromEmail = `${senderName} <${rawEmail}>`
+  }
+
+  const body: Record<string, unknown> = {
+    from: fromEmail,
+    to: [recipient],
+    subject,
+    text,
+  }
+  if (replyTo) {
+    body.reply_to = replyTo
+  }
 
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -157,12 +186,7 @@ async function sendEmailViaResend(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${resendKey}`,
     },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [recipient],
-      subject,
-      text,
-    }),
+    body: JSON.stringify(body),
   })
 
   const raw = await response.text()
@@ -231,7 +255,7 @@ async function processEvent(
 ) {
   const { data: settingsRow, error: settingsError } = await supabase
     .from('notification_settings')
-    .select('org_id, enabled_notifications, enabled_whatsapp, enabled_email, enabled_reminders, whatsapp_instance_name, email_recipients')
+    .select('org_id, enabled_notifications, enabled_whatsapp, enabled_email, enabled_reminders, whatsapp_instance_name, email_recipients, email_sender_name, email_reply_to, evt_novo_lead, evt_stage_changed, evt_visita_agendada, evt_visita_realizada, evt_chamada_agendada, evt_chamada_realizada, evt_financiamento_update')
     .eq('org_id', event.org_id)
     .maybeSingle()
 
@@ -249,6 +273,29 @@ async function processEvent(
         locked_at: null,
         processed_at: new Date().toISOString(),
         last_error: 'notifications_disabled',
+      })
+      .eq('id', event.id)
+    return
+  }
+
+  // Check per-event-type toggle
+  const eventToggleMap: Record<string, boolean> = {
+    novo_lead: settings.evt_novo_lead !== false,
+    stage_changed: settings.evt_stage_changed !== false,
+    visita_agendada: settings.evt_visita_agendada !== false,
+    visita_realizada: settings.evt_visita_realizada !== false,
+    chamada_agendada: settings.evt_chamada_agendada !== false,
+    chamada_realizada: settings.evt_chamada_realizada !== false,
+    financiamento_update: settings.evt_financiamento_update !== false,
+  }
+  if (eventToggleMap[event.event_type] === false) {
+    await supabase
+      .from('notification_events')
+      .update({
+        status: 'canceled',
+        locked_at: null,
+        processed_at: new Date().toISOString(),
+        last_error: `event_type_disabled:${event.event_type}`,
       })
       .eq('id', event.id)
     return
@@ -306,7 +353,13 @@ async function processEvent(
       if (!recipient) continue
 
       try {
-        const responsePayload = await sendEmailViaResend(recipient, subject, text)
+        const responsePayload = await sendEmailViaResend(
+          recipient,
+          subject,
+          text,
+          settings.email_sender_name,
+          settings.email_reply_to,
+        )
         sentCount += 1
         await logDispatch(supabase, event, 'email', recipient, 'success', responsePayload, null)
       } catch (error) {

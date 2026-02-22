@@ -10,11 +10,21 @@ export interface NotificationSettings {
   enabled_reminders: boolean;
   whatsapp_instance_name: string | null;
   email_recipients: string[];
+  email_sender_name: string | null;
+  email_reply_to: string | null;
   daily_digest_enabled: boolean;
   weekly_digest_enabled: boolean;
   daily_digest_time: string;
   weekly_digest_time: string;
   timezone: string;
+  /* event-type toggles */
+  evt_novo_lead: boolean;
+  evt_stage_changed: boolean;
+  evt_visita_agendada: boolean;
+  evt_visita_realizada: boolean;
+  evt_chamada_agendada: boolean;
+  evt_chamada_realizada: boolean;
+  evt_financiamento_update: boolean;
   updated_by: string | null;
 }
 
@@ -25,11 +35,20 @@ export const DEFAULT_NOTIFICATION_SETTINGS = {
   enabled_reminders: false,
   whatsapp_instance_name: null,
   email_recipients: [] as string[],
+  email_sender_name: null as string | null,
+  email_reply_to: null as string | null,
   daily_digest_enabled: false,
   weekly_digest_enabled: false,
   daily_digest_time: '19:00:00',
   weekly_digest_time: '18:00:00',
   timezone: 'America/Sao_Paulo',
+  evt_novo_lead: true,
+  evt_stage_changed: true,
+  evt_visita_agendada: true,
+  evt_visita_realizada: true,
+  evt_chamada_agendada: true,
+  evt_chamada_realizada: true,
+  evt_financiamento_update: true,
 };
 
 export function useNotificationSettings() {

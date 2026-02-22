@@ -33,6 +33,16 @@ import {
   BarChart3,
   Check,
   ChevronsUpDown,
+  UserCircle,
+  Reply,
+  Info,
+  UserPlus,
+  ArrowRightLeft,
+  Calendar,
+  CheckCircle2,
+  Phone,
+  Landmark,
+  Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNotificationSettings } from '@/hooks/useNotificationSettings';
@@ -215,7 +225,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     </div>
                     <div>
                       <p className="text-sm font-medium">E-mail</p>
-                      <p className="text-xs text-muted-foreground">Via Resend</p>
+                      <p className="text-xs text-muted-foreground">Notificações por e-mail</p>
                     </div>
                   </div>
                   <Switch
@@ -226,23 +236,70 @@ export function NotificationConfigPanel({ onClose }: Props) {
                   />
                 </div>
                 {settings?.enabled_email && (
-                  <div className="px-3 pb-3 pt-0">
-                    <Label className="text-xs text-muted-foreground mb-1.5 block">
-                      Destinatários (separar por vírgula)
-                    </Label>
-                    <Input
-                      className="h-9 text-sm"
-                      value={emailInput}
-                      placeholder="gestor@empresa.com"
-                      onChange={(e) => setEmailInput(e.target.value)}
-                      onBlur={() => {
-                        const list = emailInput
-                          .split(',')
-                          .map((s) => s.trim())
-                          .filter(Boolean);
-                        save({ email_recipients: list });
-                      }}
-                    />
+                  <div className="px-3 pb-3 pt-0 space-y-3">
+                    {/* Sender display name */}
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1">
+                        <UserCircle className="w-3 h-3" />
+                        Nome do Remetente
+                      </Label>
+                      <Input
+                        className="h-9 text-sm"
+                        value={settings.email_sender_name || ''}
+                        placeholder="Minha Empresa Solar"
+                        onChange={(e) => save({ email_sender_name: e.target.value || null })}
+                      />
+                      <p className="text-[10px] text-muted-foreground/70 mt-1">
+                        Aparece como remetente no inbox do destinatário
+                      </p>
+                    </div>
+
+                    {/* Reply-To */}
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1">
+                        <Reply className="w-3 h-3" />
+                        E-mail de Resposta (Reply-To)
+                      </Label>
+                      <Input
+                        className="h-9 text-sm"
+                        type="email"
+                        value={settings.email_reply_to || ''}
+                        placeholder="contato@minhaempresa.com.br"
+                        onChange={(e) => save({ email_reply_to: e.target.value || null })}
+                      />
+                      <p className="text-[10px] text-muted-foreground/70 mt-1">
+                        Respostas aos e-mails serão enviadas para este endereço
+                      </p>
+                    </div>
+
+                    {/* Recipients */}
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1.5 block">
+                        Destinatários (separar por vírgula)
+                      </Label>
+                      <Input
+                        className="h-9 text-sm"
+                        value={emailInput}
+                        placeholder="gestor@empresa.com"
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        onBlur={() => {
+                          const list = emailInput
+                            .split(',')
+                            .map((s) => s.trim())
+                            .filter(Boolean);
+                          save({ email_recipients: list });
+                        }}
+                      />
+                    </div>
+
+                    {/* Info box */}
+                    <div className="flex items-start gap-2 p-2 rounded-lg bg-blue-500/5 border border-blue-500/10">
+                      <Info className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" />
+                      <p className="text-[10px] text-blue-600/80 leading-relaxed">
+                        Os e-mails são enviados pelo domínio da plataforma com o nome
+                        da sua empresa. As respostas vão para o e-mail de resposta configurado acima.
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -276,6 +333,151 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     onCheckedChange={(v) => save({ enabled_reminders: v })}
                     disabled={!on}
                     className="data-[state=checked]:bg-amber-500"
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* ═══ EVENTOS MONITORADOS ═══ */}
+            <section className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
+                Eventos Monitorados
+              </p>
+              <p className="text-[11px] text-muted-foreground/70 px-1 -mt-1">
+                Escolha quais eventos geram notificações
+              </p>
+
+              <div className="rounded-xl border bg-background/50 divide-y divide-border overflow-hidden">
+                {/* Novo Lead */}
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center', settings?.evt_novo_lead ? 'bg-emerald-500/15' : 'bg-muted')}>
+                      <UserPlus className={cn('w-3.5 h-3.5', settings?.evt_novo_lead ? 'text-emerald-600' : 'text-muted-foreground')} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Novo Lead</p>
+                      <p className="text-[10px] text-muted-foreground">Lead criado no CRM</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings?.evt_novo_lead !== false}
+                    onCheckedChange={(v) => save({ evt_novo_lead: v })}
+                    disabled={!on}
+                    className="data-[state=checked]:bg-emerald-500 scale-90"
+                  />
+                </div>
+
+                {/* Mudança de Etapa */}
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center', settings?.evt_stage_changed ? 'bg-blue-500/15' : 'bg-muted')}>
+                      <ArrowRightLeft className={cn('w-3.5 h-3.5', settings?.evt_stage_changed ? 'text-blue-600' : 'text-muted-foreground')} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Mudança de Etapa</p>
+                      <p className="text-[10px] text-muted-foreground">Lead mudou no pipeline</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings?.evt_stage_changed !== false}
+                    onCheckedChange={(v) => save({ evt_stage_changed: v })}
+                    disabled={!on}
+                    className="data-[state=checked]:bg-blue-500 scale-90"
+                  />
+                </div>
+
+                {/* Visita Agendada */}
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center', settings?.evt_visita_agendada ? 'bg-teal-500/15' : 'bg-muted')}>
+                      <Calendar className={cn('w-3.5 h-3.5', settings?.evt_visita_agendada ? 'text-teal-600' : 'text-muted-foreground')} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Visita Agendada</p>
+                      <p className="text-[10px] text-muted-foreground">Nova visita marcada</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings?.evt_visita_agendada !== false}
+                    onCheckedChange={(v) => save({ evt_visita_agendada: v })}
+                    disabled={!on}
+                    className="data-[state=checked]:bg-teal-500 scale-90"
+                  />
+                </div>
+
+                {/* Visita Realizada */}
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center', settings?.evt_visita_realizada ? 'bg-green-500/15' : 'bg-muted')}>
+                      <CheckCircle2 className={cn('w-3.5 h-3.5', settings?.evt_visita_realizada ? 'text-green-600' : 'text-muted-foreground')} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Visita Realizada</p>
+                      <p className="text-[10px] text-muted-foreground">Visita concluída</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings?.evt_visita_realizada !== false}
+                    onCheckedChange={(v) => save({ evt_visita_realizada: v })}
+                    disabled={!on}
+                    className="data-[state=checked]:bg-green-500 scale-90"
+                  />
+                </div>
+
+                {/* Chamada Agendada */}
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center', settings?.evt_chamada_agendada ? 'bg-purple-500/15' : 'bg-muted')}>
+                      <Phone className={cn('w-3.5 h-3.5', settings?.evt_chamada_agendada ? 'text-purple-600' : 'text-muted-foreground')} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Chamada Agendada</p>
+                      <p className="text-[10px] text-muted-foreground">Nova chamada marcada</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings?.evt_chamada_agendada !== false}
+                    onCheckedChange={(v) => save({ evt_chamada_agendada: v })}
+                    disabled={!on}
+                    className="data-[state=checked]:bg-purple-500 scale-90"
+                  />
+                </div>
+
+                {/* Chamada Realizada */}
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center', settings?.evt_chamada_realizada ? 'bg-green-600/15' : 'bg-muted')}>
+                      <CheckCircle2 className={cn('w-3.5 h-3.5', settings?.evt_chamada_realizada ? 'text-green-700' : 'text-muted-foreground')} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Chamada Realizada</p>
+                      <p className="text-[10px] text-muted-foreground">Chamada concluída</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings?.evt_chamada_realizada !== false}
+                    onCheckedChange={(v) => save({ evt_chamada_realizada: v })}
+                    disabled={!on}
+                    className="data-[state=checked]:bg-green-600 scale-90"
+                  />
+                </div>
+
+                {/* Financiamento */}
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center', settings?.evt_financiamento_update ? 'bg-amber-500/15' : 'bg-muted')}>
+                      <Landmark className={cn('w-3.5 h-3.5', settings?.evt_financiamento_update ? 'text-amber-600' : 'text-muted-foreground')} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Financiamento</p>
+                      <p className="text-[10px] text-muted-foreground">Atualização de financiamento</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings?.evt_financiamento_update !== false}
+                    onCheckedChange={(v) => save({ evt_financiamento_update: v })}
+                    disabled={!on}
+                    className="data-[state=checked]:bg-amber-500 scale-90"
                   />
                 </div>
               </div>

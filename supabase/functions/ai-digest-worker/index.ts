@@ -12,6 +12,8 @@ type NotificationSettingsRow = {
   enabled_email: boolean
   whatsapp_instance_name: string | null
   email_recipients: string[]
+  email_sender_name: string | null
+  email_reply_to: string | null
   daily_digest_enabled: boolean
   weekly_digest_enabled: boolean
   daily_digest_time: string
@@ -105,11 +107,33 @@ async function sendWhatsAppViaProxy(
   return parsed
 }
 
-async function sendEmailViaResend(recipient: string, subject: string, text: string) {
+async function sendEmailViaResend(
+  recipient: string,
+  subject: string,
+  text: string,
+  senderName?: string | null,
+  replyTo?: string | null,
+) {
   const resendKey = Deno.env.get('RESEND_API_KEY') || ''
   if (!resendKey) throw new Error('missing_resend_api_key')
 
-  const fromEmail = Deno.env.get('RESEND_FROM_EMAIL') || 'SolarZap <notificacoes@resend.dev>'
+  const defaultFrom = Deno.env.get('RESEND_FROM_EMAIL') || 'SolarZap <notificacoes@resend.dev>'
+  let fromEmail = defaultFrom
+  if (senderName) {
+    const emailMatch = defaultFrom.match(/<([^>]+)>/) || [null, defaultFrom.replace(/^[^<]*$/, '$&')]
+    const rawEmail = emailMatch[1] || defaultFrom
+    fromEmail = `${senderName} <${rawEmail}>`
+  }
+
+  const body: Record<string, unknown> = {
+    from: fromEmail,
+    to: [recipient],
+    subject,
+    text,
+  }
+  if (replyTo) {
+    body.reply_to = replyTo
+  }
 
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -117,12 +141,7 @@ async function sendEmailViaResend(recipient: string, subject: string, text: stri
       'Content-Type': 'application/json',
       Authorization: `Bearer ${resendKey}`,
     },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [recipient],
-      subject,
-      text,
-    }),
+    body: JSON.stringify(body),
   })
 
   const raw = await response.text()
@@ -329,7 +348,13 @@ async function processDigestForOrg(
       const recipient = String(rawRecipient || '').trim()
       if (!recipient) continue
       try {
-        await sendEmailViaResend(recipient, `${digestTitle} - SolarZap`, digestText)
+        await sendEmailViaResend(
+          recipient,
+          `${digestTitle} - SolarZap`,
+          digestText,
+          settings.email_sender_name,
+          settings.email_reply_to,
+        )
         ;(channelResults.email as any).sent += 1
       } catch (error) {
         ;(channelResults.email as any).failed += 1
@@ -410,7 +435,7 @@ Deno.serve(async (req) => {
 
     const { data: settingsRows, error: settingsError } = await supabase
       .from('notification_settings')
-      .select('org_id, enabled_notifications, enabled_whatsapp, enabled_email, whatsapp_instance_name, email_recipients, daily_digest_enabled, weekly_digest_enabled, daily_digest_time, weekly_digest_time, timezone')
+      .select('org_id, enabled_notifications, enabled_whatsapp, enabled_email, whatsapp_instance_name, email_recipients, email_sender_name, email_reply_to, daily_digest_enabled, weekly_digest_enabled, daily_digest_time, weekly_digest_time, timezone')
       .eq('enabled_notifications', true)
       .or('daily_digest_enabled.eq.true,weekly_digest_enabled.eq.true')
 
