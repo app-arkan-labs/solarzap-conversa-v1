@@ -2,14 +2,15 @@ import React, { useState } from 'react';
 import { useAISettings } from '../../hooks/useAISettings';
 import { useUserWhatsAppInstances } from '../../hooks/useUserWhatsAppInstances';
 import { toast } from 'sonner';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Switch } from '../ui/switch';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { PIPELINE_STAGES, PipelineStage } from '../../types/solarzap';
-import { AlertTriangle, RefreshCcw, Save, Bot } from 'lucide-react';
+import { AI_SUPPORT_ELIGIBLE_STAGES } from '../../constants/aiSupportStages';
+import { AlertTriangle, RefreshCcw, Save, Bot, ChevronRight, Shield } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
@@ -42,7 +43,7 @@ export function AIAgentsView() {
 
     const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setLocalAssistantName(e.target.value);
-        setHasUnsavedChanges(true); // Simplified check; strictly speaking should compare with original, but user just wants the button to appear on edit
+        setHasUnsavedChanges(true);
     };
 
     const handleCancelNameChange = () => {
@@ -103,9 +104,12 @@ export function AIAgentsView() {
         return `Objetivo: ${fallbackGoal}\n\nAtue como consultor solar na etapa ${title}. Responda com objetividade, prossiga para o proximo passo e mantenha contexto comercial.`;
     };
 
+    const activeCount = pipelineStagesInOrder.filter(s => stageConfigs.find(c => c.status_pipeline === s)?.is_active).length;
+
     return (
         <div className="h-full w-full min-h-0 overflow-x-hidden overflow-y-auto bg-slate-50">
-            <div className="mx-auto w-full max-w-[1400px] space-y-6 p-4 md:p-6 pb-24">
+            <div className="mx-auto w-full max-w-[900px] space-y-6 p-4 md:p-6 pb-24">
+            {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
@@ -113,198 +117,169 @@ export function AIAgentsView() {
                     </div>
                     <div>
                         <h1 className="text-2xl font-bold text-foreground">Inteligência Artificial</h1>
-                        <p className="text-slate-600">Configure os agentes autônomos para cada etapa do seu funil.</p>
+                        <p className="text-slate-500 text-sm">Configure os agentes autônomos do seu funil</p>
                     </div>
                 </div>
-                {/* Global Restore placeholder or just indication */}
-                <div className="flex items-center gap-2">
-                    <Badge variant={settings?.is_active ? "default" : "secondary"}>
+                <div className="flex items-center gap-3">
+                    <Badge variant={settings?.is_active ? "default" : "secondary"} className="h-7 px-3">
                         {settings?.is_active ? "SISTEMA ATIVO" : "SISTEMA PAUSADO"}
                     </Badge>
+                    <Switch
+                        checked={settings?.is_active || false}
+                        onCheckedChange={(checked) => updateGlobalSettings({ is_active: checked })}
+                        className="data-[state=checked]:bg-green-500"
+                    />
                 </div>
             </div>
 
-            {/* Global Settings */}
-            <div className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-sm font-medium uppercase text-slate-500">Controle Mestre</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex items-center justify-between p-4 border rounded-lg bg-white shadow-sm">
-                                <div className="space-y-0.5">
-                                    <Label className="text-base font-semibold">Sistema AI Mestre</Label>
-                                    <p className="text-sm text-muted-foreground">
-                                        {settings?.is_active
-                                            ? "O sistema está ATIVO e monitorando o pipeline."
-                                            : "O sistema está PAUSADO. Nenhuma ação será tomada."}
-                                    </p>
-                                </div>
-                                <Switch
-                                    checked={settings?.is_active || false}
-                                    onCheckedChange={(checked) => updateGlobalSettings({ is_active: checked })}
-                                />
-                            </div>
-                        </CardContent>
-                    </Card>
+            {/* Compact Settings Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card className="shadow-sm">
+                    <CardContent className="p-4">
+                        <Label className="text-xs uppercase text-slate-400 font-medium">Nome do Assistente</Label>
+                        <Input
+                            className="mt-2"
+                            value={localAssistantName}
+                            onChange={handleNameChange}
+                            placeholder="Ex: Consultor Solar, Ana, Carlos..."
+                        />
+                    </CardContent>
+                </Card>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-sm font-medium uppercase text-slate-500">Identidade do Assistente</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label>Nome do Assistente</Label>
-                                <Input
-                                    value={localAssistantName}
-                                    onChange={handleNameChange}
-                                    placeholder="Ex: Consultor Solar, Ana, Carlos..."
-                                />
-                            </div>
-                            {/* API Key hidden for security - uses Backend ENV */}
-                        </CardContent>
-                    </Card>
-                </div>
-
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-sm font-medium uppercase text-slate-500">Controle por Instância</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <Label>Instâncias com IA Ativa</Label>
-                            <div className="text-sm text-slate-600 mb-2">
-                                A instância que receber a mensagem é a mesma que responderá. Ative/desative a IA em <strong>Central de Integrações &gt; WhatsApp Business</strong>.
-                            </div>
-
-                            <div className="flex flex-col gap-2 mt-2">
-                                {whatsappInstances.filter(i => i.status === 'connected').length === 0 ? (
-                                    <div className="text-sm text-muted-foreground italic flex items-center gap-2 p-2 border border-dashed rounded bg-slate-50">
-                                        <AlertTriangle className="h-4 w-4" />
-                                        Nenhuma instância online no momento.
-                                    </div>
-                                ) : (
-                                    whatsappInstances.filter(i => i.status === 'connected').map(inst => (
-                                        <div key={inst.id} className="flex items-center justify-between p-2 border rounded bg-white hover:bg-slate-50 transition-colors">
-                                            <div className="flex items-center gap-2">
-                                                <div className={`h-2 w-2 rounded-full ${inst.status === 'connected' ? 'bg-green-500' : 'bg-red-400'}`} />
-                                                <span className="font-medium text-sm">{inst.instance_name}</span>
-                                                {/* Instance specific AI Badge - Reflects Global State too */}
-                                                <Badge
-                                                    variant={inst.ai_enabled && settings?.is_active ? 'default' : 'secondary'}
-                                                    className={`text-[10px] h-5 ${inst.ai_enabled && settings?.is_active ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''}`}
-                                                >
-                                                    {!settings?.is_active
-                                                        ? 'Sistema Pausado'
-                                                        : inst.ai_enabled
-                                                            ? 'IA Ativa'
-                                                            : 'IA Pausada'}
-                                                </Badge>
-                                            </div>
-
-                                            <div className="flex items-center gap-2">
-                                                {/* AI Toggle Switch */}
-                                                <div className="flex items-center gap-2 mr-2 px-2 py-1 bg-muted/30 rounded-md border border-border/50"
-                                                    title={!settings?.is_active ? "IA Global Desativada" : "Ativar/Desativar IA para esta instância"}
-                                                >
-                                                    <span className="text-xs font-medium text-muted-foreground">IA</span>
-                                                    <Switch
-                                                        checked={!!inst.ai_enabled}
-                                                        onCheckedChange={(checked) => setInstanceAiEnabled(inst.instance_name, checked)}
-                                                        disabled={!settings?.is_active}
-                                                        className="scale-75 origin-right data-[state=checked]:bg-green-500"
-                                                    />
-                                                </div>
-
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    className="h-7 text-xs bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
-                                                    onClick={async () => {
-                                                        const count = await activateAiForAllLeads(inst.instance_name);
-                                                        if (count !== null) {
-                                                            toast.success(`IA ativada para ${count} contato(s) da instância ${inst.instance_name}`);
-                                                        }
-                                                    }}
-                                                >
-                                                    <Bot className="w-3 h-3 mr-1.5" />
-                                                    Ativar para todos os contatos
-                                                </Button>
-
-                                                <Badge variant="outline" className="text-xs bg-white text-green-700 border-green-200">
-                                                    Online
-                                                </Badge>
-                                            </div>
+                <Card className="shadow-sm">
+                    <CardContent className="p-4">
+                        <Label className="text-xs uppercase text-slate-400 font-medium">Instâncias Conectadas</Label>
+                        <div className="flex flex-col gap-1.5 mt-2">
+                            {whatsappInstances.filter(i => i.status === 'connected').length === 0 ? (
+                                <p className="text-sm text-muted-foreground italic flex items-center gap-1.5">
+                                    <AlertTriangle className="h-3.5 w-3.5" /> Nenhuma instância online
+                                </p>
+                            ) : (
+                                whatsappInstances.filter(i => i.status === 'connected').map(inst => (
+                                    <div key={inst.id} className="flex items-center justify-between text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-2 w-2 rounded-full bg-green-500" />
+                                            <span className="font-medium">{inst.instance_name}</span>
                                         </div>
-                                    ))
-                                )}
-                            </div>
+                                        <div className="flex items-center gap-2">
+                                            <Switch
+                                                checked={!!inst.ai_enabled}
+                                                onCheckedChange={(checked) => setInstanceAiEnabled(inst.instance_name, checked)}
+                                                disabled={!settings?.is_active}
+                                                className="scale-75 origin-right data-[state=checked]:bg-green-500"
+                                            />
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-6 text-[11px] text-green-700 hover:text-green-800 hover:bg-green-50 px-2"
+                                                onClick={async () => {
+                                                    const count = await activateAiForAllLeads(inst.instance_name);
+                                                    if (count !== null) toast.success(`IA ativada para ${count} contato(s)`);
+                                                }}
+                                            >
+                                                Ativar todos
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* Pipeline Stages Agents */}
-            <div className="space-y-4">
-                <h2 className="text-lg font-semibold text-slate-800">Agentes de Pipeline</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {pipelineStagesInOrder.map((stage) => {
-                        const config = stageConfigs.find(c => c.status_pipeline === stage);
-                        const stageInfo = PIPELINE_STAGES[stage];
-                        const isEnabled = config?.is_active || false;
-                        const fallbackGoal = config?.agent_goal || getFallbackGoal(stage);
-                        const effectivePrompt =
-                            config?.prompt_override ||
-                            config?.default_prompt ||
-                            getFallbackPrompt(stage, fallbackGoal);
+            {/* Agente de Apoio Global */}
+            <Card className="shadow-sm border-l-4 border-l-blue-500">
+                <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                                <Shield className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-sm">Agente de Apoio Global</h3>
+                                <p className="text-xs text-slate-500">Responde mensagens fora do horário e em etapas sem agente dedicado. Mantém o lead engajado.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <Badge variant="outline" className="text-xs">
+                                {AI_SUPPORT_ELIGIBLE_STAGES.length} etapas elegíveis
+                            </Badge>
+                            <Switch
+                                checked={settings?.support_agent_enabled ?? true}
+                                onCheckedChange={(checked) => updateGlobalSettings({ support_agent_enabled: checked })}
+                                className="data-[state=checked]:bg-blue-500"
+                            />
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
-                        return (
-                            <Card
-                                key={stage}
-                                className={`border-l-4 ${isEnabled ? 'border-l-green-500' : 'border-l-slate-300'} hover:shadow-md transition-shadow`}
-                                data-testid={`ai-stage-card-${stage}`}
-                            >
-                                <CardHeader className="pb-3">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <div className={`p-2 rounded-full ${stageInfo.color.replace('bg-', 'bg-opacity-20 text-')}`}>
-                                                {stageInfo.icon}
-                                            </div>
-                                            <span className="font-semibold text-sm">{stageInfo.title}</span>
-                                        </div>
-                                        <Badge variant={isEnabled ? "default" : "secondary"}>
-                                            {isEnabled ? "Ativo" : "Inativo"}
-                                        </Badge>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="text-sm text-slate-600 min-h-[40px]">
-                                        <span className="font-semibold text-xs uppercase text-slate-400">Objetivo:</span>
-                                        <p className="line-clamp-2">{fallbackGoal}</p>
+            {/* Pipeline Agents - Compact List */}
+            <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-base font-semibold text-slate-800">Agentes de Pipeline</h2>
+                    <span className="text-xs text-slate-500">{activeCount}/{pipelineStagesInOrder.length} ativos</span>
+                </div>
+
+                <Card className="shadow-sm overflow-hidden">
+                    <div className="divide-y">
+                        {pipelineStagesInOrder.map((stage) => {
+                            const config = stageConfigs.find(c => c.status_pipeline === stage);
+                            const stageInfo = PIPELINE_STAGES[stage];
+                            const isEnabled = config?.is_active || false;
+                            const fallbackGoal = config?.agent_goal || getFallbackGoal(stage);
+                            const effectivePrompt =
+                                config?.prompt_override ||
+                                config?.default_prompt ||
+                                getFallbackPrompt(stage, fallbackGoal);
+
+                            return (
+                                <div
+                                    key={stage}
+                                    className={`flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors group ${!isEnabled ? 'opacity-60' : ''}`}
+                                    data-testid={`ai-stage-row-${stage}`}
+                                >
+                                    {/* Stage icon + color */}
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${stageInfo.color} bg-opacity-20`}>
+                                        <span className="text-sm">{stageInfo.icon}</span>
                                     </div>
 
-                                    <div className="flex items-center justify-between pt-2 border-t">
+                                    {/* Name + goal */}
+                                    <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
-                                            <Switch
-                                                checked={isEnabled}
-                                                onCheckedChange={(checked) => updateStageConfig(stage, { is_active: checked })}
-                                            />
-                                            <Label className="text-xs">Habilitar</Label>
+                                            <span className="font-medium text-sm text-slate-800">{stageInfo.title}</span>
+                                            <Badge
+                                                variant={isEnabled ? "default" : "secondary"}
+                                                className={`text-[10px] h-4 px-1.5 ${isEnabled ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''}`}
+                                            >
+                                                {isEnabled ? "Ativo" : "Off"}
+                                            </Badge>
                                         </div>
+                                        <p className="text-xs text-slate-500 truncate">{fallbackGoal}</p>
+                                    </div>
+
+                                    {/* Toggle + Edit */}
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                        <Switch
+                                            checked={isEnabled}
+                                            onCheckedChange={(checked) => updateStageConfig(stage, { is_active: checked })}
+                                            className="scale-90 data-[state=checked]:bg-green-500"
+                                        />
                                         <Button
                                             size="sm"
-                                            variant="outline"
+                                            variant="ghost"
+                                            className="h-7 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                                             onClick={() => handleEditClick(stage, effectivePrompt)}
                                         >
-                                            Editar Agente
+                                            Editar <ChevronRight className="w-3 h-3 ml-1" />
                                         </Button>
                                     </div>
-                                </CardContent>
-                            </Card>
-                        );
-                    })}
-                </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </Card>
             </div>
 
             {/* Floating Save Bar */}
@@ -313,21 +288,11 @@ export function AIAgentsView() {
                     <div className="bg-white rounded-lg shadow-xl border p-4 flex items-center gap-4">
                         <span className="text-sm font-medium text-slate-600">Alterações não salvas</span>
                         <div className="flex items-center gap-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleCancelNameChange}
-                                className="h-9"
-                            >
-                                <span className="mr-2">✕</span> Cancelar
+                            <Button variant="outline" size="sm" onClick={handleCancelNameChange} className="h-9">
+                                ✕ Cancelar
                             </Button>
-                            <Button
-                                size="sm"
-                                onClick={handleSaveNameChange}
-                                className="bg-green-500 hover:bg-green-600 text-white h-9"
-                            >
-                                <Save className="w-4 h-4 mr-2" />
-                                Salvar
+                            <Button size="sm" onClick={handleSaveNameChange} className="bg-green-500 hover:bg-green-600 text-white h-9">
+                                <Save className="w-4 h-4 mr-2" /> Salvar
                             </Button>
                         </div>
                     </div>
@@ -363,7 +328,6 @@ export function AIAgentsView() {
                             Personalize as instruções para este estágio.
                         </DialogDescription>
                     </DialogHeader>
-
                     <div className="flex-1 py-4">
                         <Textarea
                             className="h-full resize-none font-mono text-sm"
@@ -371,21 +335,14 @@ export function AIAgentsView() {
                             onChange={(e) => setTempPrompt(e.target.value)}
                         />
                     </div>
-
                     <DialogFooter className="flex justify-between items-center sm:justify-between">
-                        <Button
-                            variant="ghost"
-                            className="text-slate-500 hover:text-slate-800"
-                            onClick={handleRestoreDefault}
-                        >
-                            <RefreshCcw className="w-4 h-4 mr-2" />
-                            Restaurar Padrão
+                        <Button variant="ghost" className="text-slate-500 hover:text-slate-800" onClick={handleRestoreDefault}>
+                            <RefreshCcw className="w-4 h-4 mr-2" /> Restaurar Padrão
                         </Button>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={() => setIsEditorOpen(false)}>Cancelar</Button>
                             <Button onClick={handleSavePrompt}>
-                                <Save className="w-4 h-4 mr-2" />
-                                Salvar Alterações
+                                <Save className="w-4 h-4 mr-2" /> Salvar Alterações
                             </Button>
                         </div>
                     </DialogFooter>

@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { ActiveTab } from '@/types/solarzap';
-import { MessageCircle, Kanban, Calendar, Users, FileText, BarChart3, Sun, Bell, Settings, Plug, Zap, Brain, Bot, UserCog } from 'lucide-react';
+import { MessageCircle, Kanban, Calendar, Users, FileText, BarChart3, Bell, Settings, Plug, Zap, Brain, Bot, UserCog, User } from 'lucide-react';
 import { GoogleAccountButton } from './GoogleAccountButton';
 import {
   Popover,
@@ -38,9 +38,7 @@ export function SolarZapNav({
     <nav className="w-[60px] h-full bg-secondary flex flex-col items-center py-4">
       {/* Logo */}
       <div className="mb-8 p-2">
-        <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-          <Sun className="w-6 h-6 text-primary-foreground" />
-        </div>
+        <img src="/logo.png" alt="SolarZap" className="w-10 h-10 rounded-full object-cover" />
       </div>
 
       {/* Navigation Items */}
@@ -158,6 +156,18 @@ export function SolarZapNav({
                 </div>
                 Banco de Dados
               </button>
+
+              <div className="border-t my-1" />
+
+              <button
+                onClick={() => onTabChange('minha_conta')}
+                className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
+              >
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <User className="w-4 h-4 text-primary" />
+                </div>
+                Minha Conta
+              </button>
             </div>
           </PopoverContent>
         </Popover>
@@ -165,9 +175,13 @@ export function SolarZapNav({
 
       {/* User avatar */}
       <div className="pb-4">
-        <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center">
-          <span className="text-xs font-medium text-sidebar-foreground">RM</span>
-        </div>
+        <button
+          onClick={() => onTabChange('minha_conta')}
+          className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer"
+          title="Minha Conta"
+        >
+          <User className="w-4 h-4 text-sidebar-foreground" />
+        </button>
       </div>
     </nav>
   );

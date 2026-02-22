@@ -18,6 +18,7 @@ import { AutomationsView } from './AutomationsView';
 import { AIAgentsView } from './AIAgentsView';
 import { KnowledgeBaseView } from './KnowledgeBaseView';
 import { ProposalsView } from './ProposalsView';
+import { ConfiguracoesContaView } from './ConfiguracoesContaView';
 import { NotificationSettingsCard } from './NotificationSettingsCard';
 import { NotificationsPanel } from './NotificationsPanel';
 import { CreateLeadModal, CreateLeadData } from './CreateLeadModal';
@@ -1007,6 +1008,12 @@ export function SolarZapLayout() {
       {activeTab === 'banco_ia' && (
         <div className="flex-1 flex flex-col h-full overflow-hidden">
           <KnowledgeBaseView />
+        </div>
+      )}
+
+      {activeTab === 'minha_conta' && (
+        <div className="flex-1 h-full overflow-auto">
+          <ConfiguracoesContaView />
         </div>
       )}
 

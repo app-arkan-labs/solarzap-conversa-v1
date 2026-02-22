@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, RefreshCw, Users } from 'lucide-react';
+import { Loader2, RefreshCw, Users, UserPlus, Shield, Eye, Trash2, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -14,6 +14,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 
 type InviteMode = 'create' | 'invite';
 type AdminMembersPageProps = {
@@ -29,6 +31,20 @@ type DraftByUserId = Record<
 >;
 
 const ROLE_OPTIONS: OrgRole[] = ['owner', 'admin', 'user', 'consultant'];
+
+const ROLE_LABELS: Record<OrgRole, string> = {
+  owner: 'Proprietário',
+  admin: 'Administrador',
+  user: 'Vendedor',
+  consultant: 'Consultor',
+};
+
+const ROLE_COLORS: Record<OrgRole, string> = {
+  owner: 'bg-purple-100 text-purple-700 border-purple-200',
+  admin: 'bg-blue-100 text-blue-700 border-blue-200',
+  user: 'bg-green-100 text-green-700 border-green-200',
+  consultant: 'bg-amber-100 text-amber-700 border-amber-200',
+};
 
 function fallbackMemberLabel(member: MemberDto) {
   if (member.email) {
@@ -280,11 +296,13 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-              <Users className="h-6 w-6 text-primary" />
-              Admin Members
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Shield className="h-5 w-5 text-primary" />
+              </div>
+              Gestão de Equipe
             </h1>
             <p className="text-sm text-muted-foreground">
-              Gerencie convite, roles e permissoes da organizacao.
+              Gerencie membros, funções e permissões da sua organização.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -302,9 +320,12 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
 
         <Card>
           <CardHeader>
-            <CardTitle>Convidar membro</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-primary" />
+              Adicionar Membro
+            </CardTitle>
             <CardDescription>
-              Fluxo hibrido: criar com senha temporaria ou enviar invite por email.
+              Crie com senha temporária ou envie um convite por e-mail.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -321,7 +342,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="text-sm font-medium">Role</label>
+                <label className="text-sm font-medium">Função</label>
                 <select
                   data-testid="invite-role-select"
                   className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
@@ -330,7 +351,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                 >
                   {ROLE_OPTIONS.map((roleOption) => (
                     <option key={roleOption} value={roleOption}>
-                      {roleOption}
+                      {ROLE_LABELS[roleOption]}
                     </option>
                   ))}
                 </select>
@@ -343,19 +364,18 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                   value={inviteMode}
                   onChange={(event) => setInviteMode(event.target.value as InviteMode)}
                 >
-                  <option value="create">create</option>
-                  <option value="invite">invite</option>
+                  <option value="create">Criar com senha</option>
+                  <option value="invite">Enviar convite</option>
                 </select>
               </div>
               <div className="md:col-span-2 flex items-end">
                 <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    data-testid="invite-can-view-toggle"
-                    type="checkbox"
+                  <Switch
                     checked={inviteCanViewTeamLeads}
-                    onChange={(event) => setInviteCanViewTeamLeads(event.target.checked)}
+                    onCheckedChange={setInviteCanViewTeamLeads}
+                    className="scale-90"
                   />
-                  can_view_team_leads
+                  <span className="text-xs">Ver leads da equipe</span>
                 </label>
               </div>
               <div className="md:col-span-1 flex items-end">
@@ -368,9 +388,11 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
             {lastTempPassword && (
               <div
                 data-testid="invite-temp-password"
-                className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm"
+                className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm"
               >
-                Senha temporaria criada: <code className="font-semibold">{lastTempPassword}</code>
+                <span className="font-medium text-amber-800">Senha temporária:</span>{' '}
+                <code className="font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded">{lastTempPassword}</code>
+                <p className="text-xs text-amber-600 mt-1">Compartilhe essa senha com o novo membro. Ele poderá alterá-la depois.</p>
               </div>
             )}
           </CardContent>
@@ -378,20 +400,24 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
 
         <Card>
           <CardHeader>
-            <CardTitle>Membros ({members.length})</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              Membros da Equipe
+              <Badge variant="secondary" className="ml-1">{members.length}</Badge>
+            </CardTitle>
             <CardDescription>
-              Owners atuais: {ownerCount}. A remocao/democao do ultimo owner e bloqueada no backend.
+              {ownerCount} proprietário(s) ativo(s). O último proprietário não pode ser removido.
             </CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="members-table">
               <thead>
                 <tr className="border-b text-left">
-                  <th className="pb-3 font-medium">Email</th>
-                  <th className="pb-3 font-medium">Role</th>
-                  <th className="pb-3 font-medium">can_view_team_leads</th>
-                  <th className="pb-3 font-medium">Joined</th>
-                  <th className="pb-3 font-medium text-right">Acoes</th>
+                  <th className="pb-3 font-medium">Membro</th>
+                  <th className="pb-3 font-medium">Função</th>
+                  <th className="pb-3 font-medium">Ver equipe</th>
+                  <th className="pb-3 font-medium">Entrada</th>
+                  <th className="pb-3 font-medium text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -410,7 +436,19 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                       data-testid={`member-row-${member.user_id}`}
                       className="border-b align-middle"
                     >
-                      <td className="py-3 pr-3 font-medium">{fallbackMemberLabel(member)}</td>
+                      <td className="py-3 pr-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                            {(fallbackMemberLabel(member)[0] || '?').toUpperCase()}
+                          </div>
+                          <div>
+                            <span className="font-medium">{fallbackMemberLabel(member)}</span>
+                            <Badge variant="outline" className={`ml-2 text-[10px] ${ROLE_COLORS[member.role]}`}>
+                              {ROLE_LABELS[member.role]}
+                            </Badge>
+                          </div>
+                        </div>
+                      </td>
                       <td className="py-3 pr-3">
                         <select
                           data-testid={`member-role-${member.user_id}`}
@@ -424,25 +462,24 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                         >
                           {ROLE_OPTIONS.map((roleOption) => (
                             <option key={roleOption} value={roleOption}>
-                              {roleOption}
+                              {ROLE_LABELS[roleOption]}
                             </option>
                           ))}
                         </select>
                       </td>
                       <td className="py-3 pr-3">
-                        <label className="inline-flex items-center gap-2">
-                          <input
-                            data-testid={`member-can-view-${member.user_id}`}
-                            type="checkbox"
+                        <div className="flex items-center gap-2">
+                          <Switch
                             checked={draft.can_view_team_leads}
-                            onChange={(event) =>
+                            onCheckedChange={(checked) =>
                               handleDraftChange(member.user_id, {
-                                can_view_team_leads: event.target.checked,
+                                can_view_team_leads: checked,
                               })
                             }
+                            className="scale-90"
                           />
-                          <span>{draft.can_view_team_leads ? 'true' : 'false'}</span>
-                        </label>
+                          <Eye className={`h-3.5 w-3.5 ${draft.can_view_team_leads ? 'text-green-600' : 'text-slate-300'}`} />
+                        </div>
                       </td>
                       <td className="py-3 pr-3 text-muted-foreground">
                         {new Date(member.joined_at).toLocaleString('pt-BR')}
@@ -459,12 +496,13 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                             {submittingByUserId[member.user_id] ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              'Salvar'
+                              <><Save className="h-3.5 w-3.5 mr-1" /> Salvar</>
                             )}
                           </Button>
                           <Button
                             size="sm"
-                            variant="destructive"
+                            variant="ghost"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
                             data-testid={`member-remove-${member.user_id}`}
                             disabled={removingByUserId[member.user_id] === true}
                             onClick={() => void handleRemoveMember(member)}
@@ -472,7 +510,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                             {removingByUserId[member.user_id] ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              'Remover'
+                              <Trash2 className="h-3.5 w-3.5" />
                             )}
                           </Button>
                         </div>
