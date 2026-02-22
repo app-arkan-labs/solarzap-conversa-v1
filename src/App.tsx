@@ -10,6 +10,7 @@ import { IntegrationsProvider } from "@/contexts/IntegrationsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
+import UpdatePassword from "./pages/UpdatePassword";
 import NotFound from "./pages/NotFound";
 import CallQrRedirect from "./pages/CallQrRedirect";
 import { supabase } from "@/lib/supabase";
@@ -58,6 +59,7 @@ const App = () => (
               <BrowserRouter>
                 <Routes>
                   <Route path="/login" element={<Login />} />
+                  <Route path="/update-password" element={<UpdatePassword />} />
                   <Route path="/qr/call" element={<CallQrRedirect />} />
                   <Route
                     path="/"

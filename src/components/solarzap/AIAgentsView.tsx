@@ -169,7 +169,7 @@ export function AIAgentsView() {
                                                     <WifiOff className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                                                 )}
                                                 <span className={`font-medium truncate ${!isOnline ? 'text-slate-400' : ''}`}>
-                                                    {inst.instance_name}
+                                                    {inst.display_name || inst.instance_name}
                                                 </span>
                                                 <Badge
                                                     variant={isOnline ? 'default' : 'secondary'}

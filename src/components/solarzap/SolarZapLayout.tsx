@@ -989,16 +989,18 @@ export function SolarZapLayout() {
       {activeTab === 'integracoes' && (
         <div className="flex-1 flex flex-col h-full overflow-hidden">
           <IntegrationsView />
-          <div className="px-6 pb-6 bg-muted/30">
-            <div className="max-w-6xl mx-auto">
-              <NotificationSettingsCard />
-            </div>
-          </div>
         </div>
       )}
 
       {activeTab === 'automacoes' && (
-        <AutomationsView />
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          <AutomationsView />
+          <div className="px-6 pb-6 bg-muted/30">
+            <div className="max-w-4xl mx-auto">
+              <NotificationSettingsCard />
+            </div>
+          </div>
+        </div>
       )}
 
       {activeTab === 'ia_agentes' && (
