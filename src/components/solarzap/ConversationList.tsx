@@ -1,10 +1,9 @@
-import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText, Bot, CheckSquare, Loader2 } from 'lucide-react';
+import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText, Bot, CheckSquare, Loader2, Users, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Conversation, CHANNEL_INFO, PIPELINE_STAGES, PipelineStage, Contact, ChannelFilter } from '@/types/solarzap';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useEffect, useMemo, useState } from 'react';
@@ -22,6 +21,7 @@ import { LeadCommentsModal } from './LeadCommentsModal';
 import { AudioDeviceModal } from './AudioDeviceModal';
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
 import { ExportContactsModal } from './ExportContactsModal';
+import { AssignMemberSelect } from './AssignMemberSelect';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -236,7 +236,7 @@ export function ConversationList({
     : conversations.length;
 
   return (
-    <div className="w-[320px] h-full flex flex-col border-r border-border bg-card">
+    <div className="w-full h-full flex flex-col border-r border-border bg-card">
       {/* Premium Header */}
       <div className="p-4 bg-gradient-to-r from-primary/10 via-background to-emerald-500/10 border-b shadow-sm">
         <div className="flex items-center justify-between mb-4">
@@ -247,6 +247,21 @@ export function ConversationList({
             <h1 className="text-xl font-bold text-foreground">SolarZap</h1>
           </div>
           <div className="flex items-center gap-1">
+            {/* Selection mode toggle — shown only when delete is available */}
+            {onDeleteLead && (
+              <button
+                onClick={toggleSelectionMode}
+                className={cn(
+                  'p-2 rounded-md transition-colors',
+                  isSelectionMode
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                )}
+                title={isSelectionMode ? 'Cancelar seleção' : 'Selecionar leads'}
+              >
+                <CheckSquare className="w-5 h-5" />
+              </button>
+            )}
             {/* Stage Filter Button */}
             <Popover open={stageFilterOpen} onOpenChange={setStageFilterOpen}>
               <PopoverTrigger asChild>
@@ -403,13 +418,33 @@ export function ConversationList({
       )}
 
       {canViewTeam && onToggleTeamLeads && (
-        <div className="px-3 py-2 border-b border-border flex items-center justify-between bg-muted/20">
-          <span className="text-xs font-medium text-muted-foreground">Meus ↔ Empresa</span>
-          <Switch
+        <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+          <button
+            onClick={() => onToggleTeamLeads(false)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap',
+              !showTeamLeads
+                ? 'bg-secondary text-secondary-foreground shadow-sm'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+            )}
+            data-testid="toggle-team-leads-mine"
+          >
+            <User className="w-3 h-3" />
+            Meus leads
+          </button>
+          <button
+            onClick={() => onToggleTeamLeads(true)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap',
+              showTeamLeads
+                ? 'bg-secondary text-secondary-foreground shadow-sm'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+            )}
             data-testid="toggle-team-leads"
-            checked={showTeamLeads}
-            onCheckedChange={onToggleTeamLeads}
-          />
+          >
+            <Users className="w-3 h-3" />
+            Toda a equipe
+          </button>
         </div>
       )}
 
@@ -431,38 +466,23 @@ export function ConversationList({
         ))}
       </div>
 
-      {onDeleteLead && (
-        <div className="px-3 py-2 border-b border-border bg-muted/20 flex items-center gap-2">
+      {isSelectionMode && onDeleteLead && (
+        <div className="px-3 py-2 border-b border-border bg-primary/5 flex items-center gap-2">
+          <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
+            <Checkbox checked={selectAllState} onCheckedChange={handleToggleSelectAllVisible} />
+            <span>{allVisibleSelected ? 'Todos selecionados' : someVisibleSelected ? `${selectedVisibleCount} selecionado(s)` : 'Selecionar todos'}</span>
+          </label>
           <Button
             type="button"
-            variant={isSelectionMode ? 'secondary' : 'ghost'}
+            variant="destructive"
             size="sm"
-            className="h-8 gap-1.5"
-            onClick={toggleSelectionMode}
+            className="h-7 ml-auto gap-1.5 text-xs"
+            disabled={selectedLeadIds.size === 0}
+            onClick={() => setBulkDeleteDialogOpen(true)}
           >
-            <CheckSquare className="w-4 h-4" />
-            {isSelectionMode ? 'Cancelar' : 'Selecionar'}
+            <Trash2 className="w-3.5 h-3.5" />
+            Excluir ({selectedLeadIds.size})
           </Button>
-
-          {isSelectionMode && (
-            <>
-              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
-                <Checkbox checked={selectAllState} onCheckedChange={handleToggleSelectAllVisible} />
-                <span>Todos</span>
-              </label>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="h-8 ml-auto"
-                disabled={selectedLeadIds.size === 0}
-                onClick={() => setBulkDeleteDialogOpen(true)}
-              >
-                <Trash2 className="w-4 h-4 mr-1" />
-                Excluir ({selectedLeadIds.size})
-              </Button>
-            </>
-          )}
         </div>
       )}
 
@@ -612,8 +632,16 @@ export function ConversationList({
                     </div>
                   </div>
 
-                  {/* Pipeline Badge */}
-                  <div className="mt-1">
+                  <div className="mt-1 flex items-center gap-2 flex-wrap">
+                    {!isSelectionMode && (
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <AssignMemberSelect
+                          contactId={conversation.contact.id}
+                          currentAssigneeId={conversation.contact.assignedToUserId}
+                          triggerClassName="w-[130px]"
+                        />
+                      </div>
+                    )}
                     <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                       {stage.icon} {stage.title}
                     </Badge>

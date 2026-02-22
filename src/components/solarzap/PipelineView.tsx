@@ -12,6 +12,7 @@ import { EditLeadModal, UpdateLeadData } from './EditLeadModal';
 import { ProposalModal, ProposalData } from './ProposalModal';
 import { ProposalReadyModal } from './ProposalReadyModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
+import { AssignMemberSelect } from './AssignMemberSelect';
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
 import { ExportContactsModal } from './ExportContactsModal';
 import {
@@ -754,6 +755,14 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
                               </DropdownMenu>
                               <GripVertical className="w-4 h-4 text-muted-foreground/30 ml-0.5 cursor-grab active:cursor-grabbing flex-shrink-0" />
                             </div>
+                          </div>
+
+                          <div className="mb-2" onClick={(e) => e.stopPropagation()}>
+                            <AssignMemberSelect
+                              contactId={contact.id}
+                              currentAssigneeId={contact.assignedToUserId}
+                              triggerClassName="w-full"
+                            />
                           </div>
 
                           {/* IA Control Row below name */}

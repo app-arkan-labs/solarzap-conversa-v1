@@ -9,6 +9,7 @@ export interface NotificationSettings {
   enabled_email: boolean;
   enabled_reminders: boolean;
   whatsapp_instance_name: string | null;
+  whatsapp_recipients: string[];
   email_recipients: string[];
   email_sender_name: string | null;
   email_reply_to: string | null;
@@ -34,6 +35,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS = {
   enabled_email: false,
   enabled_reminders: false,
   whatsapp_instance_name: null,
+  whatsapp_recipients: [] as string[],
   email_recipients: [] as string[],
   email_sender_name: null as string | null,
   email_reply_to: null as string | null,
@@ -80,6 +82,7 @@ export function useNotificationSettings() {
           enabled_email: DEFAULT_NOTIFICATION_SETTINGS.enabled_email,
           enabled_reminders: DEFAULT_NOTIFICATION_SETTINGS.enabled_reminders,
           whatsapp_instance_name: DEFAULT_NOTIFICATION_SETTINGS.whatsapp_instance_name,
+          whatsapp_recipients: DEFAULT_NOTIFICATION_SETTINGS.whatsapp_recipients,
           email_recipients: DEFAULT_NOTIFICATION_SETTINGS.email_recipients,
           daily_digest_enabled: DEFAULT_NOTIFICATION_SETTINGS.daily_digest_enabled,
           weekly_digest_enabled: DEFAULT_NOTIFICATION_SETTINGS.weekly_digest_enabled,

@@ -80,7 +80,7 @@ export function ExportContactsModal({ isOpen, onClose, contacts }: ExportContact
         return contact.email || '';
       case 'company':
         return contact.company || '';
-      case 'clientType':
+      case 'clientType': {
         const types: Record<string, string> = {
           residencial: 'Residencial',
           comercial: 'Comercial',
@@ -88,6 +88,7 @@ export function ExportContactsModal({ isOpen, onClose, contacts }: ExportContact
           rural: 'Rural',
         };
         return types[contact.clientType] || contact.clientType;
+      }
       case 'pipelineStage':
         return PIPELINE_STAGES[contact.pipelineStage]?.title || contact.pipelineStage;
       case 'channel':

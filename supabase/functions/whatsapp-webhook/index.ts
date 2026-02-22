@@ -288,6 +288,69 @@ async function fetchBase64FromEvolution(
     }
 }
 
+function stripBase64Prefix(input: string): string {
+    if (!input) return ''
+    const marker = 'base64,'
+    const markerIdx = input.indexOf(marker)
+    if (markerIdx >= 0) return input.substring(markerIdx + marker.length)
+    return input.trim()
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+    const clean = stripBase64Prefix(base64)
+    const binary = atob(clean)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    return bytes
+}
+
+function extensionFromMime(mimeType: string): string {
+    if (!mimeType) return 'ogg'
+    if (mimeType.includes('ogg')) return 'ogg'
+    if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'mp3'
+    if (mimeType.includes('mp4')) return 'mp4'
+    if (mimeType.includes('wav')) return 'wav'
+    if (mimeType.includes('webm')) return 'webm'
+    return 'ogg'
+}
+
+async function transcribeAudioWithOpenAI(base64Audio: string, mimeType: string): Promise<string | null> {
+    const apiKey = Deno.env.get('OPENAI_API_KEY')
+    if (!apiKey) return null
+
+    try {
+        const bytes = base64ToUint8Array(base64Audio)
+        const audioBlob = new Blob([bytes], { type: mimeType || 'audio/ogg' })
+        const extension = extensionFromMime(mimeType || '')
+        const form = new FormData()
+        form.append('model', 'whisper-1')
+        form.append('language', 'pt')
+        form.append('response_format', 'json')
+        form.append('file', audioBlob, `audio.${extension}`)
+
+        const resp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: form
+        })
+
+        if (!resp.ok) {
+            const errText = await resp.text()
+            console.warn(`⚠️ OpenAI transcription failed: ${resp.status} - ${errText}`)
+            return null
+        }
+
+        const data = await resp.json()
+        const text = String(data?.text || '').trim()
+        return text || null
+    } catch (err: any) {
+        console.warn('⚠️ OpenAI transcription exception:', err?.message || err)
+        return null
+    }
+}
+
 Deno.serve(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response(null, { headers: corsHeaders })
@@ -471,7 +534,7 @@ Deno.serve(async (req: Request) => {
                         return r.reactorId !== reactorId
                     })
 
-                    let newReactions = filtered
+                    const newReactions = filtered
                     if (emoji) {
                         newReactions.push({ emoji, reactorId, fromMe: isReactorMe, timestamp: new Date().toISOString() })
                     }
@@ -528,16 +591,27 @@ Deno.serve(async (req: Request) => {
                         let mimeType = evolutionResult.mimeType || 'application/octet-stream'
                         if (msgType === 'videoMessage' && mimeType === 'application/octet-stream') mimeType = 'video/mp4'
 
+                        if (msgType === 'audioMessage') {
+                            const transcript = await transcribeAudioWithOpenAI(evolutionResult.base64, mimeType)
+                            if (transcript) {
+                                text = `🎤 ${transcript}`
+                            } else {
+                                text = `${text}\n(transcrição indisponível)`
+                            }
+                        }
+
                         const publicUrl = await uploadMedia(supabase, evolutionResult.base64, mimeType, orgId, instanceName, 'base64')
                         if (publicUrl) {
-                            text = `${text}\n${publicUrl}`
+                            if (msgType !== 'audioMessage') {
+                                text = `${text}\n${publicUrl}`
+                            }
                             dbPublicUrl = publicUrl
                         }
                     }
                 }
 
                 // Interaction Insert
-                const { data: inserted } = await supabase.from('interacoes').insert({
+                const interactionPayload = {
                     org_id: orgId,
                     user_id: userId,
                     lead_id: leadId,
@@ -551,7 +625,30 @@ Deno.serve(async (req: Request) => {
                     attachment_type: dbAttachmentType,
                     attachment_ready: true,
                     wa_from_me: isFromMe
-                }).select('id').single()
+                }
+
+                let inserted: { id: number } | null = null
+                if (waMessageId) {
+                    const { data: existingInteraction } = await supabase
+                        .from('interacoes')
+                        .select('id')
+                        .eq('instance_name', instanceName)
+                        .eq('wa_message_id', waMessageId)
+                        .maybeSingle()
+
+                    if (existingInteraction?.id) {
+                        await supabase
+                            .from('interacoes')
+                            .update(interactionPayload)
+                            .eq('id', existingInteraction.id)
+                        inserted = { id: Number(existingInteraction.id) }
+                    }
+                }
+
+                if (!inserted) {
+                    const { data: insertedRow } = await supabase.from('interacoes').insert(interactionPayload).select('id').single()
+                    inserted = insertedRow
+                }
 
                 if (isFromMe && leadId) {
                     const takeoverEnabled = supportAiAutoDisableOnSellerMessage === true

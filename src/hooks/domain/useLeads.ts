@@ -168,6 +168,7 @@ export interface LeadPatch {
     observacoes?: string;
     status_pipeline?: PipelineStage;
     canal?: Channel;
+    assigned_to_user_id?: string | null;
 }
 
 export function useLeads() {
@@ -376,6 +377,7 @@ export function useLeads() {
             if (data.status_pipeline !== undefined) basePayload.status_pipeline = data.status_pipeline;
             if (data.canal !== undefined) basePayload.canal = data.canal;
             if (data.observacoes !== undefined) basePayload.observacoes = data.observacoes;
+            if (data.assigned_to_user_id !== undefined) basePayload.assigned_to_user_id = data.assigned_to_user_id;
 
             const extendedPayload: ExtendedLeadFields = {};
             if (data.tipo_cliente !== undefined) extendedPayload.tipo_cliente = data.tipo_cliente;

@@ -89,12 +89,14 @@ export function NotificationConfigPanel({ onClose }: Props) {
   const { settings, loading, saving, updateSettings } = useNotificationSettings();
   const { instances } = useUserWhatsAppInstances();
   const [emailInput, setEmailInput] = useState('');
+  const [whatsappRecipientsInput, setWhatsappRecipientsInput] = useState('');
   const [senderNameInput, setSenderNameInput] = useState('');
   const [replyToInput, setReplyToInput] = useState('');
   const [tzOpen, setTzOpen] = useState(false);
 
   useEffect(() => {
     if (settings) {
+      setWhatsappRecipientsInput((settings.whatsapp_recipients || []).join(', '));
       setEmailInput((settings.email_recipients || []).join(', '));
       setSenderNameInput(settings.email_sender_name || '');
       setReplyToInput(settings.email_reply_to || '');
@@ -195,24 +197,49 @@ export function NotificationConfigPanel({ onClose }: Props) {
                   />
                 </div>
                 {settings?.enabled_whatsapp && (
-                  <div className="px-3 pb-3 pt-0">
-                    <Label className="text-xs text-muted-foreground mb-1.5 block">Instância de disparo</Label>
-                    <Select
-                      value={settings.whatsapp_instance_name || '__none'}
-                      onValueChange={(v) => save({ whatsapp_instance_name: v === '__none' ? null : v })}
-                    >
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Selecione..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none">Nenhuma</SelectItem>
-                        {instances.map((inst) => (
-                          <SelectItem key={inst.id} value={inst.instance_name}>
-                            {inst.display_name || inst.instance_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="px-3 pb-3 pt-0 space-y-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1.5 block">Instância de disparo</Label>
+                      <Select
+                        value={settings.whatsapp_instance_name || '__none'}
+                        onValueChange={(v) => save({ whatsapp_instance_name: v === '__none' ? null : v })}
+                      >
+                        <SelectTrigger className="h-9 text-sm">
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">Nenhuma</SelectItem>
+                          {instances.map((inst) => (
+                            <SelectItem key={inst.id} value={inst.instance_name}>
+                              {inst.display_name || inst.instance_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1.5 block">
+                        Destinatários WhatsApp (equipe)
+                      </Label>
+                      <Input
+                        className="h-9 text-sm"
+                        value={whatsappRecipientsInput}
+                        placeholder="5511999999999, 5511888888888"
+                        onChange={(e) => setWhatsappRecipientsInput(e.target.value)}
+                        onBlur={() => {
+                          const list = whatsappRecipientsInput
+                            .split(',')
+                            .map((s) => s.trim())
+                            .filter(Boolean);
+                          save({ whatsapp_recipients: list });
+                        }}
+                      />
+                      <p className="text-[10px] text-muted-foreground/70 mt-1">
+                        Informe números separados por vírgula (somente equipe interna)
+                      </p>
+                    </div>
+
                   </div>
                 )}
               </div>

@@ -49,7 +49,7 @@ async function fetchBase64FromEvolution(
 
         const foundData = await findResp.json()
         // Evolution v2 structure: data.base64 or base64 directly
-        let base64 = foundData?.base64 || foundData?.data?.base64
+        const base64 = foundData?.base64 || foundData?.data?.base64
 
         // If content is view once, it might be nested differently, but usually base64 is top level in findMessage
         return base64 || null

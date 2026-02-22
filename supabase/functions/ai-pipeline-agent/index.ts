@@ -321,6 +321,71 @@ function extractDomain(url: string): string {
     }
 }
 
+function extractTextFromMessageContent(content: any): string {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+    return content
+        .map((part: any) => {
+            if (!part || typeof part !== 'object') return '';
+            if (part.type === 'text' && typeof part.text === 'string') return part.text;
+            if (part.type === 'input_text' && typeof part.text === 'string') return part.text;
+            return '';
+        })
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+}
+
+function normalizeHistoryText(message: any, attachmentUrl: string | null): string {
+    let text = String(message || '').trim();
+    if (attachmentUrl && text.includes(attachmentUrl)) {
+        text = text.replace(attachmentUrl, '').trim();
+    }
+    return text;
+}
+
+async function isLeadAiEnabledNow(supabase: any, leadId: string | number): Promise<boolean> {
+    const { data, error } = await supabase
+        .from('leads')
+        .select('ai_enabled')
+        .eq('id', leadId)
+        .maybeSingle();
+
+    if (error || !data) return true;
+    return data.ai_enabled !== false;
+}
+
+async function performOpenAIWebSearch(openAIApiKey: string, query: string): Promise<{ ok: boolean; text: string; error?: string }> {
+    try {
+        const response = await fetch('https://api.openai.com/v1/responses', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${openAIApiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'gpt-4.1-mini',
+                tools: [{ type: 'web_search_preview' }],
+                input: `Pesquise na web e retorne no máximo 3 fatos curtos e práticos sobre energia solar no Brasil para responder: ${query}`
+            })
+        });
+
+        if (!response.ok) {
+            return { ok: false, text: '', error: `openai_http_${response.status}` };
+        }
+
+        const data: any = await response.json();
+        const outputText = String(data?.output_text || '').trim();
+        if (!outputText) {
+            return { ok: false, text: '', error: 'openai_empty_output' };
+        }
+
+        return { ok: true, text: outputText };
+    } catch (error: any) {
+        return { ok: false, text: '', error: error?.message || String(error) };
+    }
+}
+
 // --- V6: NORMALIZERS for lead field extraction ---
 function normalizeMoneyBRL(raw: any): number | null {
     if (typeof raw === 'number') return raw > 0 ? raw : null;
@@ -400,7 +465,7 @@ const LEAD_DIRECT_COLUMNS: Record<string, (v: any) => any> = {
     'estimated_value_brl': normalizeMoneyBRL, // maps to valor_estimado
     'customer_type': normalizeCustomerType,   // maps to tipo_cliente
     'city': (v: any) => typeof v === 'string' ? v.trim() : null,
-    'zip': (v: any) => typeof v === 'string' ? v.replace(/[^0-9\-]/g, '').trim() : null,
+    'zip': (v: any) => typeof v === 'string' ? v.replace(/[^0-9-]/g, '').trim() : null,
 };
 
 // Column name mapping: extraction field -> DB column
@@ -1547,11 +1612,29 @@ Deno.serve(async (req) => {
             .limit(30); // Use 30 for context aggregation
 
         // BURST AGGREGATION: collect consecutive client msgs since last outbound (within 90s)
-        let chatHistory = (history || []).reverse().map((m: any) => ({
-            role: m.tipo === 'mensagem_cliente' ? 'user' : 'assistant',
-            content: m.mensagem,
-            created_at: m.created_at
-        }));
+        let chatHistory = (history || []).reverse().map((m: any) => {
+            const role = m.tipo === 'mensagem_cliente' ? 'user' : 'assistant';
+            const attachmentType = String(m?.attachment_type || '').toLowerCase();
+            const attachmentUrl = m?.attachment_url ? String(m.attachment_url) : null;
+            const normalizedText = normalizeHistoryText(m?.mensagem, attachmentUrl);
+
+            if (role === 'user' && attachmentType === 'image' && attachmentUrl) {
+                return {
+                    role,
+                    content: [
+                        { type: 'text', text: normalizedText || 'Imagem enviada pelo cliente.' },
+                        { type: 'image_url', image_url: { url: attachmentUrl } }
+                    ],
+                    created_at: m.created_at
+                };
+            }
+
+            return {
+                role,
+                content: normalizedText,
+                created_at: m.created_at
+            };
+        });
 
         // Build aggregated burst block from raw history (walk backward from newest)
         const burstMsgs: string[] = [];
@@ -1590,9 +1673,12 @@ Deno.serve(async (req) => {
         // Extract last user text for KB/web search
         const lastUserText = lastUserTextAggregated || (
             chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'user'
-                ? chatHistory[chatHistory.length - 1].content
+                ? extractTextFromMessageContent(chatHistory[chatHistory.length - 1].content)
                 : ''
         );
+
+        const openAIApiKey = Deno.env.get('OPENAI_API_KEY') || settings.openai_api_key || '';
+        const openai = openAIApiKey ? new OpenAI({ apiKey: openAIApiKey }) : null;
 
         // --- CRM COMMENTS CONTEXT ---
         let crmCommentsBlock = '';
@@ -1698,31 +1784,19 @@ Deno.serve(async (req) => {
             console.warn(`⚠️ [${runId}] KB search exception (non-blocking):`, kbError);
         }
 
-        // --- WEB SEARCH FALLBACK (SERPER) ---
+        // --- WEB SEARCH FALLBACK (OpenAI Web Search -> Serper) ---
         let webBlock = '';
         let webNoKeyFallbackResponse: { action: string; content: string; _web_search: string } | null = null;
-        const serperKey = Deno.env.get('SERPER_API_KEY');
-        const shouldTryWebSearch = kbChars < 400 && looksLikeQuestion(lastUserText);
+        const serperKey = Deno.env.get('SERPER_API_KEY') || Deno.env.get('GOOGLE_SERPER_API_KEY');
+        const webSearchEnabled = String(Deno.env.get('AI_WEB_SEARCH_ENABLED') || 'true').toLowerCase() !== 'false';
+        const missingEssentialContext = detectSolarIntentAndMissing(lastUserText || '', lead).missing.length > 0;
+        const shouldTryWebSearch = webSearchEnabled && kbChars < 400 && looksLikeQuestion(lastUserText) && !missingEssentialContext;
         const sanitizedWebQuery = sanitizeQuery(lastUserText);
         const webQuery = sanitizedWebQuery.length > 5 ? `energia solar Brasil ${sanitizedWebQuery}` : '';
 
         try {
             if (shouldTryWebSearch && webQuery) {
-                if (!serperKey) {
-                    webSearchStatus = 'skipped_no_key';
-                    webError = 'missing_key';
-                    webNoKeyFallbackResponse = {
-                        action: 'send_message',
-                        content: 'Posso te orientar com base no fluxo padrão. Para te passar algo mais preciso, me confirma sua cidade/UF e concessionária de energia.',
-                        _web_search: 'skipped_no_key'
-                    };
-                    await logWebSearch('web_search_skipped', {
-                        query: webQuery,
-                        results_count: 0,
-                        reason: 'missing_key',
-                        latency_ms: 0
-                    });
-                } else if (webSearchPerformedThisRun) {
+                if (webSearchPerformedThisRun) {
                     webSearchStatus = 'already_performed_this_run';
                     await logWebSearch('web_search_skipped', {
                         query: webQuery,
@@ -1759,62 +1833,103 @@ Deno.serve(async (req) => {
                     } else {
                         console.log(`🌐 [${runId}] Web search triggered. Query: "${webQuery}"`);
                         const webStart = Date.now();
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 8000);
-                        let serperResp: Response;
-                        try {
-                            serperResp = await fetch('https://google.serper.dev/search', {
-                                method: 'POST',
-                                headers: {
-                                    'X-API-KEY': serperKey,
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify({ q: webQuery, gl: 'br', hl: 'pt', num: 3 }),
-                                signal: controller.signal
-                            });
-                        } finally {
-                            clearTimeout(timeoutId);
+
+                        if (openAIApiKey) {
+                            const openAiSearch = await performOpenAIWebSearch(openAIApiKey, webQuery);
+                            if (openAiSearch.ok) {
+                                webUsed = true;
+                                webResultsCount = 1;
+                                webSearchStatus = 'performed_openai';
+                                webSearchPerformedThisRun = true;
+                                webBlock = `- ${openAiSearch.text.substring(0, 1200)}`;
+                                await logWebSearch('web_search_performed', {
+                                    query: webQuery,
+                                    results_count: webResultsCount,
+                                    latency_ms: Date.now() - webStart,
+                                    provider: 'openai'
+                                });
+                            } else {
+                                webError = openAiSearch.error || 'openai_search_failed';
+                                console.warn(`⚠️ [${runId}] OpenAI web search failed, fallback to Serper: ${webError}`);
                         }
+                    }
 
-                        const latencyMs = Date.now() - webStart;
-                        if (serperResp.ok) {
-                            const serperData = await serperResp.json();
-                            const organic = Array.isArray(serperData?.organic) ? serperData.organic : [];
-                            const topResults = organic.slice(0, 3).map((r: any) => {
-                                const title = String(r?.title || '').trim().substring(0, 120);
-                                const snippet = String(r?.snippet || '').replace(/\s+/g, ' ').trim().substring(0, 200);
-                                const domain = extractDomain(String(r?.link || ''));
-                                return { title, snippet, domain };
-                            }).filter((r: any) => r.title || r.snippet);
+                        if (!webUsed) {
+                            if (!serperKey) {
+                                webSearchStatus = 'skipped_no_key';
+                                webError = webError || 'missing_serper_key';
+                                webNoKeyFallbackResponse = {
+                                    action: 'send_message',
+                                    content: 'Posso te orientar com base no fluxo padrão. Para te passar algo mais preciso, me confirma sua cidade/UF e concessionária de energia.',
+                                    _web_search: 'skipped_no_key'
+                                };
+                                await logWebSearch('web_search_skipped', {
+                                    query: webQuery,
+                                    results_count: 0,
+                                    reason: webError,
+                                    latency_ms: Date.now() - webStart
+                                });
+                            } else {
+                                const controller = new AbortController();
+                                const timeoutId = setTimeout(() => controller.abort(), 8000);
+                                let serperResp: Response;
+                                try {
+                                    serperResp = await fetch('https://google.serper.dev/search', {
+                                        method: 'POST',
+                                        headers: {
+                                            'X-API-KEY': serperKey,
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({ q: webQuery, gl: 'br', hl: 'pt', num: 3 }),
+                                        signal: controller.signal
+                                    });
+                                } finally {
+                                    clearTimeout(timeoutId);
+                                }
 
-                            webUsed = true;
-                            webResultsCount = topResults.length;
-                            webSearchStatus = 'performed';
-                            webSearchPerformedThisRun = true;
+                                const latencyMs = Date.now() - webStart;
+                                if (serperResp.ok) {
+                                    const serperData = await serperResp.json();
+                                    const organic = Array.isArray(serperData?.organic) ? serperData.organic : [];
+                                    const topResults = organic.slice(0, 3).map((r: any) => {
+                                        const title = String(r?.title || '').trim().substring(0, 120);
+                                        const snippet = String(r?.snippet || '').replace(/\s+/g, ' ').trim().substring(0, 200);
+                                        const domain = extractDomain(String(r?.link || ''));
+                                        return { title, snippet, domain };
+                                    }).filter((r: any) => r.title || r.snippet);
 
-                            const webLines: string[] = [];
-                            for (const r of topResults) {
-                                const source = r.domain ? ` (fonte: ${r.domain})` : '';
-                                webLines.push(`- ${r.title || 'Sem título'}: ${r.snippet || '(sem resumo)'}${source}`);
+                                    webUsed = true;
+                                    webResultsCount = topResults.length;
+                                    webSearchStatus = 'performed_serper';
+                                    webSearchPerformedThisRun = true;
+
+                                    const webLines: string[] = [];
+                                    for (const r of topResults) {
+                                        const source = r.domain ? ` (fonte: ${r.domain})` : '';
+                                        webLines.push(`- ${r.title || 'Sem título'}: ${r.snippet || '(sem resumo)'}${source}`);
+                                    }
+                                    webBlock = webLines.join('\n');
+
+                                    await logWebSearch('web_search_performed', {
+                                        query: webQuery,
+                                        results_count: webResultsCount,
+                                        latency_ms: latencyMs,
+                                        provider: 'serper'
+                                    });
+                                    console.log(`🌐 [${runId}] Serper web search returned ${webResultsCount} results.`);
+                                } else {
+                                    webSearchStatus = 'http_error';
+                                    webError = `Serper HTTP ${serperResp.status}`;
+                                    await logWebSearch('web_search_skipped', {
+                                        query: webQuery,
+                                        results_count: 0,
+                                        reason: `http_${serperResp.status}`,
+                                        latency_ms: latencyMs,
+                                        provider: 'serper'
+                                    });
+                                    console.warn(`⚠️ [${runId}] Serper API error: ${serperResp.status}`);
+                                }
                             }
-                            webBlock = webLines.join('\n');
-
-                            await logWebSearch('web_search_performed', {
-                                query: webQuery,
-                                results_count: webResultsCount,
-                                latency_ms: latencyMs
-                            });
-                            console.log(`🌐 [${runId}] Web search returned ${webResultsCount} results.`);
-                        } else {
-                            webSearchStatus = 'http_error';
-                            webError = `Serper HTTP ${serperResp.status}`;
-                            await logWebSearch('web_search_skipped', {
-                                query: webQuery,
-                                results_count: 0,
-                                reason: `http_${serperResp.status}`,
-                                latency_ms: latencyMs
-                            });
-                            console.warn(`⚠️ [${runId}] Serper API error: ${serperResp.status}`);
                         }
                     }
                 }
@@ -1888,8 +2003,9 @@ Deno.serve(async (req) => {
         }
 
         if (!aiRes) {
-            const openAIApiKey = Deno.env.get('OPENAI_API_KEY') || settings.openai_api_key;
-            const openai = new OpenAI({ apiKey: openAIApiKey });
+            if (!openai) {
+                return respondNoSend({ skipped: 'missing_openai_api_key' }, 'missing_openai_api_key');
+            }
 
             // --- INCREMENT 12: SOLAR GATE EXECUTION ---
             gate = detectSolarIntentAndMissing(lastUserTextAggregated || '', lead);
@@ -1991,7 +2107,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             const completion = await openai.chat.completions.create({
                 model: "gpt-4o",
                 messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
-                max_tokens: 500,
+                max_tokens: 900,
                 response_format: { type: "json_object" }
             });
 
@@ -2070,7 +2186,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             if (text.length > 220 && !text.includes('||')) {
                 const sentences = text.match(/[^.!?]+[.!?]+(\s|$)/g);
                 if (sentences && sentences.length > 1) {
-                    let blocks: string[] = [];
+                    const blocks: string[] = [];
                     let currentBlock = "";
 
                     for (const s of sentences) {
@@ -2323,7 +2439,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             const burstMode = aggregatedBurstCount > 1;
 
             // Burst safety: never fan out multiple outbound messages for a burst response.
-            const parts = (isSimulatedTransport || burstMode)
+            const parts = isSimulatedTransport
                 ? [singleOutboundContent]
                 : rawParts;
 
@@ -2344,6 +2460,12 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                 // --- CHECK #2: ANTI-SPAM FINAL (First Part Only) — FIXED: anchor-based ---
                 if (i === 0) {
                     try {
+                        const leadStillAiEnabled = await isLeadAiEnabledNow(supabase, leadId);
+                        if (!leadStillAiEnabled) {
+                            decision = 'lead_ai_disabled_before_send';
+                            return respondNoSend({ skipped: 'lead_ai_disabled_before_send', runId }, 'lead_ai_disabled_before_send');
+                        }
+
                         const { data: latestClientAtSend } = await supabase
                             .from('interacoes')
                             .select('id')
@@ -2409,10 +2531,10 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
 
                         const { data: finalCheck, error: finalError } = await supabase
                             .from('interacoes')
-                            .select('id, created_at')
+                            .select('id, created_at, tipo, wa_from_me')
                             .eq('instance_name', instanceName)
                             .eq('remote_jid', resolvedRemoteJid)
-                            .eq('wa_from_me', true)
+                            .in('tipo', ['mensagem_vendedor', 'audio_vendedor', 'video_vendedor', 'anexo_vendedor'])
                             .order('id', { ascending: false })
                             .limit(1)
                             .maybeSingle();

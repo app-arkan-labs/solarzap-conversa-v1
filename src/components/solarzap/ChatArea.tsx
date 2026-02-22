@@ -795,7 +795,11 @@ export function ChatArea({
       <div className="flex-1 flex items-center justify-center bg-muted/30">
         <div className="text-center">
           <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
-            <span className="text-4xl">☀️</span>
+            <img
+              src="/logo.png"
+              alt="SolarZap Logo"
+              className="w-10 h-10 object-contain"
+            />
           </div>
           <h2 className="text-xl font-semibold text-foreground mb-2">SolarZap CRM</h2>
           <p className="text-muted-foreground">Selecione uma conversa para começar</p>

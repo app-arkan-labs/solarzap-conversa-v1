@@ -22,7 +22,10 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { UpdateLeadData } from './EditLeadModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
+import { AssignMemberSelect } from './AssignMemberSelect';
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
 import { ExportContactsModal } from './ExportContactsModal';
@@ -71,11 +74,75 @@ const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'rural', label: 'Rural' },
 ];
 
+interface ContactProposal {
+  id: string;
+  proposta_id: number;
+  lead_id: number;
+  version_no: number;
+  created_at: string;
+  status: string;
+  premium_payload: Record<string, unknown> | null;
+  org_id: string | null;
+  valor_projeto: number | null;
+  pdf_url: string | null;
+  share_url: string | null;
+}
+
+const PROPOSAL_STATUS_TRANSLATIONS: Record<string, string> = {
+  draft: 'Rascunho',
+  ready: 'Pronta',
+  sent: 'Enviada',
+  accepted: 'Aceita',
+  rejected: 'Recusada',
+  archived: 'Arquivada',
+};
+
+const PROPOSAL_STATUS_BADGE_CLASSES: Record<string, string> = {
+  draft: 'bg-slate-100 text-slate-700 border-slate-200',
+  ready: 'bg-blue-100 text-blue-700 border-blue-200',
+  sent: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  accepted: 'bg-green-100 text-green-700 border-green-200',
+  rejected: 'bg-red-100 text-red-700 border-red-200',
+  archived: 'bg-gray-100 text-gray-700 border-gray-200',
+};
+
+const formatCurrencyPtBR = (value: number | null | undefined) => {
+  if (typeof value !== 'number') return '-';
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+};
+
+const getProposalStatusLabel = (status: string | null | undefined) => {
+  if (!status) return 'Indefinido';
+  return PROPOSAL_STATUS_TRANSLATIONS[status] || status;
+};
+
+const getProposalStatusBadgeClass = (status: string | null | undefined) => {
+  if (!status) return 'bg-slate-100 text-slate-700 border-slate-200';
+  return PROPOSAL_STATUS_BADGE_CLASSES[status] || 'bg-slate-100 text-slate-700 border-slate-200';
+};
+
+const extractProposalLinks = (payload: Record<string, unknown> | null) => {
+  if (!payload || typeof payload !== 'object') {
+    return { pdfUrl: null, shareUrl: null };
+  }
+
+  const getString = (key: string) => {
+    const value = payload[key];
+    return typeof value === 'string' && value.trim().length > 0 ? value : null;
+  };
+
+  const pdfUrl = getString('public_pdf_url') || getString('client_pdf_url') || getString('pdf_url');
+  const shareUrl = getString('share_url');
+
+  return { pdfUrl, shareUrl };
+};
+
 export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDeleteLead, onToggleLeadAi }: ContactsViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(contacts[0] || null);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const { orgId } = useAuth();
   const { toast } = useToast();
   const { settings: aiSettings } = useAISettings(); // Get Global Settings
 
@@ -93,6 +160,8 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
 
   // Form state for inline editing
   const [formData, setFormData] = useState<UpdateLeadData>({});
+  const [proposalsLoading, setProposalsLoading] = useState(false);
+  const [contactProposals, setContactProposals] = useState<ContactProposal[]>([]);
 
   // Track previous ID to detect context switch vs background update
   const prevContactIdRef = React.useRef<string | null>(null);
@@ -142,6 +211,103 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
       }
     }
   }, [selectedContact, hasChanges]);
+
+  useEffect(() => {
+    if (!selectedContact) {
+      setContactProposals([]);
+      setProposalsLoading(false);
+      return;
+    }
+
+    if (!orgId) {
+      setContactProposals([]);
+      setProposalsLoading(false);
+      return;
+    }
+
+    const selectedLeadId = Number(selectedContact.id);
+    if (!Number.isFinite(selectedLeadId)) {
+      setContactProposals([]);
+      setProposalsLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const fetchContactProposals = async () => {
+      setProposalsLoading(true);
+      try {
+        const { data: versions, error: versionsError } = await supabase
+          .from('proposal_versions')
+          .select('id, proposta_id, lead_id, version_no, created_at, status, premium_payload, org_id')
+          .eq('org_id', orgId)
+          .eq('lead_id', selectedLeadId)
+          .order('created_at', { ascending: false })
+          .limit(8);
+
+        if (versionsError) throw versionsError;
+
+        const proposalIds = Array.from(
+          new Set((versions || []).map((item: any) => Number(item.proposta_id)).filter((id: number) => Number.isFinite(id)))
+        );
+
+        let valorProjetoMap = new Map<number, number | null>();
+        if (proposalIds.length > 0) {
+          const { data: propostas, error: propostasError } = await supabase
+            .from('propostas')
+            .select('id, valor_projeto')
+            .in('id', proposalIds);
+
+          if (propostasError) throw propostasError;
+
+          valorProjetoMap = new Map<number, number | null>(
+            (propostas || []).map((item: any) => [Number(item.id), typeof item.valor_projeto === 'number' ? item.valor_projeto : null])
+          );
+        }
+
+        const mapped: ContactProposal[] = (versions || []).map((item: any) => {
+          const payload = item.premium_payload && typeof item.premium_payload === 'object'
+            ? (item.premium_payload as Record<string, unknown>)
+            : null;
+          const links = extractProposalLinks(payload);
+          const propostaId = Number(item.proposta_id);
+
+          return {
+            id: String(item.id),
+            proposta_id: propostaId,
+            lead_id: Number(item.lead_id),
+            version_no: Number(item.version_no || 1),
+            created_at: String(item.created_at),
+            status: String(item.status || ''),
+            premium_payload: payload,
+            org_id: item.org_id ? String(item.org_id) : null,
+            valor_projeto: valorProjetoMap.get(propostaId) ?? null,
+            pdf_url: links.pdfUrl,
+            share_url: links.shareUrl,
+          };
+        });
+
+        if (!isCancelled) {
+          setContactProposals(mapped);
+        }
+      } catch (error) {
+        console.error('Falha ao carregar propostas do contato:', error);
+        if (!isCancelled) {
+          setContactProposals([]);
+        }
+      } finally {
+        if (!isCancelled) {
+          setProposalsLoading(false);
+        }
+      }
+    };
+
+    fetchContactProposals();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedContact, orgId]);
 
   const handleChange = (field: keyof UpdateLeadData, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -576,6 +742,13 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
                     ))}
                   </SelectContent>
                 </Select>
+                <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                  <AssignMemberSelect
+                    contactId={selectedContact.id}
+                    currentAssigneeId={contacts.find((contact) => contact.id === selectedContact.id)?.assignedToUserId ?? selectedContact.assignedToUserId}
+                    triggerClassName="w-[220px]"
+                  />
+                </div>
               </div>
             </div>
 
@@ -683,6 +856,76 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
                 placeholder="Anotações sobre o contato..."
                 rows={3}
               />
+            </div>
+
+            <div className="mt-8 space-y-4">
+              <h4 className="text-sm font-semibold text-primary uppercase tracking-wide">
+                Propostas do Cliente
+              </h4>
+
+              {proposalsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground border border-border rounded-md px-3 py-2 bg-muted/30">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Carregando propostas...</span>
+                </div>
+              ) : contactProposals.length === 0 ? (
+                <div className="text-sm text-muted-foreground border border-dashed border-border rounded-md px-3 py-3 bg-muted/20">
+                  Nenhuma proposta encontrada para este contato.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {contactProposals.map((proposal) => (
+                    <div
+                      key={proposal.id}
+                      className="rounded-md border border-border bg-card px-3 py-3 flex flex-col gap-2"
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="text-sm font-medium text-foreground">
+                          Proposta #{proposal.proposta_id} • V{proposal.version_no}
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={getProposalStatusBadgeClass(proposal.status)}
+                        >
+                          {getProposalStatusLabel(proposal.status)}
+                        </Badge>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        <span>
+                          Criada em {new Date(proposal.created_at).toLocaleString('pt-BR')}
+                        </span>
+                        <span>
+                          Valor: {formatCurrencyPtBR(proposal.valor_projeto)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                          disabled={!proposal.pdf_url}
+                          onClick={() => proposal.pdf_url && window.open(proposal.pdf_url, '_blank', 'noopener,noreferrer')}
+                        >
+                          PDF
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                          disabled={!proposal.share_url}
+                          onClick={() => proposal.share_url && window.open(proposal.share_url, '_blank', 'noopener,noreferrer')}
+                        >
+                          Compartilhar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Timeline */}

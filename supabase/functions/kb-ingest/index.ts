@@ -112,12 +112,12 @@ async function extractTextFromPdf(buf: ArrayBuffer): Promise<string> {
   try {
     // Some pdfjs builds try to detect node via process; in Deno this can be misleading.
     (globalThis as any).process = undefined;
-  } catch {}
+  } catch { /* intentionally empty */ }
   try {
     if (typeof navigator !== "undefined") {
       Object.defineProperty(navigator, "platform", { value: "Linux" });
     }
-  } catch {}
+  } catch { /* intentionally empty */ }
 
   const pdfjsLib = await import("npm:pdfjs-dist@5.4.149/legacy/build/pdf.mjs").catch((err) => {
     throw new Error(`pdf_module_load_failed:${asString(err?.message || err, 220)}`);

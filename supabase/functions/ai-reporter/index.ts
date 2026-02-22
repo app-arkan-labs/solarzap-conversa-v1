@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
 
     // 4. Gather Metrics
     const now = new Date();
-    let startDate = new Date();
+    const startDate = new Date();
 
     if (type === 'daily') startDate.setDate(now.getDate() - 1);
     if (type === 'weekly') startDate.setDate(now.getDate() - 7);

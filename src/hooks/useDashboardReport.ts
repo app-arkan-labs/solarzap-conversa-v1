@@ -74,7 +74,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
 
             // Fetch Leads for Won Deals to map Source (if needed for Sales by Source)
             // We need the `canal` of the leads associated with Won Deals
-            let wonLeadsMap = new Map<string, any>();
+            const wonLeadsMap = new Map<string, any>();
             if (wonDeals && wonDeals.length > 0) {
                 const leadIds = wonDeals.map(d => d.lead_id);
                 const { data: wonLeads } = await supabase

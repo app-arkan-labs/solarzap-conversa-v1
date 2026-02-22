@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { format, subDays, startOfMonth, endOfMonth, startOfYear } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, Download } from "lucide-react";
+import { CalendarIcon, Download, FileText, Share2, Eye, DownloadCloud } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 
 import { useDashboardReport } from "@/hooks/useDashboardReport";
+import { useProposalMetrics } from "@/hooks/useProposalMetrics";
 import { KpiCards } from "@/components/dashboard/KpiCards";
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
 import { StaleLeadsTable } from "@/components/dashboard/tables/StaleLeadsTable";
@@ -18,6 +19,8 @@ import { OwnerPerformanceTable } from "@/components/dashboard/tables/OwnerPerfor
 import { CalendarSummaryPanel } from "@/components/dashboard/tables/CalendarSummaryPanel";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface DashboardViewProps {
   onNavigate?: (tab: string) => void;
@@ -43,6 +46,13 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
     compare: true,
     filters: { calendarFilter }
   });
+
+  // Proposal Metrics
+  const { data: proposalMetrics, isLoading: proposalMetricsLoading } = useProposalMetrics({
+    start: dateRange.from,
+    end: dateRange.to,
+  });
+
   // Handlers
   const handlePeriodChange = (val: string) => {
     setPeriodLabel(val);
@@ -167,6 +177,95 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
       <div className="max-w-7xl mx-auto w-full px-6 py-6 space-y-6">
         <KpiCards data={data?.kpis} isLoading={isLoading} />
         <DashboardCharts data={data?.charts} isLoading={isLoading} />
+
+        {/* ── Proposal Metrics Card ── */}
+        <Card data-testid="proposal-metrics-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              Propostas
+            </CardTitle>
+            <CardDescription>
+              Métricas de geração, compartilhamento e abertura de propostas no período
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {proposalMetricsLoading ? (
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-20 rounded-lg" />
+                ))}
+              </div>
+            ) : proposalMetrics ? (
+              <div className="space-y-4">
+                {/* KPI mini-cards */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="rounded-lg border bg-background p-4 text-center">
+                    <div className="flex items-center justify-center gap-1 text-muted-foreground text-xs mb-1">
+                      <FileText className="w-3.5 h-3.5" /> Geradas
+                    </div>
+                    <p className="text-2xl font-bold">{proposalMetrics.generated}</p>
+                  </div>
+                  <div className="rounded-lg border bg-background p-4 text-center">
+                    <div className="flex items-center justify-center gap-1 text-muted-foreground text-xs mb-1">
+                      <Share2 className="w-3.5 h-3.5" /> Compartilhadas
+                    </div>
+                    <p className="text-2xl font-bold">{proposalMetrics.shared}</p>
+                  </div>
+                  <div className="rounded-lg border bg-background p-4 text-center">
+                    <div className="flex items-center justify-center gap-1 text-muted-foreground text-xs mb-1">
+                      <Eye className="w-3.5 h-3.5" /> Abertas
+                    </div>
+                    <p className="text-2xl font-bold">{proposalMetrics.opened}</p>
+                  </div>
+                  <div className="rounded-lg border bg-background p-4 text-center">
+                    <div className="flex items-center justify-center gap-1 text-muted-foreground text-xs mb-1">
+                      <DownloadCloud className="w-3.5 h-3.5" /> DL Cliente
+                    </div>
+                    <p className="text-2xl font-bold">{proposalMetrics.downloadedClient}</p>
+                  </div>
+                  <div className="rounded-lg border bg-background p-4 text-center">
+                    <div className="flex items-center justify-center gap-1 text-muted-foreground text-xs mb-1">
+                      <DownloadCloud className="w-3.5 h-3.5" /> DL Roteiro
+                    </div>
+                    <p className="text-2xl font-bold">{proposalMetrics.downloadedSeller}</p>
+                  </div>
+                </div>
+
+                {/* Bottom row: conversion rate + segment distribution */}
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="rounded-lg border bg-background p-4 flex-1">
+                    <p className="text-xs text-muted-foreground mb-1">Taxa de Abertura</p>
+                    <p className="text-xl font-bold">
+                      {proposalMetrics.generated > 0
+                        ? Math.round((proposalMetrics.opened / proposalMetrics.generated) * 100)
+                        : 0}%
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {proposalMetrics.opened} abertas / {proposalMetrics.generated} geradas
+                    </p>
+                  </div>
+                  {Object.keys(proposalMetrics.bySegment).length > 0 && (
+                    <div className="rounded-lg border bg-background p-4 flex-1">
+                      <p className="text-xs text-muted-foreground mb-2">Distribuição por Segmento</p>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(proposalMetrics.bySegment)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([seg, count]) => (
+                            <Badge key={seg} variant="secondary" className="text-xs">
+                              {{ residencial: 'Residencial', empresarial: 'Empresarial', agro: 'Agro / Rural', usina: 'Usina', unknown: 'Outro' }[seg] || seg}: {count}
+                            </Badge>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Nenhum dado de proposta no período.</p>
+            )}
+          </CardContent>
+        </Card>
 
         <Tabs defaultValue="operacional" className="space-y-4">
           <TabsList>

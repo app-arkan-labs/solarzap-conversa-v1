@@ -1,4 +1,4 @@
-import { Component, ReactNode, useState, useCallback, useMemo, useEffect } from 'react';
+import { Component, ReactNode, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLeads } from '@/hooks/domain/useLeads';
@@ -79,6 +79,10 @@ class AppointmentModalErrorBoundary extends Component<AppointmentModalErrorBound
 }
 
 const isAdminMembersPath = (pathname: string): boolean => pathname === '/admin/members';
+const CONVERSAS_SIDEBAR_MIN_WIDTH = 280;
+const CONVERSAS_SIDEBAR_MAX_WIDTH = 560;
+const CONVERSAS_SIDEBAR_DEFAULT_WIDTH = 320;
+const CONVERSAS_SIDEBAR_STORAGE_KEY = 'solarzap_conversas_sidebar_width';
 
 export function SolarZapLayout() {
   const { orgId, role } = useAuth();
@@ -136,6 +140,15 @@ export function SolarZapLayout() {
   const [stageFilter, setStageFilter] = useState<PipelineStage | 'todos'>('todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [conversationsSidebarWidth, setConversationsSidebarWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return CONVERSAS_SIDEBAR_DEFAULT_WIDTH;
+    const raw = window.localStorage.getItem(CONVERSAS_SIDEBAR_STORAGE_KEY);
+    const parsed = raw ? Number(raw) : NaN;
+    if (!Number.isFinite(parsed)) return CONVERSAS_SIDEBAR_DEFAULT_WIDTH;
+    return Math.min(CONVERSAS_SIDEBAR_MAX_WIDTH, Math.max(CONVERSAS_SIDEBAR_MIN_WIDTH, parsed));
+  });
+  const [isResizingConversationsSidebar, setIsResizingConversationsSidebar] = useState(false);
+  const conversationsSidebarRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (isAdminMembersPath(location.pathname)) {
@@ -149,6 +162,46 @@ export function SolarZapLayout() {
       setActiveTab('conversas');
     }
   }, [activeTab, location.pathname]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(CONVERSAS_SIDEBAR_STORAGE_KEY, String(conversationsSidebarWidth));
+  }, [conversationsSidebarWidth]);
+
+  useEffect(() => {
+    if (!isResizingConversationsSidebar) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const container = conversationsSidebarRef.current;
+      if (!container) return;
+      const left = container.getBoundingClientRect().left;
+      const nextWidth = event.clientX - left;
+      setConversationsSidebarWidth(
+        Math.min(CONVERSAS_SIDEBAR_MAX_WIDTH, Math.max(CONVERSAS_SIDEBAR_MIN_WIDTH, nextWidth)),
+      );
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingConversationsSidebar(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingConversationsSidebar]);
+
+  const handleConversationsSidebarResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsResizingConversationsSidebar(true);
+  }, []);
 
   const handleTabChange = useCallback((tab: ActiveTab) => {
     setActiveTab(tab);
@@ -230,6 +283,9 @@ export function SolarZapLayout() {
   const [moveToProposalOpen, setMoveToProposalOpen] = useState(false);
   const [generateProposalPromptOpen, setGenerateProposalPromptOpen] = useState(false);
   const [proposalReadyOpen, setProposalReadyOpen] = useState(false);
+
+  // Last proposal data (for seller script in ProposalReadyModal)
+  const [lastProposalSellerData, setLastProposalSellerData] = useState<any>(null);
 
   // Comments modal
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
@@ -555,6 +611,9 @@ export function SolarZapLayout() {
     await moveToPipeline({ contactId, newStage });
 
     if (!contact) return;
+    if (oldStage) {
+      onStageChanged(contact, oldStage as PipelineStage, newStage);
+    }
 
     // 2. Trigger Automations based on destination stage
     // This logic was previously only in PipelineView.tsx
@@ -622,7 +681,7 @@ export function SolarZapLayout() {
         break;
     }
 
-  }, [contacts, moveToPipeline, toast, isDragDropEnabled]);
+  }, [contacts, moveToPipeline, onStageChanged, toast, isDragDropEnabled]);
 
   const handleVisitOutcomeSubmit = useCallback(async (targetStage: string, notes: string) => {
     if (!pendingVisitOutcome) return;
@@ -733,6 +792,39 @@ export function SolarZapLayout() {
       contextEngine: data.contextEngine,
     });
 
+    // Store seller script data for ProposalReadyModal
+    const premiumContentFromPayload = data.premiumPayload && typeof data.premiumPayload === 'object'
+      ? data.premiumPayload
+      : null;
+    if (selectedContact) {
+      setLastProposalSellerData({
+        contact: selectedContact,
+        consumoMensal: data.consumoMensal,
+        potenciaSistema: data.potenciaSistema,
+        quantidadePaineis: data.quantidadePaineis,
+        valorTotal: data.valorTotal,
+        economiaAnual: data.economiaAnual,
+        paybackMeses: data.paybackMeses,
+        garantiaAnos: data.garantiaAnos,
+        tipo_cliente: data.tipo_cliente,
+        premiumContent: premiumContentFromPayload ? {
+          segment: premiumContentFromPayload.segment,
+          segmentLabel: premiumContentFromPayload.segmentLabel,
+          headline: premiumContentFromPayload.headline,
+          executiveSummary: premiumContentFromPayload.executiveSummary,
+          valuePillars: premiumContentFromPayload.valuePillars,
+          proofPoints: premiumContentFromPayload.proofPoints,
+          objectionHandlers: premiumContentFromPayload.objectionHandlers,
+          nextStepCta: premiumContentFromPayload.nextStepCta,
+          persuasionScore: premiumContentFromPayload.persuasionScore,
+          scoreBreakdown: premiumContentFromPayload.scoreBreakdown,
+        } : undefined,
+        taxaFinanciamento: (data as any).taxaFinanciamento,
+        proposalVersionId: (saveResult as any)?.proposalVersionId || null,
+        propostaId: (saveResult as any)?.proposal?.id || null,
+      });
+    }
+
     await handlePipelineStageChange(data.contactId, 'proposta_pronta');
 
     await updateLead({
@@ -802,7 +894,11 @@ export function SolarZapLayout() {
 
       {activeTab === 'conversas' && (
         <>
-          <div className="relative">
+          <div
+            ref={conversationsSidebarRef}
+            className="relative flex-shrink-0"
+            style={{ width: conversationsSidebarWidth }}
+          >
             <ConversationList
               conversations={filteredConversations}
               contacts={contacts}
@@ -819,6 +915,13 @@ export function SolarZapLayout() {
               onStageFilterChange={setStageFilter}
               onImportContacts={importContacts}
               onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
+            />
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Redimensionar aba lateral"
+              className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors"
+              onMouseDown={handleConversationsSidebarResizeStart}
             />
             <Button
               onClick={() => setIsCreateLeadOpen(true)}
@@ -1117,11 +1220,13 @@ export function SolarZapLayout() {
         onClose={() => {
           setProposalReadyOpen(false);
           setActionContact(null);
+          setLastProposalSellerData(null);
         }}
         onGoToConversation={handleProposalReadyGoToConversation}
         contactId={actionContact?.id || ''}
         contactName={actionContact?.name || ''}
         events={events}
+        sellerScriptData={lastProposalSellerData}
       />
 
       <LeadCommentsModal

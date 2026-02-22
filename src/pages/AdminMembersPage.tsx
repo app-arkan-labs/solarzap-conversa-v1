@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, RefreshCw, Users, UserPlus, Shield, Eye, Trash2, Save, Settings2, Bot, Zap, Plug, Brain, User, Ban, Sparkles } from 'lucide-react';
+import { Loader2, RefreshCw, Users, UserPlus, Shield, Eye, Trash2, Save, Settings2, Bot, Zap, Plug, Brain, User, Ban, Sparkles, UserCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSellerPermissions, type SellerPermissions } from '@/hooks/useSellerPermissions';
@@ -637,6 +637,14 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                       checked={sellerPermissions?.can_toggle_ai ?? true}
                       saving={permissionsSaving}
                       onChange={(v) => void updateSellerPermissions({ can_toggle_ai: v })}
+                    />
+                    <PermissionToggle
+                      icon={<UserCheck className="h-4 w-4" />}
+                      label="Atribuir Vendedor"
+                      description="Atribuir vendedor responsável aos leads"
+                      checked={sellerPermissions?.can_assign_leads ?? true}
+                      saving={permissionsSaving}
+                      onChange={(v) => void updateSellerPermissions({ can_assign_leads: v })}
                     />
                   </div>
                 </div>

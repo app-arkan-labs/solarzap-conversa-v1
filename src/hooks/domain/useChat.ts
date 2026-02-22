@@ -252,7 +252,7 @@ export function useChat(contacts: Contact[] = []) {
             let quotedPayload: any = undefined;
             let quotedMessageId: string | undefined;
 
-            let replyToValues = {
+            const replyToValues = {
                 id: null as number | null,
                 preview: null as string | null,
                 type: 'text'
@@ -363,6 +363,7 @@ export function useChat(contacts: Contact[] = []) {
                     user_id: user.id,
                     mensagem: content,
                     tipo: 'mensagem_vendedor',
+                    wa_from_me: true,
                     instance_name: instance.instance_name,
                     wa_message_id: response?.data?.key?.id || null,
                     reply_to_interacao_id: replyToValues.id,

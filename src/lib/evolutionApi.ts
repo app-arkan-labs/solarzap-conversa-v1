@@ -72,7 +72,30 @@ async function callEvolutionApi<T>(
     // proxy returns raw evolution API result or DB rows depending on action
     return { success: true, data: data as T };
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : String(err);
+    let errorMessage = err instanceof Error ? err.message : String(err);
+
+    try {
+      const maybeContext = (err as { context?: Response })?.context;
+      if (maybeContext && typeof maybeContext.clone === 'function') {
+        const rawText = await maybeContext.clone().text();
+        if (rawText) {
+          try {
+            const parsed = JSON.parse(rawText);
+            const backendError = parsed?.error || parsed?.message || parsed?.details;
+            if (backendError) {
+              errorMessage = String(backendError);
+            } else {
+              errorMessage = rawText;
+            }
+          } catch {
+            errorMessage = rawText;
+          }
+        }
+      }
+    } catch {
+      // keep fallback error message
+    }
+
     console.error('Evolution proxy invocation failed', err);
     return { success: false, error: errorMessage };
   }
@@ -138,7 +161,9 @@ export async function sendMessage(
 ): Promise<EvolutionApiResponse<SendMessageResponse>> {
   return callEvolutionApi<SendMessageResponse>('sendMessage', {
     instanceName,
+    number: phone,
     phone,
+    text: message,
     message,
     quoted,
   });
@@ -164,6 +189,7 @@ export async function sendMedia(
 ): Promise<EvolutionApiResponse<SendMessageResponse>> {
   return callEvolutionApi<SendMessageResponse>('sendMedia', {
     instanceName,
+    number: phone,
     phone,
     mediaUrl,
     mediaType,
@@ -184,9 +210,12 @@ export async function sendAudio(
   phone: string,
   audioUrl: string
 ): Promise<EvolutionApiResponse<SendMessageResponse>> {
-  return callEvolutionApi<SendMessageResponse>('sendAudio', {
+  return callEvolutionApi<SendMessageResponse>('sendMedia', {
     instanceName,
+    number: phone,
     phone,
+    mediaType: 'audio',
+    mediaUrl: audioUrl,
     audioUrl,
   });
 }

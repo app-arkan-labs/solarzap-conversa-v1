@@ -24,6 +24,7 @@ type NotificationSettingsRow = {
   enabled_email: boolean
   enabled_reminders: boolean
   whatsapp_instance_name: string | null
+  whatsapp_recipients: string[]
   email_recipients: string[]
   email_sender_name: string | null
   email_reply_to: string | null
@@ -248,7 +249,7 @@ async function resolveLead(
 
   const { data } = await supabase
     .from('leads')
-    .select('id, nome, telefone, phone_e164')
+    .select('id, nome, telefone, phone_e164, assigned_to_user_id, user_id')
     .eq('org_id', orgId)
     .eq('id', Number(leadId))
     .maybeSingle()
@@ -258,7 +259,37 @@ async function resolveLead(
   return {
     nome: data.nome,
     telefone: (data.phone_e164 || data.telefone || null) as string | null,
+    ownerUserId: (data.assigned_to_user_id || data.user_id || null) as string | null,
   }
+}
+
+async function resolveOwnerNotificationNumber(
+  supabase: ReturnType<typeof createClient>,
+  orgId: string,
+  ownerUserId: string,
+): Promise<string> {
+  const { data } = await supabase
+    .from('whatsapp_instances')
+    .select('phone_number, status, is_active, updated_at')
+    .eq('org_id', orgId)
+    .eq('user_id', ownerUserId)
+    .order('updated_at', { ascending: false })
+    .limit(20)
+
+  const rows = Array.isArray(data) ? data : []
+  if (rows.length === 0) return ''
+
+  const connected = rows.find((row) => String((row as any).status || '').toLowerCase() === 'connected')
+  if (connected?.phone_number) {
+    return toDigits(connected.phone_number)
+  }
+
+  const active = rows.find((row) => (row as any).is_active === true)
+  if (active?.phone_number) {
+    return toDigits(active.phone_number)
+  }
+
+  return toDigits(rows[0]?.phone_number || '')
 }
 
 async function processEvent(
@@ -269,7 +300,7 @@ async function processEvent(
 ) {
   const { data: settingsRow, error: settingsError } = await supabase
     .from('notification_settings')
-    .select('org_id, enabled_notifications, enabled_whatsapp, enabled_email, enabled_reminders, whatsapp_instance_name, email_recipients, email_sender_name, email_reply_to, evt_novo_lead, evt_stage_changed, evt_visita_agendada, evt_visita_realizada, evt_chamada_agendada, evt_chamada_realizada, evt_financiamento_update')
+    .select('org_id, enabled_notifications, enabled_whatsapp, enabled_email, enabled_reminders, whatsapp_instance_name, whatsapp_recipients, email_recipients, email_sender_name, email_reply_to, evt_novo_lead, evt_stage_changed, evt_visita_agendada, evt_visita_realizada, evt_chamada_agendada, evt_chamada_realizada, evt_financiamento_update')
     .eq('org_id', event.org_id)
     .maybeSingle()
 
@@ -326,11 +357,21 @@ async function processEvent(
   let sentCount = 0
 
   if (settings.enabled_whatsapp && settings.whatsapp_instance_name) {
-    const payloadNumber = toDigits((event.payload || {}).telefone || (event.payload || {}).phone || '')
-    const leadNumber = toDigits(lead?.telefone || '')
+    const normalizedConfiguredRecipients = Array.isArray(settings.whatsapp_recipients)
+      ? settings.whatsapp_recipients
+          .map((value) => toDigits(value))
+          .filter(Boolean)
+      : []
+
+    let ownerNumber = ''
+    if (lead?.ownerUserId) {
+      ownerNumber = await resolveOwnerNotificationNumber(supabase, event.org_id, lead.ownerUserId)
+    }
+
+    const recipients = Array.from(new Set([...normalizedConfiguredRecipients, ownerNumber].filter(Boolean)))
 
     let fallbackInstanceNumber = ''
-    if (!payloadNumber && !leadNumber) {
+    if (recipients.length === 0) {
       const { data: instanceRow } = await supabase
         .from('whatsapp_instances')
         .select('phone_number')
@@ -340,27 +381,31 @@ async function processEvent(
       fallbackInstanceNumber = toDigits(instanceRow?.phone_number || '')
     }
 
-    const targetNumber = payloadNumber || leadNumber || fallbackInstanceNumber
+    const finalRecipients = recipients.length > 0
+      ? recipients
+      : (fallbackInstanceNumber ? [fallbackInstanceNumber] : [])
 
-    if (!targetNumber) {
+    if (finalRecipients.length === 0) {
       failures.push('whatsapp_missing_target_number')
       await logDispatch(supabase, event, 'whatsapp', '', 'failed', null, 'whatsapp_missing_target_number')
     } else {
-      try {
-        const responsePayload = await sendWhatsAppViaProxy(
-          supabaseUrl,
-          serviceRoleKey,
-          event.org_id,
-          settings.whatsapp_instance_name,
-          targetNumber,
-          text,
-        )
-        sentCount += 1
-        await logDispatch(supabase, event, 'whatsapp', targetNumber, 'success', responsePayload, null)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        failures.push(`whatsapp:${message}`)
-        await logDispatch(supabase, event, 'whatsapp', targetNumber, 'failed', null, message)
+      for (const targetNumber of finalRecipients) {
+        try {
+          const responsePayload = await sendWhatsAppViaProxy(
+            supabaseUrl,
+            serviceRoleKey,
+            event.org_id,
+            settings.whatsapp_instance_name,
+            targetNumber,
+            text,
+          )
+          sentCount += 1
+          await logDispatch(supabase, event, 'whatsapp', targetNumber, 'success', responsePayload, null)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          failures.push(`whatsapp:${targetNumber}:${message}`)
+          await logDispatch(supabase, event, 'whatsapp', targetNumber, 'failed', null, message)
+        }
       }
     }
   }

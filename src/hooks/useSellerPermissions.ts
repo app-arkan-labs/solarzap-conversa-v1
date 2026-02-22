@@ -12,6 +12,7 @@ export interface SellerPermissions {
   can_delete_leads: boolean;
   can_delete_proposals: boolean;
   can_toggle_ai: boolean;
+  can_assign_leads: boolean;
 }
 
 const DEFAULTS: Omit<SellerPermissions, 'org_id'> = {
@@ -23,6 +24,7 @@ const DEFAULTS: Omit<SellerPermissions, 'org_id'> = {
   can_delete_leads: true,
   can_delete_proposals: true,
   can_toggle_ai: true,
+  can_assign_leads: true,
 };
 
 /**
@@ -137,6 +139,7 @@ export function useSellerPermissions() {
     can_delete_leads: isAdmin || (sellerPermissions?.can_delete_leads ?? true),
     can_delete_proposals: isAdmin || (sellerPermissions?.can_delete_proposals ?? true),
     can_toggle_ai: isAdmin || (sellerPermissions?.can_toggle_ai ?? true),
+    can_assign_leads: isAdmin || (sellerPermissions?.can_assign_leads ?? true),
   };
 
   return {

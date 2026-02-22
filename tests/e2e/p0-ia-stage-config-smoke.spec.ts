@@ -178,7 +178,7 @@ test('P0 IA stage smoke: toggle + prompt save + reload prefill', async ({ page }
     )
     .toBe(expectedIsActive);
 
-  await card.getByRole('button', { name: 'Editar Agente' }).click();
+  await card.getByRole('button', { name: 'Editar Prompt' }).click();
   await page.getByRole('button', { name: /Continuar/i }).click();
 
   const editor = page.locator('textarea').first();
@@ -214,7 +214,7 @@ test('P0 IA stage smoke: toggle + prompt save + reload prefill', async ({ page }
   const switchAfterReload = cardAfterReload.locator('[role="switch"]').first();
   await expect(switchAfterReload).toHaveAttribute('data-state', expectedIsActive ? 'checked' : 'unchecked');
 
-  await cardAfterReload.getByRole('button', { name: 'Editar Agente' }).click();
+  await cardAfterReload.getByRole('button', { name: 'Editar Prompt' }).click();
   await page.getByRole('button', { name: /Continuar/i }).click();
 
   const editorAfterReload = page.locator('textarea').first();
