@@ -10,7 +10,12 @@ import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { PIPELINE_STAGES, PipelineStage } from '../../types/solarzap';
 import { AI_SUPPORT_ELIGIBLE_STAGES } from '../../constants/aiSupportStages';
-import { AlertTriangle, RefreshCcw, Save, Bot, ChevronRight, Shield } from 'lucide-react';
+import {
+    ACTIVE_PIPELINE_AGENTS,
+    DEFAULT_PROMPTS_BY_STAGE,
+    type PipelineAgentDef,
+} from '../../constants/aiPipelineAgents';
+import { AlertTriangle, RefreshCcw, Save, Bot, ChevronRight, Shield, Power, Wifi, WifiOff, Pencil } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
@@ -25,6 +30,7 @@ export function AIAgentsView() {
     const { settings, stageConfigs, updateGlobalSettings, updateStageConfig, loading, restoreDefaultPrompt } = useAISettings();
     const { instances: whatsappInstances, setInstanceAiEnabled, activateAiForAllLeads } = useUserWhatsAppInstances();
     const [editingStage, setEditingStage] = useState<PipelineStage | null>(null);
+    const [editingAgent, setEditingAgent] = useState<PipelineAgentDef | null>(null);
 
     const [isWarningOpen, setIsWarningOpen] = useState(false);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -56,8 +62,9 @@ export function AIAgentsView() {
         setHasUnsavedChanges(false);
     };
 
-    const handleEditClick = (stage: PipelineStage, currentPrompt: string) => {
-        setEditingStage(stage);
+    const handleEditClick = (agent: PipelineAgentDef, currentPrompt: string) => {
+        setEditingStage(agent.stage);
+        setEditingAgent(agent);
         setTempPrompt(currentPrompt);
         setIsWarningOpen(true);
     };
@@ -72,39 +79,32 @@ export function AIAgentsView() {
             await updateStageConfig(editingStage, { prompt_override: tempPrompt });
             setIsEditorOpen(false);
             setEditingStage(null);
+            setEditingAgent(null);
         }
     };
 
     const handleRestoreDefault = async () => {
         if (editingStage) {
-            if (window.confirm("Isso vai restaurar o prompt desta etapa para o padrão do sistema. Continuar?")) {
-                await restoreDefaultPrompt(editingStage);
-                setIsEditorOpen(false);
-                setEditingStage(null);
+            const defaultPrompt = DEFAULT_PROMPTS_BY_STAGE[editingStage];
+            if (defaultPrompt) {
+                setTempPrompt(defaultPrompt);
+                toast.success('Prompt padrão restaurado. Clique "Salvar" para confirmar.');
+            } else {
+                if (window.confirm("Isso vai restaurar o prompt desta etapa para o padrão do sistema. Continuar?")) {
+                    await restoreDefaultPrompt(editingStage);
+                    setIsEditorOpen(false);
+                    setEditingStage(null);
+                    setEditingAgent(null);
+                }
             }
         }
     };
 
     if (loading) return <div className="p-8 text-center">Carregando módulos de IA...</div>;
 
-    const pipelineStagesInOrder: PipelineStage[] = [
-        'novo_lead', 'respondeu', 'chamada_agendada', 'nao_compareceu', 'chamada_realizada',
-        'aguardando_proposta', 'proposta_pronta', 'visita_agendada', 'visita_realizada',
-        'proposta_negociacao', 'financiamento', 'aprovou_projeto', 'contrato_assinado', 'projeto_pago',
-        'aguardando_instalacao', 'projeto_instalado', 'coletar_avaliacao', 'contato_futuro', 'perdido'
-    ];
-
-    const getFallbackGoal = (stage: PipelineStage) => {
-        const title = PIPELINE_STAGES[stage]?.title || stage;
-        return `Conduzir o lead com clareza na etapa ${title}.`;
-    };
-
-    const getFallbackPrompt = (stage: PipelineStage, fallbackGoal: string) => {
-        const title = PIPELINE_STAGES[stage]?.title || stage;
-        return `Objetivo: ${fallbackGoal}\n\nAtue como consultor solar na etapa ${title}. Responda com objetividade, prossiga para o proximo passo e mantenha contexto comercial.`;
-    };
-
-    const activeCount = pipelineStagesInOrder.filter(s => stageConfigs.find(c => c.status_pipeline === s)?.is_active).length;
+    const activeCount = ACTIVE_PIPELINE_AGENTS.filter(
+        a => stageConfigs.find(c => c.status_pipeline === a.stage)?.is_active
+    ).length;
 
     return (
         <div className="h-full w-full min-h-0 overflow-x-hidden overflow-y-auto bg-slate-50">
@@ -117,7 +117,7 @@ export function AIAgentsView() {
                     </div>
                     <div>
                         <h1 className="text-2xl font-bold text-foreground">Inteligência Artificial</h1>
-                        <p className="text-slate-500 text-sm">Configure os agentes autônomos do seu funil</p>
+                        <p className="text-slate-500 text-sm">Configure os agentes autônomos do seu funil de vendas</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -132,8 +132,9 @@ export function AIAgentsView() {
                 </div>
             </div>
 
-            {/* Compact Settings Row */}
+            {/* Settings Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Nome do Assistente */}
                 <Card className="shadow-sm">
                     <CardContent className="p-4">
                         <Label className="text-xs uppercase text-slate-400 font-medium">Nome do Assistente</Label>
@@ -146,42 +147,65 @@ export function AIAgentsView() {
                     </CardContent>
                 </Card>
 
+                {/* Instâncias WhatsApp — TODAS, não só connected */}
                 <Card className="shadow-sm">
                     <CardContent className="p-4">
-                        <Label className="text-xs uppercase text-slate-400 font-medium">Instâncias Conectadas</Label>
-                        <div className="flex flex-col gap-1.5 mt-2">
-                            {whatsappInstances.filter(i => i.status === 'connected').length === 0 ? (
+                        <Label className="text-xs uppercase text-slate-400 font-medium">Instâncias WhatsApp</Label>
+                        <div className="flex flex-col gap-2 mt-2">
+                            {whatsappInstances.length === 0 ? (
                                 <p className="text-sm text-muted-foreground italic flex items-center gap-1.5">
-                                    <AlertTriangle className="h-3.5 w-3.5" /> Nenhuma instância online
+                                    <AlertTriangle className="h-3.5 w-3.5" /> Nenhuma instância cadastrada
                                 </p>
                             ) : (
-                                whatsappInstances.filter(i => i.status === 'connected').map(inst => (
-                                    <div key={inst.id} className="flex items-center justify-between text-sm">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-2 w-2 rounded-full bg-green-500" />
-                                            <span className="font-medium">{inst.instance_name}</span>
+                                whatsappInstances.map(inst => {
+                                    const isOnline = inst.status === 'connected';
+                                    const isConnecting = inst.status === 'connecting';
+                                    return (
+                                        <div key={inst.id} className="flex items-center justify-between text-sm py-1">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                {isOnline ? (
+                                                    <Wifi className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                                                ) : (
+                                                    <WifiOff className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                                                )}
+                                                <span className={`font-medium truncate ${!isOnline ? 'text-slate-400' : ''}`}>
+                                                    {inst.instance_name}
+                                                </span>
+                                                <Badge
+                                                    variant={isOnline ? 'default' : 'secondary'}
+                                                    className={`text-[10px] h-4 px-1.5 flex-shrink-0 ${
+                                                        isOnline ? 'bg-green-100 text-green-700 hover:bg-green-100' :
+                                                        isConnecting ? 'bg-yellow-100 text-yellow-700' : ''
+                                                    }`}
+                                                >
+                                                    {isOnline ? 'Online' : isConnecting ? 'Conectando' : 'Offline'}
+                                                </Badge>
+                                            </div>
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                <Switch
+                                                    checked={!!inst.ai_enabled}
+                                                    onCheckedChange={(checked) => setInstanceAiEnabled(inst.instance_name, checked)}
+                                                    disabled={!settings?.is_active || !isOnline}
+                                                    className="scale-75 origin-right data-[state=checked]:bg-green-500"
+                                                />
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-7 text-[11px] text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200 px-2"
+                                                    disabled={!isOnline}
+                                                    onClick={async () => {
+                                                        const count = await activateAiForAllLeads(inst.instance_name);
+                                                        if (count !== null) toast.success(`IA reativada para ${count} contato(s) da instância ${inst.instance_name}`);
+                                                    }}
+                                                    title="Reativar IA para todos os leads desta instância"
+                                                >
+                                                    <Power className="h-3 w-3 mr-1" />
+                                                    Religar todos
+                                                </Button>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <Switch
-                                                checked={!!inst.ai_enabled}
-                                                onCheckedChange={(checked) => setInstanceAiEnabled(inst.instance_name, checked)}
-                                                disabled={!settings?.is_active}
-                                                className="scale-75 origin-right data-[state=checked]:bg-green-500"
-                                            />
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                className="h-6 text-[11px] text-green-700 hover:text-green-800 hover:bg-green-50 px-2"
-                                                onClick={async () => {
-                                                    const count = await activateAiForAllLeads(inst.instance_name);
-                                                    if (count !== null) toast.success(`IA ativada para ${count} contato(s)`);
-                                                }}
-                                            >
-                                                Ativar todos
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ))
+                                    );
+                                })
                             )}
                         </div>
                     </CardContent>
@@ -215,71 +239,86 @@ export function AIAgentsView() {
                 </CardContent>
             </Card>
 
-            {/* Pipeline Agents - Compact List */}
+            {/* Pipeline Agents — APENAS OS 5 ATIVOS */}
             <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                    <h2 className="text-base font-semibold text-slate-800">Agentes de Pipeline</h2>
-                    <span className="text-xs text-slate-500">{activeCount}/{pipelineStagesInOrder.length} ativos</span>
+                    <div>
+                        <h2 className="text-base font-semibold text-slate-800">Agentes de Pipeline</h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                            Agentes inteligentes que guiam o lead por cada etapa do funil de vendas.
+                            As demais etapas são operadas pelo vendedor ou por lembretes automáticos.
+                        </p>
+                    </div>
+                    <Badge variant="outline" className="text-xs flex-shrink-0">
+                        {activeCount}/{ACTIVE_PIPELINE_AGENTS.length} ativos
+                    </Badge>
                 </div>
 
-                <Card className="shadow-sm overflow-hidden">
-                    <div className="divide-y">
-                        {pipelineStagesInOrder.map((stage) => {
-                            const config = stageConfigs.find(c => c.status_pipeline === stage);
-                            const stageInfo = PIPELINE_STAGES[stage];
-                            const isEnabled = config?.is_active || false;
-                            const fallbackGoal = config?.agent_goal || getFallbackGoal(stage);
-                            const effectivePrompt =
-                                config?.prompt_override ||
-                                config?.default_prompt ||
-                                getFallbackPrompt(stage, fallbackGoal);
+                <div className="space-y-3">
+                    {ACTIVE_PIPELINE_AGENTS.map((agent) => {
+                        const config = stageConfigs.find(c => c.status_pipeline === agent.stage);
+                        const stageInfo = PIPELINE_STAGES[agent.stage];
+                        const isEnabled = config?.is_active || false;
+                        const effectivePrompt =
+                            config?.prompt_override ||
+                            config?.default_prompt ||
+                            agent.defaultPrompt;
 
-                            return (
-                                <div
-                                    key={stage}
-                                    className={`flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors group ${!isEnabled ? 'opacity-60' : ''}`}
-                                    data-testid={`ai-stage-row-${stage}`}
-                                >
-                                    {/* Stage icon + color */}
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${stageInfo.color} bg-opacity-20`}>
-                                        <span className="text-sm">{stageInfo.icon}</span>
-                                    </div>
-
-                                    {/* Name + goal */}
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-medium text-sm text-slate-800">{stageInfo.title}</span>
-                                            <Badge
-                                                variant={isEnabled ? "default" : "secondary"}
-                                                className={`text-[10px] h-4 px-1.5 ${isEnabled ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''}`}
-                                            >
-                                                {isEnabled ? "Ativo" : "Off"}
-                                            </Badge>
+                        return (
+                            <Card
+                                key={agent.stage}
+                                className={`shadow-sm transition-all ${isEnabled ? 'border-l-4 border-l-green-500' : 'opacity-70'}`}
+                                data-testid={`ai-stage-card-${agent.stage}`}
+                            >
+                                <CardContent className="p-4">
+                                    <div className="flex items-start gap-3">
+                                        {/* Stage icon */}
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${stageInfo.color} bg-opacity-20`}>
+                                            <span className="text-lg">{stageInfo.icon}</span>
                                         </div>
-                                        <p className="text-xs text-slate-500 truncate">{fallbackGoal}</p>
-                                    </div>
 
-                                    {/* Toggle + Edit */}
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                        <Switch
-                                            checked={isEnabled}
-                                            onCheckedChange={(checked) => updateStageConfig(stage, { is_active: checked })}
-                                            className="scale-90 data-[state=checked]:bg-green-500"
-                                        />
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-7 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                                            onClick={() => handleEditClick(stage, effectivePrompt)}
-                                        >
-                                            Editar <ChevronRight className="w-3 h-3 ml-1" />
-                                        </Button>
+                                        {/* Content */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="font-semibold text-sm text-slate-800">{agent.label}</span>
+                                                <Badge
+                                                    variant={isEnabled ? "default" : "secondary"}
+                                                    className={`text-[10px] h-4 px-1.5 ${isEnabled ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''}`}
+                                                >
+                                                    {isEnabled ? "Ativo" : "Desativado"}
+                                                </Badge>
+                                            </div>
+                                            <p className="text-xs font-medium text-slate-600 mb-0.5">
+                                                🎯 {agent.objective}
+                                            </p>
+                                            <p className="text-[11px] text-slate-400">
+                                                Próxima etapa → {agent.nextStages}
+                                            </p>
+                                        </div>
+
+                                        {/* Controls */}
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-8 text-xs gap-1.5"
+                                                onClick={() => handleEditClick(agent, effectivePrompt)}
+                                            >
+                                                <Pencil className="w-3 h-3" />
+                                                Editar Prompt
+                                            </Button>
+                                            <Switch
+                                                checked={isEnabled}
+                                                onCheckedChange={(checked) => updateStageConfig(agent.stage, { is_active: checked })}
+                                                className="data-[state=checked]:bg-green-500"
+                                            />
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </Card>
+                                </CardContent>
+                            </Card>
+                        );
+                    })}
+                </div>
             </div>
 
             {/* Floating Save Bar */}
@@ -309,7 +348,7 @@ export function AIAgentsView() {
                         </DialogTitle>
                         <DialogDescription className="pt-2 text-slate-700">
                             <p className="font-medium">Atenção: editar as instruções pode prejudicar o funcionamento do agente.</p>
-                            <p className="mt-2 text-sm">Os prompts padrão foram exaustivamente testados para garantir conversão. Faça alterações apenas se souber exatamente o que está fazendo.</p>
+                            <p className="mt-2 text-sm">Os prompts padrão foram exaustivamente testados para garantir conversão e humanização. Faça alterações apenas se souber exatamente o que está fazendo.</p>
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
@@ -323,12 +362,16 @@ export function AIAgentsView() {
             <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
                 <DialogContent className="max-w-3xl h-[80vh] flex flex-col">
                     <DialogHeader>
-                        <DialogTitle>Editor de Agente: {editingStage ? PIPELINE_STAGES[editingStage].title : ''}</DialogTitle>
+                        <DialogTitle>
+                            Editor de Agente: {editingAgent?.label || (editingStage ? PIPELINE_STAGES[editingStage].title : '')}
+                        </DialogTitle>
                         <DialogDescription>
-                            Personalize as instruções para este estágio.
+                            {editingAgent && (
+                                <span>🎯 {editingAgent.objective} — Próxima etapa → {editingAgent.nextStages}</span>
+                            )}
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="flex-1 py-4">
+                    <div className="flex-1 py-4 min-h-0">
                         <Textarea
                             className="h-full resize-none font-mono text-sm"
                             value={tempPrompt}
