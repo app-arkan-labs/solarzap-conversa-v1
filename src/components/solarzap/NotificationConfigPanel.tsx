@@ -89,10 +89,16 @@ export function NotificationConfigPanel({ onClose }: Props) {
   const { settings, loading, saving, updateSettings } = useNotificationSettings();
   const { instances } = useUserWhatsAppInstances();
   const [emailInput, setEmailInput] = useState('');
+  const [senderNameInput, setSenderNameInput] = useState('');
+  const [replyToInput, setReplyToInput] = useState('');
   const [tzOpen, setTzOpen] = useState(false);
 
   useEffect(() => {
-    if (settings) setEmailInput((settings.email_recipients || []).join(', '));
+    if (settings) {
+      setEmailInput((settings.email_recipients || []).join(', '));
+      setSenderNameInput(settings.email_sender_name || '');
+      setReplyToInput(settings.email_reply_to || '');
+    }
   }, [settings]);
 
   const save = async (patch: Record<string, unknown>) => {
@@ -245,9 +251,10 @@ export function NotificationConfigPanel({ onClose }: Props) {
                       </Label>
                       <Input
                         className="h-9 text-sm"
-                        value={settings.email_sender_name || ''}
+                        value={senderNameInput}
                         placeholder="Minha Empresa Solar"
-                        onChange={(e) => save({ email_sender_name: e.target.value || null })}
+                        onChange={(e) => setSenderNameInput(e.target.value)}
+                        onBlur={() => save({ email_sender_name: senderNameInput || null })}
                       />
                       <p className="text-[10px] text-muted-foreground/70 mt-1">
                         Aparece como remetente no inbox do destinatário
@@ -263,9 +270,10 @@ export function NotificationConfigPanel({ onClose }: Props) {
                       <Input
                         className="h-9 text-sm"
                         type="email"
-                        value={settings.email_reply_to || ''}
+                        value={replyToInput}
                         placeholder="contato@minhaempresa.com.br"
-                        onChange={(e) => save({ email_reply_to: e.target.value || null })}
+                        onChange={(e) => setReplyToInput(e.target.value)}
+                        onBlur={() => save({ email_reply_to: replyToInput || null })}
                       />
                       <p className="text-[10px] text-muted-foreground/70 mt-1">
                         Respostas aos e-mails serão enviadas para este endereço
