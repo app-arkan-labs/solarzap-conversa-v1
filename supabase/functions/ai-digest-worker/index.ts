@@ -1,4 +1,5 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
+import { digestEmail, type DigestLeadSummary } from '../_shared/emailTemplates.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -113,6 +114,7 @@ async function sendEmailViaResend(
   text: string,
   senderName?: string | null,
   replyTo?: string | null,
+  html?: string | null,
 ) {
   const resendKey = Deno.env.get('RESEND_API_KEY') || ''
   if (!resendKey) throw new Error('missing_resend_api_key')
@@ -129,7 +131,12 @@ async function sendEmailViaResend(
     from: fromEmail,
     to: [recipient],
     subject,
-    text,
+  }
+  if (html) {
+    body.html = html
+    body.text = text
+  } else {
+    body.text = text
   }
   if (replyTo) {
     body.reply_to = replyTo
@@ -348,12 +355,28 @@ async function processDigestForOrg(
       const recipient = String(rawRecipient || '').trim()
       if (!recipient) continue
       try {
+        // Build HTML digest email
+        const digestLeads: DigestLeadSummary[] = leadSummaries.map((s) => ({
+          leadName: s.leadName,
+          leadPhone: s.leadPhone,
+          stage: s.stage,
+          lastText: s.lastText,
+          pending: s.pending,
+          nextStep: s.nextStep,
+        }))
+        const digestHtml = digestEmail({
+          digestType: ctx.digestType,
+          dateBucket: ctx.dateBucket,
+          leads: digestLeads,
+          senderName: settings.email_sender_name,
+        })
         await sendEmailViaResend(
           recipient,
-          `${digestTitle} - SolarZap`,
-          digestText,
+          digestHtml.subject,
+          digestHtml.text,
           settings.email_sender_name,
           settings.email_reply_to,
+          digestHtml.html,
         )
         ;(channelResults.email as any).sent += 1
       } catch (error) {

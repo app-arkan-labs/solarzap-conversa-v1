@@ -1,4 +1,5 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
+import { buildEmailContent, type TemplateContext } from '../_shared/emailTemplates.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,48 +59,54 @@ function buildMessage(event: NotificationEventRow, lead: { nome?: string | null;
   const fromStage = String(payload.from_stage || '').trim()
   const toStage = String(payload.to_stage || '').trim()
 
+  // Build context for both plain-text (WhatsApp) and HTML (email) templates
+  const ctx: TemplateContext = {
+    leadName,
+    leadPhone,
+    title,
+    startAt: payload.start_at ? String(payload.start_at) : undefined,
+    fromStage: fromStage || undefined,
+    toStage: toStage || undefined,
+  }
+
+  // Plain-text for WhatsApp
+  let subject: string
+  let text: string
   switch (event.event_type) {
     case 'novo_lead':
-      return {
-        subject: 'Novo lead no CRM',
-        text: `Novo lead criado: ${leadName}${leadPhone ? ` (${leadPhone})` : ''}.`,
-      }
+      subject = 'Novo lead no CRM'
+      text = `Novo lead criado: ${leadName}${leadPhone ? ` (${leadPhone})` : ''}.`
+      break
     case 'visita_agendada':
-      return {
-        subject: 'Visita agendada',
-        text: `Visita agendada para ${leadName}${startAt ? ` em ${startAt}` : ''}${title ? `. ${title}` : ''}.`,
-      }
+      subject = 'Visita agendada'
+      text = `Visita agendada para ${leadName}${startAt ? ` em ${startAt}` : ''}${title ? `. ${title}` : ''}.`
+      break
     case 'chamada_agendada':
-      return {
-        subject: 'Chamada agendada',
-        text: `Chamada agendada para ${leadName}${startAt ? ` em ${startAt}` : ''}${title ? `. ${title}` : ''}.`,
-      }
+      subject = 'Chamada agendada'
+      text = `Chamada agendada para ${leadName}${startAt ? ` em ${startAt}` : ''}${title ? `. ${title}` : ''}.`
+      break
     case 'visita_realizada':
-      return {
-        subject: 'Visita realizada',
-        text: `Visita marcada como realizada para ${leadName}${title ? `. ${title}` : ''}.`,
-      }
+      subject = 'Visita realizada'
+      text = `Visita marcada como realizada para ${leadName}${title ? `. ${title}` : ''}.`
+      break
     case 'chamada_realizada':
-      return {
-        subject: 'Chamada realizada',
-        text: `Chamada marcada como realizada para ${leadName}${title ? `. ${title}` : ''}.`,
-      }
+      subject = 'Chamada realizada'
+      text = `Chamada marcada como realizada para ${leadName}${title ? `. ${title}` : ''}.`
+      break
     case 'financiamento_update':
-      return {
-        subject: 'Atualização de financiamento',
-        text: `Lead ${leadName} mudou etapa de ${fromStage || 'origem'} para ${toStage || 'financiamento'}.`,
-      }
+      subject = 'Atualização de financiamento'
+      text = `Lead ${leadName} mudou etapa de ${fromStage || 'origem'} para ${toStage || 'financiamento'}.`
+      break
     case 'stage_changed':
-      return {
-        subject: 'Mudança de etapa no pipeline',
-        text: `Lead ${leadName} mudou etapa de ${fromStage || 'origem'} para ${toStage || 'destino'}.`,
-      }
+      subject = 'Mudança de etapa no pipeline'
+      text = `Lead ${leadName} mudou etapa de ${fromStage || 'origem'} para ${toStage || 'destino'}.`
+      break
     default:
-      return {
-        subject: 'Notificação CRM',
-        text: `Evento ${event.event_type} para ${leadName}.`,
-      }
+      subject = 'Notificação CRM'
+      text = `Evento ${event.event_type} para ${leadName}.`
   }
+
+  return { subject, text, ctx }
 }
 
 async function sendWhatsAppViaProxy(
@@ -154,6 +161,7 @@ async function sendEmailViaResend(
   text: string,
   senderName?: string | null,
   replyTo?: string | null,
+  html?: string | null,
 ) {
   const resendKey = Deno.env.get('RESEND_API_KEY') || ''
   if (!resendKey) {
@@ -174,7 +182,13 @@ async function sendEmailViaResend(
     from: fromEmail,
     to: [recipient],
     subject,
-    text,
+  }
+  // Prefer HTML when available, keep plain-text as fallback
+  if (html) {
+    body.html = html
+    body.text = text  // plain-text alternative
+  } else {
+    body.text = text
   }
   if (replyTo) {
     body.reply_to = replyTo
@@ -302,7 +316,11 @@ async function processEvent(
   }
 
   const lead = await resolveLead(supabase, event.org_id, event.payload || {})
-  const { subject, text } = buildMessage(event, lead)
+  const { subject, text, ctx } = buildMessage(event, lead)
+
+  // Build HTML email via template
+  const emailCtx = { ...ctx, senderName: settings.email_sender_name }
+  const emailContent = buildEmailContent(event.event_type, emailCtx)
 
   const failures: string[] = []
   let sentCount = 0
@@ -355,10 +373,11 @@ async function processEvent(
       try {
         const responsePayload = await sendEmailViaResend(
           recipient,
-          subject,
-          text,
+          emailContent.subject,
+          emailContent.text,
           settings.email_sender_name,
           settings.email_reply_to,
+          emailContent.html,
         )
         sentCount += 1
         await logDispatch(supabase, event, 'email', recipient, 'success', responsePayload, null)
