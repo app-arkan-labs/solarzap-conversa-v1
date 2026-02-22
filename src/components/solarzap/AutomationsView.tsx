@@ -115,6 +115,12 @@ export function AutomationsView() {
 
     const dragDropAutomations = [
         {
+            key: 'visitOutcomeModalEnabled' as keyof AutomationSettings,
+            title: 'Modal Pós-Visita (+3h)',
+            description: 'Abre modal automático para classificar outcome da visita realizada',
+            icon: <Home className="w-5 h-5 text-emerald-500" />,
+        },
+        {
             key: 'dragDropChamadaRealizada' as keyof AutomationSettings,
             title: 'Após Chamada Realizada',
             description: 'Perguntar se deseja mover para "Aguardando Proposta"',

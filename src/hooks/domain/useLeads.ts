@@ -239,6 +239,7 @@ export function useLeads() {
             const query = supabase
                 .from('leads')
                 .select('*')
+                .eq('org_id', orgId)
                 .order('created_at', { ascending: false });
 
             let { data, error } = await query;

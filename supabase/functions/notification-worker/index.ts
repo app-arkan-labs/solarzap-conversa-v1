@@ -80,6 +80,11 @@ function buildMessage(event: NotificationEventRow, lead: { nome?: string | null;
         subject: 'Atualização de financiamento',
         text: `Lead ${leadName} mudou etapa de ${fromStage || 'origem'} para ${toStage || 'financiamento'}.`,
       }
+    case 'stage_changed':
+      return {
+        subject: 'Mudança de etapa no pipeline',
+        text: `Lead ${leadName} mudou etapa de ${fromStage || 'origem'} para ${toStage || 'destino'}.`,
+      }
     default:
       return {
         subject: 'Notificação CRM',

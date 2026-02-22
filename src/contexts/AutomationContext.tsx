@@ -8,6 +8,7 @@ export interface AutomationSettings {
     dragDropPropostaPronta: boolean;
     dragDropChamadaAgendada: boolean;
     dragDropVisitaAgendada: boolean;
+    visitOutcomeModalEnabled: boolean;
 
     // Skip automations when lead moves backward
     skipBackwardMoves: boolean;
@@ -34,6 +35,7 @@ export const DEFAULT_SETTINGS: AutomationSettings = {
     dragDropPropostaPronta: true,
     dragDropChamadaAgendada: true,
     dragDropVisitaAgendada: true,
+    visitOutcomeModalEnabled: false,
 
     // Skip backward moves enabled by default
     skipBackwardMoves: true,

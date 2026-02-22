@@ -208,7 +208,9 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
           // Convert numeric fields
           if (dbColumn === 'consumo_kwh' || dbColumn === 'valor_estimado') {
             contact[dbColumn] = parseFloat(String(rawValue).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
-            // Auto-prepend 55 if likely BR number (10 or 11 digits) and missing it
+          } else if (dbColumn === 'telefone') {
+            // Sanitize phone: strip non-digits and auto-prepend 55 for BR numbers
+            let cleanPhone = String(rawValue || '').replace(/\D/g, '');
             if ((cleanPhone.length === 10 || cleanPhone.length === 11) && !cleanPhone.startsWith('55')) {
               cleanPhone = '55' + cleanPhone;
             }

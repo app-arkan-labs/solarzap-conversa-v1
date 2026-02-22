@@ -154,10 +154,11 @@ curl -X POST {{STAGING_URL}}/functions/v1/evolution-proxy/...
 **Arquivos a Revisar:**
 1. `supabase/functions/whatsapp-webhook/index.ts` — Is it canonical?
 2. `supabase/functions/evolution-webhook/index.ts` — Deprecate or merge?
-3. AC: Secret **header-only** in production
+3. AC: Secret **header-only** in production (hotfix applied now; query-string removed)
 
 **Smoke Tests:**
-- [ ] Webhook POST {{STAGING_URL}}/functions/v1/whatsapp-webhook with valid header → 200
+- [ ] Webhook POST {{STAGING_URL}}/functions/v1/whatsapp-webhook with valid header → 200  
+- [ ] Webhook query-string secret no longer works (must return 401 after hotfix)
 - [ ] Webhook POST with invalid secret → 401
 - [ ] Webhook POST without header → 401
 - [ ] Events persisted to `whatsapp_webhook_events` table

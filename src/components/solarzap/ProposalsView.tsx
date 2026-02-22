@@ -29,6 +29,12 @@ import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface ProposalRow {
   proposal_version_id: string;
@@ -90,6 +96,7 @@ export function ProposalsView() {
   const [owner, setOwner] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [selectedRow, setSelectedRow] = useState<ProposalRow | null>(null);
 
   const fetchProposalsFallback = useCallback(async () => {
     if (!orgId) return [] as ProposalRow[];
@@ -261,6 +268,13 @@ export function ProposalsView() {
   useEffect(() => {
     fetchProposals();
   }, [fetchProposals]);
+
+  useEffect(() => {
+    const persistedLeadId = localStorage.getItem('solarzap_proposals_filter_lead_id');
+    if (!persistedLeadId) return;
+    setSelectedLeadId(String(persistedLeadId));
+    localStorage.removeItem('solarzap_proposals_filter_lead_id');
+  }, []);
 
   const selectedLead = selectedLeadId === 'all'
     ? null
@@ -453,7 +467,11 @@ export function ProposalsView() {
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row.proposal_version_id} className="border-b">
+                    <tr
+                      key={row.proposal_version_id}
+                      className="border-b cursor-pointer hover:bg-muted/40"
+                      onClick={() => setSelectedRow(row)}
+                    >
                       <td className="py-2 pr-3">
                         <p className="font-medium">{row.lead_name || `Lead ${row.lead_id}`}</p>
                         <p className="text-xs text-muted-foreground">{row.lead_phone || '-'}</p>
@@ -476,7 +494,10 @@ export function ProposalsView() {
                             variant="outline"
                             size="sm"
                             disabled={!row.pdf_url}
-                            onClick={() => row.pdf_url && window.open(row.pdf_url, '_blank')}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (row.pdf_url) window.open(row.pdf_url, '_blank');
+                            }}
                           >
                             <ExternalLink className="w-4 h-4 mr-1" />
                             Ver PDF
@@ -485,7 +506,10 @@ export function ProposalsView() {
                             variant="outline"
                             size="sm"
                             disabled={!row.share_url && !row.pdf_url}
-                            onClick={() => copyLink(row.share_url || row.pdf_url)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyLink(row.share_url || row.pdf_url);
+                            }}
                           >
                             <Copy className="w-4 h-4 mr-1" />
                             Copiar link
@@ -500,6 +524,69 @@ export function ProposalsView() {
           </Card>
         </div>
       </ScrollArea>
+
+      <Dialog open={!!selectedRow} onOpenChange={(open) => !open && setSelectedRow(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Detalhes da Proposta</DialogTitle>
+          </DialogHeader>
+
+          {selectedRow && (
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-muted-foreground">Lead</p>
+                <p className="font-medium">{selectedRow.lead_name || `Lead ${selectedRow.lead_id}`}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-muted-foreground">Versão</p>
+                  <p className="font-medium">V{selectedRow.version_no}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Status</p>
+                  <Badge variant="outline" className={STATUS_COLORS[selectedRow.status] || 'bg-slate-100 text-slate-700 border-slate-200'}>
+                    {STATUS_TRANSLATIONS[selectedRow.status] || selectedRow.status}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Criada em</p>
+                  <p>{new Date(selectedRow.created_at).toLocaleString('pt-BR')}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Valor</p>
+                  <p>
+                    {typeof selectedRow.valor_projeto === 'number'
+                      ? selectedRow.valor_projeto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                      : '-'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!selectedRow.pdf_url}
+                  onClick={() => selectedRow.pdf_url && window.open(selectedRow.pdf_url, '_blank')}
+                >
+                  <ExternalLink className="w-4 h-4 mr-1" />
+                  Ver PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!selectedRow.share_url && !selectedRow.pdf_url}
+                  onClick={() => copyLink(selectedRow.share_url || selectedRow.pdf_url)}
+                >
+                  <Copy className="w-4 h-4 mr-1" />
+                  Copiar link
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -47,6 +47,20 @@ export function VisitOutcomeAfterModal({
 }: VisitOutcomeAfterModalProps) {
   const [notes, setNotes] = useState('');
 
+  const elapsedLabel = (() => {
+    if (!item?.end_at) return null;
+    const endAt = new Date(item.end_at);
+    const now = new Date();
+    const diffMs = now.getTime() - endAt.getTime();
+    if (!Number.isFinite(diffMs) || diffMs <= 0) return 'Agora mesmo';
+    const totalMinutes = Math.floor(diffMs / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours <= 0) return `Há ${minutes} min`;
+    if (minutes === 0) return `Há ${hours}h`;
+    return `Há ${hours}h ${minutes}min`;
+  })();
+
   const handleSubmit = async (targetStage: string) => {
     await onSubmit(targetStage, notes.trim());
     setNotes('');
@@ -69,6 +83,7 @@ export function VisitOutcomeAfterModal({
               <p>
                 {format(new Date(item.start_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
               </p>
+              {elapsedLabel && <p className="mt-1">Tempo decorrido: {elapsedLabel}</p>}
             </div>
 
             <div className="space-y-2">

@@ -1,7 +1,7 @@
 // SolarZap CRM Types
 
 
-export type ActiveTab = 'conversas' | 'pipelines' | 'calendario' | 'contatos' | 'dashboard' | 'integracoes' | 'automacoes' | 'banco_ia' | 'ia_agentes' | 'admin_members';
+export type ActiveTab = 'conversas' | 'pipelines' | 'calendario' | 'contatos' | 'propostas' | 'dashboard' | 'integracoes' | 'automacoes' | 'banco_ia' | 'ia_agentes' | 'admin_members';
 
 
 
@@ -213,7 +213,7 @@ export const CHANNEL_INFO: Record<Channel, { label: string; icon: string; color:
   other: { label: 'Outros', icon: '🌐', color: 'bg-gray-400' },
 };
 
-export type ChannelFilter = Channel | 'all';
+export type ChannelFilter = Channel | 'todos';
 
 export const EVENT_COLORS: Record<EventType, string> = {
   chamada: 'bg-blue-500',

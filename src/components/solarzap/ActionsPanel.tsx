@@ -15,6 +15,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { UpdateLeadData } from './EditLeadModal';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+
+type LeadProposalItem = {
+  proposal_version_id: string;
+  status: string | null;
+  created_at: string;
+  version_no: number | null;
+  pdf_url: string | null;
+  share_url: string | null;
+};
 
 interface ActionsPanelProps {
   conversation: Conversation | null;
@@ -42,12 +53,15 @@ const CLIENT_TYPES: { value: ClientType; label: string }[] = [
 ];
 
 export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose, onUpdateLead }: ActionsPanelProps) {
+  const { orgId } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [formData, setFormData] = useState<UpdateLeadData & { canal?: Channel }>({});
   const { toast } = useToast();
 
   const prevContactIdRef = React.useRef<string | null>(null);
+  const [leadProposals, setLeadProposals] = useState<LeadProposalItem[]>([]);
+  const [isLoadingProposals, setIsLoadingProposals] = useState(false);
 
   // Reset form when conversation changes
   useEffect(() => {
@@ -93,6 +107,84 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
       }
     }
   }, [conversation, hasChanges]);
+
+  useEffect(() => {
+    const fetchLeadProposals = async () => {
+      if (!conversation?.contact?.id) {
+        setLeadProposals([]);
+        return;
+      }
+
+      const leadIdNum = Number(conversation.contact.id);
+      if (!Number.isFinite(leadIdNum)) {
+        setLeadProposals([]);
+        return;
+      }
+
+      if (!orgId) {
+        setLeadProposals([]);
+        return;
+      }
+
+      setIsLoadingProposals(true);
+      try {
+        // Use the dedicated get_lead_proposals RPC for efficiency
+        const { data, error } = await supabase.rpc('get_lead_proposals', {
+          p_org_id: orgId,
+          p_lead_id: leadIdNum,
+        });
+
+        if (error) {
+          // Fallback: direct query on proposal_versions
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('proposal_versions')
+            .select('id, lead_id, version_no, created_at, status, premium_payload')
+            .eq('org_id', orgId)
+            .eq('lead_id', leadIdNum)
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+          if (fallbackError) throw fallbackError;
+
+          const fallbackRows = (fallbackData || []).map((row: any) => ({
+            proposal_version_id: String(row.id || ''),
+            status: row.status ? String(row.status) : null,
+            created_at: String(row.created_at || ''),
+            version_no: row.version_no ? Number(row.version_no) : null,
+            pdf_url:
+              row.premium_payload?.public_pdf_url ||
+              row.premium_payload?.client_pdf_url ||
+              row.premium_payload?.pdf_url ||
+              null,
+            share_url: row.premium_payload?.share_url || null,
+          }));
+
+          setLeadProposals(fallbackRows);
+          return;
+        }
+
+        const rows = ((data || []) as any[])
+          .slice(0, 5)
+          .map((row) => ({
+            proposal_version_id: String(row.proposal_version_id || row.id || ''),
+            status: row.status ? String(row.status) : null,
+            created_at: String(row.created_at || ''),
+            version_no: row.version_no ? Number(row.version_no) : null,
+            pdf_url: row.pdf_url ? String(row.pdf_url) : null,
+            share_url: row.share_url ? String(row.share_url) : null,
+          }));
+
+        setLeadProposals(rows);
+      } catch (error) {
+        console.error('Failed to load lead proposals in ActionsPanel:', error);
+        setLeadProposals([]);
+      } finally {
+        setIsLoadingProposals(false);
+      }
+    };
+
+    fetchLeadProposals();
+  }, [conversation?.contact?.id, orgId]);
 
   if (!conversation) {
     return null;
@@ -157,6 +249,28 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
 
   const handleQuickAction = (actionId: string) => {
     onAction(actionId, contact);
+  };
+
+  const handleOpenGlobalProposals = () => {
+    localStorage.setItem('solarzap_proposals_filter_lead_id', String(contact.id));
+    onAction('proposals', contact);
+  };
+
+  const handleCopyProposalLink = async (url: string | null) => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({
+        title: 'Link copiado',
+        description: 'Link da proposta copiado para a área de transferência.',
+      });
+    } catch {
+      toast({
+        title: 'Erro ao copiar link',
+        description: 'Não foi possível copiar o link.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const formatDate = (date: Date) => {
@@ -404,6 +518,63 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Último contato</span>
               <span className="text-foreground">{formatDate(contact.lastContact)}</span>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground">Propostas deste Lead</span>
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={handleOpenGlobalProposals}>
+                  Ver Todas
+                </Button>
+              </div>
+
+              {isLoadingProposals && (
+                <p className="text-xs text-muted-foreground">Carregando propostas...</p>
+              )}
+
+              {!isLoadingProposals && leadProposals.length === 0 && (
+                <p className="text-xs text-muted-foreground">Nenhuma proposta encontrada para este lead.</p>
+              )}
+
+              {!isLoadingProposals && leadProposals.length > 0 && (
+                <div className="space-y-2">
+                  {leadProposals.map((proposal) => (
+                    <div key={proposal.proposal_version_id} className="rounded-md border border-border p-2 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium truncate">V{proposal.version_no || 1}</span>
+                        <Badge variant="outline" className="text-[10px]">
+                          {proposal.status || '—'}
+                        </Badge>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {proposal.created_at ? new Date(proposal.created_at).toLocaleString('pt-BR') : 'Sem data'}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-[11px] px-2"
+                          disabled={!proposal.pdf_url}
+                          onClick={() => proposal.pdf_url && window.open(proposal.pdf_url, '_blank')}
+                        >
+                          Ver PDF
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-[11px] px-2"
+                          disabled={!proposal.share_url && !proposal.pdf_url}
+                          onClick={() => handleCopyProposalLink(proposal.share_url || proposal.pdf_url)}
+                        >
+                          Copiar Link
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

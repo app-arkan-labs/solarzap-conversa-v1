@@ -42,6 +42,8 @@ export interface ProposalData {
   garantiaAnos: number;
   observacoes?: string;
   tipo_cliente?: ClientType;
+  premiumPayload?: Record<string, unknown>;
+  contextEngine?: unknown;
 }
 
 const CLIENT_TYPES: { value: ClientType; label: string }[] = [

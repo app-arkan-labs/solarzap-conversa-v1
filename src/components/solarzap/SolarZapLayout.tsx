@@ -17,9 +17,12 @@ import { IntegrationsView } from './IntegrationsView';
 import { AutomationsView } from './AutomationsView';
 import { AIAgentsView } from './AIAgentsView';
 import { KnowledgeBaseView } from './KnowledgeBaseView';
+import { ProposalsView } from './ProposalsView';
+import { NotificationSettingsCard } from './NotificationSettingsCard';
 import { NotificationsPanel } from './NotificationsPanel';
 import { CreateLeadModal, CreateLeadData } from './CreateLeadModal';
 import { AppointmentModal } from './AppointmentModal';
+import { VisitOutcomeAfterModal, VisitOutcomeItem } from './VisitOutcomeAfterModal';
 // import { ScheduleModal, ScheduleData } from './ScheduleModal'; // Replaced by AppointmentModal
 import { ProposalModal, ProposalData } from './ProposalModal';
 import { CallConfirmModal } from './CallConfirmModal';
@@ -35,6 +38,8 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Contact, PipelineStage, ChannelFilter, ActiveTab, Conversation } from '@/types/solarzap';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAppointments } from '@/hooks/useAppointments';
+import { supabase } from '@/lib/supabase';
 import AdminMembersPage from '@/pages/AdminMembersPage';
 
 type AppointmentModalErrorBoundaryProps = {
@@ -111,7 +116,8 @@ export function SolarZapLayout() {
     addEvent
   } = usePipeline();
 
-  const { getMessage, isDragDropEnabled } = useAutomationSettings();
+  const { getMessage, isDragDropEnabled, activeSettings } = useAutomationSettings();
+  const { appointments, updateAppointment } = useAppointments();
 
   // Global loading state - Only show full screen loader on INITIAL load (no data)
   // We check if lists are empty AND loading is true.
@@ -226,8 +232,82 @@ export function SolarZapLayout() {
   // Comments modal
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
   const [commentsContact, setCommentsContact] = useState<Contact | null>(null);
+  const [visitOutcomeModalOpen, setVisitOutcomeModalOpen] = useState(false);
+  const [visitOutcomeSubmitting, setVisitOutcomeSubmitting] = useState(false);
+  const [pendingVisitOutcome, setPendingVisitOutcome] = useState<VisitOutcomeItem | null>(null);
+  const [dismissedVisitOutcomeIds, setDismissedVisitOutcomeIds] = useState<Set<string>>(new Set());
 
   const { toast } = useToast();
+
+  const tryOpenNextVisitOutcome = useCallback(() => {
+    if (!activeSettings.visitOutcomeModalEnabled) return;
+    if (visitOutcomeModalOpen || pendingVisitOutcome) return;
+
+    const now = Date.now();
+    const thresholdMs = 3 * 60 * 60 * 1000;
+
+    const candidates = appointments
+      .filter((appointment) => {
+        const typeRaw = String(appointment.type || '').toLowerCase();
+        const isVisit = typeRaw === 'visita' || typeRaw === 'visit';
+        if (!isVisit) return false;
+        if (dismissedVisitOutcomeIds.has(String(appointment.id))) return false;
+
+        const outcome = String(appointment.outcome || '').trim();
+        if (outcome) return false;
+
+        const status = String(appointment.status || '').toLowerCase();
+        if (status === 'canceled' || status === 'no_show') return false;
+
+        const endAtMs = new Date(appointment.end_at).getTime();
+        if (!Number.isFinite(endAtMs)) return false;
+
+        return now - endAtMs >= thresholdMs;
+      })
+      .sort((a, b) => new Date(a.end_at).getTime() - new Date(b.end_at).getTime());
+
+    const next = candidates[0];
+    if (!next) return;
+
+    const contact = contacts.find((c) => String(c.id) === String(next.lead_id));
+
+    setPendingVisitOutcome({
+      appointment_id: String(next.id),
+      lead_id: Number(next.lead_id),
+      lead_name: contact?.name || null,
+      lead_stage: contact?.pipelineStage || null,
+      start_at: next.start_at,
+      end_at: next.end_at,
+      title: next.title || null,
+      notes: next.notes || null,
+    });
+    setVisitOutcomeModalOpen(true);
+  }, [
+    activeSettings.visitOutcomeModalEnabled,
+    appointments,
+    contacts,
+    dismissedVisitOutcomeIds,
+    pendingVisitOutcome,
+    visitOutcomeModalOpen,
+  ]);
+
+  useEffect(() => {
+    tryOpenNextVisitOutcome();
+  }, [tryOpenNextVisitOutcome]);
+
+  const closeVisitOutcomeModal = useCallback(() => {
+    if (pendingVisitOutcome?.appointment_id) {
+      setDismissedVisitOutcomeIds((prev) => {
+        const next = new Set(prev);
+        next.add(String(pendingVisitOutcome.appointment_id));
+        return next;
+      });
+    }
+
+    setVisitOutcomeModalOpen(false);
+    setPendingVisitOutcome(null);
+  }, [pendingVisitOutcome]);
+
   const handleAppointmentModalError = useCallback((error: Error) => {
     console.error(error);
     setIsScheduleOpen(false);
@@ -354,6 +434,14 @@ export function SolarZapLayout() {
       case 'comments':
         setCommentsContact(targetContact || null);
         setCommentsModalOpen(true);
+        break;
+
+      case 'proposals':
+        if (targetContact?.id) {
+          localStorage.setItem('solarzap_proposals_filter_lead_id', String(targetContact.id));
+        }
+        setActiveTab('propostas');
+        setIsDetailsPanelOpen(false);
         break;
     }
   };
@@ -533,6 +621,60 @@ export function SolarZapLayout() {
     }
 
   }, [contacts, moveToPipeline, toast, isDragDropEnabled]);
+
+  const handleVisitOutcomeSubmit = useCallback(async (targetStage: string, notes: string) => {
+    if (!pendingVisitOutcome) return;
+
+    const normalizedStage = targetStage as PipelineStage;
+    const contact = contacts.find((c) => String(c.id) === String(pendingVisitOutcome.lead_id));
+
+    setVisitOutcomeSubmitting(true);
+    try {
+      await updateAppointment({
+        id: pendingVisitOutcome.appointment_id,
+        data: {
+          outcome: normalizedStage,
+          status: 'completed',
+        },
+      });
+
+      if (contact) {
+        await handlePipelineStageChange(contact.id, normalizedStage);
+
+        const commentText = [`Outcome visita: ${normalizedStage}`, notes].filter(Boolean).join('\n');
+        if (commentText.trim() && orgId) {
+          await supabase.from('comentarios_leads').insert({
+            org_id: orgId,
+            lead_id: Number(contact.id),
+            texto: commentText,
+            autor: 'Sistema',
+          });
+        }
+      }
+
+      setDismissedVisitOutcomeIds((prev) => {
+        const next = new Set(prev);
+        next.add(String(pendingVisitOutcome.appointment_id));
+        return next;
+      });
+
+      setVisitOutcomeModalOpen(false);
+      setPendingVisitOutcome(null);
+
+      toast({
+        title: 'Outcome da visita registrado',
+        description: 'Lead atualizado e comentário salvo automaticamente.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro ao registrar outcome',
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setVisitOutcomeSubmitting(false);
+    }
+  }, [contacts, handlePipelineStageChange, orgId, pendingVisitOutcome, toast, updateAppointment]);
 
   const handleCreateLead = async (data: CreateLeadData) => {
     await createLead(data);
@@ -831,6 +973,12 @@ export function SolarZapLayout() {
         <DashboardView onNavigate={(tab) => handleTabChange(tab as any)} />
       )}
 
+      {activeTab === 'propostas' && (
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          <ProposalsView />
+        </div>
+      )}
+
       {activeTab === 'admin_members' && (
         <div className="flex-1 h-full overflow-hidden">
           <AdminMembersPage embedded />
@@ -838,7 +986,14 @@ export function SolarZapLayout() {
       )}
 
       {activeTab === 'integracoes' && (
-        <IntegrationsView />
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          <IntegrationsView />
+          <div className="px-6 pb-6 bg-muted/30">
+            <div className="max-w-6xl mx-auto">
+              <NotificationSettingsCard />
+            </div>
+          </div>
+        </div>
       )}
 
       {activeTab === 'automacoes' && (
@@ -967,6 +1122,14 @@ export function SolarZapLayout() {
         }}
         leadId={commentsContact?.id || ''}
         leadName={commentsContact?.name || ''}
+      />
+
+      <VisitOutcomeAfterModal
+        item={pendingVisitOutcome}
+        open={visitOutcomeModalOpen}
+        submitting={visitOutcomeSubmitting}
+        onSubmit={handleVisitOutcomeSubmit}
+        onClose={closeVisitOutcomeModal}
       />
 
       <VisitScheduleConfirmModal

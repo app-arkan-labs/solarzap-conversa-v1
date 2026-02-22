@@ -331,6 +331,16 @@ Deno.serve(async (req) => {
     let data: unknown
 
     switch (action) {
+      case 'ping': {
+        data = {
+          ok: true,
+          orgId: ctx.orgId,
+          userId: ctx.userId,
+          internal: ctx.internal,
+        }
+        break
+      }
+
       case 'instance-create': {
         const candidateName = requireString(payload, 'instanceName')
         const { data: conflict } = await supabaseAdmin

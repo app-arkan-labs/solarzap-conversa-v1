@@ -112,14 +112,14 @@ export function useAppointments() {
             if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
 
             const payload: any = {};
-            if (data.title) payload.title = data.title;
-            if (data.type) payload.type = data.type;
-            if (data.status) payload.status = data.status;
+            if (data.title !== undefined) payload.title = data.title;
+            if (data.type !== undefined) payload.type = data.type;
+            if (data.status !== undefined) payload.status = data.status;
             if (data.start_at) payload.start_at = data.start_at.toISOString();
             if (data.end_at) payload.end_at = data.end_at.toISOString();
             if (data.location !== undefined) payload.location = data.location;
             if (data.notes !== undefined) payload.notes = data.notes;
-            if (data.lead_id) payload.lead_id = data.lead_id;
+            if (data.lead_id !== undefined) payload.lead_id = data.lead_id;
             if (data.outcome !== undefined) payload.outcome = data.outcome;
 
             const { error } = await supabase

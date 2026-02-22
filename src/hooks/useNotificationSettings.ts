@@ -22,7 +22,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS = {
   enabled_notifications: false,
   enabled_whatsapp: false,
   enabled_email: false,
-  enabled_reminders: true,
+  enabled_reminders: false,
   whatsapp_instance_name: null,
   email_recipients: [] as string[],
   daily_digest_enabled: false,
@@ -41,19 +41,49 @@ export function useNotificationSettings() {
   const ensureSettingsRow = useCallback(async () => {
     if (!orgId || !user?.id) return null;
 
+    // First try to read the existing row
+    const { data: existing } = await supabase
+      .from('notification_settings')
+      .select('*')
+      .eq('org_id', orgId)
+      .maybeSingle();
+
+    if (existing) return existing as NotificationSettings;
+
+    // Row doesn't exist — insert with defaults (ignoreDuplicates handles race)
     const { data, error } = await supabase
       .from('notification_settings')
       .upsert(
         {
           org_id: orgId,
+          enabled_notifications: DEFAULT_NOTIFICATION_SETTINGS.enabled_notifications,
+          enabled_whatsapp: DEFAULT_NOTIFICATION_SETTINGS.enabled_whatsapp,
+          enabled_email: DEFAULT_NOTIFICATION_SETTINGS.enabled_email,
+          enabled_reminders: DEFAULT_NOTIFICATION_SETTINGS.enabled_reminders,
+          whatsapp_instance_name: DEFAULT_NOTIFICATION_SETTINGS.whatsapp_instance_name,
+          email_recipients: DEFAULT_NOTIFICATION_SETTINGS.email_recipients,
+          daily_digest_enabled: DEFAULT_NOTIFICATION_SETTINGS.daily_digest_enabled,
+          weekly_digest_enabled: DEFAULT_NOTIFICATION_SETTINGS.weekly_digest_enabled,
+          daily_digest_time: DEFAULT_NOTIFICATION_SETTINGS.daily_digest_time,
+          weekly_digest_time: DEFAULT_NOTIFICATION_SETTINGS.weekly_digest_time,
+          timezone: DEFAULT_NOTIFICATION_SETTINGS.timezone,
           updated_by: user.id,
         },
-        { onConflict: 'org_id' }
+        { onConflict: 'org_id', ignoreDuplicates: true }
       )
       .select('*')
       .single();
 
-    if (error) throw error;
+    // If ignoreDuplicates caused a "no rows returned" we re-fetch
+    if (error || !data) {
+      const { data: refetched, error: refetchErr } = await supabase
+        .from('notification_settings')
+        .select('*')
+        .eq('org_id', orgId)
+        .single();
+      if (refetchErr) throw refetchErr;
+      return refetched as NotificationSettings;
+    }
     return data as NotificationSettings;
   }, [orgId, user?.id]);
 

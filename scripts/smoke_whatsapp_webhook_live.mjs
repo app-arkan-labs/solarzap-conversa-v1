@@ -77,8 +77,9 @@ async function main() {
       },
     };
 
-    const webhookUrl = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/whatsapp-webhook?secret=${encodeURIComponent(WEBHOOK_SECRET)}`;
-    const response = await fetch(webhookUrl, {
+    const webhookBaseUrl = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/whatsapp-webhook`;
+
+    const querySecretResponse = await fetch(`${webhookBaseUrl}?secret=${encodeURIComponent(WEBHOOK_SECRET)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -86,8 +87,24 @@ async function main() {
       body: JSON.stringify(payload),
     });
 
+    const querySecretBody = await querySecretResponse.text();
+    report(
+      'reject whatsapp-webhook query-secret',
+      querySecretResponse.status === 401,
+      `status=${querySecretResponse.status} body=${querySecretBody.slice(0, 120)}`,
+    );
+
+    const response = await fetch(webhookBaseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-arkan-webhook-secret': WEBHOOK_SECRET,
+      },
+      body: JSON.stringify(payload),
+    });
+
     const body = await response.text();
-    report('post whatsapp-webhook', response.ok, `status=${response.status} body=${body.slice(0, 120)}`);
+    report('post whatsapp-webhook header-secret', response.ok, `status=${response.status} body=${body.slice(0, 120)}`);
     if (!response.ok) return;
 
     await sleep(3000);

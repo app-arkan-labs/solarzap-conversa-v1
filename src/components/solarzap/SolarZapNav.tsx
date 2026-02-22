@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { ActiveTab } from '@/types/solarzap';
-import { MessageCircle, Kanban, Calendar, Users, BarChart3, Sun, Bell, Settings, Plug, Zap, Brain, Bot, UserCog } from 'lucide-react';
+import { MessageCircle, Kanban, Calendar, Users, FileText, BarChart3, Sun, Bell, Settings, Plug, Zap, Brain, Bot, UserCog } from 'lucide-react';
 import { GoogleAccountButton } from './GoogleAccountButton';
 import {
   Popover,
@@ -22,6 +22,7 @@ const navItems: { id: ActiveTab; icon: typeof MessageCircle; label: string }[] =
   { id: 'pipelines', icon: Kanban, label: 'Pipelines' },
   { id: 'calendario', icon: Calendar, label: 'Calendário' },
   { id: 'contatos', icon: Users, label: 'Contatos' },
+  { id: 'propostas', icon: FileText, label: 'Propostas' },
   { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
 ];
 
