@@ -15,7 +15,7 @@ export interface ProposalColorTheme {
   primaryLight: [number, number, number];
   /** Text color used on top of primaryLight bg (section titles) */
   primaryText: [number, number, number];
-  /** Tailwind class for the preview swatch in ProposalsView */
+  /** CSS-compatible color for the preview swatch in ProposalsView */
   swatch: string;
 }
 
@@ -27,7 +27,7 @@ export const PROPOSAL_THEMES: Record<ProposalThemeId, ProposalColorTheme> = {
     primaryDark: [21, 128, 61],
     primaryLight: [240, 253, 244],
     primaryText: [22, 101, 52],
-    swatch: 'bg-green-500',
+    swatch: '#16a34a',
   },
   azul_marinho: {
     id: 'azul_marinho',
@@ -36,7 +36,7 @@ export const PROPOSAL_THEMES: Record<ProposalThemeId, ProposalColorTheme> = {
     primaryDark: [7, 22, 42],
     primaryLight: [226, 232, 240],
     primaryText: [15, 23, 42],
-    swatch: 'bg-slate-800',
+    swatch: '#1e293b',
   },
   azul_royal: {
     id: 'azul_royal',
@@ -45,7 +45,7 @@ export const PROPOSAL_THEMES: Record<ProposalThemeId, ProposalColorTheme> = {
     primaryDark: [29, 78, 216],
     primaryLight: [219, 234, 254],
     primaryText: [30, 64, 175],
-    swatch: 'bg-blue-700',
+    swatch: '#1d4ed8',
   },
   laranja: {
     id: 'laranja',
@@ -54,7 +54,7 @@ export const PROPOSAL_THEMES: Record<ProposalThemeId, ProposalColorTheme> = {
     primaryDark: [194, 65, 12],
     primaryLight: [255, 237, 213],
     primaryText: [154, 52, 18],
-    swatch: 'bg-orange-600',
+    swatch: '#ea580c',
   },
   cinza_escuro: {
     id: 'cinza_escuro',
@@ -63,7 +63,7 @@ export const PROPOSAL_THEMES: Record<ProposalThemeId, ProposalColorTheme> = {
     primaryDark: [31, 41, 55],
     primaryLight: [243, 244, 246],
     primaryText: [31, 41, 55],
-    swatch: 'bg-gray-600',
+    swatch: '#4b5563',
   },
 };
 

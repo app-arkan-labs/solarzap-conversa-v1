@@ -320,10 +320,19 @@ export function ChatArea({
     };
   }, [showEmojiPicker]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!message.trim() || !conversation) return;
 
     const selectedInstance = instances.find(i => i.id === selectedInstanceId);
+    const msgToSend = message;
+    const replyToSend = replyToTarget;
+
+    // Clear input immediately for responsiveness
+    setMessage('');
+    setReplyTarget(null);
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
 
     toast({
       title: "Enviando mensagem...",
@@ -331,12 +340,12 @@ export function ChatArea({
       duration: 2000
     });
 
-    onSendMessage(conversation.id, message, selectedInstance?.instance_name, replyToTarget);
-
-    setMessage('');
-    setReplyTarget(null);
-    if (inputRef.current) {
-      inputRef.current.style.height = 'auto';
+    try {
+      await onSendMessage(conversation.id, msgToSend, selectedInstance?.instance_name, replyToSend);
+    } catch {
+      // Error is already handled by SolarZapLayout's try/catch + toast
+      // Restore message on failure so user doesn't lose their text
+      setMessage(msgToSend);
     }
   };
 

@@ -12,6 +12,12 @@ export interface AISettings {
     report_phone_number?: string;
     whatsapp_instance_name?: string;
     updated_at: string;
+    // Protocol version & Support AI (added 20260221)
+    protocol_version?: string;
+    support_ai_enabled?: boolean;
+    support_ai_auto_disable_on_seller_message?: boolean;
+    respondeu_flow_mode?: string;
+    support_ai_stage_toggles?: Record<string, boolean>;
 }
 
 export interface AIStageConfig {

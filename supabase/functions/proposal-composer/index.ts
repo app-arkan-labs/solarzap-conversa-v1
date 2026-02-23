@@ -145,6 +145,27 @@ const normalizeVariant = (raw: any, id: VariantId) => {
     })
     .slice(0, 24);
 
+  // ── Premium V2 fields ──
+  const visitSteps = asArrayOfString(raw?.visit_steps, 10, 300);
+  const bantRaw = Array.isArray(raw?.bant_qualification) ? raw.bant_qualification : [];
+  const bantQualification = bantRaw
+    .map((r: any) => ({
+      item: asString(r?.item, 40),
+      status: asString(r?.status, 120),
+      question: asString(r?.question, 240),
+    }))
+    .filter((r: any) => r.item)
+    .slice(0, 6);
+  const termsConditions = asArrayOfString(raw?.terms_conditions, 12, 400);
+  const nextStepsRaw = Array.isArray(raw?.next_steps_detailed) ? raw.next_steps_detailed : [];
+  const nextStepsDetailed = nextStepsRaw
+    .map((r: any) => ({
+      step: asString(r?.step, 80),
+      description: asString(r?.description, 300),
+    }))
+    .filter((r: any) => r.step)
+    .slice(0, 8);
+
   return {
     id,
     label: asString(raw?.label, 80) || fallbackLabel,
@@ -157,6 +178,10 @@ const normalizeVariant = (raw: any, id: VariantId) => {
     proof_points: asArrayOfString(raw?.proof_points, 10, 220),
     objection_handlers: asArrayOfString(raw?.objection_handlers, 10, 260),
     assumptions: asArrayOfString(raw?.assumptions, 10, 260),
+    visit_steps: visitSteps,
+    bant_qualification: bantQualification,
+    terms_conditions: termsConditions,
+    next_steps_detailed: nextStepsDetailed,
     sections,
     persuasion_score: clampScore(raw?.persuasion_score),
     score_breakdown: {
@@ -292,12 +317,12 @@ Objetivo: gerar DUAS versões A/B altamente persuasivas e premium para a mesma p
 Regras obrigatórias:
 - Português brasileiro. Tom profissional, direto, premium. Sem clichês.
 - A primeira dobra deve responder: "quanto custa", "quanto economiza" e "por que confiar".
-- Use o contexto recebido (comentários, histórico de conversa, perfil da empresa, objeções, depoimentos e documentos).
+- PRIORIDADE MÁXIMA: Personalize a proposta com base nos COMENTÁRIOS INTERNOS (context.comments) e no HISTÓRICO DE CONVERSA/WHATSAPP (context.interactions). Esses dados contêm as dores, objeções, preferências e momento do cliente. Adapte o tom, os argumentos e o foco da proposta ao que o cliente demonstrou na conversa. Os números financeiros e técnicos já estarão nas tabelas do PDF — o seu papel é criar TEXTO persuasivo e personalizado a partir do contexto humano.
+- Use também o perfil da empresa, objeções, depoimentos e documentos quando disponíveis.
 - Não mencione "base de conhecimento" ou "documentos" explicitamente; apenas use os fatos.
 - Não invente números. Números financeiros e técnicos devem vir de payload.metrics.
 - Se um dado estiver ausente/0, seja transparente e não chute; use linguagem condicional.
-- Sempre inclua CTA claro + próximos passos.
-- Importante: esta proposta é apresentada presencialmente (visita já está acontecendo). Não use CTA do tipo "agendar visita" ou "agendar apresentação". Prefira CTA de confirmação/aprovação para iniciar validação técnica final, contrato e cronograma.
+- NÃO inclua "próximos passos" ou CTA do tipo "agendar visita" na proposta — ela é apresentada presencialmente durante a visita. O campo next_step_cta deve conter uma frase de fechamento/aprovação do tipo "Vamos seguir? Confirme para iniciarmos a validação técnica e cronograma de instalação." Nunca sugira agendar algo que já está acontecendo.
 
 Estrutura obrigatória por variante:
 - Campos "headline", "executive_summary", "persona_focus", "next_step_cta" e listas.
@@ -310,6 +335,12 @@ Estrutura obrigatória por variante:
   - objections: { items[3..8] }
   - next_steps: { cta, steps[3..6] }
   - assumptions: { items[3..8] }
+
+NOVOS campos obrigatórios (Premium V2) — estes alimentam gráficos e páginas extras do PDF:
+- "visit_steps": ["string"] — 5 a 8 etapas de como conduzir a visita ao cliente (roteiro do vendedor).
+- "bant_qualification": [{ "item": "Budget|Authority|Need|Timeline", "status": "string", "question": "string de validação" }] — 4 linhas BANT.
+- "terms_conditions": ["string"] — 6 a 10 condições gerais da proposta (validade, premissas, garantias, prazo).
+- "next_steps_detailed": [{ "step": "string", "description": "string" }] — 4 a 7 passos detalhados para pós-aprovação (aprovação -> vistoria -> projeto -> instalação -> homologação -> geração).
 
 Retorne SOMENTE JSON válido com esta estrutura:
 {
@@ -324,6 +355,10 @@ Retorne SOMENTE JSON válido com esta estrutura:
     "proof_points": ["string"],
     "objection_handlers": ["string"],
     "assumptions": ["string"],
+    "visit_steps": ["string"],
+    "bant_qualification": [{ "item": "string", "status": "string", "question": "string" }],
+    "terms_conditions": ["string"],
+    "next_steps_detailed": [{ "step": "string", "description": "string" }],
     "sections": [
       { "section_key": "first_fold", "section_title": "string", "section_order": 10, "content": { } },
       { "section_key": "roi_payback", "section_title": "string", "section_order": 20, "content": { } },

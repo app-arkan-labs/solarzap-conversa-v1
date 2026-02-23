@@ -10,6 +10,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 export interface LeadDB {
   id: number;                    // int8, não string!
   user_id: string;               // UUID do usuário (multi-tenancy)
+  org_id?: string;               // UUID da organização
   assigned_to_user_id?: string | null;
   nome: string | null;
   empresa: string | null;
@@ -24,6 +25,16 @@ export interface LeadDB {
   phone_e164?: string | null;     // NEW
   instance_name?: string | null;  // NEW
   whatsapp_name?: string | null;  // NEW
+  // Extended fields used by leadToContact
+  observacoes?: string | null;
+  notes?: string | null;          // Alias for observacoes in some contexts
+  tipo_cliente?: string | null;
+  endereco?: string | null;
+  cidade?: string | null;
+  uf?: string | null;
+  cep?: string | null;
+  name_source?: string | null;
+  name_updated_at?: string | null;
   // AI Control
   ai_enabled?: boolean;
   ai_paused_reason?: string | null;

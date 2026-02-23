@@ -219,9 +219,15 @@ export function useLeads() {
                         });
                         toast.info('Contato excluído');
                     } else {
-                        // UPDATE
-                        // We could optimistically update here, but for now we just invalidate
-                        // toast.info('Leads atualizados');
+                        // UPDATE — optimistic merge to reflect AI toggle and other changes instantly
+                        const updated = payload.new;
+                        if (updated) {
+                            const updatedContact = leadToContact(updated);
+                            queryClient.setQueryData(leadsQueryKey, (oldData: Contact[] | undefined) => {
+                                if (!Array.isArray(oldData)) return oldData;
+                                return oldData.map(c => c.id === updatedContact.id ? { ...c, ...updatedContact } : c);
+                            });
+                        }
                     }
                     queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
                 }
@@ -489,12 +495,31 @@ export function useLeads() {
                 ai_paused_reason: enabled ? null : (reason || 'manual'),
                 ai_paused_at: enabled ? null : new Date().toISOString()
             };
-            const { error } = await supabase.from('leads').update(updatePayload).eq('id', Number(leadId));
+            const { data, error } = await supabase.from('leads').update(updatePayload).eq('id', Number(leadId)).eq('org_id', orgId).select('id');
             if (error) throw error;
+            if (!data?.length) {
+                throw new Error('Nenhum lead atualizado. Verifique permissões.');
+            }
             return { leadId, enabled };
         },
-        onSuccess: () => {
+        onSuccess: ({ leadId, enabled }) => {
+            // Optimistic cache update for instant toggle feedback
+            queryClient.setQueriesData(
+                { queryKey: ['leads', orgId] },
+                (oldData: Contact[] | undefined) => {
+                    if (!Array.isArray(oldData)) return oldData;
+                    return oldData.map(c =>
+                        c.id === leadId
+                            ? { ...c, aiEnabled: enabled, aiPausedReason: enabled ? null : 'manual', aiPausedAt: enabled ? null : new Date() }
+                            : c
+                    );
+                }
+            );
             queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
+        },
+        onError: (error) => {
+            console.error('Error toggling lead AI:', error);
+            toast.error(error instanceof Error ? error.message : 'Erro ao alterar status da IA');
         }
     });
 

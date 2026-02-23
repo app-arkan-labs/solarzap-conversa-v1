@@ -351,7 +351,12 @@ async function isLeadAiEnabledNow(supabase: any, leadId: string | number): Promi
         .eq('id', leadId)
         .maybeSingle();
 
-    if (error || !data) return true;
+    // FAIL-SAFE: on DB error, assume AI is disabled to prevent unwanted outbound messages
+    if (error) {
+        console.error('[isLeadAiEnabledNow] DB error — defaulting to DISABLED for safety:', error.message);
+        return false;
+    }
+    if (!data) return false;
     return data.ai_enabled !== false;
 }
 
@@ -2104,12 +2109,32 @@ Se action for "create_followup", inclua "task" com título obrigatório.
 Se APENAS dados foram detectados e não há resposta necessária, use action="update_lead_fields" (sem content).
 `;
 
-            const completion = await openai.chat.completions.create({
-                model: "gpt-4o",
-                messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
-                max_tokens: 900,
-                response_format: { type: "json_object" }
-            });
+            let completion;
+            try {
+                completion = await openai.chat.completions.create({
+                    model: "gpt-4o",
+                    messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
+                    max_tokens: 900,
+                    response_format: { type: "json_object" }
+                });
+            } catch (openaiErr: any) {
+                console.error(`❌ [${runId}] OpenAI API call failed:`, openaiErr?.message || openaiErr);
+                try {
+                    await supabase.from('ai_action_logs').insert({
+                        org_id: leadOrgId,
+                        lead_id: Number(leadId),
+                        action_type: 'openai_call_failed',
+                        details: JSON.stringify({
+                            runId,
+                            error: openaiErr?.message || String(openaiErr),
+                            status: openaiErr?.status || null,
+                            interactionId: anchorInteractionId || null
+                        }),
+                        success: false
+                    });
+                } catch (_logErr) { /* non-blocking */ }
+                return respondNoSend({ skipped: 'openai_call_failed', runId, error: openaiErr?.message }, 'openai_call_failed');
+            }
 
             // Do not redeclare aiRes!
             aiRes = {};
@@ -2855,6 +2880,21 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
 
     } catch (error: any) {
         console.error("Agent Error:", error);
+        try {
+            if (leadId) {
+                await supabase.from('ai_action_logs').insert({
+                    org_id: leadOrgId || null,
+                    lead_id: Number(leadId) || null,
+                    action_type: 'agent_unhandled_exception',
+                    details: JSON.stringify({
+                        runId: runId || null,
+                        error: error?.message || String(error),
+                        stack: (error?.stack || '').substring(0, 500)
+                    }),
+                    success: false
+                });
+            }
+        } catch (_logErr) { /* non-blocking */ }
         return new Response(
             JSON.stringify({
                 error: error.message,

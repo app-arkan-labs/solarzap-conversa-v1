@@ -70,10 +70,15 @@ export function useChat(contacts: Contact[] = []) {
                 .maybeSingle();
 
             // Default to true if column/row doesn't exist
-            const autoDisableEnabled = (aiSettingsRow as any)?.support_ai_auto_disable_on_seller_message !== false;
+            const autoDisableEnabled = aiSettingsRow?.support_ai_auto_disable_on_seller_message !== false;
 
             if (!autoDisableEnabled) {
                 console.log(`[HumanTakeover/${source}] Org has auto-disable OFF — skipping pause for lead:`, leadId);
+                toast({
+                    title: 'Pausa automática desativada',
+                    description: 'A configuração "Pausar IA ao enviar mensagem" está desligada nas configurações da org.',
+                    duration: 4000,
+                });
                 return;
             }
 
@@ -87,6 +92,7 @@ export function useChat(contacts: Contact[] = []) {
                     ai_paused_at: new Date().toISOString(),
                 })
                 .eq('id', leadId)
+                .eq('org_id', orgId!)
                 .select('id');
 
             if (pauseErr) {
@@ -105,6 +111,18 @@ export function useChat(contacts: Contact[] = []) {
                 });
             } else {
                 console.log(`[HumanTakeover/${source}] AI paused successfully`);
+                // Optimistic update: immediately flip the toggle in the cache
+                queryClient.setQueriesData(
+                    { queryKey: ['leads', orgId] },
+                    (oldData: Contact[] | undefined) => {
+                        if (!Array.isArray(oldData)) return oldData;
+                        return oldData.map(c =>
+                            c.id === String(leadId)
+                                ? { ...c, aiEnabled: false, aiPausedReason: 'human_takeover', aiPausedAt: new Date() }
+                                : c
+                        );
+                    }
+                );
                 queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
                 queryClient.invalidateQueries({ queryKey: ['lead', String(leadId)] });
             }

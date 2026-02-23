@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+﻿import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { PIPELINE_STAGES } from '@/types/solarzap';
-import { Check, ChevronDown, Copy, ExternalLink, FileText } from 'lucide-react';
+import { Check, ChevronDown, Copy, ExternalLink, FileText, Palette, ImagePlus, X } from 'lucide-react';
+import { useProposalTheme } from '@/hooks/useProposalTheme';
+import { useProposalLogo } from '@/hooks/useProposalLogo';
+import { PROPOSAL_THEMES, THEME_IDS } from '@/utils/proposalColorThemes';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
 import { Badge } from '@/components/ui/badge';
@@ -83,6 +86,9 @@ const STATUS_COLORS: Record<string, string> = {
 export function ProposalsView() {
   const { orgId } = useAuth();
   const { toast } = useToast();
+  const { themeId, updateTheme } = useProposalTheme();
+  const { logoUrl, uploadLogo, removeLogo, loading: logoLoading } = useProposalLogo();
+  const logoInputRef = React.useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<ProposalRow[]>([]);
@@ -309,8 +315,82 @@ export function ProposalsView() {
               <h1 className="text-2xl font-bold text-foreground">Propostas</h1>
               <p className="text-sm text-muted-foreground">Histórico global de versões com filtros</p>
             </div>
-          </div>
-        </div>
+          </div>          {/* Theme color selector + Logo upload */}
+          <div className="flex items-center gap-4">
+            {/* Logo upload */}
+            <div className="flex items-center gap-2">
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadLogo(file);
+                  e.target.value = '';
+                }}
+              />
+              {logoUrl ? (
+                <div className="flex items-center gap-1.5 group">
+                  <button
+                    type="button"
+                    title="Alterar logo"
+                    onClick={() => logoInputRef.current?.click()}
+                    className="relative w-9 h-9 rounded-lg border border-border overflow-hidden bg-white hover:ring-2 hover:ring-primary/40 transition-all"
+                  >
+                    <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-0.5" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Remover logo"
+                    onClick={removeLogo}
+                    disabled={logoLoading}
+                    className="w-5 h-5 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  title="Enviar logo da empresa para as propostas"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={logoLoading}
+                  className="w-9 h-9 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center hover:border-primary/50 hover:bg-primary/5 transition-all"
+                >
+                  {logoLoading
+                    ? <div className="w-4 h-4 border-2 border-primary/40 border-t-primary rounded-full animate-spin" />
+                    : <ImagePlus className="w-4 h-4 text-muted-foreground" />
+                  }
+                </button>
+              )}
+              <span className="text-xs text-muted-foreground hidden sm:inline">Logo</span>
+            </div>
+
+            <div className="w-px h-6 bg-border" />
+
+            {/* Theme colors */}
+            <div className="flex items-center gap-2">
+              <Palette className="w-4 h-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground mr-1">Tema:</span>
+              {THEME_IDS.map((id) => {
+                const t = PROPOSAL_THEMES[id];
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    title={t.label}
+                    onClick={() => updateTheme(id)}
+                    className={cn(
+                      'w-7 h-7 rounded-full border-2 transition-all hover:scale-110',
+                      themeId === id ? 'border-foreground ring-2 ring-primary/40 scale-110' : 'border-transparent'
+                    )}
+                    style={{ backgroundColor: t.swatch }}
+                  />
+                );
+              })}
+            </div>
+          </div>        </div>
       </div>
 
       <ScrollArea className="flex-1">

@@ -85,7 +85,7 @@ async function runWebhookMock() {
     await sleep(15000);
 
     console.log("\n=== RESULTADOS ===");
-    const { data: interacao } = await supabase.from('interacoes').select('id, lead_id, texto').match({ wa_message_id: msgId }).maybeSingle();
+    const { data: interacao } = await supabase.from('interacoes').select('id, lead_id, mensagem').match({ wa_message_id: msgId }).maybeSingle();
     console.log(`[Gate Ingestão] Interacao cliente: ${!!interacao}`);
 
     const { data: agentRuns } = await supabase.from('ai_agent_runs').select('id, status, error_details').eq('lead_id', leadId).order('id', { ascending: false }).limit(2);
@@ -94,10 +94,10 @@ async function runWebhookMock() {
     const { data: actionLogs } = await supabase.from('ai_action_logs').select('id, action_type, details').eq('lead_id', leadId).order('id', { ascending: false }).limit(4);
     console.log(`[Gate Action Logs]:`, actionLogs.map(a => a.action_type));
 
-    const { data: outbounds } = await supabase.from('interacoes').select('id, tipo, texto').eq('lead_id', leadId).in('tipo', ['mensagem_vendedor', 'mensagem_agente_ia']).order('created_at', { ascending: false }).limit(1);
+    const { data: outbounds } = await supabase.from('interacoes').select('id, tipo, mensagem').eq('lead_id', leadId).in('tipo', ['mensagem_vendedor', 'mensagem_agente_ia']).order('created_at', { ascending: false }).limit(1);
     console.log(`[Gate Resposta AI]: Mensagem persistida? ${outbounds?.length > 0}`);
     if (outbounds?.length > 0) {
-        console.log(`-> Texto IA: ${outbounds[0].texto}`);
+        console.log(`-> Texto IA: ${outbounds[0].mensagem}`);
     }
 
     // TESTE BURST
@@ -127,7 +127,7 @@ async function runWebhookMock() {
     await sleep(15000);
 
     const { data: burstRuns } = await supabase.from('ai_agent_runs').select('id, status, error_details').eq('lead_id', leadId).order('id', { ascending: false }).limit(3);
-    console.log(`[Gate Burst] ai_agent_runs:`, burstRuns.map(r => ({ status: r.status, reason: r.error_details?.skipped })));
+    console.log(`[Gate Burst] ai_agent_runs:`, (burstRuns || []).map(r => ({ status: r.status, reason: r.error_details?.skipped })));
 
     // TESTE AÇÕES (move_stage via mock response AI)
     console.log("\n=== TESTE AÇÕES MOCKADAS ===");

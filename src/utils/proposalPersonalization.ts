@@ -49,6 +49,36 @@ export interface PremiumProposalSection {
   source?: 'manual' | 'ai' | 'hybrid' | string;
 }
 
+export interface BantQualificationRow {
+  item: string;
+  status: string;
+  question: string;
+}
+
+export interface EquipmentSpec {
+  item: string;
+  spec: string;
+  qty: number | string;
+  warranty: string;
+}
+
+export interface EnvironmentalImpact {
+  co2Tons: number;
+  trees: number;
+  carKm: number;
+}
+
+export interface BeforeAfterRow {
+  label: string;
+  before: string;
+  after: string;
+}
+
+export interface NextStepDetailed {
+  step: string;
+  description: string;
+}
+
 export interface PremiumProposalContent {
   segment: ProposalSegment;
   segmentLabel: string;
@@ -60,6 +90,8 @@ export interface PremiumProposalContent {
   objectionHandlers: string[];
   nextStepCta: string;
   assumptions: string[];
+  visitSteps?: string[];
+  bantQualification?: BantQualificationRow[];
   sections?: PremiumProposalSection[];
   variantId?: 'a' | 'b' | 'heuristic';
   variantLabel?: string;
@@ -69,6 +101,14 @@ export interface PremiumProposalContent {
   generatedBy?: 'heuristic' | 'ai';
   generatedAt?: string;
   generationModel?: string;
+  // ── Premium V2 fields ──
+  environmentalImpact?: EnvironmentalImpact;
+  monthlyGeneration?: number[];
+  equipmentSpecs?: EquipmentSpec[];
+  beforeAfter?: BeforeAfterRow[];
+  termsConditions?: string[];
+  nextStepsDetailed?: NextStepDetailed[];
+  companyContact?: { name?: string; phone?: string; email?: string; address?: string };
 }
 
 export interface PersuasionScoreBreakdown {
@@ -88,11 +128,14 @@ interface BuildPremiumProposalInput {
   companyProfile?: CompanyProfileContext | null;
   objections?: ObjectionContext[];
   testimonials?: TestimonialContext[];
+  taxaFinanciamento?: number;
+  parcela36x?: number;
+  parcela60x?: number;
 }
 
 const segmentConfig: Record<
   ProposalSegment,
-  { label: string; promise: string; focus: string; cta: string; pillars: string[] }
+  { label: string; promise: string; focus: string; cta: string; pillars: string[]; visitSteps: string[] }
 > = {
   residencial: {
     label: 'Residencial',
@@ -100,6 +143,13 @@ const segmentConfig: Record<
     focus: 'economia mensal e tranquilidade para a família',
     cta: 'Confirmar aprovação e seguir com a validação técnica final do imóvel',
     pillars: ['economia mensal imediata', 'payback claro', 'suporte pós-venda'],
+    visitSteps: [
+      'Confirme consumo/conta e o que o cliente quer melhorar (economia, previsibilidade, conforto).',
+      'Valide os pontos técnicos essenciais (telhado, sombras, padrão de entrada, local do inversor).',
+      'Mostre os números (investimento, economia, payback) de forma simples e direta.',
+      'Reforce confiança (garantias, pós-venda e casos reais).',
+      'Combine a condição de pagamento (à vista ou financiamento).',
+    ],
   },
   empresarial: {
     label: 'Empresarial',
@@ -107,6 +157,13 @@ const segmentConfig: Record<
     focus: 'ROI, payback e redução de custo operacional',
     cta: 'Validar aprovação interna e cronograma executivo de implantação',
     pillars: ['ROI competitivo', 'controle de despesas energéticas', 'segurança operacional'],
+    visitSteps: [
+      'Confirme o perfil de consumo e os objetivos do negócio (redução de custo, margem, previsibilidade).',
+      'Valide os pontos técnicos (cobertura, área útil, padrão elétrico, demanda contratada).',
+      'Apresente os números-chave (investimento, ROI, payback, economia anual).',
+      'Reforce confiança (garantias contratuais, cases e referências de clientes PJ).',
+      'Combine condição de pagamento e cronograma de implantação.',
+    ],
   },
   agronegocio: {
     label: 'Agronegócio',
@@ -114,6 +171,13 @@ const segmentConfig: Record<
     focus: 'confiabilidade operacional e autonomia energética',
     cta: 'Confirmar vistoria técnica em campo e plano de implantação',
     pillars: ['continuidade da operação', 'economia recorrente', 'robustez dos equipamentos'],
+    visitSteps: [
+      'Confirme o consumo (bombas, irrigação, ordenha) e as necessidades operacionais.',
+      'Valide os pontos técnicos (local de instalação, distância do padrão, sombreamento).',
+      'Apresente os números (investimento, economia, payback) e compare com o custo atual.',
+      'Reforce robustez e confiabilidade (garantias, durabilidade dos equipamentos).',
+      'Combine condição de pagamento e cronograma de vistoria em campo.',
+    ],
   },
   usina: {
     label: 'Usina Solar',
@@ -121,6 +185,13 @@ const segmentConfig: Record<
     focus: 'viabilidade econômico-financeira e execução com governança',
     cta: 'Avançar para etapa de viabilidade detalhada e cronograma de execução',
     pillars: ['retorno de longo prazo', 'engenharia robusta', 'governança de implantação'],
+    visitSteps: [
+      'Confirme o escopo do projeto e expectativa de geração (kWp, área, conexão).',
+      'Valide os pontos técnicos (terreno, rede de distribuição, licenciamento).',
+      'Apresente viabilidade financeira (investimento, TIR, VPL, payback).',
+      'Reforce governança (engenharia, cronograma, marcos contratuais).',
+      'Alinhe próximos passos (estudo de viabilidade detalhado e cronograma).',
+    ],
   },
   indefinido: {
     label: 'Projeto Solar',
@@ -128,6 +199,13 @@ const segmentConfig: Record<
     focus: 'economia, previsibilidade e confiança na execução',
     cta: 'Confirmar aprovação e seguir com a validação técnica final e cronograma do projeto',
     pillars: ['economia', 'previsibilidade', 'segurança na implementação'],
+    visitSteps: [
+      'Confirme consumo/conta e o que o cliente quer melhorar (economia, previsibilidade).',
+      'Valide os pontos técnicos essenciais (telhado, sombras, padrão de entrada, local do inversor).',
+      'Mostre os números (investimento, economia, payback) de forma simples e direta.',
+      'Reforce confiança (garantias, pós-venda e referências).',
+      'Combine a condição de pagamento (à vista ou financiamento).',
+    ],
   },
 };
 
@@ -309,6 +387,105 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
     'Condições comerciais sujeitas à disponibilidade de equipamentos na data de aprovação.',
   ];
 
+  // Visit steps: segment-specific + closing step with CTA
+  const visitSteps = [
+    ...cfg.visitSteps,
+    `No final, peca a decisao do que fazer agora (${cfg.cta})`,
+  ];
+
+  // BANT qualification rows
+  const taxa = input.taxaFinanciamento && input.taxaFinanciamento > 0 ? input.taxaFinanciamento : 1.5;
+  const pmt36 = input.parcela36x && input.parcela36x > 0
+    ? input.parcela36x
+    : input.metrics.valorTotal > 0
+      ? (input.metrics.valorTotal * (taxa / 100) * Math.pow(1 + taxa / 100, 36)) / (Math.pow(1 + taxa / 100, 36) - 1)
+      : 0;
+
+  const bantQualification: BantQualificationRow[] = [
+    {
+      item: 'Orcamento',
+      status: `Investimento estimado: ${formatCurrency(input.metrics.valorTotal)}`,
+      question: pmt36 > 0
+        ? `Se a parcela de 36x (${formatCurrency(pmt36)}/mes) ficar proxima/abaixo da conta atual, faz sentido avancar?`
+        : 'O investimento esta dentro do orcamento previsto?',
+    },
+    {
+      item: 'Decisor',
+      status: 'A confirmar na visita',
+      question: 'Quem mais participa da decisao? Precisamos incluir alguem na conversa?',
+    },
+    {
+      item: 'Motivo',
+      status: cfg.focus,
+      question: 'Qual o principal motivo para considerar energia solar agora?',
+    },
+    {
+      item: 'Prazo',
+      status: 'A confirmar',
+      question: 'Tem alguma data ou urgencia para a instalacao?',
+    },
+  ];
+
+  // ── Environmental Impact ──
+  const econAnualKwh = (input.metrics.consumoMensal || 0) * 12;
+  const totalKwh25 = econAnualKwh * 25;
+  const co2Tons = Math.round(((totalKwh25 / 1000) * 0.0817) * 10) / 10;
+  const trees = Math.round((co2Tons * 1000) / (22 * 25));
+  const carKm = Math.round((co2Tons * 1000) / 2.3 * 12);
+  const environmentalImpact: EnvironmentalImpact = { co2Tons, trees, carKm };
+
+  // ── Monthly Generation Estimate ──
+  const avgDailyIrrad = 4.5; // kWh/m²/day national average
+  const perfRatio = 0.80;
+  const monthFactors = [0.95, 0.92, 0.98, 1.00, 1.02, 0.96, 1.00, 1.05, 1.08, 1.10, 1.02, 0.92];
+  const monthlyGeneration = monthFactors.map(
+    (f) => Math.round(input.metrics.potenciaSistema * avgDailyIrrad * 30 * perfRatio * f)
+  );
+
+  // ── Equipment Specs (defaults — overridden by AI or user input when available) ──
+  const equipmentSpecs: EquipmentSpec[] = [
+    { item: 'Modulos Fotovoltaicos', spec: 'Monocristalino 550W+ Tier 1', qty: input.metrics.quantidadePaineis, warranty: '12 anos produto / 25 anos performance' },
+    { item: 'Inversor', spec: 'On-Grid alta eficiencia (>97%)', qty: 1, warranty: '10 anos' },
+    { item: 'Estrutura de Fixacao', spec: 'Aluminio anodizado com perfil trilho', qty: `${input.metrics.quantidadePaineis} conjuntos`, warranty: '15 anos contra corrosao' },
+    { item: 'Cabos e Conectores', spec: 'Solar CC 6mm² + MC4', qty: 'Kit completo', warranty: '10 anos' },
+    { item: 'String Box / Protecao', spec: 'DPS + chave seccionadora CC/CA', qty: 1, warranty: '5 anos' },
+  ];
+
+  // ── Before/After Comparison ──
+  const contaAtual = monthlySavings * 1.15; // estimate: savings ≈ 87% of bill
+  const contaComSolar = contaAtual - monthlySavings;
+  const custo25SemSolar = contaAtual * 12 * 25;
+  const custo25ComSolar = contaComSolar * 12 * 25 + input.metrics.valorTotal;
+  const beforeAfter: BeforeAfterRow[] = [
+    { label: 'Conta mensal', before: formatCurrency(contaAtual), after: formatCurrency(contaComSolar) },
+    { label: 'Custo anual com energia', before: formatCurrency(contaAtual * 12), after: formatCurrency(contaComSolar * 12) },
+    { label: 'Gasto em 25 anos', before: formatCurrency(custo25SemSolar), after: formatCurrency(custo25ComSolar) },
+    { label: 'Economia mensal', before: '-', after: formatCurrency(monthlySavings) },
+    { label: 'Economia acumulada (25 anos)', before: '-', after: formatCurrency(longTermSavings) },
+  ];
+
+  // ── Terms & Conditions ──
+  const termsConditions = [
+    `Validade desta proposta: 15 dias corridos a partir da data de emissao.`,
+    `Os valores apresentados sao estimativas baseadas no consumo informado de ${input.metrics.consumoMensal} kWh/mes e estao sujeitos a vistoria tecnica.`,
+    `O dimensionamento segue as normas da ANEEL e da Lei 14.300/2022 (geracao distribuida).`,
+    `A economia projetada considera a tarifa vigente e pode variar conforme reajustes tarifarios.`,
+    `Garantia dos equipamentos conforme fabricante: modulos (12 anos produto / 25 anos performance linear), inversor (conforme marca selecionada).`,
+    `A instalacao inclui: projeto eletrico, instalacao mecanica e eletrica, comissionamento e solicitacao de vistoria junto a concessionaria.`,
+    `Prazo estimado de instalacao: 7 a 15 dias uteis apos aprovacao do projeto e disponibilidade de materiais.`,
+    `Condicoes de pagamento e financiamento sujeitas a aprovacao de credito pela instituicao financeira.`,
+  ];
+
+  // ── Next Steps Detailed ──
+  const nextStepsDetailed: NextStepDetailed[] = [
+    { step: 'Aprovacao da Proposta', description: 'Confirmacao dos termos comerciais e assinatura do contrato.' },
+    { step: 'Vistoria Tecnica', description: 'Visita ao local para validacao das condicoes do telhado, rede eletrica e dimensionamento final.' },
+    { step: 'Projeto Executivo', description: 'Elaboracao do projeto eletrico e registro junto a concessionaria de energia.' },
+    { step: 'Instalacao', description: 'Montagem dos equipamentos, conexao eletrica e comissionamento do sistema.' },
+    { step: 'Homologacao', description: 'Solicitacao de vistoria pela concessionaria e troca do medidor para bidirecional.' },
+    { step: 'Geracao de Energia', description: 'Sistema ativo e gerando economia a partir da aprovacao da concessionaria.' },
+  ];
+
   const base: PremiumProposalContent = {
     segment,
     segmentLabel: cfg.label,
@@ -320,11 +497,19 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
     objectionHandlers,
     nextStepCta: cfg.cta,
     assumptions,
+    visitSteps,
+    bantQualification,
     variantId: 'heuristic',
     variantLabel: 'Versão Base',
     variantAngle: 'Personalização por dados reais e melhores práticas comerciais',
     generatedBy: 'heuristic',
     generatedAt: new Date().toISOString(),
+    environmentalImpact,
+    monthlyGeneration,
+    equipmentSpecs,
+    beforeAfter,
+    termsConditions,
+    nextStepsDetailed,
   };
 
   const { score, breakdown } = calculatePersuasionScore(base);

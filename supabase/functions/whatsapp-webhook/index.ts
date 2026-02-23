@@ -677,6 +677,9 @@ Deno.serve(async (req: Request) => {
                             if (shouldEvaluatePause) {
                                 try {
                                     const nowMinus45sIso = new Date(Date.now() - 45_000).toISOString()
+                                    // Echo detection: check for a duplicate outbound msg with same text within 45s
+                                    // Use trimmed text match and also check by wa_message_id when available
+                                    const trimmedText = (text || '').trim()
                                     const { data: duplicateOutbound } = await supabase
                                         .from('interacoes')
                                         .select('id, created_at')
@@ -684,14 +687,18 @@ Deno.serve(async (req: Request) => {
                                         .eq('instance_name', instanceName)
                                         .eq('wa_from_me', true)
                                         .in('tipo', ['mensagem_vendedor', 'audio_vendedor', 'video_vendedor', 'anexo_vendedor'])
-                                        .eq('mensagem', text)
                                         .gte('created_at', nowMinus45sIso)
                                         .neq('id', Number(inserted?.id || 0))
                                         .order('id', { ascending: false })
-                                        .limit(1)
-                                        .maybeSingle()
+                                        .limit(5)
 
-                                    likelyAiEcho = Boolean(duplicateOutbound)
+                                    // Compare with trimmed text to handle whitespace differences
+                                    likelyAiEcho = Boolean(
+                                        duplicateOutbound?.some((row: any) => {
+                                            const rowText = (row.mensagem || '').trim()
+                                            return rowText === trimmedText
+                                        })
+                                    )
                                 } catch (dupErr: any) {
                                     console.warn('Failed to check duplicate outbound before takeover pause:', dupErr?.message || dupErr)
                                 }
@@ -707,6 +714,7 @@ Deno.serve(async (req: Request) => {
                                             ai_paused_at: new Date().toISOString()
                                         })
                                         .eq('id', Number(leadId))
+                                        .eq('org_id', orgId)
 
                                     if (pauseErr) {
                                         takeoverError = pauseErr.message

@@ -600,6 +600,7 @@ export function useUserWhatsAppInstances() {
             ai_paused_at: null
           })
           .eq('instance_name', instanceName)
+          .eq('org_id', orgId!)
           .select('id');
 
         if (error) throw error;

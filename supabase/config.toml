@@ -51,3 +51,9 @@ verify_jwt = false
 
 [functions.org-admin]
 verify_jwt = false
+
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+[functions.ai-pipeline-agent]
+verify_jwt = false

@@ -34,6 +34,10 @@ interface ProposalReadyModalProps {
     tipo_cliente?: string;
     premiumContent?: PremiumProposalContent;
     taxaFinanciamento?: number;
+    parcela36x?: number;
+    parcela60x?: number;
+    validadeDias?: number;
+    propNum?: string;
     proposalVersionId?: string | null;
     propostaId?: number | null;
   } | null;
@@ -82,6 +86,10 @@ export function ProposalReadyModal({
         tipo_cliente: sellerScriptData.tipo_cliente,
         premiumContent: sellerScriptData.premiumContent,
         taxaFinanciamento: sellerScriptData.taxaFinanciamento,
+        parcela36x: sellerScriptData.parcela36x,
+        parcela60x: sellerScriptData.parcela60x,
+        validadeDias: sellerScriptData.validadeDias,
+        propNum: sellerScriptData.propNum,
       });
 
       // Track seller script download event (best-effort)
