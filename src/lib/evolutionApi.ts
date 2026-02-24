@@ -253,12 +253,14 @@ export async function deleteInstance(
 export async function setWebhook(
   instanceName: string,
   webhookUrl: string,
-  events?: string[]
+  events?: string[],
+  webhookHeaders?: Record<string, string>
 ): Promise<EvolutionApiResponse<unknown>> {
   return callEvolutionApi<unknown>('setWebhook', {
     instanceName,
     webhookUrl,
     events,
+    webhookHeaders,
   });
 }
 

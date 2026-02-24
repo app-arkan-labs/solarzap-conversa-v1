@@ -75,7 +75,7 @@ export function useUserWhatsAppInstances() {
 
                 if (newStatus === 'connected') {
                   // ADDING TOKEN for security
-                  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect?token=arkan_secure_2026`;
+                  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`;
 
                   // Fire and forget webhook update
                   evolutionApi.setWebhook(instance.instance_name, webhookUrl, [
@@ -83,7 +83,9 @@ export function useUserWhatsAppInstances() {
                     'MESSAGES_UPDATE',
                     'CONNECTION_UPDATE',
                     'QRCODE_UPDATED'
-                  ]).catch(e => console.error("Webhook update failed in bg", e));
+                  ], {
+                    'X-Arkan-Webhook-Token': 'server-managed'
+                  }).catch(e => console.error("Webhook update failed in bg", e));
                 }
 
                 // Update in database if status changed (background)
@@ -199,13 +201,15 @@ export function useUserWhatsAppInstances() {
       }
 
       // Configure Webhook Immediately
-      const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect?token=arkan_secure_2026`;
+      const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`;
       await evolutionApi.setWebhook(instanceName, webhookUrl, [
         'MESSAGES_UPSERT',
         'MESSAGES_UPDATE',
         'CONNECTION_UPDATE',
         'QRCODE_UPDATED'
-      ]);
+      ], {
+        'X-Arkan-Webhook-Token': 'server-managed'
+      });
 
 
       const qrCode = response.data.qrcode?.base64 || undefined;
@@ -322,7 +326,9 @@ export function useUserWhatsAppInstances() {
           'MESSAGES_UPDATE',
           'CONNECTION_UPDATE',
           'QRCODE_UPDATED'
-        ]);
+        ], {
+          'X-Arkan-Webhook-Token': 'server-managed'
+        });
       }
 
       setInstances(prev => prev.map(inst =>
