@@ -72,6 +72,7 @@ const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'comercial', label: 'Comercial' },
   { value: 'industrial', label: 'Industrial' },
   { value: 'rural', label: 'Rural' },
+  { value: 'usina', label: 'Usina Solar' },
 ];
 
 interface ContactProposal {

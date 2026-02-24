@@ -49,6 +49,7 @@ const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'comercial', label: 'Comercial' },
   { value: 'industrial', label: 'Industrial' },
   { value: 'rural', label: 'Rural' },
+  { value: 'usina', label: 'Usina Solar' },
 ];
 
 export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModalProps) {
@@ -99,13 +100,27 @@ export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModa
   }, [contact?.id, isOpen]); // Only run if ID changes or Modal toggles. IGNORE other contact updates.
 
   const handleChange = (field: keyof UpdateLeadData, value: string | number) => {
+    if (field === 'cep') {
+      let raw = String(value).replace(/\D/g, '').slice(0, 8);
+      if (raw.length > 5) raw = raw.slice(0, 5) + '-' + raw.slice(5);
+      setIsDirty(true);
+      setFormData(prev => ({ ...prev, cep: raw }));
+      return;
+    }
     setIsDirty(true); // User has touched the form
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const isPhoneValid = (phone: string | undefined): boolean => {
+    if (!phone) return true; // optional for edit
+    const digits = phone.replace(/\D/g, '');
+    return digits.length >= 10 && digits.length <= 13;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contact) return;
+    if (!isPhoneValid(formData.telefone)) return;
 
     setIsLoading(true);
     try {
@@ -156,6 +171,7 @@ export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModa
                   value={formData.nome || ''}
                   onChange={(e) => handleChange('nome', e.target.value)}
                   placeholder="Nome completo"
+                  maxLength={120}
                   required
                 />
               </div>
@@ -170,6 +186,7 @@ export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModa
                   value={formData.empresa || ''}
                   onChange={(e) => handleChange('empresa', e.target.value)}
                   placeholder="Nome da empresa"
+                  maxLength={120}
                 />
               </div>
             </div>
@@ -265,6 +282,7 @@ export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModa
                 value={formData.endereco || ''}
                 onChange={(e) => handleChange('endereco', e.target.value)}
                 placeholder="Rua, número, bairro"
+                maxLength={200}
               />
             </div>
 
@@ -276,6 +294,7 @@ export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModa
                   value={formData.cidade || ''}
                   onChange={(e) => handleChange('cidade', e.target.value)}
                   placeholder="Cidade"
+                  maxLength={100}
                 />
               </div>
 
@@ -286,6 +305,7 @@ export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModa
                   value={formData.cep || ''}
                   onChange={(e) => handleChange('cep', e.target.value)}
                   placeholder="00000-000"
+                  maxLength={9}
                 />
               </div>
             </div>
@@ -307,8 +327,9 @@ export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModa
                 <Input
                   id="consumo_kwh"
                   type="number"
+                  min="0"
                   value={formData.consumo_kwh || ''}
-                  onChange={(e) => handleChange('consumo_kwh', parseFloat(e.target.value) || 0)}
+                  onChange={(e) => handleChange('consumo_kwh', Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="Ex: 500"
                 />
               </div>
@@ -321,8 +342,9 @@ export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModa
                 <Input
                   id="valor_estimado"
                   type="number"
+                  min="0"
                   value={formData.valor_estimado || ''}
-                  onChange={(e) => handleChange('valor_estimado', parseFloat(e.target.value) || 0)}
+                  onChange={(e) => handleChange('valor_estimado', Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="Ex: 25000"
                 />
               </div>

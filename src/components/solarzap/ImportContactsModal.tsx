@@ -95,9 +95,21 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
     onClose();
   };
 
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+  const MAX_ROWS = 1000;
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    if (file.size > MAX_FILE_SIZE) {
+      toast({
+        title: 'Arquivo muito grande',
+        description: `O arquivo excede o limite de 5MB (${(file.size / (1024 * 1024)).toFixed(1)}MB).`,
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setFileName(file.name);
     const reader = new FileReader();
@@ -121,6 +133,15 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
 
         const fileHeaders = jsonData[0].map(h => String(h || '').trim());
         const rows = jsonData.slice(1).filter(row => row.some(cell => cell !== undefined && cell !== ''));
+
+        if (rows.length > MAX_ROWS) {
+          toast({
+            title: 'Arquivo com muitas linhas',
+            description: `O arquivo tem ${rows.length} linhas. O limite é de ${MAX_ROWS} registros por importação.`,
+            variant: 'destructive',
+          });
+          return;
+        }
 
         setHeaders(fileHeaders);
         setFileData(rows);
@@ -197,7 +218,7 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
   };
 
   const getMappedContacts = (): ImportedContact[] => {
-    return fileData.map(row => {
+    const valid = fileData.map(row => {
       const contact: Record<string, any> = {};
 
       headers.forEach((header, index) => {
@@ -226,6 +247,15 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
 
       return contact as ImportedContact;
     }).filter(c => c.nome && c.telefone); // Only include contacts with required fields
+
+    // Deduplicate by phone number within the import file
+    const seen = new Set<string>();
+    return valid.filter(c => {
+      const phone = c.telefone.replace(/\D/g, '');
+      if (seen.has(phone)) return false;
+      seen.add(phone);
+      return true;
+    });
   };
 
   const requiredFieldsMapped = () => {

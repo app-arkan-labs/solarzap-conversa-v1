@@ -296,7 +296,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         .catch(err => console.error('Failed to update lead:', err));
 
       // 3) Generate PDF blob with theme
-      const propNum = `PROP-${Date.now().toString().slice(-8)}`;
+      const propNum = `PROP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       const pdfBlob = generateProposalPDF({
         contact, ...formData, premiumContent, colorTheme: theme,
         taxaFinanciamento: formData.taxaFinanciamento,

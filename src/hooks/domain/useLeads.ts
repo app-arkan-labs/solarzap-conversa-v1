@@ -139,7 +139,7 @@ export const leadToContact = (lead: any): Contact => {
 
         cpfCnpj: undefined,
         createdAt: new Date(lead.created_at),
-        lastContact: new Date(lead.created_at),
+        lastContact: lead.last_message_at ? new Date(lead.last_message_at) : new Date(lead.updated_at || lead.created_at),
         stageChangedAt: lead.stage_changed_at ? new Date(lead.stage_changed_at) : new Date(lead.created_at),
         phoneE164: lead.phone_e164 || undefined,
         instanceName: lead.instance_name || undefined,
@@ -386,7 +386,10 @@ export function useLeads() {
             if (data.empresa !== undefined) basePayload.empresa = data.empresa || null;
             if (data.consumo_kwh !== undefined) basePayload.consumo_kwh = data.consumo_kwh;
             if (data.valor_estimado !== undefined) basePayload.valor_estimado = data.valor_estimado;
-            if (data.status_pipeline !== undefined) basePayload.status_pipeline = data.status_pipeline;
+            if (data.status_pipeline !== undefined) {
+                basePayload.status_pipeline = data.status_pipeline;
+                basePayload.stage_changed_at = new Date().toISOString();
+            }
             if (data.canal !== undefined) basePayload.canal = data.canal;
             if (data.observacoes !== undefined) basePayload.observacoes = data.observacoes;
             if (data.assigned_to_user_id !== undefined) basePayload.assigned_to_user_id = data.assigned_to_user_id;

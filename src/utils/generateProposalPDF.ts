@@ -155,6 +155,18 @@ function buildChartTheme(P: Palette): ChartTheme {
   };
 }
 
+// ── AI text sanity check ─────────────────────────────────
+/** Returns true if the AI-generated text looks usable (not too short/long/garbled). */
+function isSensibleAiText(text: string | undefined | null, label = 'AI text'): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 24 || trimmed.length > 190) {
+    console.warn(`[PDF] ${label} rejected (length=${trimmed.length}): "${trimmed.slice(0, 60)}…"`);
+    return false;
+  }
+  return true;
+}
+
 // ══════════════════════════════════════════════════════════
 // CLIENT-FACING PROPOSAL PDF (5+ PAGES)
 // ══════════════════════════════════════════════════════════
@@ -385,7 +397,7 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
   // ── "Quanto custa e quanto economiza" ──
   sectionTitle('Quanto custa e quanto economiza');
 
-  if (premium?.headline) {
+  if (premium?.headline && isSensibleAiText(premium.headline, 'headline')) {
     doc.setTextColor(C.header[0], C.header[1], C.header[2]);
     doc.setFontSize(9.5); doc.setFont('helvetica', 'normal');
     const hlLines = doc.splitTextToSize(premium.headline, W - 2 * M);

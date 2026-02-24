@@ -72,12 +72,30 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
   const [formData, setFormData] = useState<CreateLeadData>(initialFormData);
 
   const handleChange = (field: keyof CreateLeadData, value: string | number) => {
+    if (field === 'cep') {
+      // CEP mask: XXXXX-XXX
+      let raw = String(value).replace(/\D/g, '').slice(0, 8);
+      if (raw.length > 5) raw = raw.slice(0, 5) + '-' + raw.slice(5);
+      setFormData(prev => ({ ...prev, cep: raw }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const isPhoneValid = (phone: string): boolean => {
+    const digits = phone.replace(/\D/g, '');
+    // After stripping, expect 12-13 digits for BR (55 + DDD + 8-9 digits)
+    // or 10-11 without country code
+    return digits.length >= 10 && digits.length <= 13;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.nome || !formData.telefone) return;
+
+    if (!isPhoneValid(formData.telefone)) {
+      return; // Phone validation feedback handled by HTML constraint
+    }
 
     setIsLoading(true);
     try {
@@ -131,6 +149,7 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
                   value={formData.nome}
                   onChange={(e) => handleChange('nome', e.target.value)}
                   placeholder="Nome completo"
+                  maxLength={120}
                   required
                 />
               </div>
@@ -145,6 +164,7 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
                   value={formData.empresa}
                   onChange={(e) => handleChange('empresa', e.target.value)}
                   placeholder="Nome da empresa"
+                  maxLength={120}
                 />
               </div>
             </div>
@@ -237,6 +257,7 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
                 value={formData.endereco}
                 onChange={(e) => handleChange('endereco', e.target.value)}
                 placeholder="Rua, número, bairro"
+                maxLength={200}
               />
             </div>
 
@@ -248,6 +269,7 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
                   value={formData.cidade}
                   onChange={(e) => handleChange('cidade', e.target.value)}
                   placeholder="Cidade"
+                  maxLength={100}
                 />
               </div>
 
@@ -258,6 +280,7 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
                   value={formData.cep}
                   onChange={(e) => handleChange('cep', e.target.value)}
                   placeholder="00000-000"
+                  maxLength={9}
                 />
               </div>
             </div>
@@ -279,8 +302,9 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
                 <Input
                   id="consumo_kwh"
                   type="number"
+                  min="0"
                   value={formData.consumo_kwh || ''}
-                  onChange={(e) => handleChange('consumo_kwh', parseFloat(e.target.value) || 0)}
+                  onChange={(e) => handleChange('consumo_kwh', Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="Ex: 500"
                 />
               </div>
@@ -293,8 +317,9 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
                 <Input
                   id="valor_estimado"
                   type="number"
+                  min="0"
                   value={formData.valor_estimado || ''}
-                  onChange={(e) => handleChange('valor_estimado', parseFloat(e.target.value) || 0)}
+                  onChange={(e) => handleChange('valor_estimado', Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="Ex: 25000"
                 />
               </div>
