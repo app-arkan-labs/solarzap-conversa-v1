@@ -1,7 +1,12 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
+if (!ALLOWED_ORIGIN) {
+  throw new Error('Missing ALLOWED_ORIGIN env')
+}
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-api-key',
 }
 
@@ -163,7 +168,7 @@ async function resolveContext(
   const internalHeader = req.headers.get('x-internal-api-key')
   const authHeader = req.headers.get('Authorization') || ''
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-  const bearerToken = authHeader.replace(/^Bearer\\s+/i, '').trim()
+  const bearerToken = authHeader.replace(/^Bearer\s+/i, '').trim()
 
   if (internalSecret && internalHeader && internalHeader === internalSecret) {
     const orgId = String(payload.orgId || '').trim()
@@ -461,6 +466,13 @@ Deno.serve(async (req) => {
           : DEFAULT_WEBHOOK_EVENTS
 
         const webhook = await canonicalWebhookUrl(req)
+        const webhookHeaders = payload.webhookHeaders && typeof payload.webhookHeaders === 'object'
+          ? payload.webhookHeaders as Record<string, string>
+          : {}
+        const serverWebhookSecret = Deno.env.get('ARKAN_WEBHOOK_SECRET')
+        if (serverWebhookSecret) {
+          webhookHeaders['x-arkan-webhook-secret'] = serverWebhookSecret
+        }
 
         const evolution = await evolutionRequest(`/webhook/set/${instanceName}`, {
           method: 'POST',
@@ -469,6 +481,7 @@ Deno.serve(async (req) => {
               url: webhook,
               enabled: true,
               events,
+              ...(Object.keys(webhookHeaders).length > 0 ? { headers: webhookHeaders } : {}),
             },
           }),
         })
