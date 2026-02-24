@@ -535,8 +535,9 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: true, data })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unexpected error'
+    console.error('evolution-proxy error:', error)
     const status = /authorization|unauthorized|token|membership/i.test(message) ? 401 : 400
-    return jsonResponse({ success: false, error: message }, status)
+    return jsonResponse({ success: false, error: 'Internal server error' }, status)
   }
 })
 

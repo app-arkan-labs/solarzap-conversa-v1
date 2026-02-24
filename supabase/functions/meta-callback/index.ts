@@ -135,9 +135,8 @@ Deno.serve(async (req) => {
 
     return createRedirectResponse('success', provider, stateData.redirect_url)
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     console.error('Callback error:', error)
-    return createRedirectResponse('error', errorMessage)
+    return createRedirectResponse('error', 'Integration failed')
   }
 })
 

@@ -758,8 +758,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse(400, { ok: false, code: 'invalid_action', error: `action invalida: ${action}` });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erro interno desconhecido';
     console.error('org-admin error:', error);
-    return jsonResponse(500, { ok: false, code: 'internal_error', error: message });
+    return jsonResponse(500, { ok: false, code: 'internal_error', error: 'Erro interno' });
   }
 });

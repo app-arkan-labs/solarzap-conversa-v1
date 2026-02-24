@@ -139,6 +139,7 @@ Deno.serve(async (req) => {
         })
 
     } catch (e: any) {
-        return new Response(JSON.stringify({ error: e.message }), { status: 500 })
+        console.error('process-reminders error:', e)
+        return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 })
     }
 })

@@ -263,7 +263,8 @@ Deno.serve(async (req) => {
         : await itemsQuery.is("ingested_at", null).order("created_at", { ascending: false }).limit(limit);
 
     if (itemsErr) {
-      return new Response(JSON.stringify({ error: itemsErr.message }), {
+      console.error('kb-ingest items fetch error:', itemsErr)
+      return new Response(JSON.stringify({ error: 'Failed to fetch knowledge base items' }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

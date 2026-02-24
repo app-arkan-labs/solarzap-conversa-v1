@@ -85,8 +85,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Meta OAuth error:', error)
     return new Response(JSON.stringify({ 
-      error: 'Erro interno',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      error: 'Erro interno'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -121,8 +121,7 @@ Deno.serve(async (req) => {
     );
   } catch (err: any) {
     console.error("proposal-storage-intent error:", err);
-    const message = err?.message ? String(err.message) : String(err);
-    return new Response(JSON.stringify({ error: "internal_error", message }), {
+    return new Response(JSON.stringify({ error: "internal_error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

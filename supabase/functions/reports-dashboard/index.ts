@@ -389,8 +389,7 @@ serve(async (req) => {
         // SAFETY NET: CATCH ALL ERRORS
         console.error("Fatal Error in reports-dashboard:", error);
         return new Response(JSON.stringify({
-            error: "Internal Server Error",
-            details: error.message || "Unknown error"
+            error: "Internal Server Error"
         }), {
             status: 500, // Return 500 so frontend knows it failed but receives JSON
             headers: { ...corsHeaders, "Content-Type": "application/json" },

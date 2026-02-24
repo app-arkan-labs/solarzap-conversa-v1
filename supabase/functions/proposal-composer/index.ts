@@ -419,7 +419,7 @@ Retorne SOMENTE JSON válido com esta estrutura:
   } catch (error: any) {
     console.error("proposal-composer error:", error);
     return new Response(
-      JSON.stringify({ error: error?.message || "unexpected_error" }),
+      JSON.stringify({ error: "unexpected_error" }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
