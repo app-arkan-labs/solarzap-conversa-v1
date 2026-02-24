@@ -52,6 +52,9 @@ export interface ProposalData {
   validadeDias?: number;
   premiumPayload?: Record<string, unknown>;
   contextEngine?: unknown;
+  // Sprint 3: Pass theme/logo for seller script
+  colorTheme?: import('@/utils/proposalColorThemes').ProposalColorTheme;
+  logoDataUrl?: string | null;
 }
 
 const CLIENT_TYPES: { value: ClientType; label: string }[] = [
@@ -320,8 +323,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         propNum,
       };
 
-      // 5) Save to pipeline
-      const saveResult = await onGenerate({ contactId: contact.id, ...formData, premiumPayload, contextEngine: contextData || undefined });
+      // 5) Save to pipeline (Sprint 3: pass theme/logo for seller script)
+      const saveResult = await onGenerate({ contactId: contact.id, ...formData, premiumPayload, contextEngine: contextData || undefined, colorTheme: theme, logoDataUrl });
 
       // 6) Download to user
       const url = URL.createObjectURL(pdfBlob);

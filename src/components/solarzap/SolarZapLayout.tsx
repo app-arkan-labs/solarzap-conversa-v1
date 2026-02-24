@@ -820,6 +820,13 @@ export function SolarZapLayout() {
           assumptions: premiumContentFromPayload.assumptions,
           visitSteps: premiumContentFromPayload.visitSteps,
           bantQualification: premiumContentFromPayload.bantQualification,
+          // Sprint 3 (ADD-6): propagate missing premium fields for seller script
+          termsConditions: premiumContentFromPayload.termsConditions,
+          companyContact: premiumContentFromPayload.companyContact,
+          environmentalImpact: premiumContentFromPayload.environmentalImpact,
+          monthlyGeneration: premiumContentFromPayload.monthlyGeneration,
+          equipmentSpecs: premiumContentFromPayload.equipmentSpecs,
+          nextStepsDetailed: premiumContentFromPayload.nextStepsDetailed,
         } : undefined,
         taxaFinanciamento: (data as any).taxaFinanciamento,
         parcela36x: (data as any).parcela36x,
@@ -828,6 +835,9 @@ export function SolarZapLayout() {
         propNum: (data as any).propNum,
         proposalVersionId: (saveResult as any)?.proposalVersionId || null,
         propostaId: (saveResult as any)?.proposal?.id || null,
+        // Sprint 3: pass theme/logo for seller script branding
+        colorTheme: (data as any).colorTheme,
+        logoDataUrl: (data as any).logoDataUrl,
       });
     }
 

@@ -65,6 +65,8 @@ export interface SellerScriptPDFData {
   validadeDias?: number;
   returnBlob?: boolean;
   propNum?: string;
+  colorTheme?: ProposalColorTheme;
+  logoDataUrl?: string | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────
@@ -268,7 +270,11 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
     doc.rect(0, 0, W, h2H, 'F');
     doc.setFillColor(C.gold[0], C.gold[1], C.gold[2]);
     doc.rect(0, h2H, W, 2, 'F');
-    try { doc.addImage(logoSrc, 'PNG', M, 4, 16, 16); } catch { /* fallback */ }
+    try { doc.addImage(logoSrc, 'PNG', M, 4, 16, 16); } catch {
+      // Logo fallback: render text instead of blank space
+      doc.setTextColor(255, 255, 255); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+      doc.text('SOLARZAP', M + 1, 13);
+    }
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(13); doc.setFont('helvetica', 'bold');
     doc.text('Proposta Comercial de Energia Solar', M + 22, 12);
@@ -296,7 +302,12 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
   doc.setFillColor(C.gold[0], C.gold[1], C.gold[2]);
   doc.rect(0, headerH, W, 3, 'F');
 
-  try { doc.addImage(logoSrc, 'PNG', M, 6, 24, 24); } catch { /* fallback */ }
+  try { doc.addImage(logoSrc, 'PNG', M, 6, 24, 24); } catch {
+    // Logo fallback: render text instead of blank space (Sprint 3)
+    doc.setFillColor(255, 255, 255); doc.roundedRect(M, 6, 24, 24, 2, 2, 'F');
+    doc.setTextColor(C.header[0], C.header[1], C.header[2]); doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+    doc.text('SOLAR', M + 3, 17); doc.text('ZAP', M + 6, 23);
+  }
 
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(18); doc.setFont('helvetica', 'bold');
@@ -683,10 +694,11 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
   });
   y += 6;
 
-  // CTA Box
-  if (premium?.nextStepCta) {
+  // CTA Box (Sprint 3: always render with fallback if premium CTA missing)
+  {
     checkPageBreak(35);
-    const cta = doc.splitTextToSize(premium.nextStepCta, W - 2 * M - 20);
+    const ctaText = premium?.nextStepCta || `Entre em contato conosco para dar o proximo passo rumo a economia com energia solar. Estamos prontos para tirar todas as suas duvidas!`;
+    const cta = doc.splitTextToSize(ctaText, W - 2 * M - 20);
     const ctaBoxH = cta.length * 5.5 + 22;
     doc.setFillColor(C.lightBg[0], C.lightBg[1], C.lightBg[2]);
     doc.setDrawColor(C.teal[0], C.teal[1], C.teal[2]);
@@ -724,7 +736,8 @@ export function generateSellerScriptPDF(data: SellerScriptPDFData): Blob | void 
   const M = 14;
   let y = 0;
 
-  const C = buildPalette(null);
+  const C = buildPalette(data.colorTheme);
+  const logoSrc = data.logoDataUrl || solarzapLogo;
   const premium = data.premiumContent;
   const propNum = data.propNum || `PROP-${Date.now().toString().slice(-8)}`;
   const validadeDias = data.validadeDias && data.validadeDias > 0 ? data.validadeDias : 15;
@@ -791,9 +804,22 @@ export function generateSellerScriptPDF(data: SellerScriptPDFData): Blob | void 
 
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-  doc.text('Roteiro do Vendedor', M, 17);
+  // Sprint 3: Add logo to seller script header
+  let logoW = 0;
+  try {
+    doc.addImage(logoSrc, 'PNG', M, 5, 18, 18);
+    logoW = 22;
+  } catch {
+    // Logo fallback: text instead of blank
+    doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+    doc.text('SOLARZAP', M + 1, 15);
+    logoW = 22;
+  }
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+  doc.text('Roteiro do Vendedor', M + logoW, 17);
   doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-  doc.text(`Uso interno | ${data.contact.name}`, M, 28);
+  doc.text(`Uso interno | ${data.contact.name}`, M + logoW, 28);
 
   doc.setFontSize(9); doc.setFont('helvetica', 'bold');
   doc.text(`Proposta ${propNum}`, W - M, 15, { align: 'right' });

@@ -90,6 +90,9 @@ export function ProposalReadyModal({
         parcela60x: sellerScriptData.parcela60x,
         validadeDias: sellerScriptData.validadeDias,
         propNum: sellerScriptData.propNum,
+        // Sprint 3: pass theme/logo for seller script branding
+        colorTheme: sellerScriptData.colorTheme,
+        logoDataUrl: sellerScriptData.logoDataUrl,
       });
 
       // Track seller script download event (best-effort)
