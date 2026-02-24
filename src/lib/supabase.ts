@@ -73,6 +73,7 @@ export interface InteracaoDB {
   attachment_error?: boolean | null;
   attachment_error_message?: string | null;
   wa_from_me?: boolean | null;
+  read_at?: string | null;
 }
 
 // Estrutura REAL da tabela propostas

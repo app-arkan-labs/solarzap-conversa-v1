@@ -70,6 +70,23 @@ export function KnowledgeBaseView() {
 
             if (error) throw error;
 
+            // Sprint 2, Item #12: Extract text content from supported file types
+            let extractedBody = `Documento importado: ${uploadedFile.name}`;
+            let contentExtracted = false;
+            const ext = (fileExt || '').toLowerCase();
+            try {
+                if (ext === 'txt' || ext === 'csv' || ext === 'md' || ext === 'json') {
+                    const textContent = await uploadedFile.text();
+                    if (textContent && textContent.trim().length > 0) {
+                        // Limit to first 50KB of text to avoid oversized DB rows
+                        extractedBody = textContent.substring(0, 50 * 1024);
+                        contentExtracted = true;
+                    }
+                }
+            } catch (extractErr) {
+                console.warn('[KB] Text extraction failed (non-blocking):', extractErr);
+            }
+
             // Save reference to kb_items table
             const { error: dbError } = await supabase
                 .from('kb_items')
@@ -77,8 +94,8 @@ export function KnowledgeBaseView() {
                     org_id: orgId,
                     type: 'document',
                     title: uploadedFile.name,
-                    body: `Documento importado: ${uploadedFile.name}`,
-                    tags: ['importado', fileExt],
+                    body: extractedBody,
+                    tags: contentExtracted ? ['importado', ext, 'conteudo_extraido'] : ['importado', ext, 'extracao_pendente'],
                     status: 'approved',
                     created_by: user.id
                 });

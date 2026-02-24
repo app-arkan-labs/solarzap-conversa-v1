@@ -111,7 +111,8 @@ export function SolarZapLayout() {
     sendMessage,
     sendAttachment,
     sendAudio,
-    sendReaction
+    sendReaction,
+    markAsRead: markConversationAsRead,
   } = useChat(contacts);
 
   const {
@@ -217,13 +218,10 @@ export function SolarZapLayout() {
   }, [conversations, selectedConversation]);
 
   // Mark As Read logic (Local + potentially optimistic update if we had mutation)
+  // Mark As Read — delegates to useChat which persists to DB (Sprint 2, Item #4)
   const markAsRead = useCallback((conversationId: string) => {
-    // Since we don't have a mutation for reading status in DB yet, we can't persist it.
-    // Ideally, useChat should expose a method to update the cache.
-    // For now, we will handle it visually via selectedConversation update if needed,
-    // but the ConversationList relies on 'conversations' prop.
-    // NOTE: This feature was "local only" in the previous implementation.
-  }, []);
+    markConversationAsRead(conversationId);
+  }, [markConversationAsRead]);
 
   // Filter Logic
   const filteredConversations = useMemo(() => {

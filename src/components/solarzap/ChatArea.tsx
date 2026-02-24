@@ -156,6 +156,25 @@ export function ChatArea({
 
   const [activeReactionId, setActiveReactionId] = useState<string | null>(null);
 
+  // Sprint 2, Item #5: Cleanup MediaRecorder + stream on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try { mediaRecorderRef.current.stop(); } catch (_) { /* already stopped */ }
+      }
+      // Stop all media tracks to release microphone
+      if (mediaRecorderRef.current && (mediaRecorderRef.current as any).stream) {
+        (mediaRecorderRef.current as any).stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+      }
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+      mediaRecorderRef.current = null;
+      audioChunksRef.current = [];
+    };
+  }, []);
+
   // Reverse-pagination UI state: show latest messages first, load older as user scrolls up.
   const INITIAL_MESSAGES_BATCH = 50;
   const OLDER_MESSAGES_BATCH = 50;

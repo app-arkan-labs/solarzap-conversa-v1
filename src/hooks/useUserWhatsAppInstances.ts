@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { evolutionApi } from '@/lib/evolutionApi';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,6 +26,7 @@ export function useUserWhatsAppInstances() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const bgCancelRef = useRef<(() => void) | null>(null);
 
   // Fetch instances from Supabase filtered by user_id
   const fetchInstances = useCallback(async () => {
@@ -53,11 +54,18 @@ export function useUserWhatsAppInstances() {
 
       // BACKGROUND SYNC: Check status with Evolution API
       // We don't await this for the UI to unblock
+      // Sprint 2, Item #6: Use isMounted guard to prevent setState on unmounted component
+      let bgCancelled = false;
+      const bgSyncController = new AbortController();
+      // Cancel previous bg sync if still running
+      bgCancelRef.current?.();
+      bgCancelRef.current = () => { bgCancelled = true; bgSyncController.abort(); };
       (async () => {
         if (!dbInstances.length) return;
 
         const updatedInstances = await Promise.all(
           dbInstances.map(async (instance) => {
+            if (bgCancelled) return instance;
             try {
               // If already disconnected in DB, maybe we don't need to check? 
               // keeping it simple for now, check everyone
@@ -105,6 +113,8 @@ export function useUserWhatsAppInstances() {
         ) as unknown as UserWhatsAppInstance[];
 
         // Update state with fresh statuses if any changed
+        // Sprint 2, Item #6: Guard against setState on unmounted component
+        if (bgCancelled) return;
         setInstances(prev => {
           // Merge logic: keep current instances but update status from background sync
           // This prevents overwriting if user added/removed instances in the meantime
@@ -123,9 +133,12 @@ export function useUserWhatsAppInstances() {
     }
   }, [user, orgId]);
 
-  // Initial fetch
+  // Initial fetch + cleanup (Sprint 2, Item #6)
   useEffect(() => {
     fetchInstances();
+    return () => {
+      bgCancelRef.current?.();
+    };
   }, [fetchInstances]);
 
   // Real-time subscription

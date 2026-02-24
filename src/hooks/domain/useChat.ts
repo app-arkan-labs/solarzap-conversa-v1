@@ -1,26 +1,28 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '@/hooks/use-toast';
 import { supabase, InteracaoDB } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Contact, Conversation, Message } from '@/types/solarzap';
 
+const vendedorTypes = [
+    'mensagem_vendedor',
+    'atendente',
+    'audio_vendedor',
+    'anexo_vendedor',
+    'video_vendedor',
+];
+
 const interacaoToMessage = (interacao: InteracaoDB): Message => {
-    const vendedorTypes = [
-        'mensagem_vendedor',
-        'atendente',
-        'audio_vendedor',
-        'anexo_vendedor',
-        'video_vendedor',
-    ];
+    const isFromClient = !vendedorTypes.includes(interacao.tipo);
 
     return {
         id: String(interacao.id),
         contactId: String(interacao.lead_id || 0),
         content: interacao.mensagem || '',
         timestamp: new Date(interacao.created_at),
-        isFromClient: !vendedorTypes.includes(interacao.tipo),
-        isRead: true, // Simplified
+        isFromClient,
+        isRead: !isFromClient || !!interacao.read_at, // Seller msgs always read; client msgs read if read_at set
         isAutomation: interacao.tipo === 'automacao',
         instanceName: interacao.instance_name || undefined,
         phoneE164: interacao.phone_e164 || undefined, // NEW
@@ -214,15 +216,7 @@ export function useChat(contacts: Contact[] = []) {
                 console.log('🔵 [RT STATUS]', status);
             });
 
-        // 2. Polling Fallback (Every 5s) - only for missed messages
-        // NOTE: We no longer invalidate on polling - this would overwrite optimistic updates
-        // The useQuery refetchInterval handles background sync already
-        const pollingId = setInterval(() => {
-            // Just log for debugging, don't invalidate
-            console.log('[POLL] Heartbeat (no invalidation to preserve optimistic updates)');
-        }, 5000);
-
-        // 3. Reconcile on visibility change
+        // 2. Visibility change reconciliation (removed useless 5s heartbeat — Sprint 2/#24)
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
                 console.log('[RT] Tab active, reconciling...');
@@ -234,7 +228,6 @@ export function useChat(contacts: Contact[] = []) {
         return () => {
             console.log('[RT] Cleanup channel:', channelName);
             supabase.removeChannel(subscription);
-            clearInterval(pollingId);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [user, orgId, queryClient, interactionsQueryKey]);
@@ -983,6 +976,43 @@ export function useChat(contacts: Contact[] = []) {
         }
     });
 
+    // --- MARK AS READ MUTATION (Sprint 2, Item #3/#4) ---
+    const markConversationAsRead = useCallback(async (conversationId: string) => {
+        if (!user || !orgId) return;
+        const leadId = Number(conversationId);
+        if (isNaN(leadId)) return;
+
+        // Optimistic: mark messages read in cache immediately
+        queryClient.setQueriesData(
+            { queryKey: interactionsQueryKey },
+            (oldData: Message[] | undefined) => {
+                if (!Array.isArray(oldData)) return oldData;
+                return oldData.map(m =>
+                    m.contactId === conversationId && m.isFromClient && !m.isRead
+                        ? { ...m, isRead: true }
+                        : m
+                );
+            }
+        );
+
+        // Persist: update read_at for unread client messages of this lead
+        try {
+            const vendedorTypesList = vendedorTypes;
+            const { error } = await supabase
+                .from('interacoes')
+                .update({ read_at: new Date().toISOString() })
+                .eq('lead_id', leadId)
+                .is('read_at', null)
+                .not('tipo', 'in', `(${vendedorTypesList.join(',')})`);
+
+            if (error) {
+                console.warn('[markAsRead] DB update failed (non-blocking):', error.message);
+            }
+        } catch (err) {
+            console.warn('[markAsRead] Unexpected error (non-blocking):', err);
+        }
+    }, [user, orgId, queryClient, interactionsQueryKey]);
+
     return {
         conversations,
         allMessages,
@@ -991,6 +1021,7 @@ export function useChat(contacts: Contact[] = []) {
         sendAttachment: sendAttachmentMutation.mutateAsync,
         sendAudio: sendAudioMutation.mutateAsync,
         sendReaction: sendReactionMutation.mutateAsync,
+        markAsRead: markConversationAsRead,
     };
 }
 
