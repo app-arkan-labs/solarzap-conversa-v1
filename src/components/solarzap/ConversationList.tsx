@@ -200,17 +200,17 @@ export function ConversationList({
     if (!onDeleteLead || selectedLeadIds.size === 0) return;
     setIsBulkDeleting(true);
 
+    const results = await Promise.allSettled(
+      Array.from(selectedLeadIds).map(id => onDeleteLead(id))
+    );
+
     const failedIds: string[] = [];
     let deletedCount = 0;
-
-    for (const leadId of selectedLeadIds) {
-      try {
-        await onDeleteLead(leadId);
-        deletedCount += 1;
-      } catch (error) {
-        failedIds.push(leadId);
-      }
-    }
+    const ids = Array.from(selectedLeadIds);
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') deletedCount++;
+      else failedIds.push(ids[i]);
+    });
 
     setIsBulkDeleting(false);
     setBulkDeleteDialogOpen(false);

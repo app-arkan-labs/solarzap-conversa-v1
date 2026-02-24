@@ -119,7 +119,7 @@ serve(async (req) => {
 
     } catch (error) {
         console.error("Error:", error);
-        return new Response(JSON.stringify({ error: 'Internal server error' }), {
+        return new Response(JSON.stringify({ error: error.message }), {
             status: 400,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
         });

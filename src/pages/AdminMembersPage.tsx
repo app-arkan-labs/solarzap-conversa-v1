@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 type InviteMode = 'create' | 'invite';
 type AdminMembersPageProps = {
@@ -63,6 +64,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
   const [draftByUserId, setDraftByUserId] = useState<DraftByUserId>({});
   const [submittingByUserId, setSubmittingByUserId] = useState<Record<string, boolean>>({});
   const [removingByUserId, setRemovingByUserId] = useState<Record<string, boolean>>({});
+  const [memberToRemove, setMemberToRemove] = useState<MemberDto | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState('');
@@ -237,13 +239,13 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
   };
 
   const handleRemoveMember = async (member: MemberDto) => {
-    const confirmed = window.confirm(
-      `Remover ${fallbackMemberLabel(member)} da organizacao? Esta acao nao remove o usuario do Auth.`,
-    );
-    if (!confirmed) {
-      return;
-    }
+    setMemberToRemove(member);
+  };
 
+  const confirmRemoveMember = async () => {
+    const member = memberToRemove;
+    if (!member) return;
+    setMemberToRemove(null);
     setRemovingByUserId((current) => ({ ...current, [member.user_id]: true }));
     try {
       await removeMember(member.user_id);
@@ -653,6 +655,22 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
           </CardContent>
         </Card>
       </div>
+
+      {/* Remove member confirmation dialog (replaces window.confirm) */}
+      <Dialog open={!!memberToRemove} onOpenChange={(open) => !open && setMemberToRemove(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remover Membro</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Remover {memberToRemove ? fallbackMemberLabel(memberToRemove) : ''} da organização? Esta ação não remove o usuário do Auth.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMemberToRemove(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={confirmRemoveMember}>Remover</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

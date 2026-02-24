@@ -246,9 +246,13 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
     let stageContacts = contacts.filter(c => c.pipelineStage === stage);
 
     if (searchQuery) {
+      const q = searchQuery.toLowerCase();
       stageContacts = stageContacts.filter(c =>
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.company?.toLowerCase().includes(searchQuery.toLowerCase())
+        c.name.toLowerCase().includes(q) ||
+        c.company?.toLowerCase().includes(q) ||
+        c.phone?.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q) ||
+        c.city?.toLowerCase().includes(q)
       );
     }
 
@@ -265,22 +269,22 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 }).format(value);
   };
 
-  const getDaysInStage = (contact: Contact) => {
+  const getDaysInStage = useCallback((contact: Contact) => {
     const now = new Date();
     const stageDate = contact.stageChangedAt ? new Date(contact.stageChangedAt) : new Date(contact.createdAt);
     const diffTime = Math.abs(now.getTime() - stageDate.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
-  };
+  }, []);
 
-  const getNextAction = (contact: Contact): { text: string; nextStageIcon: string } => {
+  const getNextAction = useCallback((contact: Contact): { text: string; nextStageIcon: string } => {
     const stage = contact.pipelineStage;
     const stagesArray = Object.keys(PIPELINE_STAGES) as PipelineStage[];
     const currentIndex = stagesArray.indexOf(stage);
     const nextStage = currentIndex < stagesArray.length - 1 ? stagesArray[currentIndex + 1] : stage;
     const nextStageIcon = PIPELINE_STAGES[nextStage]?.icon || '📋';
 
-    const actions: Record<PipelineStage, string> = {
+    const NEXT_ACTIONS: Record<PipelineStage, string> = {
       novo_lead: 'Entrar em contato',
       respondeu: 'Agendar chamada',
       chamada_agendada: 'Realizar chamada',
@@ -301,8 +305,8 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
       contato_futuro: 'Aguardar contato',
       perdido: 'Arquivado',
     };
-    return { text: actions[stage] || 'Próxima ação', nextStageIcon };
-  };
+    return { text: NEXT_ACTIONS[stage] || 'Próxima ação', nextStageIcon };
+  }, []);
 
   const handleNextActionClick = (contact: Contact, e: React.MouseEvent) => {
     e.stopPropagation();

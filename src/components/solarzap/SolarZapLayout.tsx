@@ -230,7 +230,8 @@ export function SolarZapLayout() {
       const matchesStage = stageFilter === 'todos' || conv.contact.pipelineStage === stageFilter;
       const matchesSearch = searchQuery === '' ||
         conv.contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (conv.contact.company?.toLowerCase().includes(searchQuery.toLowerCase()));
+        conv.contact.company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        conv.contact.phone?.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesChannel && matchesStage && matchesSearch;
     });
   }, [conversations, channelFilter, stageFilter, searchQuery]);

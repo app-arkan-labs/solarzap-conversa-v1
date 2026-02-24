@@ -31,6 +31,14 @@ export function SobreEmpresaTab() {
     const [hasChanges, setHasChanges] = useState(false);
     const [savedFields, setSavedFields] = useState<Set<keyof CompanyProfile>>(new Set());
 
+    // Warn user before leaving with unsaved changes
+    useEffect(() => {
+        if (!hasChanges) return;
+        const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [hasChanges]);
+
     useEffect(() => {
         loadProfile();
     }, [orgId]);

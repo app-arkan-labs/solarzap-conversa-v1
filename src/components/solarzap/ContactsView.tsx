@@ -370,10 +370,14 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
     }
   };
 
-  const filteredContacts = contacts.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.company?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredContacts = contacts.filter(c => {
+    const q = searchTerm.toLowerCase();
+    return c.name.toLowerCase().includes(q) ||
+      c.company?.toLowerCase().includes(q) ||
+      c.phone?.toLowerCase().includes(q) ||
+      c.email?.toLowerCase().includes(q) ||
+      c.city?.toLowerCase().includes(q);
+  });
 
   const visibleContactIds = filteredContacts.map((contact) => contact.id);
   const selectedVisibleCount = visibleContactIds.filter((contactId) => selectedContactIds.has(contactId)).length;
@@ -427,17 +431,18 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
     if (!onDeleteLead || selectedContactIds.size === 0) return;
 
     setIsBulkDeleting(true);
+    const ids = Array.from(selectedContactIds);
+
+    const results = await Promise.allSettled(
+      ids.map(id => onDeleteLead(id))
+    );
+
     const failedIds: string[] = [];
     const deletedIds: string[] = [];
-
-    for (const contactId of selectedContactIds) {
-      try {
-        await onDeleteLead(contactId);
-        deletedIds.push(contactId);
-      } catch (error) {
-        failedIds.push(contactId);
-      }
-    }
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') deletedIds.push(ids[i]);
+      else failedIds.push(ids[i]);
+    });
 
     if (selectedContact && deletedIds.includes(selectedContact.id)) {
       const remaining = contacts.filter((contact) => !deletedIds.includes(contact.id));

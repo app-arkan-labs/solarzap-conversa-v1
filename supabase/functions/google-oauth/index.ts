@@ -104,7 +104,8 @@ serve(async (req) => {
   } catch (error: any) {
     console.error('Google OAuth error:', error)
     return new Response(JSON.stringify({
-      error: 'Internal Server Error'
+      error: 'Internal Server Error',
+      details: error.message
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

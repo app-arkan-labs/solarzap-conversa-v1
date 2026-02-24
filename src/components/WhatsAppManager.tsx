@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { whatsappService, WhatsAppInstance } from '../services/whatsappService';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 export default function WhatsAppManager() {
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
@@ -8,6 +10,7 @@ export default function WhatsAppManager() {
   const [currentQR, setCurrentQR] = useState('');
   const [error, setError] = useState('');
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [instanceToDelete, setInstanceToDelete] = useState<WhatsAppInstance | null>(null);
 
   // Testar conexão ao montar
   useEffect(() => {
@@ -61,11 +64,14 @@ export default function WhatsAppManager() {
     }
   };
 
-  const deleteInstance = async (instance: WhatsAppInstance) => {
-    if (!confirm(`Tem certeza que quer deletar "${instance.displayName}"?`)) {
-      return;
-    }
+  const deleteInstance = (instance: WhatsAppInstance) => {
+    setInstanceToDelete(instance);
+  };
 
+  const confirmDeleteInstance = async () => {
+    const instance = instanceToDelete;
+    if (!instance) return;
+    setInstanceToDelete(null);
     try {
       await whatsappService.deleteInstance(instance.instanceName);
       setInstances(prev => prev.filter(i => i.id !== instance.id));
@@ -215,6 +221,22 @@ export default function WhatsAppManager() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!instanceToDelete} onOpenChange={(open) => !open && setInstanceToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar exclusão</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Tem certeza que quer deletar "{instanceToDelete?.displayName}"?
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInstanceToDelete(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={confirmDeleteInstance}>Excluir</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

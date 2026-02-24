@@ -90,10 +90,11 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error('Webhook error:', error)
       
       // Still return 200 to prevent Meta from retrying
-      return new Response(JSON.stringify({ status: 'ERROR', message: 'Internal server error' }), {
+      return new Response(JSON.stringify({ status: 'ERROR', message: errorMessage }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })

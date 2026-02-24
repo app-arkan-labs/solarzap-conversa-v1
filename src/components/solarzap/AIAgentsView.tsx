@@ -37,6 +37,7 @@ export function AIAgentsView() {
 
     const [isWarningOpen, setIsWarningOpen] = useState(false);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
     const [tempPrompt, setTempPrompt] = useState('');
 
     // Local state for Assistant Name to prevent auto-refresh/focus loss
@@ -93,12 +94,7 @@ export function AIAgentsView() {
                 setTempPrompt(defaultPrompt);
                 toast.success('Prompt padrão restaurado. Clique "Salvar" para confirmar.');
             } else {
-                if (window.confirm("Isso vai restaurar o prompt desta etapa para o padrão do sistema. Continuar?")) {
-                    await restoreDefaultPrompt(editingStage);
-                    setIsEditorOpen(false);
-                    setEditingStage(null);
-                    setEditingAgent(null);
-                }
+                setIsRestoreConfirmOpen(true);
             }
         }
     };
@@ -394,6 +390,30 @@ export function AIAgentsView() {
                                 <Save className="w-4 h-4 mr-2" /> Salvar Alterações
                             </Button>
                         </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Restore default confirm dialog (replaces window.confirm) */}
+            <Dialog open={isRestoreConfirmOpen} onOpenChange={setIsRestoreConfirmOpen}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Restaurar Prompt Padrão</DialogTitle>
+                        <DialogDescription>
+                            Isso vai restaurar o prompt desta etapa para o padrão do sistema. Continuar?
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsRestoreConfirmOpen(false)}>Cancelar</Button>
+                        <Button variant="destructive" onClick={async () => {
+                            if (editingStage) {
+                                await restoreDefaultPrompt(editingStage);
+                                setIsEditorOpen(false);
+                                setEditingStage(null);
+                                setEditingAgent(null);
+                            }
+                            setIsRestoreConfirmOpen(false);
+                        }}>Restaurar</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

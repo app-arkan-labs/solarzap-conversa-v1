@@ -502,8 +502,8 @@ Deno.serve(async (req) => {
       },
     )
   } catch (error) {
-    console.error('ai-digest-worker error:', error)
-    return new Response(JSON.stringify({ success: false, error: 'Internal server error' }), {
+    const message = error instanceof Error ? error.message : String(error)
+    return new Response(JSON.stringify({ success: false, error: message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

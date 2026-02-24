@@ -920,17 +920,11 @@ Peça cidade/UF e concessionária para estimar prazos.`;
 Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
-    // Hoist variables used in catch block (Sprint 2, Item #1 — scope fix)
-    let runId: string | null = null;
-    let leadId: string | number | undefined = undefined;
-    let leadOrgId: string | null = null;
-    let supabase: any = null;
-
     try {
         const payload = await req.json();
 
         // 0. GENERATE RUN ID
-        runId = crypto.randomUUID();
+        const runId = crypto.randomUUID();
 
         // --- CONSTANTS ---
         const QUIET_WINDOW_MS = 3500;   // min silence before responding
@@ -970,8 +964,7 @@ Deno.serve(async (req) => {
         let didSendOutbound = false;
 
         // 1. STRICT INSTANCE CHECK
-        const { leadId: _leadId, instanceName } = payload;
-        leadId = _leadId;
+        const { leadId, instanceName } = payload;
         const inputInteractionId = payload.interactionId;
         let interactionId = payload.interactionId;
         let adoptedLatestOnce = false;
@@ -1016,12 +1009,12 @@ Deno.serve(async (req) => {
             Deno.env.get('SUPABASE_URL')!,
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
         );
-        leadOrgId = null;
+        let leadOrgId: string | null = null;
         const aiActionLogsHasOrgId = await tableHasOrgIdColumn(supabaseBase, 'ai_action_logs');
         if (!aiActionLogsHasOrgId) {
             throw new Error('Schema hardening violation: ai_action_logs.org_id column is required');
         }
-        supabase = createOrgAwareSupabaseClient(
+        const supabase = createOrgAwareSupabaseClient(
             supabaseBase,
             () => leadOrgId,
             aiActionLogsHasOrgId
@@ -2909,7 +2902,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
         } catch (_logErr) { /* non-blocking */ }
         return new Response(
             JSON.stringify({
-                error: 'Internal server error',
+                error: error.message,
                 _transport_mode: 'blocked',
                 _transport_reason: 'exception'
             }),

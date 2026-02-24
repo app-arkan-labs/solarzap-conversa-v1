@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import {
     Dialog,
@@ -84,6 +84,7 @@ export function AppointmentModal({
     const { createAppointment, updateAppointment, deleteAppointment } = useAppointments();
     const { contacts } = useLeads();
     const { toast } = useToast();
+    const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
     const contactsSignature = useMemo(
         () => contacts.map(contact => toSafeLeadId(contact.id)).join('|'),
         [contacts]
@@ -346,6 +347,7 @@ export function AppointmentModal({
     };
 
     return (
+        <>
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
@@ -491,12 +493,7 @@ export function AppointmentModal({
                                     type="button"
                                     variant="destructive"
                                     size="icon"
-                                    onClick={async () => {
-                                        if (confirm('Tem certeza que deseja excluir?')) {
-                                            await deleteAppointment(initialData.id!);
-                                            onClose();
-                                        }
-                                    }}
+                                    onClick={() => setConfirmDeleteOpen(true)}
                                 >
                                     <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -524,5 +521,26 @@ export function AppointmentModal({
                 </form>
             </DialogContent>
         </Dialog>
+
+        {/* Delete confirmation dialog (replaces window.confirm) */}
+        <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+            <DialogContent className="max-w-sm">
+                <DialogHeader>
+                    <DialogTitle>Excluir Agendamento</DialogTitle>
+                </DialogHeader>
+                <p className="text-sm text-muted-foreground">Tem certeza que deseja excluir este agendamento?</p>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setConfirmDeleteOpen(false)}>Cancelar</Button>
+                    <Button variant="destructive" onClick={async () => {
+                        if (initialData?.id) {
+                            await deleteAppointment(initialData.id);
+                            onClose();
+                        }
+                        setConfirmDeleteOpen(false);
+                    }}>Excluir</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        </>
     );
 }

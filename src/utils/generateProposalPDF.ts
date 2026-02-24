@@ -71,13 +71,9 @@ export interface SellerScriptPDFData {
 
 // ── Helpers ──────────────────────────────────────────────
 
-type RGB = [number, number, number];
+import { calcPMT } from '@/utils/financingCalc';
 
-function calcPMT(rate: number, nper: number, pv: number): number {
-  if (rate === 0) return pv / nper;
-  const r = rate / 100;
-  return (pv * r * Math.pow(1 + r, nper)) / (Math.pow(1 + r, nper) - 1);
-}
+type RGB = [number, number, number];
 
 const fmtCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);

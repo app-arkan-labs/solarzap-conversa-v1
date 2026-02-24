@@ -57,6 +57,8 @@ export interface ProposalData {
   logoDataUrl?: string | null;
 }
 
+import { calcPMT } from '@/utils/financingCalc';
+
 const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'residencial', label: 'Residencial' },
   { value: 'comercial', label: 'Comercial' },
@@ -65,12 +67,7 @@ const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'usina', label: 'Usina Solar' },
 ];
 
-// ── PMT calc (mirrored from PDF) ──
-function calcPMT(rate: number, nper: number, pv: number): number {
-  if (rate === 0) return pv / nper;
-  const r = rate / 100;
-  return (pv * r * Math.pow(1 + r, nper)) / (Math.pow(1 + r, nper) - 1);
-}
+// ── PMT calc — uses shared utility ──
 
 const RATE_SHORTCUTS = [
   { label: 'Otimista 1,30%', rate: 1.3 },

@@ -10,33 +10,6 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-arkan-webhook-secret',
 }
 
-const MAX_BODY_BYTES = 512 * 1024 // 512 KB
-
-/** Timing-safe string comparison to prevent timing attacks on secret values */
-function timingSafeEqual(a: string, b: string): boolean {
-    const enc = new TextEncoder()
-    const bufA = enc.encode(a)
-    const bufB = enc.encode(b)
-    if (bufA.byteLength !== bufB.byteLength) {
-        // Compare bufA against itself so timing is constant regardless of length mismatch
-        crypto.subtle.timingSafeEqual(bufA, bufA)
-        return false
-    }
-    return crypto.subtle.timingSafeEqual(bufA, bufB)
-}
-
-/** Strip sensitive headers before persisting to DB */
-function sanitizeHeaders(headers: Headers): Record<string, string> {
-    const SENSITIVE_KEYS = ['x-arkan-webhook-secret', 'authorization', 'cookie', 'x-internal-api-key']
-    const safe: Record<string, string> = {}
-    headers.forEach((value, key) => {
-        if (!SENSITIVE_KEYS.includes(key.toLowerCase())) {
-            safe[key] = value
-        }
-    })
-    return safe
-}
-
 function onlyDigits(str: string | null | undefined): string {
     if (!str) return ''
     return str.replace(/\D/g, '')
@@ -56,26 +29,6 @@ function inferEventFromPath(pathname: string) {
     const maybe = normalizeEvent(last)
     const known = new Set(['QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'MESSAGES_DELETE', 'SEND_MESSAGE'])
     return known.has(maybe || '') ? maybe : null
-}
-
-// #14 – In-memory rate limiter (per edge function isolate)
-const RATE_LIMIT_WINDOW_MS = 60_000 // 1 minute
-const RATE_LIMIT_MAX = 120 // max requests per IP per window
-const rateLimitMap = new Map<string, number[]>()
-
-function isRateLimited(ip: string): boolean {
-    const now = Date.now()
-    const timestamps = rateLimitMap.get(ip) ?? []
-    const recent = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS)
-    recent.push(now)
-    rateLimitMap.set(ip, recent)
-    // Evict stale IPs periodically (keep map bounded)
-    if (rateLimitMap.size > 10_000) {
-        for (const [key, ts] of rateLimitMap) {
-            if (ts.every(t => now - t >= RATE_LIMIT_WINDOW_MS)) rateLimitMap.delete(key)
-        }
-    }
-    return recent.length > RATE_LIMIT_MAX
 }
 
 function parseBooleanFlag(value: unknown): boolean | null {
@@ -410,33 +363,12 @@ Deno.serve(async (req: Request) => {
 
     const url = new URL(req.url)
 
-    // #14 – Rate limiting
-    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-        || req.headers.get('cf-connecting-ip')
-        || 'unknown'
-    if (isRateLimited(clientIp)) {
-        return new Response(JSON.stringify({ error: 'Too many requests' }), {
-            status: 429,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '60' }
-        })
-    }
-
     try {
-        // #15 – Body size guard
-        const contentLength = parseInt(req.headers.get('content-length') || '0', 10)
-        if (contentLength > MAX_BODY_BYTES) {
-            return new Response(JSON.stringify({ error: 'Payload too large' }), {
-                status: 413,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            })
-        }
-
-        // #13 – Timing-safe webhook secret validation
         const expectedSecret = Deno.env.get('ARKAN_WEBHOOK_SECRET');
         if (expectedSecret) {
-            const receivedHeader = req.headers.get('x-arkan-webhook-secret') || '';
+            const receivedHeader = req.headers.get('x-arkan-webhook-secret');
 
-            if (!timingSafeEqual(receivedHeader, expectedSecret)) {
+            if (receivedHeader !== expectedSecret) {
                 console.warn('⚠️ Invalid webhook secret');
                 return new Response(JSON.stringify({ error: 'Unauthorized' }), {
                     status: 401,
@@ -446,15 +378,6 @@ Deno.serve(async (req: Request) => {
         }
 
         const body = await req.json()
-
-        // #19 – Webhook body structural validation
-        if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-            return new Response(JSON.stringify({ error: 'Invalid payload structure' }), {
-                status: 400,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            })
-        }
-
         const eventRaw = body?.event ?? body?.data?.event ?? null
         const event = normalizeEvent(eventRaw) ?? inferEventFromPath(url.pathname)
         const instanceName = body?.instance || body?.instanceName || body?.data?.instance || body?.data?.instanceName || null
@@ -522,7 +445,7 @@ Deno.serve(async (req: Request) => {
             instance_name: instanceName,
             event,
             path: url.pathname,
-            headers: sanitizeHeaders(req.headers),
+            headers: Object.fromEntries(req.headers.entries()),
             payload: body
         })
 
