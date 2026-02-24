@@ -63,10 +63,10 @@ const UpdatePassword = () => {
             return;
         }
 
-        if (password.length < 6) {
-            toast({
-                title: 'Senha muito curta',
-                description: 'A senha deve ter pelo menos 6 caracteres.',
+if (password.length < 8) {
+    toast({
+        title: 'Senha muito curta',
+        description: 'A senha deve ter pelo menos 8 caracteres.',
                 variant: 'destructive',
             });
             return;

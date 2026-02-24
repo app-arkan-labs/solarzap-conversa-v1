@@ -20,6 +20,7 @@ export function ConfiguracoesContaView() {
     const [email, setEmail] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [currentPassword, setCurrentPassword] = useState('');
 
     useEffect(() => {
         if (user) {
@@ -72,22 +73,37 @@ export function ConfiguracoesContaView() {
 
     const handleUpdatePassword = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!currentPassword) {
+            toast({ title: 'Senha atual obrigatória', description: 'Informe a senha atual para confirmar a alteração.', variant: 'destructive' });
+            return;
+        }
         if (newPassword !== confirmPassword) {
             toast({ title: 'Senhas incompatíveis', description: 'A nova senha e a confirmação devem ser iguais.', variant: 'destructive' });
             return;
         }
-        if (newPassword.length < 6) {
-            toast({ title: 'Senha fraca', description: 'A senha deve ter pelo menos 6 caracteres.', variant: 'destructive' });
+        if (newPassword.length < 8) {
+            toast({ title: 'Senha fraca', description: 'A senha deve ter pelo menos 8 caracteres.', variant: 'destructive' });
             return;
         }
 
         setIsLoading(true);
         try {
+            // Sprint 4, Item #17: Verify current password before allowing change
+            const { error: signInErr } = await supabase.auth.signInWithPassword({
+                email: user?.email || '',
+                password: currentPassword,
+            });
+            if (signInErr) {
+                toast({ title: 'Senha atual incorreta', description: 'A senha informada não confere.', variant: 'destructive' });
+                return;
+            }
+
             const { error } = await supabase.auth.updateUser({
                 password: newPassword
             });
             if (error) throw error;
             toast({ title: 'Senha atualizada', description: 'A sua senha foi alterada com sucesso.' });
+            setCurrentPassword('');
             setNewPassword('');
             setConfirmPassword('');
         } catch (err: any) {
@@ -165,6 +181,17 @@ export function ConfiguracoesContaView() {
                         <CardContent>
                             <form id="password-form" onSubmit={handleUpdatePassword} className="space-y-4">
                                 <div className="space-y-2">
+                                    <Label htmlFor="currentPassword">Senha Atual</Label>
+                                    <Input
+                                        id="currentPassword"
+                                        type="password"
+                                        value={currentPassword}
+                                        onChange={e => setCurrentPassword(e.target.value)}
+                                        placeholder="******"
+                                        disabled={isLoading}
+                                    />
+                                </div>
+                                <div className="space-y-2">
                                     <Label htmlFor="newPassword">Nova Senha</Label>
                                     <Input
                                         id="newPassword"
@@ -189,7 +216,7 @@ export function ConfiguracoesContaView() {
                             </form>
                         </CardContent>
                         <CardFooter>
-                            <Button type="submit" form="password-form" disabled={isLoading || !newPassword || !confirmPassword} className="w-full sm:w-auto" variant="outline">
+                            <Button type="submit" form="password-form" disabled={isLoading || !currentPassword || !newPassword || !confirmPassword} className="w-full sm:w-auto" variant="outline">
                                 {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                                 Atualizar Senha
                             </Button>

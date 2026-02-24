@@ -17,4 +17,4 @@ export const DEV_MODE = false;
 export const USE_MOCK_DATA = false;
 
 // Se true, usa mock data quando Edge Function não responde
-export const EDGE_FUNCTION_FALLBACK = true;
+export const EDGE_FUNCTION_FALLBACK = false;

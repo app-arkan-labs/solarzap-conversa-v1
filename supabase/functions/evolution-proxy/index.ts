@@ -10,6 +10,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-api-key',
 }
 
+/** Timing-safe string comparison to prevent timing attacks on secret values */
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder()
+  const bufA = enc.encode(a)
+  const bufB = enc.encode(b)
+  if (bufA.byteLength !== bufB.byteLength) {
+    crypto.subtle.timingSafeEqual(bufA, bufA)
+    return false
+  }
+  return crypto.subtle.timingSafeEqual(bufA, bufB)
+}
+
 const DEFAULT_WEBHOOK_EVENTS = [
   'QRCODE_UPDATED',
   'CONNECTION_UPDATE',
@@ -170,7 +182,7 @@ async function resolveContext(
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
   const bearerToken = authHeader.replace(/^Bearer\s+/i, '').trim()
 
-  if (internalSecret && internalHeader && internalHeader === internalSecret) {
+  if (internalSecret && internalHeader && timingSafeEqual(internalHeader, internalSecret)) {
     const orgId = String(payload.orgId || '').trim()
     if (!orgId) {
       throw new Error('orgId is required for internal evolution-proxy calls')
@@ -185,7 +197,7 @@ async function resolveContext(
     }
   }
 
-  if (serviceRoleKey && bearerToken === serviceRoleKey) {
+  if (serviceRoleKey && bearerToken && timingSafeEqual(bearerToken, serviceRoleKey)) {
     const orgId = String(payload.orgId || '').trim()
     if (!orgId) {
       throw new Error('orgId is required for service-role evolution-proxy calls')
