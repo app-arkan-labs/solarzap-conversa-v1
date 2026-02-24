@@ -466,8 +466,12 @@ export function useUserWhatsAppInstances() {
     }
   }, []);
 
-  // Simulate connection (for dev/demo)
+  // Simulate connection (for dev/demo ONLY — guarded against production use)
   const simulateConnection = useCallback(async (instanceId: string): Promise<boolean> => {
+    if (import.meta.env.PROD) {
+      console.warn('[simulateConnection] Blocked in production');
+      return false;
+    }
     // Mock implementation for dev mode
     try {
       setActionLoading(instanceId);

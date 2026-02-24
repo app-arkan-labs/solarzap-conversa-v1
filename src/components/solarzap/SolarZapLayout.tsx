@@ -967,12 +967,30 @@ export function SolarZapLayout() {
               }
             }}
             onSendAttachment={async (id, file, type, caption, instanceName) => {
-              await sendAttachment({ conversationId: id, file, fileType: type, caption, instanceName });
-              onSellerResponse(id);
+              try {
+                await sendAttachment({ conversationId: id, file, fileType: type, caption, instanceName });
+                onSellerResponse(id);
+              } catch (error) {
+                console.error('Failed to send attachment:', error);
+                toast({
+                  title: "Erro ao enviar anexo",
+                  description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
+                  variant: "destructive"
+                });
+              }
             }}
             onSendAudio={async (id, blob, duration, instanceName) => {
-              await sendAudio({ conversationId: id, audioBlob: blob, duration, instanceName });
-              onSellerResponse(id);
+              try {
+                await sendAudio({ conversationId: id, audioBlob: blob, duration, instanceName });
+                onSellerResponse(id);
+              } catch (error) {
+                console.error('Failed to send audio:', error);
+                toast({
+                  title: "Erro ao enviar áudio",
+                  description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
+                  variant: "destructive"
+                });
+              }
             }}
             onOpenDetails={() => setIsDetailsPanelOpen(true)}
             isDetailsOpen={isDetailsPanelOpen}

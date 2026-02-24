@@ -153,6 +153,7 @@ export function useChat(contacts: Contact[] = []) {
                 .from('interacoes')
                 .select('*')
                 .eq('user_id', user.id)
+                .eq('org_id', orgId)
                 .order('created_at', { ascending: false }) // Get newest first
                 .limit(1000); // Explicit limit
 
@@ -185,6 +186,8 @@ export function useChat(contacts: Contact[] = []) {
                     filter: `org_id=eq.${orgId}`,
                 },
                 (payload) => {
+                    // Guard: only process messages belonging to this user
+                    if (payload.new.user_id !== user.id) return;
                     console.log('🔴 [RT INSERT]', payload.new.id);
                     const newMessage = interacaoToMessage(payload.new as InteracaoDB);
                     queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
@@ -203,6 +206,8 @@ export function useChat(contacts: Contact[] = []) {
                     filter: `org_id=eq.${orgId}`,
                 },
                 (payload) => {
+                    // Guard: only process messages belonging to this user
+                    if (payload.new.user_id !== user.id) return;
                     console.log('🟡 [RT UPDATE]', payload.new.id, payload.new.attachment_ready);
                     const updatedMessage = interacaoToMessage(payload.new as InteracaoDB);
 
@@ -236,6 +241,13 @@ export function useChat(contacts: Contact[] = []) {
         mutationFn: async ({ conversationId, content, instanceName, replyTo }: { conversationId: string; content: string; instanceName?: string, replyTo?: { id: string } }) => {
             if (!user) throw new Error('User not authenticated');
             if (!orgId) throw new Error('Organização não vinculada ao usuário');
+
+            // Validate content before sending
+            const MAX_MESSAGE_LENGTH = 4096;
+            const trimmedContent = content.trim();
+            if (!trimmedContent) throw new Error('Mensagem não pode estar vazia');
+            if (trimmedContent.length > MAX_MESSAGE_LENGTH) throw new Error(`Mensagem excede o limite de ${MAX_MESSAGE_LENGTH} caracteres`);
+            const sanitizedContent = trimmedContent;
 
             // 1. Get Lead Phone
             const { data: lead, error: leadError } = await supabase
@@ -344,14 +356,14 @@ export function useChat(contacts: Contact[] = []) {
                 console.log('Attempting to send message via Evolution API', {
                     instance: instance.instance_name,
                     phone: formattedPhone,
-                    content,
+                    contentLength: sanitizedContent.length,
                     quotedPayload
                 });
 
                 response = await evolutionApi.sendMessage(
                     instance.instance_name,
                     formattedPhone,
-                    content,
+                    sanitizedContent,
                     quotedPayload // Passing the full object now
                 );
                 console.log('Evolution API Response:', response);
@@ -372,7 +384,7 @@ export function useChat(contacts: Contact[] = []) {
                     lead_id: isNaN(leadIdCheck) ? null : leadIdCheck,
                     org_id: orgId,
                     user_id: user.id,
-                    mensagem: content,
+                    mensagem: sanitizedContent,
                     tipo: 'mensagem_vendedor',
                     wa_from_me: true,
                     instance_name: instance.instance_name,

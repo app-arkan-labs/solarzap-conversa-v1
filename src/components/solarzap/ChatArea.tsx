@@ -234,11 +234,32 @@ export function ChatArea({
 
     if (!conversation || !onSendAttachment) return;
 
+    const MAX_FILE_SIZE = 16 * 1024 * 1024; // 16 MB (Evolution API limit)
+    const MAX_FILES = 10;
     const files = Array.from(e.dataTransfer.files);
+
+    if (files.length > MAX_FILES) {
+      toast({
+        title: "Muitos arquivos",
+        description: `Máximo de ${MAX_FILES} arquivos por vez.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     const selectedInstance = instances.find(i => i.id === selectedInstanceId);
     const caption = message.trim() || undefined;
 
     for (const file of files) {
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          title: "Arquivo muito grande",
+          description: `${file.name} excede o limite de 16 MB.`,
+          variant: "destructive",
+        });
+        continue;
+      }
+
       const fileType = getFileType(file);
       toast({
         title: "Enviando arquivo...",
