@@ -10,7 +10,6 @@ export interface DashboardPayload {
     charts: {
         leads_by_source: Array<{ source: string; count: number; pct: number }>;
         sales_by_source: Array<{ source: string; count: number; pct: number }>;
-        funnel_counts: Array<{ stage: string; count: number }>;
         monthly: Array<{ month: string; leads: number; sales: number; revenue: number; conversion_rate: number }>;
     };
     tables: {

@@ -1,40 +1,8 @@
-import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DashboardPayload } from "@/types/dashboard";
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Cell, PieChart, Pie, Legend, AreaChart, Area, ComposedChart, Line } from "recharts";
-import { PIPELINE_STAGES, PipelineStage } from "@/types/solarzap";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ChevronDown, Filter } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { getStageColor } from "@/lib/colors";
+import { ResponsiveContainer, XAxis, YAxis, Tooltip, Cell, PieChart, Pie, Legend, ComposedChart, Line, Area } from "recharts";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1', '#a4de6c', '#d0ed57'];
-
-// Canonical Order of Pipeline Stages
-const ORDERED_STAGES: PipelineStage[] = [
-    'novo_lead',
-    'respondeu',
-    'chamada_agendada',
-    'chamada_realizada',
-    'nao_compareceu',
-    'aguardando_proposta',
-    'proposta_pronta',
-    'visita_agendada',
-    'visita_realizada',
-    'proposta_negociacao',
-    'financiamento',
-    'aprovou_projeto',
-    'contrato_assinado',
-    'projeto_pago',
-    'aguardando_instalacao',
-    'projeto_instalado',
-    'coletar_avaliacao',
-    'contato_futuro',
-    'perdido'
-];
 
 interface ChartProps {
     data?: DashboardPayload["charts"];
@@ -42,30 +10,7 @@ interface ChartProps {
 }
 
 export function DashboardCharts({ data, isLoading }: ChartProps) {
-    // State for selected stages in Funnel
-    // Default to a sensible subset or all? Let's default to all non-lost/future stages for a clean view initially
-    // Or just all. Let's start with specific reliable stages to show a clean funnel.
-    const [selectedStages, setSelectedStages] = useState<PipelineStage[]>([
-        'novo_lead', 'chamada_agendada', 'visita_agendada', 'proposta_pronta', 'contrato_assinado', 'projeto_instalado'
-    ]);
-
     if (isLoading || !data) return null;
-
-    // --- Data Processing for Funnel ---
-    // 1. Map current data to a dictionary for O(1) access
-    const countsByStage = data.funnel_counts.reduce((acc, item) => {
-        acc[item.stage as PipelineStage] = item.count;
-        return acc;
-    }, {} as Record<PipelineStage, number>);
-
-    // 2. Build the ordered data based on selection
-    const funnelData = ORDERED_STAGES
-        .filter(stage => selectedStages.includes(stage))
-        .map(stage => ({
-            id: stage,
-            name: PIPELINE_STAGES[stage]?.title || stage,
-            count: countsByStage[stage] || 0 // Use 0 if no leads in this stage
-        }));
 
     // Format monthly data - the hook already formats month labels correctly
     const monthlyData = data.monthly.map(item => ({
@@ -75,14 +20,6 @@ export function DashboardCharts({ data, isLoading }: ChartProps) {
         revenue: item.revenue,
         conversion_rate: item.conversion_rate
     }));
-
-    const toggleStage = (stage: PipelineStage) => {
-        setSelectedStages(prev =>
-            prev.includes(stage)
-                ? prev.filter(s => s !== stage)
-                : [...prev, stage]
-        );
-    };
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">

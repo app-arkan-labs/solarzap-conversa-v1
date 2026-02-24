@@ -240,7 +240,10 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
 
   const handleDayClick = (day: number) => {
     const date = new Date(year, month, day);
-    date.setHours(9, 0, 0, 0);
+    const now = new Date();
+    // Use next rounded 15-min slot instead of hardcoded 9:00
+    const roundedMinutes = Math.ceil(now.getMinutes() / 15) * 15;
+    date.setHours(now.getHours(), roundedMinutes, 0, 0);
     setSelectedAppointment(undefined);
     setModalDate(date);
     setAppointmentModalOpen(true);

@@ -197,7 +197,7 @@ export function AppointmentModal({
                     lead_id: safeLeadId,
                     type: currentType,
                     date: safeDefaultDate,
-                    time: format(new Date(), 'HH:mm'),
+                    time: format(safeDefaultDate, 'HH:mm'),
                     duration: '30',
                     location: '',
                     notes: ''
@@ -294,6 +294,16 @@ export function AppointmentModal({
                 toast({
                     title: 'Data ou hora invalida',
                     description: 'Nao foi possivel montar a data/hora do agendamento.',
+                    variant: 'destructive',
+                });
+                return;
+            }
+
+            // Block creating appointments in the past (editing is allowed)
+            if (!initialData?.id && startAt < new Date()) {
+                toast({
+                    title: 'Data no passado',
+                    description: 'Não é possível agendar no passado. Escolha uma data/hora futura.',
                     variant: 'destructive',
                 });
                 return;

@@ -35,53 +35,81 @@ export const useDashboardReport = (params: DashboardFilters) => {
             const prevStartIso = prevStart.toISOString();
             const prevEndIso = prevEnd.toISOString();
 
-            // --- 1. Fetch LEADS (Current & Previous) ---
-            // Fetch ALL leads in range to aggregate in memory (for charts)
-            let leadsQuery = supabase
+            // --- 1-4. Parallel fetch: LEADS, PREV LEADS, DEALS, PREV DEALS, OPEN DEALS, STALE LEADS ---
+            let leadsQ = supabase
                 .from("leads")
                 .select("id, created_at, canal, status_pipeline, stage_changed_at, nome, user_id")
                 .gte("created_at", startIso)
                 .lte("created_at", endIso)
                 .eq("user_id", user.id);
-            if (orgId) leadsQuery = leadsQuery.eq('org_id', orgId);
-            const { data: leadsData, error: leadsError } = await leadsQuery;
+            if (orgId) leadsQ = leadsQ.eq('org_id', orgId);
 
-            if (leadsError) throw leadsError;
-
-            let prevLeadsQuery = supabase
+            let prevLeadsQ = supabase
                 .from("leads")
                 .select("id", { count: "exact", head: true })
                 .gte("created_at", prevStartIso)
                 .lte("created_at", prevEndIso)
                 .eq("user_id", user.id);
-            if (orgId) prevLeadsQuery = prevLeadsQuery.eq('org_id', orgId);
-            const { count: prevLeadsCount } = await prevLeadsQuery;
+            if (orgId) prevLeadsQ = prevLeadsQ.eq('org_id', orgId);
 
-            // --- 2. Fetch DEALS (Won Deals for Revenue) ---
-            let wonDealsQuery = supabase
+            let wonDealsQ = supabase
                 .from("deals")
                 .select("id, amount, closed_at, lead_id, created_at")
                 .eq("status", "won")
                 .gte("closed_at", startIso)
                 .lte("closed_at", endIso)
                 .eq("user_id", user.id);
-            if (orgId) wonDealsQuery = wonDealsQuery.eq('org_id', orgId);
-            const { data: wonDeals, error: dealsError } = await wonDealsQuery;
+            if (orgId) wonDealsQ = wonDealsQ.eq('org_id', orgId);
 
-            if (dealsError) throw dealsError;
-
-            // Previous Revenue
-            let prevWonDealsQuery = supabase
+            let prevWonDealsQ = supabase
                 .from("deals")
                 .select("amount")
                 .eq("status", "won")
                 .gte("closed_at", prevStartIso)
                 .lte("closed_at", prevEndIso)
                 .eq("user_id", user.id);
-            if (orgId) prevWonDealsQuery = prevWonDealsQuery.eq('org_id', orgId);
-            const { data: prevWonDeals } = await prevWonDealsQuery;
+            if (orgId) prevWonDealsQ = prevWonDealsQ.eq('org_id', orgId);
 
-            // Fetch Leads for Won Deals to map Source (if needed for Sales by Source)
+            // Forecast scoped to dashboard date range
+            let openDealsQ = supabase
+                .from("deals")
+                .select("amount")
+                .neq("status", "won")
+                .neq("status", "lost")
+                .neq("status", "perdido")
+                .gte("created_at", startIso)
+                .lte("created_at", endIso)
+                .eq("user_id", user.id);
+            if (orgId) openDealsQ = openDealsQ.eq('org_id', orgId);
+
+            // Stale leads — exclude terminal stages
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            let staleLeadsQ = supabase
+                .from("leads")
+                .select("id, nome, status_pipeline, stage_changed_at")
+                .lt("stage_changed_at", sevenDaysAgo.toISOString())
+                .not("status_pipeline", "in", "(perdido,projeto_instalado)")
+                .eq("user_id", user.id)
+                .order("stage_changed_at", { ascending: true })
+                .limit(20);
+            if (orgId) staleLeadsQ = staleLeadsQ.eq('org_id', orgId);
+
+            const [
+                { data: leadsData, error: leadsError },
+                { count: prevLeadsCount },
+                { data: wonDeals, error: dealsError },
+                { data: prevWonDeals },
+                { data: openDeals },
+                { data: staleLeadsData }
+            ] = await Promise.all([
+                leadsQ, prevLeadsQ, wonDealsQ, prevWonDealsQ, openDealsQ, staleLeadsQ
+            ]);
+
+            if (leadsError) throw leadsError;
+            if (dealsError) throw dealsError;
+
+            // Fetch Leads for Won Deals to map Source (depends on wonDeals result)
             // We need the `canal` of the leads associated with Won Deals
             const wonLeadsMap = new Map<string, any>();
             if (wonDeals && wonDeals.length > 0) {
@@ -96,32 +124,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 }
             }
 
-            // --- 3. Fetch Forecast (Open Deals) ---
-            let openDealsQuery = supabase
-                .from("deals")
-                .select("amount")
-                .neq("status", "won")
-                .neq("status", "lost")
-                .neq("status", "perdido")
-                .eq("user_id", user.id);
-            if (orgId) openDealsQuery = openDealsQuery.eq('org_id', orgId);
-            const { data: openDeals } = await openDealsQuery;
-
-            // --- 4. Fetch Stale Leads (Client-Side Logic) ---
-            // We query leads changed > 7 days ago
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            let staleLeadsQuery = supabase
-                .from("leads")
-                .select("id, nome, status_pipeline, stage_changed_at")
-                .lt("stage_changed_at", sevenDaysAgo.toISOString())
-                .eq("user_id", user.id)
-                .order("stage_changed_at", { ascending: true })
-                .limit(20);
-            if (orgId) staleLeadsQuery = staleLeadsQuery.eq('org_id', orgId);
-            const { data: staleLeadsData } = await staleLeadsQuery;
-
-            // --- 5. Fetch Calendar ---
+            // --- 5. Fetch Calendar (parallel pair) ---
             let calStart: string, calEnd: string;
             const now = new Date();
 
@@ -152,7 +155,6 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 .order("start_at", { ascending: true })
                 .limit(10);
             if (orgId) apptsQuery = apptsQuery.eq('org_id', orgId);
-            const { data: appointments } = await apptsQuery;
 
             let totalApptsQuery = supabase
                 .from("appointments")
@@ -161,7 +163,8 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 .lte("start_at", calEnd)
                 .eq("user_id", user.id);
             if (orgId) totalApptsQuery = totalApptsQuery.eq('org_id', orgId);
-            const { count: totalAppts } = await totalApptsQuery;
+
+            const [{ data: appointments }, { count: totalAppts }] = await Promise.all([apptsQuery, totalApptsQuery]);
 
             // ================= AGGREGATION =================
 
@@ -213,14 +216,6 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     pct: (count / wonCount) * 100
                 }))
                 .sort((a, b) => b.count - a.count);
-
-            // Chart: Funnel
-            const funnelMap: Record<string, number> = {};
-            leadsData?.forEach(l => {
-                const s = l.status_pipeline || "unknown";
-                funnelMap[s] = (funnelMap[s] || 0) + 1;
-            });
-            const funnelCounts = Object.entries(funnelMap).map(([stage, count]) => ({ stage, count }));
 
             // 4. Sales Analysis (Dynamic Granularity)
             // Use the filtered data directly to respect the dashboard date range.
@@ -292,7 +287,6 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 charts: {
                     leads_by_source: leadsBySource,
                     sales_by_source: salesBySource,
-                    funnel_counts: funnelCounts,
                     monthly: monthlyChart
                 },
                 tables: {

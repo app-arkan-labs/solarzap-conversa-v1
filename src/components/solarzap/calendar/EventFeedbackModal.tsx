@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -23,9 +23,14 @@ interface EventFeedbackModalProps {
 }
 
 export function EventFeedbackModal({ isOpen, onClose, appointment }: EventFeedbackModalProps) {
-    const [outcome, setOutcome] = useState('');
+    const [outcome, setOutcome] = useState(appointment?.outcome || '');
     const { updateAppointment } = useAppointments();
     const { orgId } = useAuth();
+
+    // Sync outcome when appointment changes or modal opens
+    useEffect(() => {
+        if (isOpen) setOutcome(appointment?.outcome || '');
+    }, [isOpen, appointment?.outcome]);
 
     const handleSave = async () => {
         if (!appointment) return;

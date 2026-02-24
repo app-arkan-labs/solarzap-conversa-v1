@@ -32,6 +32,16 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
     const formatPercent = (value: number) =>
         new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 1 }).format(value / 100);
 
+    const deltaColor = (delta: number) =>
+        delta > 0 ? 'text-green-500' : delta < 0 ? 'text-red-500' : 'text-gray-400';
+
+    const DeltaIcon = ({ delta }: { delta: number }) =>
+        delta > 0
+            ? <ArrowUpIcon className="mr-1 h-4 w-4 text-green-500" />
+            : delta < 0
+                ? <ArrowDownIcon className="mr-1 h-4 w-4 text-red-500" />
+                : null;
+
     return (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {/* Row 1: Volume & Efficiency */}
@@ -43,12 +53,8 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
                 <CardContent>
                     <div className="text-2xl font-bold">{data.leads.value}</div>
                     <p className="text-xs text-muted-foreground flex items-center mt-1">
-                        {data.leads.delta_pct > 0 ? (
-                            <ArrowUpIcon className="mr-1 h-4 w-4 text-green-500" />
-                        ) : (
-                            <ArrowDownIcon className="mr-1 h-4 w-4 text-red-500" />
-                        )}
-                        <span className={data.leads.delta_pct > 0 ? "text-green-500" : "text-red-500"}>
+                        <DeltaIcon delta={data.leads.delta_pct} />
+                        <span className={deltaColor(data.leads.delta_pct)}>
                             {Math.abs(data.leads.delta_pct).toFixed(1)}%
                         </span>
                         <span className="ml-1">vs período anterior</span>
@@ -91,12 +97,8 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
                 <CardContent>
                     <div className="text-2xl font-bold">{formatCurrency(data.revenue.value)}</div>
                     <p className="text-xs text-muted-foreground flex items-center mt-1">
-                        {data.revenue.delta_pct > 0 ? (
-                            <ArrowUpIcon className="mr-1 h-4 w-4 text-green-500" />
-                        ) : (
-                            <ArrowDownIcon className="mr-1 h-4 w-4 text-red-500" />
-                        )}
-                        <span className={data.revenue.delta_pct > 0 ? "text-green-500" : "text-red-500"}>
+                        <DeltaIcon delta={data.revenue.delta_pct} />
+                        <span className={deltaColor(data.revenue.delta_pct)}>
                             {Math.abs(data.revenue.delta_pct).toFixed(1)}%
                         </span>
                         <span className="ml-1">vs anterior</span>
