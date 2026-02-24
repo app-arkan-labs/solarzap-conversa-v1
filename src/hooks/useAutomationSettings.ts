@@ -11,7 +11,6 @@ const STAGE_ORDER: PipelineStage[] = [
     'respondeu',
     'chamada_agendada',
     'chamada_realizada',
-    'nao_compareceu',
     'aguardando_proposta',
     'proposta_pronta',
     'visita_agendada',
@@ -25,6 +24,7 @@ const STAGE_ORDER: PipelineStage[] = [
     'projeto_instalado',
     'coletar_avaliacao',
     'contato_futuro',
+    'nao_compareceu',
     'perdido',
 ];
 

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAutomationSettings, AutomationSettings, DEFAULT_SETTINGS } from '@/hooks/useAutomationSettings';
+import { useAuth } from '@/contexts/AuthContext';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -31,9 +32,10 @@ interface AutomationCardProps {
     icon: React.ReactNode;
     enabled: boolean;
     onToggle: (enabled: boolean) => void;
+    disabled?: boolean;
 }
 
-function AutomationCard({ title, description, icon, enabled, onToggle }: AutomationCardProps) {
+function AutomationCard({ title, description, icon, enabled, onToggle, disabled }: AutomationCardProps) {
     return (
         <div
             className={cn(
@@ -72,6 +74,7 @@ function AutomationCard({ title, description, icon, enabled, onToggle }: Automat
                 checked={enabled}
                 onCheckedChange={onToggle}
                 className="data-[state=checked]:bg-primary"
+                disabled={disabled}
             />
         </div>
     );
@@ -86,15 +89,18 @@ export function AutomationsView() {
         cancelChanges,
         resetToDefaults
     } = useAutomationSettings();
+    const { role } = useAuth();
+    const canEdit = role === 'owner' || role === 'admin';
     const [expandedMessages, setExpandedMessages] = useState(true);
     const { toast } = useToast();
 
     const handleSave = () => {
-        saveChanges();
-        toast({
-            title: "✅ Configurações salvas",
-            description: "Suas alterações foram salvas com sucesso.",
-        });
+        const ok = saveChanges();
+        if (ok) {
+            toast({ title: "✅ Configurações salvas", description: "Suas alterações foram salvas com sucesso." });
+        } else {
+            toast({ title: "Erro ao salvar", description: "Não foi possível salvar as configurações. Tente novamente.", variant: "destructive" });
+        }
     };
 
     const handleCancel = () => {
@@ -221,6 +227,7 @@ export function AutomationsView() {
                                         size="sm"
                                         onClick={handleReset}
                                         className="gap-2"
+                                        disabled={!canEdit}
                                     >
                                         <RotateCcw className="w-4 h-4" />
                                         Restaurar Padrão
@@ -262,6 +269,7 @@ export function AutomationsView() {
                                             checked={settings.skipBackwardMoves}
                                             onCheckedChange={(checked) => updateSetting('skipBackwardMoves', checked)}
                                             className="data-[state=checked]:bg-blue-500"
+                                            disabled={!canEdit}
                                         />
                                     </div>
                                 </CardContent>
@@ -295,6 +303,7 @@ export function AutomationsView() {
                                         icon={automation.icon}
                                         enabled={settings[automation.key] as boolean}
                                         onToggle={(enabled) => updateSetting(automation.key, enabled)}
+                                        disabled={!canEdit}
                                     />
                                 ))}
                             </CardContent>
@@ -361,6 +370,7 @@ export function AutomationsView() {
                                                     checked={settings[msg.enabledKey] as boolean}
                                                     onCheckedChange={(checked) => updateSetting(msg.enabledKey, checked)}
                                                     className="data-[state=checked]:bg-primary"
+                                                    disabled={!canEdit}
                                                 />
                                             </div>
                                             <p className="text-xs text-muted-foreground">
@@ -372,7 +382,7 @@ export function AutomationsView() {
                                                 onChange={(e) => updateSetting(msg.key, e.target.value)}
                                                 placeholder={msg.placeholder}
                                                 className="min-h-[100px] resize-none"
-                                                disabled={!settings[msg.enabledKey]}
+                                                disabled={!canEdit || !settings[msg.enabledKey]}
                                             />
                                         </div>
                                     ))}

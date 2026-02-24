@@ -121,14 +121,16 @@ export function AutomationProvider({ children }: { children: ReactNode }) {
         setPendingSettings(prev => ({ ...prev, [key]: value }));
     }, []);
 
-    // Save all pending changes
-    const saveChanges = useCallback(() => {
+    // Save all pending changes — returns true on success, false on error
+    const saveChanges = useCallback((): boolean => {
         try {
             console.log('AutomationProvider: saving changes', pendingSettings);
             localStorage.setItem(storageKey, JSON.stringify(pendingSettings));
             setSavedSettings(pendingSettings);
+            return true;
         } catch (e) {
             console.error('Error saving automation settings:', e);
+            return false;
         }
     }, [pendingSettings, storageKey]);
 

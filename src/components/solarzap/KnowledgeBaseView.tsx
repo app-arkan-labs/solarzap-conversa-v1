@@ -12,7 +12,8 @@ import { ObjecoesFAQTab } from './knowledge-base/ObjecoesFAQTab';
 
 export function KnowledgeBaseView() {
     const { toast } = useToast();
-    const { user, orgId } = useAuth();
+    const { user, orgId, role } = useAuth();
+    const canEdit = role === 'owner' || role === 'admin';
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -151,6 +152,7 @@ export function KnowledgeBaseView() {
                     variant="outline"
                     className="gap-2"
                     onClick={() => setIsImportDialogOpen(true)}
+                    disabled={!canEdit}
                 >
                     <FileUp className="w-4 h-4" />
                     Importar Documento

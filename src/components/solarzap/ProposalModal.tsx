@@ -274,6 +274,13 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contact) return;
+
+    // Sprint 10: block generation when critical numeric values are zero/negative
+    if (formData.consumoMensal <= 0 || formData.potenciaSistema <= 0 || formData.quantidadePaineis <= 0 || formData.valorTotal <= 0) {
+      toast({ title: 'Dados incompletos', description: 'Consumo, potência, painéis e valor total devem ser maiores que zero.', variant: 'destructive' });
+      return;
+    }
+
     setIsLoading(true);
 
     try {

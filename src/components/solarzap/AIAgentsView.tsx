@@ -16,6 +16,7 @@ import {
     type PipelineAgentDef,
 } from '../../constants/aiPipelineAgents';
 import { AlertTriangle, RefreshCcw, Save, Bot, ChevronRight, Shield, Power, Wifi, WifiOff, Pencil } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
     Dialog,
     DialogContent,
@@ -29,6 +30,8 @@ import { Textarea } from '../ui/textarea';
 export function AIAgentsView() {
     const { settings, stageConfigs, updateGlobalSettings, updateStageConfig, loading, restoreDefaultPrompt } = useAISettings();
     const { instances: whatsappInstances, setInstanceAiEnabled, activateAiForAllLeads } = useUserWhatsAppInstances();
+    const { role } = useAuth();
+    const canEdit = role === 'owner' || role === 'admin';
     const [editingStage, setEditingStage] = useState<PipelineStage | null>(null);
     const [editingAgent, setEditingAgent] = useState<PipelineAgentDef | null>(null);
 
@@ -128,6 +131,7 @@ export function AIAgentsView() {
                         checked={settings?.is_active || false}
                         onCheckedChange={(checked) => updateGlobalSettings({ is_active: checked })}
                         className="data-[state=checked]:bg-green-500"
+                        disabled={!canEdit}
                     />
                 </div>
             </div>
@@ -233,6 +237,7 @@ export function AIAgentsView() {
                                 checked={settings?.support_agent_enabled ?? true}
                                 onCheckedChange={(checked) => updateGlobalSettings({ support_agent_enabled: checked })}
                                 className="data-[state=checked]:bg-blue-500"
+                                disabled={!canEdit}
                             />
                         </div>
                     </div>
@@ -311,6 +316,7 @@ export function AIAgentsView() {
                                                 checked={isEnabled}
                                                 onCheckedChange={(checked) => updateStageConfig(agent.stage, { is_active: checked })}
                                                 className="data-[state=checked]:bg-green-500"
+                                                disabled={!canEdit}
                                             />
                                         </div>
                                     </div>

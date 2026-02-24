@@ -92,6 +92,9 @@ export function ProposalsView() {
 
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<ProposalRow[]>([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
   const [owners, setOwners] = useState<MemberDto[]>([]);
   const [leadOptions, setLeadOptions] = useState<LeadFilterOption[]>([]);
   const [leadFilterOpen, setLeadFilterOpen] = useState(false);
@@ -183,7 +186,7 @@ export function ProposalsView() {
       mapped = mapped.filter((row) => Number(row.lead_id) === parsedLeadId);
     }
 
-    return mapped.slice(0, 200);
+    return mapped.slice(0, PAGE_SIZE);
   }, [orgId, status, dateFrom, dateTo, stage, owner, selectedLeadId]);
 
   const fetchOwners = useCallback(async () => {
@@ -235,13 +238,14 @@ export function ProposalsView() {
         p_owner: owner === 'all' ? null : owner,
         p_date_from: dateFrom || null,
         p_date_to: dateTo || null,
-        p_limit: 200,
-        p_offset: 0,
+        p_limit: PAGE_SIZE + 1,
+        p_offset: page * PAGE_SIZE,
       });
 
       if (error) {
         const fallbackRows = await fetchProposalsFallback();
-        setRows(fallbackRows);
+        setRows(fallbackRows.slice(0, PAGE_SIZE));
+        setTotalRows(fallbackRows.length);
         return;
       }
 
@@ -250,7 +254,10 @@ export function ProposalsView() {
         const parsedLeadId = Number(selectedLeadId);
         mappedRows = mappedRows.filter((row) => Number(row.lead_id) === parsedLeadId);
       }
-      setRows(mappedRows);
+      // Use PAGE_SIZE+1 to detect next page availability
+      const hasMore = mappedRows.length > PAGE_SIZE;
+      setTotalRows(hasMore ? (page + 2) * PAGE_SIZE : page * PAGE_SIZE + mappedRows.length);
+      setRows(mappedRows.slice(0, PAGE_SIZE));
     } catch (error) {
       console.error('Failed to list proposals:', error);
       toast({
@@ -261,7 +268,7 @@ export function ProposalsView() {
     } finally {
       setLoading(false);
     }
-  }, [orgId, status, stage, owner, dateFrom, dateTo, selectedLeadId, toast, fetchProposalsFallback]);
+  }, [orgId, status, stage, owner, dateFrom, dateTo, selectedLeadId, page, toast, fetchProposalsFallback]);
 
   useEffect(() => {
     fetchOwners();
@@ -274,6 +281,11 @@ export function ProposalsView() {
   useEffect(() => {
     fetchProposals();
   }, [fetchProposals]);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setPage(0);
+  }, [status, stage, owner, dateFrom, dateTo, selectedLeadId]);
 
   useEffect(() => {
     const persistedLeadId = localStorage.getItem('solarzap_proposals_filter_lead_id');
@@ -604,6 +616,23 @@ export function ProposalsView() {
           </Card>
         </div>
       </ScrollArea>
+
+      {/* Pagination */}
+      {(rows.length > 0 || page > 0) && (
+        <div className="flex items-center justify-between px-4 py-2 border-t bg-background">
+          <span className="text-sm text-muted-foreground">
+            Mostrando {page * PAGE_SIZE + 1}–{page * PAGE_SIZE + rows.length}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+              ← Anterior
+            </Button>
+            <Button variant="outline" size="sm" disabled={totalRows <= (page + 1) * PAGE_SIZE} onClick={() => setPage(p => p + 1)}>
+              Próxima →
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={!!selectedRow} onOpenChange={(open) => !open && setSelectedRow(null)}>
         <DialogContent>

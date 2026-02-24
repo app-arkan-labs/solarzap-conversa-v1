@@ -155,6 +155,27 @@ function buildChartTheme(P: Palette): ChartTheme {
   };
 }
 
+// ── Accent sanitisation for Helvetica (standard 14 font — no Unicode glyphs) ──
+/** Transliterate common Portuguese/Spanish accented chars so Helvetica can render them. */
+function sanitizeForPDF(text: string): string {
+  const MAP: Record<string, string> = {
+    'À':'A','Á':'A','Â':'A','Ã':'A','Ä':'A','Å':'A',
+    'à':'a','á':'a','â':'a','ã':'a','ä':'a','å':'a',
+    'È':'E','É':'E','Ê':'E','Ë':'E',
+    'è':'e','é':'e','ê':'e','ë':'e',
+    'Ì':'I','Í':'I','Î':'I','Ï':'I',
+    'ì':'i','í':'i','î':'i','ï':'i',
+    'Ò':'O','Ó':'O','Ô':'O','Õ':'O','Ö':'O',
+    'ò':'o','ó':'o','ô':'o','õ':'o','ö':'o',
+    'Ù':'U','Ú':'U','Û':'U','Ü':'U',
+    'ù':'u','ú':'u','û':'u','ü':'u',
+    'Ñ':'N','ñ':'n','Ç':'C','ç':'c',
+    '\u2013':'-','\u2014':'-','\u2018':"'",'\u2019':"'",
+    '\u201C':'"','\u201D':'"','\u2026':'...',
+  };
+  return text.replace(/[^\x00-\x7F]/g, ch => MAP[ch] ?? ch);
+}
+
 // ── AI text sanity check ─────────────────────────────────
 /** Returns true if the AI-generated text looks usable (not too short/long/garbled). */
 function isSensibleAiText(text: string | undefined | null, label = 'AI text'): boolean {
@@ -173,6 +194,16 @@ function isSensibleAiText(text: string | undefined | null, label = 'AI text'): b
 
 export function generateProposalPDF(data: ProposalPDFData): Blob | void {
   const doc = new jsPDF();
+
+  // Sprint 10: auto-sanitise all text for Helvetica (no Unicode support)
+  const _origText = doc.text.bind(doc);
+  doc.text = ((text: any, x: number, y: number, opts?: any) => {
+    const clean = typeof text === 'string' ? sanitizeForPDF(text)
+      : Array.isArray(text) ? text.map((t: string) => sanitizeForPDF(t))
+      : text;
+    return _origText(clean, x, y, opts);
+  }) as typeof doc.text;
+
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 14;
@@ -743,6 +774,16 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
 
 export function generateSellerScriptPDF(data: SellerScriptPDFData): Blob | void {
   const doc = new jsPDF();
+
+  // Sprint 10: auto-sanitise all text for Helvetica (no Unicode support)
+  const _origText2 = doc.text.bind(doc);
+  doc.text = ((text: any, x: number, y: number, opts?: any) => {
+    const clean = typeof text === 'string' ? sanitizeForPDF(text)
+      : Array.isArray(text) ? text.map((t: string) => sanitizeForPDF(t))
+      : text;
+    return _origText2(clean, x, y, opts);
+  }) as typeof doc.text;
+
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 14;

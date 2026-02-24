@@ -7,7 +7,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, MessageSquare, Lightbulb, Download, Loader2 } from 'lucide-react';
+import { CheckCircle, MessageSquare, Lightbulb, Download, Loader2, Link2, Check } from 'lucide-react';
 import { CalendarEvent, Contact } from '@/types/solarzap';
 import { useAutomationSettings } from '@/hooks/useAutomationSettings';
 import { generateSellerScriptPDF } from '@/utils/generateProposalPDF';
@@ -40,6 +40,7 @@ interface ProposalReadyModalProps {
     propNum?: string;
     proposalVersionId?: string | null;
     propostaId?: number | null;
+    shareUrl?: string | null;
   } | null;
 }
 
@@ -54,6 +55,7 @@ export function ProposalReadyModal({
 }: ProposalReadyModalProps) {
   const { getMessage } = useAutomationSettings();
   const [isDownloading, setIsDownloading] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Generate the prefilled message using the configured template
   const prefilledMessage = useMemo(() => {
@@ -121,6 +123,18 @@ export function ProposalReadyModal({
     }
   };
 
+  const handleCopyShareLink = async () => {
+    const url = sellerScriptData?.shareUrl;
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      /* clipboard blocked — ignore */
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-md">
@@ -167,6 +181,25 @@ export function ProposalReadyModal({
                   <Download className="w-4 h-4" />
                 )}
                 Baixar
+              </Button>
+            </div>
+          )}
+
+          {sellerScriptData?.shareUrl && (
+            <div className="flex items-center gap-3 p-4 bg-indigo-50 dark:bg-indigo-950/50 rounded-lg border border-indigo-200 dark:border-indigo-800">
+              <Link2 className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">Link de Compartilhamento</p>
+                <p className="text-xs text-muted-foreground truncate">{sellerScriptData.shareUrl}</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={handleCopyShareLink}
+              >
+                {linkCopied ? <Check className="w-4 h-4 text-green-500" /> : <Link2 className="w-4 h-4" />}
+                {linkCopied ? 'Copiado!' : 'Copiar'}
               </Button>
             </div>
           )}

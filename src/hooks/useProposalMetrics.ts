@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+// Sprint 10: queries now filter by org_id instead of user_id
 
 export type ProposalSegment = 'residencial' | 'empresarial' | 'agro' | 'usina' | 'unknown';
 
@@ -14,7 +15,7 @@ export interface ProposalMetrics {
 }
 
 async function countDeliveryEvents(params: {
-  userId: string;
+  orgId: string;
   startIso: string;
   endIso: string;
   eventType: string;
@@ -23,7 +24,7 @@ async function countDeliveryEvents(params: {
   let q = supabase
     .from('proposal_delivery_events')
     .select('id', { count: 'exact', head: true })
-    .eq('user_id', params.userId)
+    .eq('org_id', params.orgId)
     .eq('event_type', params.eventType)
     .gte('created_at', params.startIso)
     .lte('created_at', params.endIso);
@@ -38,30 +39,29 @@ async function countDeliveryEvents(params: {
 }
 
 export function useProposalMetrics(params: { start: Date; end: Date }) {
-  const { user } = useAuth();
-  const userId = user?.id;
+  const { orgId } = useAuth();
 
   return useQuery({
-    queryKey: ['proposal-metrics', userId, params.start.toISOString(), params.end.toISOString()],
+    queryKey: ['proposal-metrics', orgId, params.start.toISOString(), params.end.toISOString()],
     queryFn: async (): Promise<ProposalMetrics> => {
-      if (!userId) throw new Error('User not authenticated');
+      if (!orgId) throw new Error('Org not resolved');
 
       const startIso = params.start.toISOString();
       const endIso = params.end.toISOString();
 
       const [generated, shared, opened, downloadedClient, downloadedSeller] = await Promise.all([
-        countDeliveryEvents({ userId, startIso, endIso, eventType: 'generated' }),
-        countDeliveryEvents({ userId, startIso, endIso, eventType: 'shared' }),
-        countDeliveryEvents({ userId, startIso, endIso, eventType: 'opened' }),
-        countDeliveryEvents({ userId, startIso, endIso, eventType: 'downloaded', metadataKind: 'client_proposal' }),
-        countDeliveryEvents({ userId, startIso, endIso, eventType: 'downloaded', metadataKind: 'seller_script' }),
+        countDeliveryEvents({ orgId, startIso, endIso, eventType: 'generated' }),
+        countDeliveryEvents({ orgId, startIso, endIso, eventType: 'shared' }),
+        countDeliveryEvents({ orgId, startIso, endIso, eventType: 'opened' }),
+        countDeliveryEvents({ orgId, startIso, endIso, eventType: 'downloaded', metadataKind: 'client_proposal' }),
+        countDeliveryEvents({ orgId, startIso, endIso, eventType: 'downloaded', metadataKind: 'seller_script' }),
       ]);
 
       // Segment distribution is best-effort; used only to show what's being generated more no período.
       const { data: versions, error: verErr } = await supabase
         .from('proposal_versions')
         .select('segment')
-        .eq('user_id', userId)
+        .eq('org_id', orgId)
         .gte('created_at', startIso)
         .lte('created_at', endIso)
         .limit(5000);
@@ -83,7 +83,7 @@ export function useProposalMetrics(params: { start: Date; end: Date }) {
       };
     },
     staleTime: 15_000,
-    enabled: !!userId,
+    enabled: !!orgId,
   });
 }
 

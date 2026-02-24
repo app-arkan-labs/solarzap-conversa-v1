@@ -2,16 +2,19 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Notification, NotificationType, NOTIFICATION_CONFIG } from '@/types/notifications';
 import { Contact, PipelineStage, PIPELINE_STAGES } from '@/types/solarzap';
 
-// Check if current time is within business hours (8am - 6pm, Mon-Fri)
+// Check if current time is within business hours (8am - 6pm, Mon-Fri) in São Paulo timezone
 const isBusinessHours = (): boolean => {
+  const TZ = 'America/Sao_Paulo';
   const now = new Date();
-  const hour = now.getHours();
-  const day = now.getDay();
-  
-  // Monday = 1, Friday = 5
-  const isWeekday = day >= 1 && day <= 5;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ, hour: 'numeric', hour12: false, weekday: 'short',
+  }).formatToParts(now);
+  const hour = Number(parts.find(p => p.type === 'hour')?.value ?? 0);
+  const weekday = parts.find(p => p.type === 'weekday')?.value ?? '';
+
+  const isWeekday = !['Sat', 'Sun'].includes(weekday);
   const isWorkingHour = hour >= 8 && hour < 18;
-  
+
   return isWeekday && isWorkingHour;
 };
 

@@ -14,6 +14,5 @@ export const AI_SUPPORT_ELIGIBLE_STAGES: PipelineStage[] = [
   'projeto_instalado',
   'coletar_avaliacao',
   'contato_futuro',
-  'perdido', // OFF by default
 ];
 
