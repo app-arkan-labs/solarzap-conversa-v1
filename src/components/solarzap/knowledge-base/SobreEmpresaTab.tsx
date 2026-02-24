@@ -4,6 +4,7 @@ import { QuestionCard } from './QuestionCard';
 import { Building2, Save, Loader2, CheckCircle2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CompanyProfile {
     elevator_pitch: string;
@@ -23,6 +24,7 @@ const DEFAULT_PROFILE: CompanyProfile = {
 
 export function SobreEmpresaTab() {
     const { toast } = useToast();
+    const { user, orgId } = useAuth();
     const [profile, setProfile] = useState<CompanyProfile>(DEFAULT_PROFILE);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -31,15 +33,11 @@ export function SobreEmpresaTab() {
 
     useEffect(() => {
         loadProfile();
-    }, []);
+    }, [orgId]);
 
     const loadProfile = async () => {
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-
-            // Get org_id from user metadata or default
-            const orgId = user.user_metadata?.org_id || user.id;
+            if (!user || !orgId) return;
 
             const { data, error } = await supabase
                 .from('company_profile')
@@ -79,10 +77,7 @@ export function SobreEmpresaTab() {
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Not authenticated');
-
-            const orgId = user.user_metadata?.org_id || user.id;
+            if (!user || !orgId) throw new Error('Not authenticated');
 
             const { error } = await supabase
                 .from('company_profile')

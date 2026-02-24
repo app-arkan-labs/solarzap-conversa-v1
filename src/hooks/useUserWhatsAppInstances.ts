@@ -600,6 +600,7 @@ export function useUserWhatsAppInstances() {
       }
     },
     activateAiForAllLeads: async (instanceName: string): Promise<number | null> => {
+      if (!orgId) throw new Error('Organização não vinculada');
       try {
         setActionLoading(instanceName);
 
@@ -623,7 +624,7 @@ export function useUserWhatsAppInstances() {
             ai_paused_at: null
           })
           .eq('instance_name', instanceName)
-          .eq('org_id', orgId!)
+          .eq('org_id', orgId)
           .select('id');
 
         if (error) throw error;

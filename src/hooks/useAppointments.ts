@@ -57,6 +57,7 @@ export function useAppointments() {
                 .from('appointments')
                 .select('*')
                 .eq('user_id', user.id)
+                .eq('org_id', orgId)
                 .order('start_at', { ascending: true });
 
             if (error) {
@@ -125,7 +126,8 @@ export function useAppointments() {
             const { error } = await supabase
                 .from('appointments')
                 .update(payload)
-                .eq('id', id);
+                .eq('id', id)
+                .eq('org_id', orgId);
 
             if (error) throw error;
         },
@@ -146,7 +148,8 @@ export function useAppointments() {
             const { error } = await supabase
                 .from('appointments')
                 .delete()
-                .eq('id', id);
+                .eq('id', id)
+                .eq('org_id', orgId);
 
             if (error) throw error;
         },

@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import {
     Dialog,
     DialogContent,
@@ -59,6 +60,7 @@ const MEDIA_TYPES = [
 
 export function DepoimentosTab() {
     const { toast } = useToast();
+    const { user, orgId } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -80,14 +82,11 @@ export function DepoimentosTab() {
 
     useEffect(() => {
         loadTestimonials();
-    }, []);
+    }, [orgId]);
 
     const loadTestimonials = async () => {
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-
-            const orgId = user.user_metadata?.org_id || user.id;
+            if (!user || !orgId) return;
 
             const { data, error } = await supabase
                 .from('testimonials')
@@ -145,10 +144,7 @@ export function DepoimentosTab() {
     };
 
     const uploadMedia = async (file: File): Promise<string> => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-
-        const orgId = user.user_metadata?.org_id || user.id;
+        if (!user || !orgId) throw new Error('Not authenticated');
         const fileExt = file.name.split('.').pop();
         const fileName = `${orgId}/${Date.now()}.${fileExt}`;
 
@@ -177,10 +173,7 @@ export function DepoimentosTab() {
 
         setIsSaving(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Not authenticated');
-
-            const orgId = user.user_metadata?.org_id || user.id;
+            if (!user || !orgId) throw new Error('Not authenticated');
 
             // Upload media if present
             let mediaUrl = '';

@@ -59,14 +59,14 @@ export function useChat(contacts: Contact[] = []) {
      */
     const handleHumanTakeover = async (newMessage: Message, source: string) => {
         const leadId = Number(newMessage.contactId);
-        if (isNaN(leadId)) return;
+        if (isNaN(leadId) || !orgId) return;
 
         try {
             // 1. Check org-level setting — respect support_ai_auto_disable_on_seller_message
             const { data: aiSettingsRow } = await supabase
                 .from('ai_settings')
                 .select('support_ai_auto_disable_on_seller_message')
-                .eq('org_id', orgId!)
+                .eq('org_id', orgId)
                 .order('id', { ascending: true })
                 .limit(1)
                 .maybeSingle();
@@ -94,7 +94,7 @@ export function useChat(contacts: Contact[] = []) {
                     ai_paused_at: new Date().toISOString(),
                 })
                 .eq('id', leadId)
-                .eq('org_id', orgId!)
+                .eq('org_id', orgId)
                 .select('id');
 
             if (pauseErr) {

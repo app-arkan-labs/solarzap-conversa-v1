@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 export type ProposalSegment = 'residencial' | 'empresarial' | 'agro' | 'usina' | 'unknown';
 
@@ -37,11 +38,12 @@ async function countDeliveryEvents(params: {
 }
 
 export function useProposalMetrics(params: { start: Date; end: Date }) {
+  const { user } = useAuth();
+  const userId = user?.id;
+
   return useQuery({
-    queryKey: ['proposal-metrics', params.start.toISOString(), params.end.toISOString()],
+    queryKey: ['proposal-metrics', userId, params.start.toISOString(), params.end.toISOString()],
     queryFn: async (): Promise<ProposalMetrics> => {
-      const { data } = await supabase.auth.getUser();
-      const userId = data?.user?.id;
       if (!userId) throw new Error('User not authenticated');
 
       const startIso = params.start.toISOString();
@@ -81,6 +83,7 @@ export function useProposalMetrics(params: { start: Date; end: Date }) {
       };
     },
     staleTime: 15_000,
+    enabled: !!userId,
   });
 }
 

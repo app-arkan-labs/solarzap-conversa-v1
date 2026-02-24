@@ -44,6 +44,7 @@ export function usePipeline() {
         queryKey: ['events', orgId, user?.id],
         queryFn: async () => {
             if (!user || !orgId) return [];
+
             try {
                 // Now fetching from 'appointments' instead of 'eventos'
                 const { data, error } = await supabase

@@ -67,19 +67,39 @@ type OrgAdminErrorResponse = {
   code?: string;
 };
 
-const getRequestId = (response: Response): string | null =>
-  response.headers.get('x-request-id') ||
-  response.headers.get('x-supabase-request-id') ||
-  response.headers.get('cf-ray') ||
-  null;
+const getRequestId = (response: Response | unknown): string | null => {
+  try {
+    const headers = (response as Response)?.headers;
+    if (!headers || typeof headers.get !== 'function') return null;
+    return (
+      headers.get('x-request-id') ||
+      headers.get('x-supabase-request-id') ||
+      headers.get('cf-ray') ||
+      null
+    );
+  } catch {
+    return null;
+  }
+};
 
 async function invokeOrgAdmin<TExpected extends OrgAdminSuccessResponse>(
   body: OrgAdminRequest,
 ): Promise<TExpected> {
   const action = body.action;
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+
+  // Guard: supabase.auth.getSession() can throw raw TypeErrors from auth-js internals
+  // (e.g. parseResponseAPIVersion calls response.headers.get() on a response without headers
+  //  during token refresh failures). We catch those to provide a clean error message.
+  let session;
+  try {
+    const result = await supabase.auth.getSession();
+    session = result.data.session;
+  } catch (authErr) {
+    const msg = authErr instanceof Error ? authErr.message : 'Erro ao obter sessão';
+    throw new Error(
+      `[org-admin:${action}] auth_error: ${msg}`,
+    );
+  }
 
   const headers = session?.access_token
     ? { Authorization: `Bearer ${session.access_token}` }
@@ -96,14 +116,17 @@ async function invokeOrgAdmin<TExpected extends OrgAdminSuccessResponse>(
 
     if (functionError.context) {
       try {
-        status = functionError.context.status;
+        status = typeof functionError.context.status === 'number' ? functionError.context.status : null;
         requestId = getRequestId(functionError.context);
-        const rawBody = await functionError.context.text();
-        const payload = JSON.parse(rawBody) as OrgAdminErrorResponse;
-        if (payload?.error) detailedMessage = payload.error;
-        if (payload?.code) code = payload.code;
+        if (typeof functionError.context.text === 'function') {
+          const rawBody = await functionError.context.text();
+          const payload = JSON.parse(rawBody) as OrgAdminErrorResponse;
+          if (payload?.error) detailedMessage = payload.error;
+          if (payload?.code) code = payload.code;
+        }
       } catch {
-        status = functionError.context.status;
+        // context may be a TypeError (FunctionsFetchError) instead of Response
+        status = typeof functionError.context.status === 'number' ? functionError.context.status : null;
         requestId = getRequestId(functionError.context);
       }
     }
@@ -144,8 +167,15 @@ export async function listMembers() {
     action: 'list_members',
   });
 
-  const { data } = await supabase.auth.getUser();
-  const currentUser = data.user;
+  // Guard: getUser can throw raw TypeError from auth-js internals (same parseResponseAPIVersion issue)
+  let currentUser;
+  try {
+    const { data } = await supabase.auth.getUser();
+    currentUser = data.user;
+  } catch {
+    return response;
+  }
+
   if (!currentUser) {
     return response;
   }

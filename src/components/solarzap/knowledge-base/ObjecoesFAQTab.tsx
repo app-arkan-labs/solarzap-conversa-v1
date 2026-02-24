@@ -21,6 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ObjectionItem {
     id: string;
@@ -72,6 +73,7 @@ const PRESET_OBJECTIONS = [
 
 export function ObjecoesFAQTab() {
     const { toast } = useToast();
+    const { user, orgId } = useAuth();
     const [objections, setObjections] = useState<ObjectionItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -85,14 +87,11 @@ export function ObjecoesFAQTab() {
 
     useEffect(() => {
         loadObjections();
-    }, []);
+    }, [orgId]);
 
     const loadObjections = async () => {
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-
-            const orgId = user.user_metadata?.org_id || user.id;
+            if (!user || !orgId) return;
 
             const { data, error } = await supabase
                 .from('objection_responses')
@@ -197,10 +196,7 @@ export function ObjecoesFAQTab() {
 
         setIsSaving(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Not authenticated');
-
-            const orgId = user.user_metadata?.org_id || user.id;
+            if (!user || !orgId) throw new Error('Not authenticated');
 
             const { data, error } = await supabase
                 .from('objection_responses')

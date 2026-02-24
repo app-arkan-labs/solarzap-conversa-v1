@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { SobreEmpresaTab } from './knowledge-base/SobreEmpresaTab';
 import { DepoimentosTab } from './knowledge-base/DepoimentosTab';
 import { ObjecoesFAQTab } from './knowledge-base/ObjecoesFAQTab';
 
 export function KnowledgeBaseView() {
     const { toast } = useToast();
+    const { user, orgId } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -56,10 +58,7 @@ export function KnowledgeBaseView() {
 
         setIsUploading(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Not authenticated');
-
-            const orgId = user.user_metadata?.org_id || user.id;
+            if (!user || !orgId) throw new Error('Not authenticated');
             const fileExt = uploadedFile.name.split('.').pop();
             const fileName = `${orgId}/knowledge_base_${Date.now()}.${fileExt}`;
 
