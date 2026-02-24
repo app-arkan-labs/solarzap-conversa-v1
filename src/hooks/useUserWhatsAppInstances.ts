@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { evolutionApi } from '@/lib/evolutionApi';
 import { useAuth } from '@/contexts/AuthContext';
@@ -118,7 +118,7 @@ export function useUserWhatsAppInstances() {
 
     } catch (error) {
       console.error('Error fetching instances:', error);
-      toast.error('Erro ao carregar instÃ¢ncias');
+      toast.error('Erro ao carregar instâncias');
       setLoading(false);
     }
   }, [user, orgId]);
@@ -182,7 +182,7 @@ export function useUserWhatsAppInstances() {
     }
 
     if (!displayName.trim()) {
-      toast.error('Digite um nome para a instÃ¢ncia');
+      toast.error('Digite um nome para a instância');
       return null;
     }
 
@@ -197,7 +197,7 @@ export function useUserWhatsAppInstances() {
       const response = await evolutionApi.createInstance(instanceName);
 
       if (!response.success || !response.data) {
-        throw new Error(response.error || 'Falha ao criar instÃ¢ncia na API');
+        throw new Error(response.error || 'Falha ao criar instância na API');
       }
 
       // Configure Webhook Immediately
@@ -232,11 +232,11 @@ export function useUserWhatsAppInstances() {
       if (error) throw error;
 
       setInstances(prev => [newInstance, ...prev]);
-      toast.success('InstÃ¢ncia criada! Escaneie o QR Code.');
+      toast.success('Instância criada! Escaneie o QR Code.');
       return { qrCode, instance: newInstance };
     } catch (error) {
       console.error('Error creating instance:', error);
-      toast.error(error instanceof Error ? error.message : 'Erro ao criar instÃ¢ncia');
+      toast.error(error instanceof Error ? error.message : 'Erro ao criar instância');
       return null;
     } finally {
       setCreating(false);
@@ -284,7 +284,7 @@ export function useUserWhatsAppInstances() {
       if (!response.success) {
         // If error suggests instance not found, mark as disconnected
         if (response.error?.includes('404') || response.error?.includes('not found') || response.error?.includes('instance does not exist')) {
-          console.log(`Instance ${instanceName} not found on server. Marking as disconnected.`);
+          import.meta.env.DEV && console.log(`Instance ${instanceName} not found on server. Marking as disconnected.`);
           await supabase
             .from('whatsapp_instances')
             .update({ status: 'disconnected', updated_at: new Date().toISOString() })
@@ -299,7 +299,7 @@ export function useUserWhatsAppInstances() {
       }
 
       if (!response.data) {
-        throw new Error('Dados invÃ¡lidos recebidos da API');
+        throw new Error('Dados inválidos recebidos da API');
       }
 
       const state = response.data.instance.state;
@@ -319,7 +319,7 @@ export function useUserWhatsAppInstances() {
       // Force Webhook Registration if Connected
       if (newStatus === 'connected') {
         const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`;
-        console.log(`Ensuring Webhook is set for ${instanceName}: ${webhookUrl}`);
+        import.meta.env.DEV && console.log(`Ensuring Webhook is set for ${instanceName}: ${webhookUrl}`);
 
         await evolutionApi.setWebhook(instanceName, webhookUrl, [
           'MESSAGES_UPSERT',
@@ -335,7 +335,7 @@ export function useUserWhatsAppInstances() {
         inst.instance_name === instanceName ? { ...inst, status: newStatus } : inst
       ));
 
-      // toast.success(`Status da instÃ¢ncia: ${newStatus === 'connected' ? 'Conectado' : 'Desconectado'}`);
+      // toast.success(`Status da instância: ${newStatus === 'connected' ? 'Conectado' : 'Desconectado'}`);
     } catch (error) {
       console.error('Error checking status:', error);
       // If network error, we don't change status to avoid flapping
@@ -367,10 +367,10 @@ export function useUserWhatsAppInstances() {
       } catch (e) {
         console.error('Error deleting from API', e);
         if (!force) {
-          toast.error('Falha ao deletar na API. Tente novamente ou use "ForÃ§ar ExclusÃ£o" se disponÃ­vel.');
+          toast.error('Falha ao deletar na API. Tente novamente ou use "Forçar Exclusão" se disponível.');
           throw e; // Stop execution to prevent desync
         }
-        toast.warning('Erro na API ignorado (ForÃ§ar ExclusÃ£o).');
+        toast.warning('Erro na API ignorado (Forçar Exclusão).');
       }
 
       // 2. Soft delete from Supabase (set is_active = false)
@@ -382,7 +382,7 @@ export function useUserWhatsAppInstances() {
       if (error) throw error;
 
       setInstances(prev => prev.filter(i => i.id !== instance.id));
-      toast.success('InstÃ¢ncia removida com sucesso');
+      toast.success('Instância removida com sucesso');
       return true;
     } catch (error) {
       console.error('Error deleting instance:', error);
@@ -410,7 +410,7 @@ export function useUserWhatsAppInstances() {
         })
         .eq('instance_name', instanceName);
 
-      toast.success('InstÃ¢ncia desconectada');
+      toast.success('Instância desconectada');
 
       setInstances(prev => prev.map(inst =>
         inst.instance_name === instanceName
@@ -442,7 +442,7 @@ export function useUserWhatsAppInstances() {
       setInstances(prev => prev.map(inst =>
         inst.id === instanceId ? { ...inst, display_name: newName } : inst
       ));
-      toast.success('InstÃ¢ncia renomeada');
+      toast.success('Instância renomeada');
       return true;
     } catch (error) {
       console.error('Error renaming:', error);
@@ -536,7 +536,7 @@ export function useUserWhatsAppInstances() {
         if (error) throw error;
         if (!data || data.length === 0) {
           console.error('Update returned 0 rows. RLS mismatch?');
-          throw new Error('Falha ao atualizar: PermissÃ£o negada ou instÃ¢ncia nÃ£o encontrada.');
+          throw new Error('Falha ao atualizar: Permissão negada ou instância não encontrada.');
         }
 
         // Optimistic update
@@ -551,7 +551,7 @@ export function useUserWhatsAppInstances() {
         return true;
       } catch (error) {
         console.error('Error updating AI enabled:', error);
-        toast.error('Erro ao atualizar IA da instÃ¢ncia');
+        toast.error('Erro ao atualizar IA da instância');
         return false;
       } finally {
         setActionLoading(null);
@@ -572,11 +572,11 @@ export function useUserWhatsAppInstances() {
         setInstances(prev => prev.map(inst => ({ ...inst, ai_enabled: enabled })));
 
         await fetchInstances();
-        toast.success(enabled ? 'Todas as instÃ¢ncias ativadas' : 'Todas as instÃ¢ncias desativadas');
+        toast.success(enabled ? 'Todas as instâncias ativadas' : 'Todas as instâncias desativadas');
         return true;
       } catch (error) {
         console.error('Error toggling all instances:', error);
-        toast.error('Erro ao atualizar instÃ¢ncias');
+        toast.error('Erro ao atualizar instâncias');
         return false;
       } finally {
         setLoading(false);

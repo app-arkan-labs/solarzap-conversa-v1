@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase, EventoDB } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 import { CalendarEvent, EventType, PipelineStage } from '@/types/solarzap';
 
 type ProposalSegment = 'residencial' | 'empresarial' | 'agronegocio' | 'usina' | 'indefinido';
@@ -38,6 +39,7 @@ const eventoToCalendarEvent = (evento: EventoDB): CalendarEvent => ({
 
 export function usePipeline() {
     const { user, orgId } = useAuth();
+    const { toast } = useToast();
     const queryClient = useQueryClient();
 
     const eventsQuery = useQuery({
@@ -55,7 +57,7 @@ export function usePipeline() {
                     .order('start_at', { ascending: true });
 
                 if (error) {
-                    console.log('Appointments table fetch error:', error);
+                    console.warn('Appointments table fetch error:', error);
                     return [];
                 }
 
@@ -618,6 +620,9 @@ export function usePipeline() {
             }
 
             return { proposal, proposalVersionId };
+        },
+        onError: (err: unknown) => {
+            toast({ title: 'Erro ao salvar proposta', description: err instanceof Error ? err.message : 'Tente novamente.', variant: 'destructive' });
         },
     });
 

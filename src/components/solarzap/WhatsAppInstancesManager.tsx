@@ -185,7 +185,7 @@ export function WhatsAppInstancesManager() {
   const [instanceToDelete, setInstanceToDelete] = useState<WhatsAppInstance | null>(null);
 
   const handleRequestDelete = (instance: WhatsAppInstance) => {
-    console.log('Manager received delete request for:', instance.instance_name);
+    import.meta.env.DEV && console.log('Manager received delete request for:', instance.instance_name);
     setInstanceToDelete(instance);
     setDeleteDialogOpen(true);
   };

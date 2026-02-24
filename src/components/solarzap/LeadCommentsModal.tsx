@@ -33,7 +33,7 @@ interface LeadCommentsModalProps {
 }
 
 export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCommentsModalProps) {
-  const { orgId } = useAuth();
+  const { orgId, user } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -42,8 +42,10 @@ export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCom
   const [endDate, setEndDate] = useState('');
   const { toast } = useToast();
 
-  // Default author name - will be 'Vendedor' since we can't use auth context safely in DEV_MODE
-  const authorName = 'Vendedor';
+  // Derive author name from authenticated user
+  const authorName = user?.user_metadata?.full_name
+    || user?.email?.split('@')[0]
+    || 'Vendedor';
 
   // Fetch comments when modal opens
   useEffect(() => {

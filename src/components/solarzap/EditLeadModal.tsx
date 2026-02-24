@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
+import { useToast } from '@/hooks/use-toast';
 import { Contact, PipelineStage, ClientType, PIPELINE_STAGES, Channel } from '@/types/solarzap';
 import {
   Dialog,
@@ -53,6 +54,7 @@ const CLIENT_TYPES: { value: ClientType; label: string }[] = [
 ];
 
 export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModalProps) {
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<UpdateLeadData>({});
   const [isDirty, setIsDirty] = useState(false);
@@ -138,6 +140,7 @@ export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModa
       onClose();
     } catch (error) {
       console.error('Error saving contact:', error);
+      toast({ title: 'Erro ao salvar contato', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }

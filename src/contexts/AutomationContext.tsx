@@ -117,14 +117,14 @@ export function AutomationProvider({ children }: { children: ReactNode }) {
         key: K,
         value: AutomationSettings[K]
     ) => {
-        console.log('AutomationProvider: updateSetting', key, value);
+        import.meta.env.DEV && console.log('AutomationProvider: updateSetting', key, value);
         setPendingSettings(prev => ({ ...prev, [key]: value }));
     }, []);
 
     // Save all pending changes — returns true on success, false on error
     const saveChanges = useCallback((): boolean => {
         try {
-            console.log('AutomationProvider: saving changes', pendingSettings);
+            import.meta.env.DEV && console.log('AutomationProvider: saving changes', pendingSettings);
             localStorage.setItem(storageKey, JSON.stringify(pendingSettings));
             setSavedSettings(pendingSettings);
             return true;

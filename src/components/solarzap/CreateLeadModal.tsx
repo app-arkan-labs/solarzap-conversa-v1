@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
+import { useToast } from '@/hooks/use-toast';
 import { PipelineStage, ClientType, Channel, PIPELINE_STAGES, CHANNEL_INFO } from '@/types/solarzap';
 import {
   Dialog,
@@ -68,6 +69,7 @@ const initialFormData: CreateLeadData = {
 };
 
 export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProps) {
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<CreateLeadData>(initialFormData);
 
@@ -113,6 +115,7 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
       onClose();
     } catch (error) {
       console.error('Error creating lead:', error);
+      toast({ title: 'Erro ao criar lead', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }

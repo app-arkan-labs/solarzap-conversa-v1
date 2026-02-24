@@ -130,14 +130,14 @@ export function useWhatsAppInstances() {
         return;
       }
 
-      console.log('[useWhatsAppInstances] Fetching instances...');
+      import.meta.env.DEV && console.log('[useWhatsAppInstances] Fetching instances...');
 
       const { data, error } = await supabase.functions.invoke('whatsapp-connect', {
         body: { action: 'list' },
         headers
       });
 
-      console.log('[useWhatsAppInstances] Response:', { data, error });
+      import.meta.env.DEV && console.log('[useWhatsAppInstances] Response:', { data, error });
 
       if (error) {
         // Check if it's a connection/deployment error
@@ -171,7 +171,7 @@ export function useWhatsAppInstances() {
       }
 
       if (!data?.configured) {
-        console.log('[useWhatsAppInstances] Evolution API not configured');
+        import.meta.env.DEV && console.log('[useWhatsAppInstances] Evolution API not configured');
         setInstances([]);
       } else {
         setInstances(data.instances || []);
@@ -268,14 +268,14 @@ export function useWhatsAppInstances() {
       const headers = await getAuthHeaders();
       if (headers === null) return null;
 
-      console.log('[useWhatsAppInstances] Creating instance with name:', displayName);
+      import.meta.env.DEV && console.log('[useWhatsAppInstances] Creating instance with name:', displayName);
 
       const { data, error } = await supabase.functions.invoke('whatsapp-connect', {
         body: { action: 'create', displayName },
         headers
       });
 
-      console.log('[useWhatsAppInstances] Create response:', { data, error });
+      import.meta.env.DEV && console.log('[useWhatsAppInstances] Create response:', { data, error });
 
       if (error) {
         console.error('Function invoke error:', error);

@@ -150,6 +150,14 @@ export function SolarZapLayout() {
   });
   const [isResizingConversationsSidebar, setIsResizingConversationsSidebar] = useState(false);
   const conversationsSidebarRef = useRef<HTMLDivElement | null>(null);
+  const proposalPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup proposal prompt timer on unmount
+  useEffect(() => {
+    return () => {
+      if (proposalPromptTimerRef.current) clearTimeout(proposalPromptTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (isAdminMembersPath(location.pathname)) {
@@ -385,13 +393,13 @@ export function SolarZapLayout() {
 
   // Navigate to conversation with prefilled message
   const goToConversation = useCallback((contactId: string, prefilledMessage: string, shouldAutoMoveToVisita: boolean = false) => {
-    console.log('goToConversation called with:', { contactId, prefilledMessage: prefilledMessage.substring(0, 50) + '...', shouldAutoMoveToVisita });
+    import.meta.env.DEV && console.log('goToConversation called with:', { contactId, prefilledMessage: prefilledMessage.substring(0, 50) + '...', shouldAutoMoveToVisita });
 
     // Try allConversations first (unfiltered implied by `conversations` being all)
     // In new hooks, `conversations` is all conversations.
     const conv = conversations.find(c => c.id === contactId);
 
-    console.log('Found conversation:', conv?.id, conv?.contact?.name);
+    import.meta.env.DEV && console.log('Found conversation:', conv?.id, conv?.contact?.name);
 
     if (conv) {
       if (shouldAutoMoveToVisita) {
@@ -423,7 +431,7 @@ export function SolarZapLayout() {
   // Listen for custom events (e.g. from AppointmentModal)
   useEffect(() => {
     const handleOpenChat = (e: CustomEvent<{ contactId: string }>) => {
-      console.log('Open chat event received:', e.detail);
+      import.meta.env.DEV && console.log('Open chat event received:', e.detail);
       if (e.detail?.contactId) {
         goToConversation(e.detail.contactId, '', false);
       }
@@ -444,14 +452,14 @@ export function SolarZapLayout() {
         break;
 
       case 'video_call':
-        console.log('Action: video_call executing', targetContact);
+        import.meta.env.DEV && console.log('Action: video_call executing', targetContact);
         // Open Meet immediately
         window.open('https://meet.google.com/new', '_blank');
 
         if (targetContact) {
           // Pre-fill message instead of auto-sending
           const videoCallMsg = getMessage('videoCallMessage', { nome: targetContact.name || 'Cliente' });
-          console.log('Setting pre-filled message:', videoCallMsg);
+          import.meta.env.DEV && console.log('Setting pre-filled message:', videoCallMsg);
           setPendingChatMessage(videoCallMsg || "Vamos agendar uma videochamada?");
 
           toast({
@@ -522,7 +530,7 @@ export function SolarZapLayout() {
       onCallCompleted(contact);
 
       if (feedback) {
-        console.log('Call feedback:', { contactId: contact.id, feedback });
+        import.meta.env.DEV && console.log('Call feedback:', { contactId: contact.id, feedback });
 
         if (contact.id && orgId) {
           import('@/lib/supabase').then(async (m) => {
@@ -572,7 +580,7 @@ export function SolarZapLayout() {
         description: `${actionContact.name} movido para "Aguardando Proposta"`,
       });
 
-      setTimeout(() => {
+      proposalPromptTimerRef.current = setTimeout(() => {
         setGenerateProposalPromptOpen(true);
       }, 3000);
     } else {
@@ -747,7 +755,7 @@ export function SolarZapLayout() {
   // handleSchedule removed (replaced by AppointmentModal onSuccess)
 
   const handleProposal = async (data: ProposalData) => {
-    console.log('📋 handleProposal called with:', data);
+    import.meta.env.DEV && console.log('📋 handleProposal called with:', data);
     const selectedContact = actionContact || contacts.find(c => c.id === data.contactId);
     const proposalSegment =
       data.tipo_cliente === 'residencial'
@@ -954,7 +962,7 @@ export function SolarZapLayout() {
             conversations={conversations}
             onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
             onSendMessage={async (conversationId, content, instanceName, replyTo) => {
-              console.log('SolarZapLayout: onSendMessage called', { conversationId, contentLength: content.length, instanceName, replyTo });
+              import.meta.env.DEV && console.log('SolarZapLayout: onSendMessage called', { conversationId, contentLength: content.length, instanceName, replyTo });
               try {
                 await sendMessage({ conversationId, content, instanceName, replyTo });
                 onSellerResponse(conversationId);
@@ -1030,9 +1038,9 @@ export function SolarZapLayout() {
             }}
             onVideoCallAction={(contact) => {
               // Pre-fill message instead of auto-sending - seller reviews and sends
-              console.log('Video Call Action Triggered', contact);
+              import.meta.env.DEV && console.log('Video Call Action Triggered', contact);
               const videoCallMsg = getMessage('videoCallMessage', { nome: contact.name || 'Cliente' });
-              console.log('Generated Video Msg:', videoCallMsg);
+              import.meta.env.DEV && console.log('Generated Video Msg:', videoCallMsg);
 
               if (!videoCallMsg) {
                 console.warn("Empty video call message config!");

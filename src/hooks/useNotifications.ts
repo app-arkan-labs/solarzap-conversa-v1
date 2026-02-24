@@ -59,7 +59,7 @@ const playNotificationSound = () => {
       audioContext.close();
     }, 500);
   } catch (error) {
-    console.log('Could not play notification sound:', error);
+    console.warn('Could not play notification sound:', error);
   }
 };
 
@@ -101,7 +101,7 @@ export function useNotifications() {
       isRead: false,
     };
 
-    console.log('🔔 Adding notification:', notification.title, notification.message);
+    import.meta.env.DEV && console.log('🔔 Adding notification:', notification.title, notification.message);
     
     setNotifications(prev => [notification, ...prev].slice(0, 100));
     
@@ -234,7 +234,7 @@ export function useNotifications() {
       dateStyle: 'short', 
       timeStyle: 'short' 
     });
-    console.log('📞 onCallScheduled called for:', contact.name);
+    import.meta.env.DEV && console.log('📞 onCallScheduled called for:', contact.name);
     addNotification('call_scheduled', {
       contactId: contact.id,
       contactName: contact.name,
@@ -248,7 +248,7 @@ export function useNotifications() {
       dateStyle: 'short', 
       timeStyle: 'short' 
     });
-    console.log('🏠 onVisitScheduled called for:', contact.name);
+    import.meta.env.DEV && console.log('🏠 onVisitScheduled called for:', contact.name);
     addNotification('visit_scheduled', {
       contactId: contact.id,
       contactName: contact.name,
@@ -258,7 +258,7 @@ export function useNotifications() {
 
   // When a proposal is ready
   const onProposalReady = useCallback((contact: Contact) => {
-    console.log('📋 onProposalReady called for:', contact.name);
+    import.meta.env.DEV && console.log('📋 onProposalReady called for:', contact.name);
     addNotification('proposal_ready', {
       contactId: contact.id,
       contactName: contact.name,
@@ -268,7 +268,7 @@ export function useNotifications() {
 
   // When a call is completed
   const onCallCompleted = useCallback((contact: Contact) => {
-    console.log('✅ onCallCompleted called for:', contact.name);
+    import.meta.env.DEV && console.log('✅ onCallCompleted called for:', contact.name);
     addNotification('call_completed', {
       contactId: contact.id,
       contactName: contact.name,

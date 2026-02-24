@@ -218,7 +218,7 @@ export function WhatsAppInstanceCard({
                   <DropdownMenuItem
                     onSelect={(e) => {
                       e.preventDefault();
-                      console.log('Dropdown Delete Clicked:', instance.instance_name);
+                      import.meta.env.DEV && console.log('Dropdown Delete Clicked:', instance.instance_name);
                       onRequestDelete(instance);
                     }}
                     className="text-destructive focus:text-destructive"
@@ -236,7 +236,7 @@ export function WhatsAppInstanceCard({
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
-                  console.log('Delete Clicked:', instance.instance_name);
+                  import.meta.env.DEV && console.log('Delete Clicked:', instance.instance_name);
                   onRequestDelete(instance);
                 }}
                 disabled={isLoading}

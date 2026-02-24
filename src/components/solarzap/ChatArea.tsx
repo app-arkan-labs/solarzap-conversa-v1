@@ -116,7 +116,7 @@ export function ChatArea({
     if (conversation?.lastMessage?.instanceName) {
       const instance = instances.find(i => i.instance_name === conversation.lastMessage!.instanceName);
       if (instance && instance.id !== selectedInstanceId) {
-        console.log("Switching instance context to:", instance.instance_name);
+        import.meta.env.DEV && console.log("Switching instance context to:", instance.instance_name);
         setSelectedInstanceId(instance.id);
         localStorage.setItem('solarzap_selected_instance_id', instance.id);
       }

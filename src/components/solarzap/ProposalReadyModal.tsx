@@ -63,7 +63,7 @@ export function ProposalReadyModal({
   }, [contactName, getMessage]);
 
   const handleGoToConversation = () => {
-    console.log('ProposalReadyModal: handleGoToConversation clicked');
+    import.meta.env.DEV && console.log('ProposalReadyModal: handleGoToConversation clicked');
     if (contactId) {
       onGoToConversation(contactId, prefilledMessage);
       onClose();

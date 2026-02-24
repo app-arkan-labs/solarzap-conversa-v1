@@ -67,7 +67,7 @@ class WhatsAppService {
   }
 
   async deleteInstance(instanceName: string) {
-    console.log(`[WhatsAppService] Deleting instance: ${instanceName}`);
+    console.info(`[WhatsAppService] Deleting instance: ${instanceName}`);
     try {
       await this.proxyRequest('logoutInstance', { instanceName });
     } catch (e) {

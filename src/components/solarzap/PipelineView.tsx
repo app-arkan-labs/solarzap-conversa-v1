@@ -211,7 +211,7 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
     proposalContactIdRef.current = data.contactId;
     const contact = contacts.find(c => c.id === data.contactId);
     proposalContactNameRef.current = contact?.name || actionContact?.name || '';
-    console.log('handleProposal: storing in refs - contactId:', data.contactId, 'name:', proposalContactNameRef.current);
+    import.meta.env.DEV && console.log('handleProposal: storing in refs - contactId:', data.contactId, 'name:', proposalContactNameRef.current);
 
     // IMPORTANT: Set proposalReadyOpen to true BEFORE closing the modal
     setProposalReadyOpen(true);
@@ -224,13 +224,13 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
   };
 
   const handleProposalReadyGoToConversation = (contactId: string, prefilledMessage: string) => {
-    console.log('handleProposalReadyGoToConversation called');
-    console.log('contactId from modal:', contactId);
-    console.log('onGoToConversation available:', !!onGoToConversation);
+    import.meta.env.DEV && console.log('handleProposalReadyGoToConversation called');
+    import.meta.env.DEV && console.log('contactId from modal:', contactId);
+    import.meta.env.DEV && console.log('onGoToConversation available:', !!onGoToConversation);
 
     setProposalReadyOpen(false);
     if (contactId && onGoToConversation) {
-      console.log('Calling onGoToConversation with:', contactId, 'shouldAutoMoveToVisita: true');
+      import.meta.env.DEV && console.log('Calling onGoToConversation with:', contactId, 'shouldAutoMoveToVisita: true');
       // Pass true to auto-move to "Visita Agendada" after message is sent
       onGoToConversation(contactId, prefilledMessage, true);
     } else {

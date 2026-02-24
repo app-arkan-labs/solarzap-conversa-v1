@@ -75,7 +75,7 @@ export function useChat(contacts: Contact[] = []) {
             const autoDisableEnabled = aiSettingsRow?.support_ai_auto_disable_on_seller_message !== false;
 
             if (!autoDisableEnabled) {
-                console.log(`[HumanTakeover/${source}] Org has auto-disable OFF — skipping pause for lead:`, leadId);
+                import.meta.env.DEV && console.log(`[HumanTakeover/${source}] Org has auto-disable OFF — skipping pause for lead:`, leadId);
                 toast({
                     title: 'Pausa automática desativada',
                     description: 'A configuração "Pausar IA ao enviar mensagem" está desligada nas configurações da org.',
@@ -85,7 +85,7 @@ export function useChat(contacts: Contact[] = []) {
             }
 
             // 2. Pause AI on the lead
-            console.log(`[HumanTakeover/${source}] Pausing AI for lead:`, leadId);
+            import.meta.env.DEV && console.log(`[HumanTakeover/${source}] Pausing AI for lead:`, leadId);
             const { data: pausedRows, error: pauseErr } = await supabase
                 .from('leads')
                 .update({
@@ -112,7 +112,7 @@ export function useChat(contacts: Contact[] = []) {
                     description: 'Não foi possível atualizar o status do lead.',
                 });
             } else {
-                console.log(`[HumanTakeover/${source}] AI paused successfully`);
+                import.meta.env.DEV && console.log(`[HumanTakeover/${source}] AI paused successfully`);
                 // Optimistic update: immediately flip the toggle in the cache
                 queryClient.setQueriesData(
                     { queryKey: ['leads', orgId] },
@@ -146,7 +146,7 @@ export function useChat(contacts: Contact[] = []) {
         queryKey: interactionsQueryKey,
         queryFn: async () => {
             if (!user || !orgId) return [];
-            console.log('[FETCH] Fetching latest interactions...');
+            import.meta.env.DEV && console.log('[FETCH] Fetching latest interactions...');
             // CRITICAL FIX: Fetch NEWEST 1000 messages (descending), then reverse to chronological
             // Supabase default limit is 1000 - we want the NEWEST, not oldest
             const { data, error } = await supabase
@@ -158,7 +158,7 @@ export function useChat(contacts: Contact[] = []) {
                 .limit(1000); // Explicit limit
 
             if (error) throw error;
-            console.log('[FETCH] Got', data?.length || 0, 'interactions (newest first, will reverse)');
+            import.meta.env.DEV && console.log('[FETCH] Got', data?.length || 0, 'interactions (newest first, will reverse)');
             // Reverse to get chronological order (oldest->newest for display)
             return (data || []).reverse().map(interacaoToMessage);
         },
@@ -172,7 +172,7 @@ export function useChat(contacts: Contact[] = []) {
         if (!user || !orgId) return;
 
         // 1. Single Channel Global Subscription (User Scoped)
-        console.log('[RT] Setting up robust subscription for org:', orgId);
+        import.meta.env.DEV && console.log('[RT] Setting up robust subscription for org:', orgId);
         const channelName = `rt:interacoes:${orgId}:${user.id}`;
 
         const subscription = supabase
@@ -188,7 +188,7 @@ export function useChat(contacts: Contact[] = []) {
                 (payload) => {
                     // Guard: only process messages belonging to this user
                     if (payload.new.user_id !== user.id) return;
-                    console.log('🔴 [RT INSERT]', payload.new.id);
+                    import.meta.env.DEV && console.log('🔴 [RT INSERT]', payload.new.id);
                     const newMessage = interacaoToMessage(payload.new as InteracaoDB);
                     queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
                         if (!old) return [newMessage];
@@ -208,7 +208,7 @@ export function useChat(contacts: Contact[] = []) {
                 (payload) => {
                     // Guard: only process messages belonging to this user
                     if (payload.new.user_id !== user.id) return;
-                    console.log('🟡 [RT UPDATE]', payload.new.id, payload.new.attachment_ready);
+                    import.meta.env.DEV && console.log('🟡 [RT UPDATE]', payload.new.id, payload.new.attachment_ready);
                     const updatedMessage = interacaoToMessage(payload.new as InteracaoDB);
 
                     queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
@@ -218,20 +218,20 @@ export function useChat(contacts: Contact[] = []) {
                 }
             )
             .subscribe((status) => {
-                console.log('🔵 [RT STATUS]', status);
+                import.meta.env.DEV && console.log('🔵 [RT STATUS]', status);
             });
 
         // 2. Visibility change reconciliation (removed useless 5s heartbeat — Sprint 2/#24)
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
-                console.log('[RT] Tab active, reconciling...');
+                import.meta.env.DEV && console.log('[RT] Tab active, reconciling...');
                 queryClient.invalidateQueries({ queryKey: ['interactions', orgId] });
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         return () => {
-            console.log('[RT] Cleanup channel:', channelName);
+            import.meta.env.DEV && console.log('[RT] Cleanup channel:', channelName);
             supabase.removeChannel(subscription);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
@@ -354,7 +354,7 @@ export function useChat(contacts: Contact[] = []) {
             let response;
 
             try {
-                console.log('Attempting to send message via Evolution API', {
+                import.meta.env.DEV && console.log('Attempting to send message via Evolution API', {
                     instance: instance.instance_name,
                     phone: formattedPhone,
                     contentLength: sanitizedContent.length,
@@ -367,7 +367,7 @@ export function useChat(contacts: Contact[] = []) {
                     sanitizedContent,
                     quotedPayload // Passing the full object now
                 );
-                console.log('Evolution API Response:', response);
+                import.meta.env.DEV && console.log('Evolution API Response:', response);
 
                 if (!response.success) {
                     throw new Error(response.error || 'Unknown error from Evolution API');
@@ -407,7 +407,7 @@ export function useChat(contacts: Contact[] = []) {
             return interacaoToMessage(data);
         },
         onSuccess: async (newMessage) => {
-            console.log('✅ [SEND SUCCESS] Message sent, updating cache immediately:', newMessage?.id);
+            import.meta.env.DEV && console.log('✅ [SEND SUCCESS] Message sent, updating cache immediately:', newMessage?.id);
             // Optimistic update: Add message to cache immediately
             if (newMessage) {
                 queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
@@ -500,7 +500,7 @@ export function useChat(contacts: Contact[] = []) {
             let usedBucket = '';
 
             try {
-                console.log('Requesting Storage Intent for:', file.name, file.size);
+                import.meta.env.DEV && console.log('Requesting Storage Intent for:', file.name, file.size);
                 const { data: intentData, error: intentError } = await supabase.functions.invoke('storage-intent', {
                     body: {
                         fileName: file.name,
@@ -521,7 +521,7 @@ export function useChat(contacts: Contact[] = []) {
                 if (!intentError && hasValidIntent) {
                     const allowedModes = new Set(['image', 'video', 'document']);
                     const intentMode = allowedModes.has(intentData.sendMode) ? intentData.sendMode : sendMode;
-                    console.log(`Intent Received: Mode=${intentMode}, Path=${intentData.path}`);
+                    import.meta.env.DEV && console.log(`Intent Received: Mode=${intentMode}, Path=${intentData.path}`);
 
                     const uploadResponse = await fetch(intentData.uploadUrl, {
                         method: 'PUT',
@@ -580,7 +580,7 @@ export function useChat(contacts: Contact[] = []) {
                     .getPublicUrl(path);
 
                 publicUrl = publicData.publicUrl;
-                console.log(`Direct upload OK: Bucket=${usedBucket}, Path=${path}`);
+                import.meta.env.DEV && console.log(`Direct upload OK: Bucket=${usedBucket}, Path=${path}`);
             }
 
             // 4. Send via Evolution API
@@ -687,7 +687,7 @@ export function useChat(contacts: Contact[] = []) {
             return interacaoToMessage(data);
         },
         onSuccess: async (newMessage) => {
-            console.log('✅ [ATTACHMENT SUCCESS] Attachment sent:', newMessage?.id);
+            import.meta.env.DEV && console.log('✅ [ATTACHMENT SUCCESS] Attachment sent:', newMessage?.id);
             if (newMessage) {
                 queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
                     if (!old) return [newMessage];
@@ -798,7 +798,7 @@ export function useChat(contacts: Contact[] = []) {
             const formattedPhone = formatPhoneNumber(lead.telefone);
             const finalPhoneE164 = (lead as any).phone_e164 || formattedPhone;
             const fallbackRemoteJid = `${formattedPhone}@s.whatsapp.net`;
-            console.log('Sending audio via Evolution API:', sendUrl);
+            import.meta.env.DEV && console.log('Sending audio via Evolution API:', sendUrl);
 
             const response = await evolutionApi.sendAudio(
                 instance.instance_name,
@@ -856,7 +856,7 @@ export function useChat(contacts: Contact[] = []) {
             return interacaoToMessage(data);
         },
         onSuccess: async (newMessage) => {
-            console.log('✅ [AUDIO SUCCESS] Audio sent:', newMessage?.id);
+            import.meta.env.DEV && console.log('✅ [AUDIO SUCCESS] Audio sent:', newMessage?.id);
             if (newMessage) {
                 queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
                     if (!old) return [newMessage];
@@ -875,7 +875,7 @@ export function useChat(contacts: Contact[] = []) {
     const allMessages = messagesQuery.data || [];
 
     const conversations = useMemo(() => {
-        console.log('🔄 [DERIVE] Recalculating conversations, messages:', allMessages.length, 'contacts:', contacts.length);
+        import.meta.env.DEV && console.log('🔄 [DERIVE] Recalculating conversations, messages:', allMessages.length, 'contacts:', contacts.length);
         const conversationsMap = new Map<string, Conversation>();
 
         contacts.forEach(contact => {
@@ -928,7 +928,7 @@ export function useChat(contacts: Contact[] = []) {
             if (!user) throw new Error('User not authenticated');
             if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
-            console.log(`[REACTION] Sending ${emoji} to message ${waMessageId} via ${instanceName}`);
+            import.meta.env.DEV && console.log(`[REACTION] Sending ${emoji} to message ${waMessageId} via ${instanceName}`);
 
             // Call whatsapp-connect function to send reaction
             const { data: funcData, error: funcError } = await supabase.functions.invoke('whatsapp-connect', {
@@ -949,7 +949,7 @@ export function useChat(contacts: Contact[] = []) {
                 throw funcError;
             }
 
-            console.log('[REACTION] Evolution API response:', funcData);
+            import.meta.env.DEV && console.log('[REACTION] Evolution API response:', funcData);
 
             // Update local database
             const { data: currentMsg } = await supabase
@@ -985,7 +985,7 @@ export function useChat(contacts: Contact[] = []) {
             return { messageId, emoji };
         },
         onSuccess: ({ messageId, emoji }) => {
-            console.log(`[REACTION] Successfully sent ${emoji} to message ${messageId}`);
+            import.meta.env.DEV && console.log(`[REACTION] Successfully sent ${emoji} to message ${messageId}`);
             // Invalidate to refresh reactions
             queryClient.invalidateQueries({ queryKey: interactionsQueryKey });
         }
