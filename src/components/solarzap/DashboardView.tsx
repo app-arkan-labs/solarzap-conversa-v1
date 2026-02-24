@@ -18,6 +18,7 @@ import { StaleLeadsTable } from "@/components/dashboard/tables/StaleLeadsTable";
 import { OwnerPerformanceTable } from "@/components/dashboard/tables/OwnerPerformanceTable";
 import { CalendarSummaryPanel } from "@/components/dashboard/tables/CalendarSummaryPanel";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,6 +29,7 @@ interface DashboardViewProps {
 
 export function DashboardView({ onNavigate }: DashboardViewProps) {
   const { toast } = useToast();
+  const { orgId } = useAuth();
 
 
   // State for Filters
@@ -44,6 +46,7 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
     start: dateRange.from,
     end: dateRange.to,
     compare: true,
+    orgId,
     filters: { calendarFilter }
   });
 

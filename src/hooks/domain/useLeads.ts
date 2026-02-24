@@ -204,6 +204,10 @@ export function useLeads() {
                 (payload) => {
                     if (payload.eventType === 'INSERT') {
                         const newLead = payload.new;
+                        // Guard: if not showing team leads, only add leads assigned to this user
+                        if (!showTeamLeads && newLead.assigned_to_user_id && newLead.assigned_to_user_id !== user.id) {
+                            return;
+                        }
                         const newContact = leadToContact(newLead);
                         toast.success(`Novo Lead recebido: ${newContact.name}`);
                         queryClient.setQueryData(leadsQueryKey, (oldData: Contact[] | undefined) => {
@@ -252,9 +256,11 @@ export function useLeads() {
             let { data, error } = await query;
             if (error && (error.code === '42703' || error.code === 'PGRST204')) {
                 // Defensive fallback in case schema cache lags behind migration.
+                // Still scope by org_id for data isolation.
                 const fallback = await supabase
                     .from('leads')
                     .select('*')
+                    .eq('org_id', orgId)
                     .eq('user_id', user.id)
                     .order('created_at', { ascending: false });
                 data = fallback.data;
@@ -455,7 +461,7 @@ export function useLeads() {
         mutationFn: async (leadId: string) => {
             if (!user) throw new Error('User not authenticated');
             if (!orgId) throw new Error('Organização não vinculada ao usuário');
-            const { data: lead } = await supabase.from('leads').select('phone_e164, instance_name').eq('id', Number(leadId)).single();
+            const { data: lead } = await supabase.from('leads').select('phone_e164, instance_name').eq('id', Number(leadId)).eq('org_id', orgId).single();
 
             if (lead?.phone_e164) {
                 const { error: rpcError } = await supabase.rpc('hard_delete_thread', {
@@ -464,11 +470,11 @@ export function useLeads() {
                     p_phone_e164: lead.phone_e164
                 });
                 if (rpcError) {
-                    const { error } = await supabase.from('leads').delete().eq('id', Number(leadId));
+                    const { error } = await supabase.from('leads').delete().eq('id', Number(leadId)).eq('org_id', orgId);
                     if (error) throw error;
                 }
             } else {
-                const { error } = await supabase.from('leads').delete().eq('id', Number(leadId));
+                const { error } = await supabase.from('leads').delete().eq('id', Number(leadId)).eq('org_id', orgId);
                 if (error) throw error;
             }
             return leadId;

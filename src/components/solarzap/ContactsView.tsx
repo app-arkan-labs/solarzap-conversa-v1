@@ -907,7 +907,7 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
                           size="sm"
                           className="h-8"
                           disabled={!proposal.pdf_url}
-                          onClick={() => proposal.pdf_url && window.open(proposal.pdf_url, '_blank', 'noopener,noreferrer')}
+                          onClick={() => proposal.pdf_url && /^https?:\/\//i.test(proposal.pdf_url) && window.open(proposal.pdf_url, '_blank', 'noopener,noreferrer')}
                         >
                           PDF
                         </Button>
@@ -917,7 +917,7 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
                           size="sm"
                           className="h-8"
                           disabled={!proposal.share_url}
-                          onClick={() => proposal.share_url && window.open(proposal.share_url, '_blank', 'noopener,noreferrer')}
+                          onClick={() => proposal.share_url && /^https?:\/\//i.test(proposal.share_url) && window.open(proposal.share_url, '_blank', 'noopener,noreferrer')}
                         >
                           Compartilhar
                         </Button>

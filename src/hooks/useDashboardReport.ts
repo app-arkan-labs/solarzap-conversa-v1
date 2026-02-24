@@ -6,6 +6,7 @@ export interface DashboardFilters {
     start: Date;
     end: Date;
     compare: boolean;
+    orgId?: string | null;
     filters: {
         owner_user_id?: string | null;
         source?: string | null;
@@ -18,7 +19,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
     return useQuery({
         queryKey: ["dashboard-report-client", params],
         queryFn: async () => {
-            const { start, end, filters } = params;
+            const { start, end, filters, orgId } = params;
             const calendarFilter = filters?.calendarFilter || 'next_7_days';
 
             const { data: { user } } = await supabase.auth.getUser();
@@ -36,41 +37,49 @@ export const useDashboardReport = (params: DashboardFilters) => {
 
             // --- 1. Fetch LEADS (Current & Previous) ---
             // Fetch ALL leads in range to aggregate in memory (for charts)
-            const { data: leadsData, error: leadsError } = await supabase
+            let leadsQuery = supabase
                 .from("leads")
                 .select("id, created_at, canal, status_pipeline, stage_changed_at, nome, user_id")
                 .gte("created_at", startIso)
                 .lte("created_at", endIso)
                 .eq("user_id", user.id);
+            if (orgId) leadsQuery = leadsQuery.eq('org_id', orgId);
+            const { data: leadsData, error: leadsError } = await leadsQuery;
 
             if (leadsError) throw leadsError;
 
-            const { count: prevLeadsCount } = await supabase
+            let prevLeadsQuery = supabase
                 .from("leads")
                 .select("id", { count: "exact", head: true })
                 .gte("created_at", prevStartIso)
                 .lte("created_at", prevEndIso)
                 .eq("user_id", user.id);
+            if (orgId) prevLeadsQuery = prevLeadsQuery.eq('org_id', orgId);
+            const { count: prevLeadsCount } = await prevLeadsQuery;
 
             // --- 2. Fetch DEALS (Won Deals for Revenue) ---
-            const { data: wonDeals, error: dealsError } = await supabase
+            let wonDealsQuery = supabase
                 .from("deals")
                 .select("id, amount, closed_at, lead_id, created_at")
                 .eq("status", "won")
                 .gte("closed_at", startIso)
                 .lte("closed_at", endIso)
                 .eq("user_id", user.id);
+            if (orgId) wonDealsQuery = wonDealsQuery.eq('org_id', orgId);
+            const { data: wonDeals, error: dealsError } = await wonDealsQuery;
 
             if (dealsError) throw dealsError;
 
             // Previous Revenue
-            const { data: prevWonDeals } = await supabase
+            let prevWonDealsQuery = supabase
                 .from("deals")
                 .select("amount")
                 .eq("status", "won")
                 .gte("closed_at", prevStartIso)
                 .lte("closed_at", prevEndIso)
                 .eq("user_id", user.id);
+            if (orgId) prevWonDealsQuery = prevWonDealsQuery.eq('org_id', orgId);
+            const { data: prevWonDeals } = await prevWonDealsQuery;
 
             // Fetch Leads for Won Deals to map Source (if needed for Sales by Source)
             // We need the `canal` of the leads associated with Won Deals
@@ -88,25 +97,29 @@ export const useDashboardReport = (params: DashboardFilters) => {
             }
 
             // --- 3. Fetch Forecast (Open Deals) ---
-            const { data: openDeals } = await supabase
+            let openDealsQuery = supabase
                 .from("deals")
                 .select("amount")
                 .neq("status", "won")
                 .neq("status", "lost")
                 .neq("status", "perdido")
                 .eq("user_id", user.id);
+            if (orgId) openDealsQuery = openDealsQuery.eq('org_id', orgId);
+            const { data: openDeals } = await openDealsQuery;
 
             // --- 4. Fetch Stale Leads (Client-Side Logic) ---
             // We query leads changed > 7 days ago
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            const { data: staleLeadsData } = await supabase
+            let staleLeadsQuery = supabase
                 .from("leads")
-                .select("id, nome, status_pipeline, stage_changed_at") // Removed last_message_at
+                .select("id, nome, status_pipeline, stage_changed_at")
                 .lt("stage_changed_at", sevenDaysAgo.toISOString())
                 .eq("user_id", user.id)
                 .order("stage_changed_at", { ascending: true })
                 .limit(20);
+            if (orgId) staleLeadsQuery = staleLeadsQuery.eq('org_id', orgId);
+            const { data: staleLeadsData } = await staleLeadsQuery;
 
             // --- 5. Fetch Calendar ---
             let calStart: string, calEnd: string;
@@ -130,22 +143,25 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 calEnd = endCal.toISOString();
             }
 
-            const { data: appointments } = await supabase
+            let apptsQuery = supabase
                 .from("appointments")
-                .select("id, title, start_at, type, status, leads(nome)") // join leads
+                .select("id, title, start_at, type, status, leads(nome)")
                 .gte("start_at", calStart)
                 .lte("start_at", calEnd)
-                // Access Control: could remove user_id to show assigned events
                 .eq("user_id", user.id)
                 .order("start_at", { ascending: true })
                 .limit(10);
+            if (orgId) apptsQuery = apptsQuery.eq('org_id', orgId);
+            const { data: appointments } = await apptsQuery;
 
-            const { count: totalAppts } = await supabase
+            let totalApptsQuery = supabase
                 .from("appointments")
                 .select("id", { count: 'exact', head: true })
                 .gte("start_at", calStart)
                 .lte("start_at", calEnd)
                 .eq("user_id", user.id);
+            if (orgId) totalApptsQuery = totalApptsQuery.eq('org_id', orgId);
+            const { count: totalAppts } = await totalApptsQuery;
 
             // ================= AGGREGATION =================
 

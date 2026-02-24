@@ -254,6 +254,7 @@ export function useChat(contacts: Contact[] = []) {
                 .from('leads')
                 .select('telefone, phone_e164')
                 .eq('id', conversationId)
+                .eq('org_id', orgId)
                 .single();
 
             if (leadError || !lead) throw new Error('Lead not found');
@@ -436,6 +437,7 @@ export function useChat(contacts: Contact[] = []) {
                 .from('leads')
                 .select('telefone, phone_e164')
                 .eq('id', conversationId)
+                .eq('org_id', orgId)
                 .single();
 
             if (leadError || !lead) throw new Error('Lead not found');
@@ -710,6 +712,7 @@ export function useChat(contacts: Contact[] = []) {
                 .from('leads')
                 .select('telefone, phone_e164')
                 .eq('id', conversationId)
+                .eq('org_id', orgId)
                 .single();
 
             if (leadError || !lead) throw new Error('Lead not found');

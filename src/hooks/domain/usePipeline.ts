@@ -50,6 +50,7 @@ export function usePipeline() {
                     .from('appointments')
                     .select('*')
                     .eq('user_id', user.id)
+                    .eq('org_id', orgId)
                     .order('start_at', { ascending: true });
 
                 if (error) {
@@ -87,7 +88,8 @@ export function usePipeline() {
                     status_pipeline: newStage,
                     stage_changed_at: new Date().toISOString()
                 })
-                .eq('id', Number(contactId));
+                .eq('id', Number(contactId))
+                .eq('org_id', orgId);
 
             if (leadError) throw leadError;
 
@@ -96,6 +98,7 @@ export function usePipeline() {
                 .from('leads')
                 .select('valor_estimado, user_id')
                 .eq('id', Number(contactId))
+                .eq('org_id', orgId)
                 .single();
 
             if (lead) {
@@ -117,7 +120,8 @@ export function usePipeline() {
                 const { data: existingDeals } = await supabase
                     .from('deals')
                     .select('id')
-                    .eq('lead_id', Number(contactId));
+                    .eq('lead_id', Number(contactId))
+                    .eq('org_id', orgId);
 
                 const existingDealId = existingDeals && existingDeals.length > 0 ? existingDeals[0].id : null;
 
@@ -132,11 +136,11 @@ export function usePipeline() {
                 };
 
                 if (existingDealId) {
-                    await supabase.from('deals').update(dealData).eq('id', existingDealId);
+                    const { error: dealError } = await supabase.from('deals').update(dealData).eq('id', existingDealId).eq('org_id', orgId);
+                    if (dealError) console.error('Deal update error:', dealError);
                 } else {
-                    // Only create deal if it has value or is won (optional, but good practice)
-                    // But to ensure "Forecast" works, we should create it if it's open too.
-                    await supabase.from('deals').insert(dealData);
+                    const { error: dealError } = await supabase.from('deals').insert(dealData);
+                    if (dealError) console.error('Deal insert error:', dealError);
                 }
             }
 
