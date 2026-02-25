@@ -118,6 +118,7 @@ export function AIAgentsView() {
                             {settings?.is_active ? "SISTEMA ATIVO" : "SISTEMA PAUSADO"}
                         </Badge>
                         <Switch
+                            data-testid="ai-master-switch"
                             checked={settings?.is_active || false}
                             onCheckedChange={(checked) => updateGlobalSettings({ is_active: checked })}
                             className="data-[state=checked]:bg-green-500"
@@ -210,7 +211,7 @@ export function AIAgentsView() {
                     </div>
 
                     {/* Agente de Apoio Global */}
-                    <Card className="shadow-sm border-l-4 border-l-blue-500">
+                    <Card className="shadow-sm border-l-4 border-l-blue-500" data-testid="support-ai-card">
                         <CardContent className="p-4">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -227,6 +228,7 @@ export function AIAgentsView() {
                                         {AI_SUPPORT_ELIGIBLE_STAGES.length} etapas elegíveis
                                     </Badge>
                                     <Switch
+                                        data-testid="support-ai-toggle"
                                         checked={settings?.support_ai_enabled ?? true}
                                         onCheckedChange={(checked) => updateGlobalSettings({ support_ai_enabled: checked })}
                                         className="data-[state=checked]:bg-blue-500"

@@ -377,6 +377,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                 <div className="md:col-span-2 flex items-end">
                   <label className="inline-flex items-center gap-2 text-sm">
                     <Switch
+                      data-testid="invite-can-view-toggle"
                       checked={inviteCanViewTeamLeads}
                       onCheckedChange={setInviteCanViewTeamLeads}
                       className="scale-90"
@@ -476,6 +477,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                         <td className="py-3 pr-3">
                           <div className="flex items-center gap-2">
                             <Switch
+                              data-testid={`member-can-view-${member.user_id}`}
                               checked={draft.can_view_team_leads}
                               onCheckedChange={(checked) =>
                                 handleDraftChange(member.user_id, {

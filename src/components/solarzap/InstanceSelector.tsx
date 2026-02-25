@@ -63,6 +63,7 @@ export function InstanceSelector({
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
                 <Button
+                    data-testid="instance-selector-trigger"
                     variant="outline"
                     size="sm"
                     className={cn("flex items-center gap-2 h-8 text-xs font-normal border-dashed", className)}
@@ -101,6 +102,7 @@ export function InstanceSelector({
                         {connectedInstances.map(instance => (
                             <DropdownMenuItem
                                 key={instance.id}
+                                data-testid={`instance-option-${instance.instance_name}`}
                                 onClick={() => onSelect(instance)}
                                 className="text-xs flex items-center justify-between cursor-pointer"
                             >

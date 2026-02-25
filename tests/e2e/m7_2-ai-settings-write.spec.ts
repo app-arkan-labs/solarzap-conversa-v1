@@ -162,12 +162,7 @@ test('M7.2 smoke: IA settings write persists with org_id', async ({ page }) => {
 
   await login(page, state.email, state.password);
   await openAiSettings(page);
-  const switchEl = page
-    .locator('div')
-    .filter({ hasText: 'Sistema AI Mestre' })
-    .first()
-    .locator('[role="switch"]')
-    .first();
+  const switchEl = page.getByTestId('ai-master-switch');
   await switchEl.waitFor({ state: 'visible', timeout: 15_000 });
   await switchEl.click();
 
@@ -191,12 +186,7 @@ test('M7.2 smoke: IA settings write persists with org_id', async ({ page }) => {
   // Wait again after reload because AuthContext resolves orgId asynchronously.
   await page.getByTestId('nav-settings-trigger').waitFor({ state: 'visible', timeout: 30_000 });
   await openAiSettings(page);
-  const switchAfterReload = page
-    .locator('div')
-    .filter({ hasText: 'Sistema AI Mestre' })
-    .first()
-    .locator('[role="switch"]')
-    .first();
+  const switchAfterReload = page.getByTestId('ai-master-switch');
   await expect(switchAfterReload).toHaveAttribute(
     'data-state',
     expectedIsActive ? 'checked' : 'unchecked'
