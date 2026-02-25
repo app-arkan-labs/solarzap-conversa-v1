@@ -49,10 +49,10 @@ export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCom
 
   // Fetch comments when modal opens
   useEffect(() => {
-    if (isOpen && leadId) {
+    if (isOpen && leadId && orgId) {
       fetchComments();
     }
-  }, [isOpen, leadId]);
+  }, [isOpen, leadId, orgId]);
 
   // Reset date filters when modal opens
   useEffect(() => {
@@ -63,6 +63,11 @@ export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCom
   }, [isOpen]);
 
   const fetchComments = async () => {
+    if (!orgId) {
+      setComments([]);
+      return;
+    }
+
     setIsLoading(true);
     try {
       const leadIdNum = parseInt(leadId);
@@ -75,6 +80,7 @@ export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCom
       const { data, error } = await supabase
         .from('comentarios_leads')
         .select('*')
+        .eq('org_id', orgId)
         .eq('lead_id', leadIdNum)
         .order('created_at', { ascending: false });
 

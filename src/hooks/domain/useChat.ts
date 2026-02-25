@@ -157,7 +157,6 @@ export function useChat(contacts: Contact[] = []) {
             const { data, error } = await supabase
                 .from('interacoes')
                 .select('*')
-                .eq('user_id', user.id)
                 .eq('org_id', orgId)
                 .order('created_at', { ascending: false }) // Get newest first
                 .limit(1000); // Explicit limit
@@ -191,8 +190,6 @@ export function useChat(contacts: Contact[] = []) {
                     filter: `org_id=eq.${orgId}`,
                 },
                 (payload) => {
-                    // Guard: only process messages belonging to this user
-                    if (payload.new.user_id !== user.id) return;
                     import.meta.env.DEV && console.log('🔴 [RT INSERT]', payload.new.id);
                     const newMessage = interacaoToMessage(payload.new as InteracaoDB);
                     queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
@@ -211,8 +208,6 @@ export function useChat(contacts: Contact[] = []) {
                     filter: `org_id=eq.${orgId}`,
                 },
                 (payload) => {
-                    // Guard: only process messages belonging to this user
-                    if (payload.new.user_id !== user.id) return;
                     import.meta.env.DEV && console.log('🟡 [RT UPDATE]', payload.new.id, payload.new.attachment_ready);
                     const updatedMessage = interacaoToMessage(payload.new as InteracaoDB);
 
@@ -879,6 +874,24 @@ export function useChat(contacts: Contact[] = []) {
     // Derived state: Conversations (wrapped in useMemo for proper reactivity)
     const allMessages = messagesQuery.data || [];
 
+    const normalizePhoneDigits = (value: string | undefined | null): string => {
+        if (!value) return '';
+        return String(value).replace(/\D/g, '');
+    };
+
+    const phonesEquivalent = (a: string | undefined | null, b: string | undefined | null): boolean => {
+        const da = normalizePhoneDigits(a);
+        const db = normalizePhoneDigits(b);
+        if (!da || !db) return false;
+        if (da === db) return true;
+        if (`55${da}` === db) return true;
+        if (da === `55${db}`) return true;
+        if (da.length > 11 && db.length > 11) {
+            return da.slice(-11) === db.slice(-11);
+        }
+        return false;
+    };
+
     const conversations = useMemo(() => {
         import.meta.env.DEV && console.log('🔄 [DERIVE] Recalculating conversations, messages:', allMessages.length, 'contacts:', contacts.length);
         const conversationsMap = new Map<string, Conversation>();
@@ -892,6 +905,10 @@ export function useChat(contacts: Contact[] = []) {
                 // 2. Secondary: Match by phoneE164 (for messages with different lead_id but same phone)
                 if (contact.phoneE164 && m.phoneE164) {
                     return contact.phoneE164 === m.phoneE164;
+                }
+                // 3. Fallback: normalized phone match (handles missing phone_e164 / null lead_id)
+                if (phonesEquivalent(contact.phoneE164 || contact.phone, m.phoneE164)) {
+                    return true;
                 }
                 return false;
             });
