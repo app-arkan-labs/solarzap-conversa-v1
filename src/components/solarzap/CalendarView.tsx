@@ -14,6 +14,7 @@ import { CalendarFilters, CalendarFilterState } from './calendar/CalendarFilters
 import { EventFeedbackModal } from './calendar/EventFeedbackModal';
 import { EventArchiveModal } from './calendar/EventArchiveModal';
 import { useToast } from '@/hooks/use-toast';
+import { PageHeader } from './PageHeader';
 
 type CalendarAppointmentErrorBoundaryProps = {
   children: ReactNode;
@@ -304,26 +305,18 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
 
   return (
     <div className="flex-1 flex flex-col bg-muted/30 h-full overflow-hidden">
-      {/* Premium Header */}
-      <div className="bg-gradient-to-r from-primary/10 via-background to-purple-500/10 border-b px-6 py-5 shadow-sm z-20">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
-              <CalendarIcon className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground tracking-tight">Calendário</h1>
-              <p className="text-sm text-muted-foreground">Gestão de Agenda</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button onClick={handleCreateEvent} className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10">
-              <Plus className="w-4 h-4" />
-              Novo Agendamento
-            </Button>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="Calendário"
+        subtitle="Gestão de Agenda"
+        icon={CalendarIcon}
+        className="z-20"
+        actionContent={
+          <Button onClick={handleCreateEvent} className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10 w-full sm:w-auto">
+            <Plus className="w-4 h-4" />
+            Novo Agendamento
+          </Button>
+        }
+      />
 
       <div className="flex-1 flex overflow-hidden">
         {/* Main Calendar Grid */}

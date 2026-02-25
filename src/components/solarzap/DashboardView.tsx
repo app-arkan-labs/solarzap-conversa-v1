@@ -22,6 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/solarzap/PageHeader";
 
 interface DashboardViewProps {
   onNavigate?: (tab: string) => void;
@@ -93,96 +94,86 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
   }
   return (
     <div className="flex-1 flex flex-col bg-muted/30 overflow-y-auto">
-      {/* Premium Header */}
-      <div className="bg-gradient-to-r from-primary/10 via-background to-emerald-500/10 border-b">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
-                <CalendarIcon className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-                <p className="text-sm text-muted-foreground">Visão geral do seu negócio</p>
-              </div>
-            </div>
+      <PageHeader
+        title="Dashboard"
+        subtitle="Visão geral do seu negócio"
+        icon={CalendarIcon}
+        actionContent={
+          <>
+            {/* Period Selector */}
+            <Select value={periodLabel} onValueChange={handlePeriodChange}>
+              <SelectTrigger className="w-[160px] bg-background border-border/50 shadow-sm glass">
+                <SelectValue placeholder="Período" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="this_month">Este Mês</SelectItem>
+                <SelectItem value="last_7_days">Últimos 7 dias</SelectItem>
+                <SelectItem value="last_30_days">Últimos 30 dias</SelectItem>
+                <SelectItem value="this_year">Este Ano</SelectItem>
+              </SelectContent>
+            </Select>
 
-            <div className="flex items-center gap-3">
-              {/* Period Selector */}
-              <Select value={periodLabel} onValueChange={handlePeriodChange}>
-                <SelectTrigger className="w-[160px] bg-background border-border/50 shadow-sm">
-                  <SelectValue placeholder="Período" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="this_month">Este Mês</SelectItem>
-                  <SelectItem value="last_7_days">Últimos 7 dias</SelectItem>
-                  <SelectItem value="last_30_days">Últimos 30 dias</SelectItem>
-                  <SelectItem value="this_year">Este Ano</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Date Picker */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-[220px] justify-start text-left font-normal bg-background border-border/50 shadow-sm"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-                    {dateRange.from ? (
-                      dateRange.to ? (
-                        <>
-                          {format(dateRange.from, "dd/MM/y", { locale: ptBR })} -{" "}
-                          {format(dateRange.to, "dd/MM/y", { locale: ptBR })}
-                        </>
-                      ) : (
-                        format(dateRange.from, "dd/MM/y", { locale: ptBR })
-                      )
+            {/* Date Picker */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-[220px] justify-start text-left font-normal bg-background border-border/50 shadow-sm glass"
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                  {dateRange.from ? (
+                    dateRange.to ? (
+                      <>
+                        {format(dateRange.from, "dd/MM/y", { locale: ptBR })} -{" "}
+                        {format(dateRange.to, "dd/MM/y", { locale: ptBR })}
+                      </>
                     ) : (
-                      <span>Selecione data</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end">
-                  <Calendar
-                    initialFocus
-                    mode="range"
-                    defaultMonth={dateRange.from}
-                    selected={dateRange}
-                    onSelect={(range) => {
-                      if (range?.from) {
-                        setDateRange({ from: range.from, to: range.to || range.from });
-                        setPeriodLabel("custom");
-                      }
-                    }}
-                    numberOfMonths={2}
-                  />
-                </PopoverContent>
-              </Popover>
+                      format(dateRange.from, "dd/MM/y", { locale: ptBR })
+                    )
+                  ) : (
+                    <span>Selecione data</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  initialFocus
+                  mode="range"
+                  defaultMonth={dateRange.from}
+                  selected={dateRange}
+                  onSelect={(range) => {
+                    if (range?.from) {
+                      setDateRange({ from: range.from, to: range.to || range.from });
+                      setPeriodLabel("custom");
+                    }
+                  }}
+                  numberOfMonths={2}
+                />
+              </PopoverContent>
+            </Popover>
 
-              {/* Export Button */}
-              <Select onValueChange={(v) => handleExport(v as any)}>
-                <SelectTrigger className="w-[130px] bg-background border-border/50 shadow-sm">
-                  <Download className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <SelectValue placeholder="Exportar" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="leads">Leads (CSV)</SelectItem>
-                  <SelectItem value="deals">Deals (CSV)</SelectItem>
-                  <SelectItem value="appointments">Agenda (CSV)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-      </div>
+            {/* Export Button */}
+            <Select onValueChange={(v) => handleExport(v as any)}>
+              <SelectTrigger className="w-[130px] bg-background border-border/50 shadow-sm glass">
+                <Download className="mr-2 h-4 w-4 text-muted-foreground" />
+                <SelectValue placeholder="Exportar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="leads">Leads (CSV)</SelectItem>
+                <SelectItem value="deals">Deals (CSV)</SelectItem>
+                <SelectItem value="appointments">Agenda (CSV)</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
 
-      <div className="max-w-7xl mx-auto w-full px-6 py-6 space-y-6">
+      <div className="w-full px-6 py-6 space-y-6">
         <KpiCards data={data?.kpis} isLoading={isLoading} />
         <DashboardCharts data={data?.charts} isLoading={isLoading} />
 
         {/* ── Proposal Metrics Card ── */}
-        <Card data-testid="proposal-metrics-card">
+        <Card data-testid="proposal-metrics-card" className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-primary" />
@@ -279,7 +270,7 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
           <TabsContent value="operacional">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
               <div className="col-span-4 lg:col-span-5">
-                <Card>
+                <Card className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
                   <CardHeader>
                     <CardTitle>Leads Estagnados</CardTitle>
                     <CardDescription>Leads sem movimentação de etapa há mais de 7 dias</CardDescription>
@@ -292,7 +283,7 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
             </div>
           </TabsContent>
           <TabsContent value="equipe">
-            <Card>
+            <Card className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
               <CardHeader>
                 <CardTitle>Performance por Responsável</CardTitle>
               </CardHeader>

@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { UpdateLeadData } from './EditLeadModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
 import { AssignMemberSelect } from './AssignMemberSelect';
+import { PageHeader } from './PageHeader'; // New Import
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -483,35 +484,33 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
     <div className="flex-1 flex h-full bg-muted/30">
       {/* Left Sidebar - Contact List */}
       <div className="w-80 border-r border-border flex flex-col bg-card">
-        {/* Premium Header */}
-        <div className="bg-gradient-to-r from-primary/10 via-background to-emerald-500/10 px-4 py-4 flex items-center justify-between shadow-sm border-b">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
-              <Phone className="w-5 h-5 text-white" />
+        <PageHeader
+          title="Contatos"
+          icon={Phone}
+          className="px-4 py-4"
+          actionContent={
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground hover:text-foreground hover:bg-muted gap-1 h-8"
+                onClick={() => setImportModalOpen(true)}
+                title="Importar contatos"
+              >
+                <Upload className="w-4 h-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground hover:text-foreground hover:bg-muted gap-1 h-8"
+                onClick={() => setExportModalOpen(true)}
+                title="Exportar contatos"
+              >
+                <Download className="w-4 h-4" />
+              </Button>
             </div>
-            <h1 className="text-lg font-bold text-foreground">Contatos</h1>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-muted-foreground hover:text-foreground hover:bg-muted gap-1 h-8"
-              onClick={() => setImportModalOpen(true)}
-              title="Importar contatos"
-            >
-              <Upload className="w-4 h-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-muted-foreground hover:text-foreground hover:bg-muted gap-1 h-8"
-              onClick={() => setExportModalOpen(true)}
-              title="Exportar contatos"
-            >
-              <Download className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
+          }
+        />
 
         {/* Search */}
         <div className="p-3 border-b border-border">
@@ -521,7 +520,7 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
               placeholder="Pesquisar contatos..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 bg-background"
+              className="pl-9 bg-background glass shadow-sm"
             />
           </div>
         </div>
@@ -567,72 +566,72 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
             const isRowSelected = selectedContactIds.has(contact.id);
             return (
               <div
-              key={contact.id}
-              onClick={() => {
-                if (isSelectionMode) {
-                  toggleContactSelection(contact.id);
-                  return;
-                }
-                setSelectedContact(contact);
-              }}
-              className={`
+                key={contact.id}
+                onClick={() => {
+                  if (isSelectionMode) {
+                    toggleContactSelection(contact.id);
+                    return;
+                  }
+                  setSelectedContact(contact);
+                }}
+                className={`
                 flex items-center gap-3 p-3 cursor-pointer border-b border-border group
                 hover:bg-muted/50 transition-colors
                 ${isSelectionMode ? (isRowSelected ? 'bg-primary/5' : '') : (selectedContact?.id === contact.id ? 'bg-muted' : '')}
               `}
-            >
-              {isSelectionMode && (
-                <Checkbox
-                  checked={isRowSelected}
-                  onCheckedChange={() => toggleContactSelection(contact.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  aria-label={`Selecionar ${contact.name}`}
-                />
-              )}
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-primary/10 text-primary text-lg">
-                  {contact.avatar || contact.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-foreground truncate">{contact.name}</span>
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${getStageColor(contact.pipelineStage)}`} />
-                </div>
-                <div className="text-sm text-muted-foreground truncate flex items-center gap-1">
-                  <Phone className="w-3 h-3" />
-                  {formatPhoneForDisplay(contact.phone)}
-                </div>
-              </div>
-              {/* Buttons on hover */}
-              {!isSelectionMode && (
-              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedContact(contact);
-                    setCommentsModalOpen(true);
-                  }}
-                  title="Comentários"
-                >
-                  <MessageSquare className="w-4 h-4 text-muted-foreground hover:text-primary" />
-                </Button>
-                {onDeleteLead && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 hover:bg-destructive/10"
-                    onClick={(e) => handleDeleteClick(contact, e)}
-                    title="Excluir Contato"
-                  >
-                    <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
-                  </Button>
+              >
+                {isSelectionMode && (
+                  <Checkbox
+                    checked={isRowSelected}
+                    onCheckedChange={() => toggleContactSelection(contact.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Selecionar ${contact.name}`}
+                  />
                 )}
-              </div>
-              )}
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback className="bg-primary/10 text-primary text-lg">
+                    {contact.avatar || contact.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground truncate">{contact.name}</span>
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${getStageColor(contact.pipelineStage)}`} />
+                  </div>
+                  <div className="text-sm text-muted-foreground truncate flex items-center gap-1">
+                    <Phone className="w-3 h-3" />
+                    {formatPhoneForDisplay(contact.phone)}
+                  </div>
+                </div>
+                {/* Buttons on hover */}
+                {!isSelectionMode && (
+                  <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedContact(contact);
+                        setCommentsModalOpen(true);
+                      }}
+                      title="Comentários"
+                    >
+                      <MessageSquare className="w-4 h-4 text-muted-foreground hover:text-primary" />
+                    </Button>
+                    {onDeleteLead && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 hover:bg-destructive/10"
+                        onClick={(e) => handleDeleteClick(contact, e)}
+                        title="Excluir Contato"
+                      >
+                        <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

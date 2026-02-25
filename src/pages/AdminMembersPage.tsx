@@ -18,6 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { PageHeader } from '@/components/solarzap/PageHeader';
 
 type InviteMode = 'create' | 'invite';
 type AdminMembersPageProps = {
@@ -299,378 +300,374 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
 
   return (
     <div
-      className={`${embedded ? 'h-full flex-1 overflow-y-auto' : 'min-h-screen'} bg-background p-6 md:p-8`}
+      className={`${embedded ? 'h-full flex-1 overflow-y-auto' : 'min-h-screen flex flex-col'} bg-background`}
       data-testid="admin-members-page"
     >
-      <div className="mx-auto w-full max-w-6xl space-y-6">
-        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Shield className="h-5 w-5 text-primary" />
-              </div>
-              Gestão de Equipe
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Gerencie membros, funções e permissões da sua organização.
-            </p>
-          </div>
+      <PageHeader
+        title="Gestão de Equipe"
+        subtitle="Gerencie membros, funções e permissões da sua organização."
+        icon={Shield}
+        actionContent={
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => void loadMembers(true)} disabled={refreshing}>
+            <Button variant="outline" onClick={() => void loadMembers(true)} disabled={refreshing} className="bg-background/50 glass border-border/50 shadow-sm">
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               Atualizar
             </Button>
             {!embedded && (
-              <Button asChild variant="secondary">
+              <Button asChild variant="secondary" className="bg-background/50 glass border-border/50 shadow-sm">
                 <Link to="/">Voltar</Link>
               </Button>
             )}
           </div>
-        </header>
+        }
+      />
+      <div className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
+        <div className="mx-auto w-full max-w-6xl space-y-6">
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-primary" />
-              Adicionar Membro
-            </CardTitle>
-            <CardDescription>
-              Crie com senha temporária ou envie um convite por e-mail.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-4 md:grid-cols-12" onSubmit={handleInviteSubmit}>
-              <div className="md:col-span-5">
-                <label className="text-sm font-medium">Email</label>
-                <Input
-                  data-testid="invite-email-input"
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(event) => setInviteEmail(event.target.value)}
-                  placeholder="membro@empresa.com"
-                  required
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-sm font-medium">Função</label>
-                <select
-                  data-testid="invite-role-select"
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  value={inviteRole}
-                  onChange={(event) => setInviteRole(event.target.value as OrgRole)}
-                >
-                  {ROLE_OPTIONS.map((roleOption) => (
-                    <option key={roleOption} value={roleOption}>
-                      {ROLE_LABELS[roleOption]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-sm font-medium">Modo</label>
-                <select
-                  data-testid="invite-mode-select"
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  value={inviteMode}
-                  onChange={(event) => setInviteMode(event.target.value as InviteMode)}
-                >
-                  <option value="create">Criar com senha</option>
-                  <option value="invite">Enviar convite</option>
-                </select>
-              </div>
-              <div className="md:col-span-2 flex items-end">
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <Switch
-                    checked={inviteCanViewTeamLeads}
-                    onCheckedChange={setInviteCanViewTeamLeads}
-                    className="scale-90"
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-primary" />
+                Adicionar Membro
+              </CardTitle>
+              <CardDescription>
+                Crie com senha temporária ou envie um convite por e-mail.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="grid gap-4 md:grid-cols-12" onSubmit={handleInviteSubmit}>
+                <div className="md:col-span-5">
+                  <label className="text-sm font-medium">Email</label>
+                  <Input
+                    data-testid="invite-email-input"
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(event) => setInviteEmail(event.target.value)}
+                    placeholder="membro@empresa.com"
+                    required
                   />
-                  <span className="text-xs">Ver leads da equipe</span>
-                </label>
-              </div>
-              <div className="md:col-span-1 flex items-end">
-                <Button data-testid="invite-submit" type="submit" disabled={inviteLoading} className="w-full">
-                  {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Convidar'}
-                </Button>
-              </div>
-            </form>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-sm font-medium">Função</label>
+                  <select
+                    data-testid="invite-role-select"
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={inviteRole}
+                    onChange={(event) => setInviteRole(event.target.value as OrgRole)}
+                  >
+                    {ROLE_OPTIONS.map((roleOption) => (
+                      <option key={roleOption} value={roleOption}>
+                        {ROLE_LABELS[roleOption]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-sm font-medium">Modo</label>
+                  <select
+                    data-testid="invite-mode-select"
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={inviteMode}
+                    onChange={(event) => setInviteMode(event.target.value as InviteMode)}
+                  >
+                    <option value="create">Criar com senha</option>
+                    <option value="invite">Enviar convite</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2 flex items-end">
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <Switch
+                      checked={inviteCanViewTeamLeads}
+                      onCheckedChange={setInviteCanViewTeamLeads}
+                      className="scale-90"
+                    />
+                    <span className="text-xs">Ver leads da equipe</span>
+                  </label>
+                </div>
+                <div className="md:col-span-1 flex items-end">
+                  <Button data-testid="invite-submit" type="submit" disabled={inviteLoading} className="w-full">
+                    {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Convidar'}
+                  </Button>
+                </div>
+              </form>
 
-            {lastTempPassword && (
-              <div
-                data-testid="invite-temp-password"
-                className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm"
-              >
-                <span className="font-medium text-amber-800">Senha temporária:</span>{' '}
-                <code className="font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded">{lastTempPassword}</code>
-                <p className="text-xs text-amber-600 mt-1">Compartilhe essa senha com o novo membro. Ele poderá alterá-la depois.</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              {lastTempPassword && (
+                <div
+                  data-testid="invite-temp-password"
+                  className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm"
+                >
+                  <span className="font-medium text-amber-800">Senha temporária:</span>{' '}
+                  <code className="font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded">{lastTempPassword}</code>
+                  <p className="text-xs text-amber-600 mt-1">Compartilhe essa senha com o novo membro. Ele poderá alterá-la depois.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              Membros da Equipe
-              <Badge variant="secondary" className="ml-1">{members.length}</Badge>
-            </CardTitle>
-            <CardDescription>
-              {ownerCount} proprietário(s) ativo(s). O último proprietário não pode ser removido.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="members-table">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className="pb-3 font-medium">Membro</th>
-                  <th className="pb-3 font-medium">Função</th>
-                  <th className="pb-3 font-medium">Ver equipe</th>
-                  <th className="pb-3 font-medium">Entrada</th>
-                  <th className="pb-3 font-medium text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((member) => {
-                  const draft = draftByUserId[member.user_id] || {
-                    role: member.role,
-                    can_view_team_leads: member.can_view_team_leads,
-                  };
-                  const dirty =
-                    draft.role !== member.role ||
-                    draft.can_view_team_leads !== member.can_view_team_leads;
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                Membros da Equipe
+                <Badge variant="secondary" className="ml-1">{members.length}</Badge>
+              </CardTitle>
+              <CardDescription>
+                {ownerCount} proprietário(s) ativo(s). O último proprietário não pode ser removido.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <table className="w-full text-sm" data-testid="members-table">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="pb-3 font-medium">Membro</th>
+                    <th className="pb-3 font-medium">Função</th>
+                    <th className="pb-3 font-medium">Ver equipe</th>
+                    <th className="pb-3 font-medium">Entrada</th>
+                    <th className="pb-3 font-medium text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.map((member) => {
+                    const draft = draftByUserId[member.user_id] || {
+                      role: member.role,
+                      can_view_team_leads: member.can_view_team_leads,
+                    };
+                    const dirty =
+                      draft.role !== member.role ||
+                      draft.can_view_team_leads !== member.can_view_team_leads;
 
-                  return (
-                    <tr
-                      key={member.user_id}
-                      data-testid={`member-row-${member.user_id}`}
-                      className="border-b align-middle"
-                    >
-                      <td className="py-3 pr-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
-                            {(fallbackMemberLabel(member)[0] || '?').toUpperCase()}
+                    return (
+                      <tr
+                        key={member.user_id}
+                        data-testid={`member-row-${member.user_id}`}
+                        className="border-b align-middle"
+                      >
+                        <td className="py-3 pr-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                              {(fallbackMemberLabel(member)[0] || '?').toUpperCase()}
+                            </div>
+                            <div>
+                              <span className="font-medium">{fallbackMemberLabel(member)}</span>
+                              <Badge variant="outline" className={`ml-2 text-[10px] ${ROLE_COLORS[member.role]}`}>
+                                {ROLE_LABELS[member.role]}
+                              </Badge>
+                            </div>
                           </div>
-                          <div>
-                            <span className="font-medium">{fallbackMemberLabel(member)}</span>
-                            <Badge variant="outline" className={`ml-2 text-[10px] ${ROLE_COLORS[member.role]}`}>
-                              {ROLE_LABELS[member.role]}
-                            </Badge>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 pr-3">
-                        <select
-                          data-testid={`member-role-${member.user_id}`}
-                          className="h-9 rounded-md border border-input bg-background px-2"
-                          value={draft.role}
-                          onChange={(event) =>
-                            handleDraftChange(member.user_id, {
-                              role: event.target.value as OrgRole,
-                            })
-                          }
-                        >
-                          {ROLE_OPTIONS.map((roleOption) => (
-                            <option key={roleOption} value={roleOption}>
-                              {ROLE_LABELS[roleOption]}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="py-3 pr-3">
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={draft.can_view_team_leads}
-                            onCheckedChange={(checked) =>
+                        </td>
+                        <td className="py-3 pr-3">
+                          <select
+                            data-testid={`member-role-${member.user_id}`}
+                            className="h-9 rounded-md border border-input bg-background px-2"
+                            value={draft.role}
+                            onChange={(event) =>
                               handleDraftChange(member.user_id, {
-                                can_view_team_leads: checked,
+                                role: event.target.value as OrgRole,
                               })
                             }
-                            className="scale-90"
-                          />
-                          <Eye className={`h-3.5 w-3.5 ${draft.can_view_team_leads ? 'text-green-600' : 'text-slate-300'}`} />
-                        </div>
-                      </td>
-                      <td className="py-3 pr-3 text-muted-foreground">
-                        {new Date(member.joined_at).toLocaleString('pt-BR')}
-                      </td>
-                      <td className="py-3 text-right">
-                        <div className="inline-flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            data-testid={`member-save-${member.user_id}`}
-                            disabled={!dirty || submittingByUserId[member.user_id] === true}
-                            onClick={() => void handleSaveMember(member)}
                           >
-                            {submittingByUserId[member.user_id] ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <><Save className="h-3.5 w-3.5 mr-1" /> Salvar</>
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            data-testid={`member-remove-${member.user_id}`}
-                            disabled={removingByUserId[member.user_id] === true}
-                            onClick={() => void handleRemoveMember(member)}
-                          >
-                            {removingByUserId[member.user_id] ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-3.5 w-3.5" />
-                            )}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-        {/* Seller Permissions Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Settings2 className="h-5 w-5 text-primary" />
-              Permissões de Vendedores
-            </CardTitle>
-            <CardDescription>
-              Defina o que os vendedores e consultores podem acessar e fazer.{' '}
-              Proprietários e Administradores sempre têm acesso total.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {permissionsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              </div>
-            ) : (
-              <>
-                {/* Settings Tabs Access */}
-                <div>
-                  <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                    <Settings2 className="h-4 w-4" />
-                    Acesso às Abas de Configurações
-                  </h3>
-                  <p className="text-xs text-muted-foreground mb-4">
-                    Escolha quais abas os vendedores podem ver no menu de configurações.
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    <PermissionToggle
-                      icon={<Bot className="h-4 w-4" />}
-                      label="Inteligência Artificial"
-                      description="Configurações de agentes IA"
-                      checked={sellerPermissions?.tab_ia_agentes ?? true}
-                      saving={permissionsSaving}
-                      onChange={(v) => void updateSellerPermissions({ tab_ia_agentes: v })}
-                    />
-                    <PermissionToggle
-                      icon={<Zap className="h-4 w-4" />}
-                      label="Automações"
-                      description="Mensagens automáticas"
-                      checked={sellerPermissions?.tab_automacoes ?? true}
-                      saving={permissionsSaving}
-                      onChange={(v) => void updateSellerPermissions({ tab_automacoes: v })}
-                    />
-                    <PermissionToggle
-                      icon={<Plug className="h-4 w-4" />}
-                      label="Central de Integrações"
-                      description="WhatsApp, Google, etc."
-                      checked={sellerPermissions?.tab_integracoes ?? true}
-                      saving={permissionsSaving}
-                      onChange={(v) => void updateSellerPermissions({ tab_integracoes: v })}
-                    />
-                    <PermissionToggle
-                      icon={<Brain className="h-4 w-4" />}
-                      label="Banco de Dados IA"
-                      description="Base de conhecimento"
-                      checked={sellerPermissions?.tab_banco_ia ?? true}
-                      saving={permissionsSaving}
-                      onChange={(v) => void updateSellerPermissions({ tab_banco_ia: v })}
-                    />
-                    <PermissionToggle
-                      icon={<User className="h-4 w-4" />}
-                      label="Minha Conta"
-                      description="Perfil e senha"
-                      checked={sellerPermissions?.tab_minha_conta ?? true}
-                      saving={permissionsSaving}
-                      onChange={(v) => void updateSellerPermissions({ tab_minha_conta: v })}
-                    />
-                  </div>
+                            {ROLE_OPTIONS.map((roleOption) => (
+                              <option key={roleOption} value={roleOption}>
+                                {ROLE_LABELS[roleOption]}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-3 pr-3">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={draft.can_view_team_leads}
+                              onCheckedChange={(checked) =>
+                                handleDraftChange(member.user_id, {
+                                  can_view_team_leads: checked,
+                                })
+                              }
+                              className="scale-90"
+                            />
+                            <Eye className={`h-3.5 w-3.5 ${draft.can_view_team_leads ? 'text-green-600' : 'text-slate-300'}`} />
+                          </div>
+                        </td>
+                        <td className="py-3 pr-3 text-muted-foreground">
+                          {new Date(member.joined_at).toLocaleString('pt-BR')}
+                        </td>
+                        <td className="py-3 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              data-testid={`member-save-${member.user_id}`}
+                              disabled={!dirty || submittingByUserId[member.user_id] === true}
+                              onClick={() => void handleSaveMember(member)}
+                            >
+                              {submittingByUserId[member.user_id] ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <><Save className="h-3.5 w-3.5 mr-1" /> Salvar</>
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              data-testid={`member-remove-${member.user_id}`}
+                              disabled={removingByUserId[member.user_id] === true}
+                              onClick={() => void handleRemoveMember(member)}
+                            >
+                              {removingByUserId[member.user_id] ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+          {/* Seller Permissions Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings2 className="h-5 w-5 text-primary" />
+                Permissões de Vendedores
+              </CardTitle>
+              <CardDescription>
+                Defina o que os vendedores e consultores podem acessar e fazer.{' '}
+                Proprietários e Administradores sempre têm acesso total.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {permissionsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
                 </div>
-
-                <div className="border-t" />
-
-                {/* Action Permissions */}
-                <div>
-                  <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                    <Shield className="h-4 w-4" />
-                    Permissões de Ações
-                  </h3>
-                  <p className="text-xs text-muted-foreground mb-4">
-                    Controle quais ações os vendedores podem executar.
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    <PermissionToggle
-                      icon={<Trash2 className="h-4 w-4" />}
-                      label="Deletar Leads"
-                      description="Excluir leads permanentemente"
-                      checked={sellerPermissions?.can_delete_leads ?? true}
-                      saving={permissionsSaving}
-                      onChange={(v) => void updateSellerPermissions({ can_delete_leads: v })}
-                    />
-                    <PermissionToggle
-                      icon={<Ban className="h-4 w-4" />}
-                      label="Deletar Propostas"
-                      description="Excluir propostas existentes"
-                      checked={sellerPermissions?.can_delete_proposals ?? true}
-                      saving={permissionsSaving}
-                      onChange={(v) => void updateSellerPermissions({ can_delete_proposals: v })}
-                    />
-                    <PermissionToggle
-                      icon={<Sparkles className="h-4 w-4" />}
-                      label="Ligar/Desligar IA"
-                      description="Ativar ou pausar IA nos leads"
-                      checked={sellerPermissions?.can_toggle_ai ?? true}
-                      saving={permissionsSaving}
-                      onChange={(v) => void updateSellerPermissions({ can_toggle_ai: v })}
-                    />
-                    <PermissionToggle
-                      icon={<UserCheck className="h-4 w-4" />}
-                      label="Atribuir Vendedor"
-                      description="Atribuir vendedor responsável aos leads"
-                      checked={sellerPermissions?.can_assign_leads ?? true}
-                      saving={permissionsSaving}
-                      onChange={(v) => void updateSellerPermissions({ can_assign_leads: v })}
-                    />
+              ) : (
+                <>
+                  {/* Settings Tabs Access */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                      <Settings2 className="h-4 w-4" />
+                      Acesso às Abas de Configurações
+                    </h3>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      Escolha quais abas os vendedores podem ver no menu de configurações.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <PermissionToggle
+                        icon={<Bot className="h-4 w-4" />}
+                        label="Inteligência Artificial"
+                        description="Configurações de agentes IA"
+                        checked={sellerPermissions?.tab_ia_agentes ?? true}
+                        saving={permissionsSaving}
+                        onChange={(v) => void updateSellerPermissions({ tab_ia_agentes: v })}
+                      />
+                      <PermissionToggle
+                        icon={<Zap className="h-4 w-4" />}
+                        label="Automações"
+                        description="Mensagens automáticas"
+                        checked={sellerPermissions?.tab_automacoes ?? true}
+                        saving={permissionsSaving}
+                        onChange={(v) => void updateSellerPermissions({ tab_automacoes: v })}
+                      />
+                      <PermissionToggle
+                        icon={<Plug className="h-4 w-4" />}
+                        label="Central de Integrações"
+                        description="WhatsApp, Google, etc."
+                        checked={sellerPermissions?.tab_integracoes ?? true}
+                        saving={permissionsSaving}
+                        onChange={(v) => void updateSellerPermissions({ tab_integracoes: v })}
+                      />
+                      <PermissionToggle
+                        icon={<Brain className="h-4 w-4" />}
+                        label="Banco de Dados IA"
+                        description="Base de conhecimento"
+                        checked={sellerPermissions?.tab_banco_ia ?? true}
+                        saving={permissionsSaving}
+                        onChange={(v) => void updateSellerPermissions({ tab_banco_ia: v })}
+                      />
+                      <PermissionToggle
+                        icon={<User className="h-4 w-4" />}
+                        label="Minha Conta"
+                        description="Perfil e senha"
+                        checked={sellerPermissions?.tab_minha_conta ?? true}
+                        saving={permissionsSaving}
+                        onChange={(v) => void updateSellerPermissions({ tab_minha_conta: v })}
+                      />
+                    </div>
                   </div>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+
+                  <div className="border-t" />
+
+                  {/* Action Permissions */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      Permissões de Ações
+                    </h3>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      Controle quais ações os vendedores podem executar.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <PermissionToggle
+                        icon={<Trash2 className="h-4 w-4" />}
+                        label="Deletar Leads"
+                        description="Excluir leads permanentemente"
+                        checked={sellerPermissions?.can_delete_leads ?? true}
+                        saving={permissionsSaving}
+                        onChange={(v) => void updateSellerPermissions({ can_delete_leads: v })}
+                      />
+                      <PermissionToggle
+                        icon={<Ban className="h-4 w-4" />}
+                        label="Deletar Propostas"
+                        description="Excluir propostas existentes"
+                        checked={sellerPermissions?.can_delete_proposals ?? true}
+                        saving={permissionsSaving}
+                        onChange={(v) => void updateSellerPermissions({ can_delete_proposals: v })}
+                      />
+                      <PermissionToggle
+                        icon={<Sparkles className="h-4 w-4" />}
+                        label="Ligar/Desligar IA"
+                        description="Ativar ou pausar IA nos leads"
+                        checked={sellerPermissions?.can_toggle_ai ?? true}
+                        saving={permissionsSaving}
+                        onChange={(v) => void updateSellerPermissions({ can_toggle_ai: v })}
+                      />
+                      <PermissionToggle
+                        icon={<UserCheck className="h-4 w-4" />}
+                        label="Atribuir Vendedor"
+                        description="Atribuir vendedor responsável aos leads"
+                        checked={sellerPermissions?.can_assign_leads ?? true}
+                        saving={permissionsSaving}
+                        onChange={(v) => void updateSellerPermissions({ can_assign_leads: v })}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Remove member confirmation dialog (replaces window.confirm) */}
+        <Dialog open={!!memberToRemove} onOpenChange={(open) => !open && setMemberToRemove(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Remover Membro</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              Remover {memberToRemove ? fallbackMemberLabel(memberToRemove) : ''} da organização? Esta ação não remove o usuário do Auth.
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setMemberToRemove(null)}>Cancelar</Button>
+              <Button variant="destructive" onClick={confirmRemoveMember}>Remover</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
-
-      {/* Remove member confirmation dialog (replaces window.confirm) */}
-      <Dialog open={!!memberToRemove} onOpenChange={(open) => !open && setMemberToRemove(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Remover Membro</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Remover {memberToRemove ? fallbackMemberLabel(memberToRemove) : ''} da organização? Esta ação não remove o usuário do Auth.
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMemberToRemove(null)}>Cancelar</Button>
-            <Button variant="destructive" onClick={confirmRemoveMember}>Remover</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -694,9 +691,8 @@ function PermissionToggle({
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors">
       <div className="flex items-center gap-3">
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-          checked ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-        }`}>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${checked ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+          }`}>
           {icon}
         </div>
         <div>

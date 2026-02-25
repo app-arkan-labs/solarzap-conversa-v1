@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
 import { Contact, PIPELINE_STAGES, PipelineStage, CalendarEvent } from '@/types/solarzap';
 import { Badge } from '@/components/ui/badge';
-import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog, MapPin, MessageSquareQuote } from 'lucide-react';
+import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog, MapPin, MessageSquareQuote, Kanban } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -13,6 +13,7 @@ import { ProposalModal, ProposalData } from './ProposalModal';
 import { ProposalReadyModal } from './ProposalReadyModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
 import { AssignMemberSelect } from './AssignMemberSelect';
+import { PageHeader } from './PageHeader';
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
 import { ExportContactsModal } from './ExportContactsModal';
 import {
@@ -522,28 +523,19 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
 
   return (
     <div className="flex-1 flex flex-col h-full w-full overflow-hidden bg-muted/30">
-      {/* Premium Header */}
-      <div className="px-6 py-5 bg-gradient-to-r from-primary/10 via-background to-blue-500/10 border-b flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Pipeline de Vendas</h1>
-              <p className="text-sm text-muted-foreground">Arraste os cards entre as etapas para navegar</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
+      <PageHeader
+        title="Pipeline de Vendas"
+        subtitle="Arraste os cards entre as etapas para navegar"
+        icon={Kanban}
+        actionContent={
+          <>
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar leads..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-background border-border/50 shadow-sm"
+                className="pl-10 bg-background border-border/50 shadow-sm glass"
               />
             </div>
 
@@ -554,7 +546,7 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
                   variant="outline"
                   size="icon"
                   title="Importar / Exportar contatos"
-                  className="border-border/50 shadow-sm"
+                  className="border-border/50 shadow-sm glass"
                 >
                   <ArrowUpDown className="w-4 h-4" />
                 </Button>
@@ -570,10 +562,9 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-        </div>
-      </div>
-
+          </>
+        }
+      />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

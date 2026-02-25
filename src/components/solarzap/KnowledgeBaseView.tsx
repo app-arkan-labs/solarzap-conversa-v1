@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { SobreEmpresaTab } from './knowledge-base/SobreEmpresaTab';
 import { DepoimentosTab } from './knowledge-base/DepoimentosTab';
 import { ObjecoesFAQTab } from './knowledge-base/ObjecoesFAQTab';
+import { PageHeader } from './PageHeader';
 
 export function KnowledgeBaseView() {
     const { toast } = useToast();
@@ -134,30 +135,23 @@ export function KnowledgeBaseView() {
     };
 
     return (
-        <div className="h-full flex flex-col bg-background">
-            {/* Header */}
-            <div className="h-16 border-b flex items-center px-6 justify-between bg-gradient-to-r from-primary/10 via-background to-primary/5">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
-                        <Brain className="w-5 h-5 text-primary-foreground" />
-                    </div>
-                    <div>
-                        <h1 className="text-lg font-bold text-foreground">Banco de Dados</h1>
-                        <p className="text-xs text-muted-foreground">Treine a IA para representar sua empresa</p>
-                    </div>
-                </div>
-
-                {/* Import Button */}
-                <Button
-                    variant="outline"
-                    className="gap-2"
-                    onClick={() => setIsImportDialogOpen(true)}
-                    disabled={!canEdit}
-                >
-                    <FileUp className="w-4 h-4" />
-                    Importar Documento
-                </Button>
-            </div>
+        <div className="h-full flex flex-col bg-background overflow-hidden">
+            <PageHeader
+                title="Banco de Dados"
+                subtitle="Treine a IA para representar sua empresa"
+                icon={Brain}
+                actionContent={
+                    <Button
+                        variant="outline"
+                        className="gap-2 bg-background/50 glass border-border/50 shadow-sm"
+                        onClick={() => setIsImportDialogOpen(true)}
+                        disabled={!canEdit}
+                    >
+                        <FileUp className="w-4 h-4" />
+                        Importar Documento
+                    </Button>
+                }
+            />
 
             {/* Content with Tabs */}
             <div className="flex-1 p-6 overflow-auto bg-slate-50/50">

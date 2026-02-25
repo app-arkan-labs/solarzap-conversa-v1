@@ -51,6 +51,7 @@ import {
 import { WHATSAPP_COLORS } from '@/constants';
 
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
+import { PageHeader } from './PageHeader';
 
 export function IntegrationsView() {
   const { settings: aiSettings } = useAISettings(); // Get Global Settings
@@ -235,35 +236,24 @@ export function IntegrationsView() {
   return (
     <ScrollArea className="flex-1 h-full">
       <div className="bg-muted/30 min-h-full">
-        {/* Header Premium */}
-        <div className="bg-gradient-to-r from-primary/10 via-background to-secondary/10 border-b">
-          <div className="max-w-6xl mx-auto px-6 py-8">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
-                  <Plug className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-foreground">Central de Integrações</h1>
-                  <p className="text-muted-foreground">
-                    Conecte suas plataformas e centralize todas as comunicações
-                  </p>
-                </div>
+        <PageHeader
+          title="Central de Integrações"
+          subtitle="Conecte suas plataformas e centralize todas as comunicações"
+          icon={Plug}
+          actionContent={
+            <div className="flex items-center gap-4 bg-background/50 glass px-4 py-2 rounded-xl border border-border/50">
+              <div className="text-right">
+                <div className="text-xl font-bold text-foreground leading-none">{connectedCount}/4</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 font-semibold">Plataformas ativas</div>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-foreground">{connectedCount}/4</div>
-                  <div className="text-sm text-muted-foreground">Plataformas ativas</div>
-                </div>
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Shield className="w-6 h-6 text-primary" />
-                </div>
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-primary" />
               </div>
             </div>
-          </div>
-        </div>
+          }
+        />
 
-        <div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
+        <div className="w-full px-6 py-6 space-y-6">
           {/* Status Cards Premium */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[

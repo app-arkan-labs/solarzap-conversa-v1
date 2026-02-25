@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Loader2, User, Mail, Lock, ShieldCheck, LogOut, Camera } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
+import { PageHeader } from './PageHeader';
 
 export function ConfiguracoesContaView() {
     const { user, role, signOut } = useAuth();
@@ -167,53 +168,52 @@ export function ConfiguracoesContaView() {
     };
 
     return (
-        <div className="flex-1 p-6 overflow-y-auto">
-            <div className="max-w-4xl max-h-full mx-auto space-y-8">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Minha Conta</h1>
-                    <p className="text-muted-foreground mt-2">
-                        Gerencie suas informações de perfil e segurança.
-                    </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="flex-1 flex flex-col items-center h-full bg-slate-50 overflow-hidden">
+            <div className="w-full">
+                <PageHeader
+                    title="Minha Conta"
+                    subtitle="Gerencie suas informações de perfil e segurança."
+                    icon={User}
+                />
+            </div>
+            <div className="flex-1 p-6 overflow-y-auto w-full">
+                <div className="max-w-4xl max-h-full mx-auto space-y-8">
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><User className="w-5 h-5 text-primary" /> Informações do Perfil</CardTitle>
-                            <CardDescription>Atualize os seus dados básicos.</CardDescription>
+                            <CardTitle className="flex items-center gap-2"><User className="w-5 h-5 text-primary" /> Perfil</CardTitle>
+                            <CardDescription>
+                                Atualize suas informações pessoais e foto de perfil.
+                            </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <form id="profile-form" onSubmit={handleUpdateProfile} className="space-y-4">
-                                {/* Avatar upload */}
-                                <div className="flex flex-col items-center gap-3 pb-4 border-b">
-                                    <div className="relative group">
-                                        <div className="w-20 h-20 rounded-full overflow-hidden bg-muted border-2 border-border">
-                                            {avatarUrl ? (
-                                                <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-2xl font-semibold text-muted-foreground">
-                                                    {profileName?.charAt(0)?.toUpperCase() || '?'}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <input
-                                            ref={avatarInputRef}
-                                            type="file"
-                                            accept="image/png,image/jpeg,image/webp"
-                                            className="hidden"
-                                            onChange={handleAvatarUpload}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => avatarInputRef.current?.click()}
-                                            disabled={isLoading}
-                                            className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center shadow-md hover:bg-primary/90 disabled:opacity-50"
-                                        >
-                                            <Camera className="w-3.5 h-3.5" />
-                                        </button>
+                            <form id="profile-form" onSubmit={handleUpdateProfile} className="space-y-6">
+                                <div className="space-y-4">
+                                    <div className="w-20 h-20 rounded-full overflow-hidden bg-muted border-2 border-border">
+                                        {avatarUrl ? (
+                                            <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-2xl font-semibold text-muted-foreground">
+                                                {profileName?.charAt(0)?.toUpperCase() || '?'}
+                                            </div>
+                                        )}
                                     </div>
-                                    <p className="text-xs text-muted-foreground">Clique no ícone para alterar a foto</p>
+                                    <input
+                                        ref={avatarInputRef}
+                                        type="file"
+                                        accept="image/png,image/jpeg,image/webp"
+                                        className="hidden"
+                                        onChange={handleAvatarUpload}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => avatarInputRef.current?.click()}
+                                        disabled={isLoading}
+                                        className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center shadow-md hover:bg-primary/90 disabled:opacity-50"
+                                    >
+                                        <Camera className="w-3.5 h-3.5" />
+                                    </button>
                                 </div>
+                                <p className="text-xs text-muted-foreground">Clique no ícone para alterar a foto</p>
                                 <div className="space-y-2">
                                     <Label htmlFor="name">Nome Completo</Label>
                                     <Input
