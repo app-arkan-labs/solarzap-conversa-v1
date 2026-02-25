@@ -469,6 +469,291 @@ function packLeadMeta(currentObs: string | null | undefined, newData: Record<str
     return `${baseObs}\n\n${META_TAG}:${JSON.stringify(merged)}`;
 }
 
+// --- Lead stage_data JSONB helpers (structured agent fields by stage) ---
+const STAGE_DATA_NAMESPACE_BY_STAGE: Record<string, string> = {
+    'respondeu': 'respondeu',
+    'nao_compareceu': 'nao_compareceu',
+    'proposta_negociacao': 'negociacao',
+    'negociacao': 'negociacao',
+    'financiamento': 'financiamento',
+};
+
+const STAGE_DATA_ALLOWED_FIELDS: Record<string, Set<string>> = {
+    respondeu: new Set([
+        'segment',
+        'timing',
+        'budget_fit',
+        'need_reason',
+        'decision_makers',
+        'decision_makers_present',
+        'visit_datetime',
+        'address',
+        'reference_point',
+        'bant_complete',
+    ]),
+    nao_compareceu: new Set([
+        'no_show_reason',
+        'recovery_path',
+        'next_step_choice',
+        'next_step',
+        'attempt_count',
+        'call_datetime',
+        'visit_datetime',
+        'address',
+        'reference_point',
+    ]),
+    negociacao: new Set([
+        'payment_track',
+        'payment_method',
+        'main_objection',
+        'chosen_condition',
+        'explicit_approval',
+        'negotiation_status',
+    ]),
+    financiamento: new Set([
+        'financing_status',
+        'missing_docs',
+        'last_update_at',
+        'next_followup_at',
+        'fear_reason',
+        'profile_type',
+        'approved_at',
+        'bank_notes',
+    ]),
+};
+
+function toSnakeCaseKey(raw: string): string {
+    return String(raw || '')
+        .trim()
+        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\s\-./]+/g, '_')
+        .replace(/[^a-zA-Z0-9_]/g, '')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .toLowerCase();
+}
+
+function parseBooleanLike(value: any): boolean | null {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') {
+        if (value === 1) return true;
+        if (value === 0) return false;
+        return null;
+    }
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (['true', '1', 'yes', 'y', 'sim'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'n', 'nao'].includes(normalized)) return false;
+    return null;
+}
+
+function parseNumberLike(value: any): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value !== 'string') return null;
+    const cleaned = value.replace(/[^0-9.,-]/g, '').trim();
+    if (!cleaned) return null;
+    const normalized = cleaned.includes(',') && !cleaned.includes('.')
+        ? cleaned.replace(',', '.')
+        : cleaned.replace(/,/g, '');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeStringArray(value: any): string[] | null {
+    if (Array.isArray(value)) {
+        const items = value
+            .map((item) => typeof item === 'string' ? item.trim() : String(item ?? '').trim())
+            .filter(Boolean)
+            .slice(0, 20);
+        return items.length > 0 ? items : null;
+    }
+    if (typeof value === 'string') {
+        const parts = value
+            .split(/[;,|]/)
+            .map((item) => item.trim())
+            .filter(Boolean)
+            .slice(0, 20);
+        if (parts.length > 0) return parts;
+        const single = value.trim();
+        return single ? [single] : null;
+    }
+    return null;
+}
+
+function normalizeStageDataValue(fieldName: string, value: any): any {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+
+    switch (fieldName) {
+        case 'decision_makers':
+        case 'missing_docs':
+            return normalizeStringArray(value);
+        case 'attempt_count':
+            return parseNumberLike(value);
+        case 'bant_complete':
+        case 'decision_makers_present':
+        case 'explicit_approval':
+            return parseBooleanLike(value);
+        default:
+            break;
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed ? trimmed : null;
+    }
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+    }
+    if (typeof value === 'boolean') return value;
+    if (Array.isArray(value)) {
+        const items = value
+            .map((item) => typeof item === 'string' ? item.trim() : item)
+            .filter((item) => item !== '' && item !== null && item !== undefined)
+            .slice(0, 20);
+        return items.length > 0 ? items : null;
+    }
+    if (typeof value === 'object') {
+        return value;
+    }
+
+    return null;
+}
+
+function getStageDataNamespace(stage: string | null | undefined): string | null {
+    const normalized = normalizeStage(stage);
+    return STAGE_DATA_NAMESPACE_BY_STAGE[normalized] || null;
+}
+
+function resolveStageDataInput(rawStageData: any, namespace: string): Record<string, any> {
+    if (!rawStageData || typeof rawStageData !== 'object' || Array.isArray(rawStageData)) return {};
+    const obj = rawStageData as Record<string, any>;
+    if (namespace === 'negociacao') {
+        if (obj.negociacao && typeof obj.negociacao === 'object' && !Array.isArray(obj.negociacao)) return obj.negociacao;
+        if (obj.proposta_negociacao && typeof obj.proposta_negociacao === 'object' && !Array.isArray(obj.proposta_negociacao)) return obj.proposta_negociacao;
+    }
+    const namespaced = obj[namespace];
+    if (namespaced && typeof namespaced === 'object' && !Array.isArray(namespaced)) return namespaced;
+    return obj;
+}
+
+function normalizeStageDataPayload(rawStageData: any, namespace: string): Record<string, any> {
+    const allowed = STAGE_DATA_ALLOWED_FIELDS[namespace];
+    if (!allowed) return {};
+
+    const input = resolveStageDataInput(rawStageData, namespace);
+    const normalized: Record<string, any> = {};
+
+    for (const [rawKey, rawValue] of Object.entries(input)) {
+        const key = toSnakeCaseKey(rawKey);
+        if (!key || key === 'updated_at') continue;
+        if (!allowed.has(key)) continue;
+
+        const normalizedValue = normalizeStageDataValue(key, rawValue);
+        if (normalizedValue === undefined || normalizedValue === null) continue;
+        if (typeof normalizedValue === 'string' && normalizedValue.trim() === '') continue;
+        if (Array.isArray(normalizedValue) && normalizedValue.length === 0) continue;
+
+        normalized[key] = normalizedValue;
+    }
+
+    return normalized;
+}
+
+function normalizeLeadStageDataRoot(raw: any): Record<string, any> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    return raw as Record<string, any>;
+}
+
+function extractStageDataCandidate(aiRes: any): Record<string, any> | null {
+    const stageData = aiRes?.stage_data;
+    if (stageData && typeof stageData === 'object' && !Array.isArray(stageData)) return stageData;
+    const leadStageData = aiRes?.lead_stage_data;
+    if (leadStageData && typeof leadStageData === 'object' && !Array.isArray(leadStageData)) return leadStageData;
+    return null;
+}
+
+async function executeLeadStageDataUpdate(
+    supabase: any,
+    leadId: string | number,
+    currentStage: string,
+    rawStageData: Record<string, any>,
+    lead: any,
+    runId: string
+): Promise<{
+    candidateCount: number;
+    writtenCount: number;
+    namespace: string | null;
+    skippedReason: string | null;
+}> {
+    const namespace = getStageDataNamespace(currentStage);
+    if (!namespace) {
+        return { candidateCount: 0, writtenCount: 0, namespace: null, skippedReason: 'stage_not_supported' };
+    }
+
+    const payload = normalizeStageDataPayload(rawStageData, namespace);
+    const payloadKeys = Object.keys(payload);
+    if (payloadKeys.length === 0) {
+        return { candidateCount: 0, writtenCount: 0, namespace, skippedReason: 'no_supported_fields' };
+    }
+
+    const currentRoot = normalizeLeadStageDataRoot(lead?.lead_stage_data);
+    const currentNamespaceData =
+        currentRoot[namespace] && typeof currentRoot[namespace] === 'object' && !Array.isArray(currentRoot[namespace])
+            ? (currentRoot[namespace] as Record<string, any>)
+            : {};
+
+    const nowIso = new Date().toISOString();
+    const mergedRoot = {
+        ...currentRoot,
+        [namespace]: {
+            ...currentNamespaceData,
+            ...payload,
+            updated_at: nowIso,
+        },
+    };
+
+    try {
+        const { error } = await supabase
+            .from('leads')
+            .update({ lead_stage_data: mergedRoot })
+            .eq('id', leadId);
+
+        if (error) {
+            if (error.code === '42703' || error.code === 'PGRST204') {
+                console.warn(`⚠️ [${runId}] Stage data column unavailable (lead_stage_data). Skipping structured write.`);
+                return { candidateCount: payloadKeys.length, writtenCount: 0, namespace, skippedReason: 'column_missing' };
+            }
+            console.error(`❌ [${runId}] Stage data write failed:`, error.message);
+            return { candidateCount: payloadKeys.length, writtenCount: 0, namespace, skippedReason: `db_error:${error.code || 'unknown'}` };
+        }
+
+        try {
+            await supabase.from('ai_action_logs').insert({
+                lead_id: Number(leadId),
+                action_type: 'lead_stage_data_updated',
+                details: JSON.stringify({
+                    stage_namespace: namespace,
+                    fields_written_count: payloadKeys.length,
+                    fields_written: payload,
+                    updated_at: nowIso,
+                }),
+                success: true,
+            });
+        } catch (logErr: any) {
+            console.warn(`⚠️ [${runId}] Stage data audit log failed (non-blocking):`, logErr?.message || logErr);
+        }
+
+        console.log(`📦 [${runId}] Stage data updated (${namespace}): ${payloadKeys.join(', ')}`);
+        return { candidateCount: payloadKeys.length, writtenCount: payloadKeys.length, namespace, skippedReason: null };
+    } catch (err: any) {
+        console.error(`❌ [${runId}] executeLeadStageDataUpdate error (non-blocking):`, err?.message || err);
+        return { candidateCount: payloadKeys.length, writtenCount: 0, namespace, skippedReason: `exception:${err?.message || 'unknown'}` };
+    }
+}
+
 // Columns that exist directly on leads table
 const LEAD_DIRECT_COLUMNS: Record<string, (v: any) => any> = {
     'consumption_kwh_month': normalizeKwh,    // maps to consumo_kwh
@@ -953,6 +1238,11 @@ Deno.serve(async (req) => {
         // V6 tracking
         let v6FieldsCandidateCount = 0;
         let v6FieldsWrittenCount = 0;
+        // V11 tracking (stage_data JSONB)
+        let v11StageDataCandidateCount = 0;
+        let v11StageDataWrittenCount = 0;
+        let v11StageDataNamespace: string | null = null;
+        let v11StageDataSkippedReason: string | null = null;
         // V7 tracking
         let v7CommentWritten = false;
         let v7CommentSkippedReason: string | null = null;
@@ -2095,6 +2385,12 @@ Confidence: "high" se o usuário disse explicitamente, "medium" se inferido clar
 Source: "user" se veio direto do que o cliente escreveu, "inferred" se você deduziu, "confirmed" se o cliente confirmou algo que você perguntou.
 Campos possíveis: consumption_kwh_month, estimated_value_brl, customer_type, city, zip, roof_type, utility_company, grid_connection_type, financing_interest, installation_site_type, average_bill_context.
 
+DADOS ESTRUTURADOS POR ETAPA (OPCIONAL, quando houver alta/medio confianca):
+- Quando a conversa trouxer dados estruturados relevantes da etapa atual, inclua "stage_data" no JSON.
+- Use chaves em snake_case.
+- Para currentStage="proposta_negociacao", use namespace "negociacao" (ou "proposta_negociacao" se preferir) dentro de "stage_data".
+- Nunca invente; omita campos sem certeza.
+
 COMENTÁRIOS INTERNOS E FOLLOW-UPS (V7):
 - Antes de pedir dados novamente, confira COMENTARIOS_CRM_RECENTES e RESUMO_PROPOSTA_ATUAL para não repetir perguntas já respondidas pelo lead.
 - Após coletar uma informação importante ou definir próximo passo, registre um comentário interno via add_comment. Use comment_type: "summary" para resumos, "next_step" para próximo passo, "note" para observações gerais.
@@ -2103,12 +2399,13 @@ COMENTÁRIOS INTERNOS E FOLLOW-UPS (V7):
 - Você pode combinar: action="send_message" + "comment":{"text":"...","type":"next_step"} para responder E registrar comentário ao mesmo tempo.
 
 FORMATO DE SAÍDA (JSON ESTRITO, sem markdown, sem explicação fora do JSON):
-{"action": "send_message"|"move_stage"|"update_lead_fields"|"add_comment"|"create_followup"|"none", "content": "Texto humano aqui...", "target_stage": "next_stage_id", "fields": {"campo": {"value": "...", "confidence": "high"|"medium"|"low", "source": "user"|"inferred"|"confirmed"}}, "comment": {"text": "Resumo/nota interna", "type": "summary|note|next_step"}, "task": {"title": "Título do follow-up", "notes": "Detalhes", "due_at": "ISO", "priority": "low|medium|high", "channel": "whatsapp|call|email"}}
+{"action": "send_message"|"move_stage"|"update_lead_fields"|"add_comment"|"create_followup"|"none", "content": "Texto humano aqui...", "target_stage": "next_stage_id", "fields": {"campo": {"value": "...", "confidence": "high"|"medium"|"low", "source": "user"|"inferred"|"confirmed"}}, "stage_data": {"campo_ou_namespace": "valor"}, "comment": {"text": "Resumo/nota interna", "type": "summary|note|next_step"}, "task": {"title": "Título do follow-up", "notes": "Detalhes", "due_at": "ISO", "priority": "low|medium|high", "channel": "whatsapp|call|email"}}
 
 Se action for "move_stage", DEVE incluir "target_stage".
 Se currentStage for "novo_lead" e action for "send_message", DEVE incluir "target_stage": "respondeu" (obrigatorio - lead respondeu pela primeira vez).
 Se action for "send_message", "content" é obrigatório.
 Você pode combinar: action="send_message" + "fields" para responder E extrair dados ao mesmo tempo.
+Você pode combinar: action="send_message" + "stage_data" para responder E salvar dados estruturados da etapa.
 Se action for "add_comment", inclua "content" com o texto do comentário.
 Se action for "create_followup", inclua "task" com título obrigatório.
 Se APENAS dados foram detectados e não há resposta necessária, use action="update_lead_fields" (sem content).
@@ -2315,6 +2612,48 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                 }
             } catch (v6Err: any) {
                 console.error(`⚠️ [${runId}] V6: Field extraction failed (non-blocking):`, v6Err?.message || v6Err);
+            }
+        }
+
+        // --- V11: EXTRACT AND SAVE STRUCTURED STAGE DATA (JSONB merge, non-blocking) ---
+        const stageDataCandidate = extractStageDataCandidate(aiRes);
+        if (stageDataCandidate) {
+            try {
+                let skipV11Writes = false;
+
+                try {
+                    const anchorLatest = await isAnchorLatestInbound(supabase, leadId, anchorInteractionId);
+                    if (!anchorLatest.ok) {
+                        skipV11Writes = true;
+                        v11StageDataSkippedReason = 'stale_anchor';
+                        console.warn(`⚠️ [${runId}] V11 stage_data write skipped: stale anchor ${anchorInteractionId} (latest inbound ${anchorLatest.latestId}).`);
+                    }
+                } catch (anchorCheckErr: any) {
+                    console.warn(`⚠️ [${runId}] V11 stale-anchor check failed (fail-open):`, anchorCheckErr?.message || anchorCheckErr);
+                }
+
+                if (!skipV11Writes) {
+                    const { data: freshLead } = await supabase.from('leads').select('*').eq('id', leadId).single();
+                    if (freshLead) {
+                        const v11Result = await executeLeadStageDataUpdate(
+                            supabase,
+                            leadId,
+                            currentStage,
+                            stageDataCandidate,
+                            freshLead,
+                            runId
+                        );
+                        v11StageDataCandidateCount = v11Result.candidateCount;
+                        v11StageDataWrittenCount = v11Result.writtenCount;
+                        v11StageDataNamespace = v11Result.namespace;
+                        v11StageDataSkippedReason = v11Result.skippedReason;
+                    } else {
+                        v11StageDataSkippedReason = 'lead_refetch_failed';
+                    }
+                }
+            } catch (v11Err: any) {
+                v11StageDataSkippedReason = `exception:${v11Err?.message || 'unknown'}`;
+                console.error(`⚠️ [${runId}] V11: Stage data extraction failed (non-blocking):`, v11Err?.message || v11Err);
             }
         }
 
@@ -2842,6 +3181,11 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             v7_comment_skipped_reason: v7CommentSkippedReason,
             v7_followup_written: v7FollowupWritten,
             v7_followup_skipped_reason: v7FollowupSkippedReason,
+            // V11 stage_data JSONB
+            v11_stage_data_candidate_count: v11StageDataCandidateCount,
+            v11_stage_data_written_count: v11StageDataWrittenCount,
+            v11_stage_data_namespace: v11StageDataNamespace,
+            v11_stage_data_skipped_reason: v11StageDataSkippedReason,
             // V9
             v9_appointment_written: appointmentWritten,
             v9_appointment_skipped_reason: appointmentSkippedReason,
@@ -2860,7 +3204,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                 trigger_type: payload?.triggerType || 'incoming_message',
                 status: 'success',
                 llm_output: aiRes,
-                actions_executed: [aiRes.action, `instance:${instanceName}`, ...(v6FieldsWrittenCount > 0 ? ['update_lead_fields'] : []), ...(v7CommentWritten ? ['add_comment'] : []), ...(v7FollowupWritten ? ['create_followup'] : []), ...(appointmentWritten ? ['create_appointment'] : []), ...(proposalWritten ? ['create_proposal_draft'] : []), ...(stageMoveResult ? [`stage_move:${stageMoveResult}`] : [])], // Tarefa 6
+                actions_executed: [aiRes.action, `instance:${instanceName}`, ...(v6FieldsWrittenCount > 0 ? ['update_lead_fields'] : []), ...(v11StageDataWrittenCount > 0 ? ['update_lead_stage_data'] : []), ...(v7CommentWritten ? ['add_comment'] : []), ...(v7FollowupWritten ? ['create_followup'] : []), ...(appointmentWritten ? ['create_appointment'] : []), ...(proposalWritten ? ['create_proposal_draft'] : []), ...(stageMoveResult ? [`stage_move:${stageMoveResult}`] : [])], // Tarefa 6
                 input_snapshot: {
                     runId,
                     anchorInteractionId,
@@ -2875,6 +3219,9 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                     web_results_count: webResultsCount,
                     v6_fields_candidate_count: v6FieldsCandidateCount,
                     v6_fields_written_count: v6FieldsWrittenCount,
+                    v11_stage_data_candidate_count: v11StageDataCandidateCount,
+                    v11_stage_data_written_count: v11StageDataWrittenCount,
+                    v11_stage_data_namespace: v11StageDataNamespace,
                 }
             });
         } catch (logErr) {

@@ -39,6 +39,7 @@ export interface LeadDB {
   ai_enabled?: boolean;
   ai_paused_reason?: string | null;
   ai_paused_at?: string | null; // ISO String from DB
+  lead_stage_data?: Record<string, unknown> | null;
 }
 
 // Estrutura REAL da tabela interacoes

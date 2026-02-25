@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Contact, Channel, PipelineStage, ClientType } from '@/types/solarzap';
+import type { LeadStageData } from '@/types/ai';
 
 // Module-level cache for DB schema capabilities (to avoid repeated failed requests)
 let dbSupportsExtendedColumns: boolean | null = null;
@@ -40,6 +41,13 @@ const cleanObservations = (obs: string | null | undefined): string => {
     if (!obs) return '';
     if (!obs.includes(META_TAG)) return obs;
     return obs.split(META_TAG)[0].trim();
+};
+
+const parseLeadStageData = (raw: unknown): LeadStageData | undefined => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const obj = raw as Record<string, unknown>;
+    if (Object.keys(obj).length === 0) return undefined;
+    return obj as LeadStageData;
 };
 
 // Helper: Update observations with new meta
@@ -115,6 +123,7 @@ export const leadToContact = (lead: any): Contact => {
 
     // Notes: clean the meta tag out for display
     const visibleNotes = cleanObservations(lead.observacoes || lead.notes);
+    const stageData = parseLeadStageData(lead.lead_stage_data);
 
     return {
         id: String(lead.id),
@@ -146,6 +155,7 @@ export const leadToContact = (lead: any): Contact => {
         assignedToUserId: lead.assigned_to_user_id || null,
 
         notes: visibleNotes,
+        stageData,
 
         // AI Control
         aiEnabled: lead.ai_enabled ?? true,
