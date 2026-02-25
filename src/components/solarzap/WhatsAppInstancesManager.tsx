@@ -153,8 +153,8 @@ export function WhatsAppInstancesManager() {
         countdown: 60,
       });
     } else {
-      // Refresh QR code
-      const qrCode = await refreshQrCode(instanceId);
+      // Refresh QR code — must pass instance_name, not UUID
+      const qrCode = await refreshQrCode(instance.instance_name);
       if (qrCode) {
         setQrModal({
           isOpen: true,
