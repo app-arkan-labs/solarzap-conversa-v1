@@ -315,7 +315,15 @@ async function processEvent(
 
   const settings = settingsRow as NotificationSettingsRow | null
 
-  if (!settings || !settings.enabled_notifications) {
+  const notificationsActive = Boolean(
+    settings && (
+      settings.enabled_notifications === true ||
+      settings.enabled_whatsapp === true ||
+      settings.enabled_email === true
+    )
+  )
+
+  if (!settings || !notificationsActive) {
     await supabase
       .from('notification_events')
       .update({

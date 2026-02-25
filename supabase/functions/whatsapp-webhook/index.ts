@@ -484,10 +484,11 @@ Deno.serve(async (req: Request) => {
                     .eq('instance_name', instanceName)
                 break
             }
-            case 'MESSAGES_UPSERT': {
+            case 'MESSAGES_UPSERT':
+            case 'MESSAGES_UPDATE': {
                 const msg = resolveMessagePayload(body, data)
                 if (!msg) {
-                    console.warn('⚠️ MESSAGES_UPSERT without message payload shape, skipping')
+                    console.warn('⚠️ MESSAGES_UPSERT/UPDATE without message payload shape, skipping')
                     break
                 }
 

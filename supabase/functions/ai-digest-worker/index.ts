@@ -464,7 +464,6 @@ Deno.serve(async (req) => {
     const { data: settingsRows, error: settingsError } = await supabase
       .from('notification_settings')
       .select('org_id, enabled_notifications, enabled_whatsapp, enabled_email, whatsapp_instance_name, email_recipients, email_sender_name, email_reply_to, daily_digest_enabled, weekly_digest_enabled, daily_digest_time, weekly_digest_time, timezone')
-      .eq('enabled_notifications', true)
       .or('daily_digest_enabled.eq.true,weekly_digest_enabled.eq.true')
 
     if (settingsError) {
