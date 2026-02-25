@@ -52,8 +52,10 @@ export function useChat(contacts: Contact[] = []) {
         [orgId, user?.id]
     );
 
-    // Suppress refetch for a few seconds after marking as read to avoid race condition
-    const lastMarkReadRef = useRef<number>(0);
+    // Persistent map: conversationId → timestamp when markAsRead was called.
+    // Used to override isRead in the conversations memo so unread badges
+    // never reappear after a refetch — even if the DB UPDATE was slow.
+    const readAtOverrides = useRef<Map<string, number>>(new Map());
 
     /**
      * Shared human-takeover handler.
@@ -167,11 +169,7 @@ export function useChat(contacts: Contact[] = []) {
         },
         enabled: !!user && !!orgId,
         staleTime: 5000,
-        refetchInterval: () => {
-            // Suppress refetch for 6s after marking as read to prevent optimistic cache revert
-            if (Date.now() - lastMarkReadRef.current < 6000) return false;
-            return 3000;
-        },
+        refetchInterval: 3000,
     });
 
     // --- REALTIME & POLLING LOGIC ---
@@ -897,7 +895,14 @@ export function useChat(contacts: Contact[] = []) {
                 }
                 return false;
             });
-            const unreadCount = contactMessages.filter(m => !m.isRead && m.isFromClient).length;
+            const readOverrideTs = readAtOverrides.current.get(contact.id);
+            const unreadCount = contactMessages.filter(m => {
+                if (!m.isFromClient || m.isRead) return false;
+                // If conversation was marked as read, suppress badges for messages
+                // that existed before that action (new msgs after it stay unread)
+                if (readOverrideTs && m.timestamp.getTime() <= readOverrideTs) return false;
+                return true;
+            }).length;
             const lastMessage = contactMessages[contactMessages.length - 1];
 
             const threeDaysAgo = new Date();
@@ -1004,8 +1009,8 @@ export function useChat(contacts: Contact[] = []) {
         const leadId = Number(conversationId);
         if (isNaN(leadId)) return;
 
-        // Suppress refetch to prevent race condition overwrite
-        lastMarkReadRef.current = Date.now();
+        // Persist override so the conversations memo always forces read
+        readAtOverrides.current.set(conversationId, Date.now());
 
         // Optimistic: mark messages read in cache immediately
         queryClient.setQueriesData(
@@ -1027,6 +1032,7 @@ export function useChat(contacts: Contact[] = []) {
                 .from('interacoes')
                 .update({ read_at: new Date().toISOString() })
                 .eq('lead_id', leadId)
+                .eq('user_id', user.id)
                 .is('read_at', null)
                 .not('tipo', 'in', `(${vendedorTypesList.join(',')})`);
 
