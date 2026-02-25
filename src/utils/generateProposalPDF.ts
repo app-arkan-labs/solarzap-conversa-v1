@@ -20,7 +20,6 @@ import {
   calcMonthlyGeneration,
   type ChartTheme,
 } from '@/utils/proposalCharts';
-import solarzapLogo from '@/assets/solarzap-logo.png';
 
 // ══════════════════════════════════════════════════════════
 // INTERFACES
@@ -246,9 +245,8 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
   const segLabel = (data.tipo_cliente || 'residencial').charAt(0).toUpperCase() + (data.tipo_cliente || 'residencial').slice(1);
   const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  const logoSrc = data.logoDataUrl || solarzapLogo;
-
-  // ── Derived data (fallbacks if premium doesn't provide) ──
+  // logoDataUrl should always be a valid data:image/... string from useProposalLogo
+  const logoSrc = data.logoDataUrl || null;
   const envImpact: EnvironmentalImpact = premium?.environmentalImpact
     || calcEnvironmentalImpact(data.consumoMensal * 12, 25);
   const monthlyGen: number[] = premium?.monthlyGeneration
@@ -340,7 +338,7 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
     doc.rect(0, 0, W, h2H, 'F');
     doc.setFillColor(C.gold[0], C.gold[1], C.gold[2]);
     doc.rect(0, h2H, W, 2, 'F');
-    try { doc.addImage(logoSrc, detectImageFormat(logoSrc), M, 4, 16, 16); } catch {
+    try { if (!logoSrc) throw new Error('no logo'); doc.addImage(logoSrc, detectImageFormat(logoSrc), M, 4, 16, 16); } catch {
       // Logo fallback: render text instead of blank space
       doc.setTextColor(255, 255, 255); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
       doc.text('SOLARZAP', M + 1, 13);
@@ -372,7 +370,7 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
   doc.setFillColor(C.gold[0], C.gold[1], C.gold[2]);
   doc.rect(0, headerH, W, 3, 'F');
 
-  try { doc.addImage(logoSrc, detectImageFormat(logoSrc), M, 6, 24, 24); } catch {
+  try { if (!logoSrc) throw new Error('no logo'); doc.addImage(logoSrc, detectImageFormat(logoSrc), M, 6, 24, 24); } catch {
     // Logo fallback: render text instead of blank space (Sprint 3)
     doc.setFillColor(255, 255, 255); doc.roundedRect(M, 6, 24, 24, 2, 2, 'F');
     doc.setTextColor(C.header[0], C.header[1], C.header[2]); doc.setFontSize(8); doc.setFont('helvetica', 'bold');
@@ -817,7 +815,8 @@ export function generateSellerScriptPDF(data: SellerScriptPDFData): Blob | void 
   let y = 0;
 
   const C = buildPalette(data.colorTheme);
-  const logoSrc = data.logoDataUrl || solarzapLogo;
+  // logoDataUrl should always be a valid data:image/... string from useProposalLogo
+  const logoSrc = data.logoDataUrl || null;
   const premium = data.premiumContent;
   const propNum = data.propNum || `PROP-${Date.now().toString().slice(-8)}`;
   const validadeDias = data.validadeDias && data.validadeDias > 0 ? data.validadeDias : 15;
@@ -887,6 +886,7 @@ export function generateSellerScriptPDF(data: SellerScriptPDFData): Blob | void 
   // Sprint 3: Add logo to seller script header
   let logoW = 0;
   try {
+    if (!logoSrc) throw new Error('no logo');
     doc.addImage(logoSrc, detectImageFormat(logoSrc), M, 5, 18, 18);
     logoW = 22;
   } catch {

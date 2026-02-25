@@ -666,12 +666,15 @@ export function drawBeforeAfterComparison(
   const rowH = 10;
   const headerH = 10;
 
+  // IDENTITY: custo_sem = custo_com + economia (must hold at every time horizon)
+  const economiaMensal = data.contaAtual - data.contaComSolar;
+  const economia25Anos = data.custo25AnosSem - data.custo25AnosCom;
   const rows = [
     { label: 'Conta mensal', before: fmtCurrency(data.contaAtual), after: fmtCurrency(data.contaComSolar) },
     { label: 'Custo anual', before: fmtCurrency(data.contaAtual * 12), after: fmtCurrency(data.contaComSolar * 12) },
     { label: 'Custo em 25 anos', before: fmtCurrency(data.custo25AnosSem), after: fmtCurrency(data.custo25AnosCom) },
-    { label: 'Economia mensal', before: '-', after: fmtCurrency(data.economiaMensal) },
-    { label: 'Economia em 25 anos', before: '-', after: fmtCurrency(data.econAnual * 25) },
+    { label: 'Economia mensal', before: '-', after: fmtCurrency(economiaMensal) },
+    { label: 'Economia em 25 anos', before: '-', after: fmtCurrency(economia25Anos) },
   ];
 
   const totalH = headerH + rows.length * rowH + 4;

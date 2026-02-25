@@ -2,10 +2,30 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import solarzapLogo from '@/assets/solarzap-logo.png';
 
 const BUCKET = 'proposal-assets';
 const MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+
+// ── Module-level cache for default SolarZap logo data URL ──
+let _defaultLogoDataUrl: string | null = null;
+function loadDefaultLogoDataUrl(): void {
+  if (_defaultLogoDataUrl) return;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    try {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d')!.drawImage(img, 0, 0);
+      _defaultLogoDataUrl = c.toDataURL('image/png');
+    } catch { /* keep null */ }
+  };
+  img.src = solarzapLogo;
+}
+// Start loading immediately at module init
+loadDefaultLogoDataUrl();
 
 /**
  * Manages the per-org logo used in generated proposal PDFs.
@@ -13,6 +33,7 @@ const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'
  * - Persists the logo URL in `company_profile.proposal_logo_url`
  * - Uploads the file to Supabase Storage (`proposal-assets` bucket)
  * - Converts the remote URL into a base-64 data-URL so jsPDF can embed it.
+ * - Pre-loads the default SolarZap logo as data URL (jsPDF needs data URLs, not regular URLs)
  */
 export function useProposalLogo() {
   const { orgId, user } = useAuth();
@@ -27,7 +48,34 @@ export function useProposalLogo() {
   orgIdRef.current = orgId;
 
   // ── Convert a remote URL to a data-URL for jsPDF ──
+  // Uses Image+Canvas (works for same-origin assets AND CORS-enabled storage)
+  // Falls back to fetch+FileReader if Image approach fails
   const toDataUrl = useCallback(async (url: string): Promise<string | null> => {
+    if (!url) return null;
+    if (url.startsWith('data:')) return url; // Already a data URL
+
+    // Approach 1: Image + Canvas (handles CORS via crossOrigin attribute)
+    try {
+      const dataUrl = await new Promise<string | null>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth; c.height = img.naturalHeight;
+            c.getContext('2d')!.drawImage(img, 0, 0);
+            resolve(c.toDataURL('image/png'));
+          } catch { resolve(null); }
+        };
+        img.onerror = () => resolve(null);
+        // Timeout after 8s
+        setTimeout(() => resolve(null), 8000);
+        img.src = url;
+      });
+      if (dataUrl) return dataUrl;
+    } catch { /* fall through */ }
+
+    // Approach 2: fetch + FileReader (backup)
     try {
       const res = await fetch(url);
       if (!res.ok) return null;
@@ -155,5 +203,8 @@ export function useProposalLogo() {
     }
   }, [toast]);
 
-  return { logoUrl, logoDataUrl, uploadLogo, removeLogo, loading };
+  // Always return a valid data-URL: custom org logo → default SolarZap logo
+  const effectiveLogoDataUrl = logoDataUrl || _defaultLogoDataUrl;
+
+  return { logoUrl, logoDataUrl: effectiveLogoDataUrl, uploadLogo, removeLogo, loading };
 }
