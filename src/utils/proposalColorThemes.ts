@@ -2,10 +2,22 @@
 // Proposal Color Theme System
 // ══════════════════════════════════════════════════════════
 
-export type ProposalThemeId = 'verde' | 'azul_marinho' | 'azul_royal' | 'laranja' | 'cinza_escuro';
+export type ProposalThemeId =
+  | 'verde'
+  | 'azul_marinho'
+  | 'azul_royal'
+  | 'laranja'
+  | 'cinza_escuro'
+  | 'roxo'
+  | 'turquesa'
+  | 'vermelho'
+  | 'dourado'
+  | 'grafite';
+
+export type ProposalThemeValue = ProposalThemeId | `custom:${string}`;
 
 export interface ProposalColorTheme {
-  id: ProposalThemeId;
+  id: ProposalThemeValue;
   label: string;
   /** Main color for header, footer, table heads, investment box */
   primary: [number, number, number];
@@ -65,11 +77,120 @@ export const PROPOSAL_THEMES: Record<ProposalThemeId, ProposalColorTheme> = {
     primaryText: [31, 41, 55],
     swatch: '#4b5563',
   },
+  roxo: {
+    id: 'roxo',
+    label: 'Roxo Premium',
+    primary: [124, 58, 237],
+    primaryDark: [109, 40, 217],
+    primaryLight: [243, 232, 255],
+    primaryText: [88, 28, 135],
+    swatch: '#7c3aed',
+  },
+  turquesa: {
+    id: 'turquesa',
+    label: 'Turquesa',
+    primary: [13, 148, 136],
+    primaryDark: [15, 118, 110],
+    primaryLight: [204, 251, 241],
+    primaryText: [19, 78, 74],
+    swatch: '#0d9488',
+  },
+  vermelho: {
+    id: 'vermelho',
+    label: 'Vermelho Energia',
+    primary: [220, 38, 38],
+    primaryDark: [185, 28, 28],
+    primaryLight: [254, 226, 226],
+    primaryText: [127, 29, 29],
+    swatch: '#dc2626',
+  },
+  dourado: {
+    id: 'dourado',
+    label: 'Dourado',
+    primary: [202, 138, 4],
+    primaryDark: [161, 98, 7],
+    primaryLight: [254, 243, 199],
+    primaryText: [120, 53, 15],
+    swatch: '#ca8a04',
+  },
+  grafite: {
+    id: 'grafite',
+    label: 'Grafite',
+    primary: [51, 65, 85],
+    primaryDark: [30, 41, 59],
+    primaryLight: [226, 232, 240],
+    primaryText: [30, 41, 59],
+    swatch: '#334155',
+  },
 };
 
 export const THEME_IDS = Object.keys(PROPOSAL_THEMES) as ProposalThemeId[];
 
+function clamp(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function normalizeHex(input: string): string | null {
+  const raw = String(input || '').trim();
+  const withHash = raw.startsWith('#') ? raw : `#${raw}`;
+  if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(withHash)) return null;
+  if (withHash.length === 4) {
+    const a = withHash[1];
+    const b = withHash[2];
+    const c = withHash[3];
+    return `#${a}${a}${b}${b}${c}${c}`.toLowerCase();
+  }
+  return withHash.toLowerCase();
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return [r, g, b];
+}
+
+function mix(base: [number, number, number], target: [number, number, number], alpha: number): [number, number, number] {
+  return [
+    clamp(base[0] * (1 - alpha) + target[0] * alpha),
+    clamp(base[1] * (1 - alpha) + target[1] * alpha),
+    clamp(base[2] * (1 - alpha) + target[2] * alpha),
+  ];
+}
+
+export function toCustomThemeValue(hexCode: string): ProposalThemeValue | null {
+  const normalized = normalizeHex(hexCode);
+  if (!normalized) return null;
+  return `custom:${normalized}`;
+}
+
+export function isValidThemeHex(hexCode: string): boolean {
+  return !!normalizeHex(hexCode);
+}
+
+export function createCustomTheme(hexCode: string): ProposalColorTheme {
+  const normalized = normalizeHex(hexCode) || '#16a34a';
+  const primary = hexToRgb(normalized);
+  const primaryDark = mix(primary, [0, 0, 0], 0.22);
+  const primaryLight = mix(primary, [255, 255, 255], 0.86);
+  const primaryText = mix(primary, [0, 0, 0], 0.35);
+
+  return {
+    id: `custom:${normalized}`,
+    label: `Personalizado (${normalized.toUpperCase()})`,
+    primary,
+    primaryDark,
+    primaryLight,
+    primaryText,
+    swatch: normalized,
+  };
+}
+
 export function getThemeById(id: string | null | undefined): ProposalColorTheme {
+  if (id?.startsWith('custom:')) {
+    return createCustomTheme(id.replace('custom:', ''));
+  }
   if (id && id in PROPOSAL_THEMES) return PROPOSAL_THEMES[id as ProposalThemeId];
   return PROPOSAL_THEMES.verde;
 }

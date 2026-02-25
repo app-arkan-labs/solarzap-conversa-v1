@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -23,11 +23,12 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
-import { PIPELINE_STAGES } from '@/types/solarzap';
-import { Check, ChevronDown, Copy, ExternalLink, FileText, Palette, ImagePlus, X } from 'lucide-react';
+import { PIPELINE_STAGES, PipelineStage, ClientType, Contact } from '@/types/solarzap';
+import { Check, ChevronDown, ExternalLink, FileText, Palette, ImagePlus, X } from 'lucide-react';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
-import { PROPOSAL_THEMES, THEME_IDS } from '@/utils/proposalColorThemes';
+import { PROPOSAL_THEMES, THEME_IDS, isValidThemeHex, toCustomThemeValue } from '@/utils/proposalColorThemes';
+import { generateProposalPDF, generateSellerScriptPDF } from '@/utils/generateProposalPDF';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { PageHeader } from './PageHeader';
 
 interface ProposalRow {
   proposal_version_id: string;
@@ -53,6 +55,13 @@ interface ProposalRow {
   segment: string;
   source: string;
   valor_projeto: number | null;
+  consumo_kwh?: number | null;
+  potencia_kw?: number | null;
+  paineis_qtd?: number | null;
+  economia_mensal?: number | null;
+  payback_anos?: number | null;
+  tipo_cliente?: string | null;
+  premium_payload?: Record<string, unknown> | null;
   pdf_url: string | null;
   share_url: string | null;
 }
@@ -106,6 +115,7 @@ export function ProposalsView() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedRow, setSelectedRow] = useState<ProposalRow | null>(null);
+  const [customThemeHex, setCustomThemeHex] = useState('');
 
   const fetchProposalsFallback = useCallback(async () => {
     if (!orgId) return [] as ProposalRow[];
@@ -131,14 +141,14 @@ export function ProposalsView() {
       leadIds.length > 0
         ? supabase
           .from('leads')
-          .select('id, nome, telefone, phone_e164, status_pipeline, assigned_to_user_id, user_id')
+          .select('id, nome, telefone, phone_e164, status_pipeline, assigned_to_user_id, user_id, tipo_cliente')
           .eq('org_id', orgId)
           .in('id', leadIds)
         : Promise.resolve({ data: [], error: null } as any),
       propostaIds.length > 0
         ? supabase
           .from('propostas')
-          .select('id, valor_projeto')
+          .select('id, valor_projeto, consumo_kwh, potencia_kw, paineis_qtd, economia_mensal, payback_anos')
           .in('id', propostaIds)
         : Promise.resolve({ data: [], error: null } as any),
     ]);
@@ -166,6 +176,13 @@ export function ProposalsView() {
         segment: String(row.segment || ''),
         source: String(row.source || ''),
         valor_projeto: proposta?.valor_projeto ?? null,
+        consumo_kwh: proposta?.consumo_kwh ?? null,
+        potencia_kw: proposta?.potencia_kw ?? null,
+        paineis_qtd: proposta?.paineis_qtd ?? null,
+        economia_mensal: proposta?.economia_mensal ?? null,
+        payback_anos: proposta?.payback_anos ?? null,
+        tipo_cliente: lead?.tipo_cliente ?? null,
+        premium_payload: row.premium_payload || null,
         pdf_url:
           row.premium_payload?.public_pdf_url ||
           row.premium_payload?.client_pdf_url ||
@@ -252,6 +269,58 @@ export function ProposalsView() {
       }
 
       let mappedRows = (data || []) as ProposalRow[];
+
+      const leadIds = Array.from(new Set(mappedRows.map((row) => Number(row.lead_id)).filter((id) => Number.isFinite(id))));
+      const propostaIds = Array.from(new Set(mappedRows.map((row) => Number(row.proposta_id)).filter((id) => Number.isFinite(id))));
+      const versionIds = Array.from(new Set(mappedRows.map((row) => String(row.proposal_version_id)).filter(Boolean)));
+
+      const [leadsResult, propostasResult, versionsResult] = await Promise.all([
+        leadIds.length > 0
+          ? supabase
+            .from('leads')
+            .select('id, tipo_cliente')
+            .eq('org_id', orgId)
+            .in('id', leadIds)
+          : Promise.resolve({ data: [], error: null } as any),
+        propostaIds.length > 0
+          ? supabase
+            .from('propostas')
+            .select('id, valor_projeto, consumo_kwh, potencia_kw, paineis_qtd, economia_mensal, payback_anos')
+            .in('id', propostaIds)
+          : Promise.resolve({ data: [], error: null } as any),
+        versionIds.length > 0
+          ? supabase
+            .from('proposal_versions')
+            .select('id, premium_payload')
+            .in('id', versionIds)
+          : Promise.resolve({ data: [], error: null } as any),
+      ]);
+
+      const leadMap = new Map<number, any>((leadsResult.data || []).map((lead: any) => [Number(lead.id), lead]));
+      const propostaMap = new Map<number, any>((propostasResult.data || []).map((item: any) => [Number(item.id), item]));
+      const versionMap = new Map<string, any>((versionsResult.data || []).map((item: any) => [String(item.id), item]));
+
+      mappedRows = mappedRows.map((row) => {
+        const lead = leadMap.get(Number(row.lead_id));
+        const proposta = propostaMap.get(Number(row.proposta_id));
+        const version = versionMap.get(String(row.proposal_version_id));
+        const payload = (version?.premium_payload || null) as Record<string, unknown> | null;
+
+        return {
+          ...row,
+          valor_projeto: proposta?.valor_projeto ?? row.valor_projeto ?? null,
+          consumo_kwh: proposta?.consumo_kwh ?? null,
+          potencia_kw: proposta?.potencia_kw ?? null,
+          paineis_qtd: proposta?.paineis_qtd ?? null,
+          economia_mensal: proposta?.economia_mensal ?? null,
+          payback_anos: proposta?.payback_anos ?? null,
+          tipo_cliente: lead?.tipo_cliente ?? null,
+          premium_payload: payload,
+          pdf_url: row.pdf_url || (payload?.public_pdf_url as string) || (payload?.client_pdf_url as string) || (payload?.pdf_url as string) || null,
+          share_url: row.share_url || (payload?.share_url as string) || null,
+        };
+      });
+
       if (selectedLeadId !== 'all') {
         const parsedLeadId = Number(selectedLeadId);
         mappedRows = mappedRows.filter((row) => Number(row.lead_id) === parsedLeadId);
@@ -300,37 +369,110 @@ export function ProposalsView() {
     ? null
     : leadOptions.find((lead) => String(lead.id) === selectedLeadId) || null;
 
-  const copyLink = async (url: string | null) => {
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast({
-        title: 'Link copiado',
-        description: 'O link da proposta foi copiado para a área de transferência.',
-      });
-    } catch (error) {
-      toast({
-        title: 'Erro ao copiar',
-        description: 'Não foi possível copiar o link.',
-        variant: 'destructive',
-      });
-    }
+  const asPipelineStage = (value: string | null | undefined): PipelineStage => {
+    const fallback: PipelineStage = 'aguardando_proposta';
+    if (!value) return fallback;
+    return (Object.prototype.hasOwnProperty.call(PIPELINE_STAGES, value) ? value : fallback) as PipelineStage;
   };
+
+  const asClientType = (value: string | null | undefined): ClientType => {
+    const allowed: ClientType[] = ['residencial', 'comercial', 'industrial', 'rural', 'usina'];
+    return allowed.includes(value as ClientType) ? (value as ClientType) : 'residencial';
+  };
+
+  const buildContactFromRow = (row: ProposalRow): Contact => {
+    const now = new Date();
+    return {
+      id: String(row.lead_id || ''),
+      name: row.lead_name || `Lead ${row.lead_id}`,
+      phone: row.lead_phone || '',
+      channel: 'whatsapp',
+      pipelineStage: asPipelineStage(row.lead_stage),
+      clientType: asClientType(row.tipo_cliente),
+      consumption: Number(row.consumo_kwh || 0),
+      projectValue: Number(row.valor_projeto || 0),
+      createdAt: now,
+      lastContact: now,
+    };
+  };
+
+  const canGenerateFromRow = (row: ProposalRow) => Number(row.valor_projeto || 0) > 0;
+
+  const handleDownloadProposal = (row: ProposalRow) => {
+    if (row.pdf_url) {
+      window.open(row.pdf_url, '_blank');
+      return;
+    }
+
+    if (!canGenerateFromRow(row)) {
+      toast({ title: 'Proposta indisponível', description: 'Não há dados suficientes para baixar a proposta.', variant: 'destructive' });
+      return;
+    }
+
+    generateProposalPDF({
+      contact: buildContactFromRow(row),
+      consumoMensal: Number(row.consumo_kwh || 0),
+      potenciaSistema: Number(row.potencia_kw || 0),
+      quantidadePaineis: Number(row.paineis_qtd || 0),
+      valorTotal: Number(row.valor_projeto || 0),
+      economiaAnual: Number(row.economia_mensal || 0) * 12,
+      paybackMeses: Number(row.payback_anos || 0) * 12,
+      garantiaAnos: 25,
+      tipo_cliente: row.tipo_cliente || 'residencial',
+      premiumContent: (row.premium_payload as any) || undefined,
+      propNum: `V${row.version_no || 1}`,
+    });
+  };
+
+  const handleDownloadScript = (row: ProposalRow) => {
+    if (!canGenerateFromRow(row)) {
+      toast({ title: 'Roteiro indisponível', description: 'Não há dados suficientes para baixar o roteiro.', variant: 'destructive' });
+      return;
+    }
+
+    generateSellerScriptPDF({
+      contact: buildContactFromRow(row),
+      consumoMensal: Number(row.consumo_kwh || 0),
+      potenciaSistema: Number(row.potencia_kw || 0),
+      quantidadePaineis: Number(row.paineis_qtd || 0),
+      valorTotal: Number(row.valor_projeto || 0),
+      economiaAnual: Number(row.economia_mensal || 0) * 12,
+      paybackMeses: Number(row.payback_anos || 0) * 12,
+      garantiaAnos: 25,
+      tipo_cliente: row.tipo_cliente || 'residencial',
+      premiumContent: (row.premium_payload as any) || undefined,
+      propNum: `V${row.version_no || 1}`,
+      colorTheme: PROPOSAL_THEMES[themeId],
+    });
+  };
+
+  const handleApplyCustomTheme = () => {
+    if (!customThemeHex.trim()) return;
+    if (!isValidThemeHex(customThemeHex)) {
+      toast({ title: 'Cor inválida', description: 'Use um código HEX válido, ex: #1D4ED8', variant: 'destructive' });
+      return;
+    }
+    const customValue = toCustomThemeValue(customThemeHex);
+    if (!customValue) return;
+    updateTheme(customValue);
+    setCustomThemeHex(customValue.replace('custom:', '').toUpperCase());
+  };
+
+  useEffect(() => {
+    if (themeId.startsWith('custom:')) {
+      setCustomThemeHex(themeId.replace('custom:', '').toUpperCase());
+    }
+  }, [themeId]);
 
   return (
     <div className="flex-1 flex flex-col h-full w-full overflow-hidden bg-muted/30 relative">
-      <div className="px-6 py-5 bg-gradient-to-r from-primary/10 via-background to-blue-500/10 border-b flex-shrink-0 z-10">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
-              <FileText className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Propostas</h1>
-              <p className="text-sm text-muted-foreground">Histórico global de versões com filtros</p>
-            </div>
-          </div>          {/* Theme color selector + Logo upload */}
-          <div className="flex items-center gap-4">
+      <PageHeader
+        title="Propostas"
+        subtitle="Histórico global de versões com filtros"
+        icon={FileText}
+        className="z-10"
+        actionContent={
+          <div className="flex items-center gap-4 flex-wrap mt-2 sm:mt-0">
             {/* Logo upload */}
             <div className="flex items-center gap-2">
               <input
@@ -359,7 +501,7 @@ export function ProposalsView() {
                     title="Remover logo"
                     onClick={removeLogo}
                     disabled={logoLoading}
-                    className="w-5 h-5 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="w-5 h-5 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity absolute -top-1 -right-1"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -370,42 +512,57 @@ export function ProposalsView() {
                   title="Enviar logo da empresa para as propostas"
                   onClick={() => logoInputRef.current?.click()}
                   disabled={logoLoading}
-                  className="w-9 h-9 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center hover:border-primary/50 hover:bg-primary/5 transition-all"
+                  className="w-9 h-9 rounded-lg border-2 border-dashed border-border flex items-center justify-center hover:border-primary/50 hover:bg-white/50 transition-all glass"
                 >
-                  {logoLoading
-                    ? <div className="w-4 h-4 border-2 border-primary/40 border-t-primary rounded-full animate-spin" />
-                    : <ImagePlus className="w-4 h-4 text-muted-foreground" />
-                  }
+                  {logoLoading ? (
+                    <div className="w-4 h-4 border-2 border-primary/40 border-t-primary rounded-full animate-spin" />
+                  ) : (
+                    <ImagePlus className="w-4 h-4 text-muted-foreground" />
+                  )}
                 </button>
               )}
               <span className="text-xs text-muted-foreground hidden sm:inline">Logo</span>
             </div>
 
-            <div className="w-px h-6 bg-border" />
+            <div className="hidden sm:block w-px h-6 bg-border" />
 
             {/* Theme colors */}
             <div className="flex items-center gap-2">
               <Palette className="w-4 h-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground mr-1">Tema:</span>
-              {THEME_IDS.map((id) => {
-                const t = PROPOSAL_THEMES[id];
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    title={t.label}
-                    onClick={() => updateTheme(id)}
-                    className={cn(
-                      'w-7 h-7 rounded-full border-2 transition-all hover:scale-110',
-                      themeId === id ? 'border-foreground ring-2 ring-primary/40 scale-110' : 'border-transparent'
-                    )}
-                    style={{ backgroundColor: t.swatch }}
-                  />
-                );
-              })}
+              <div className="flex gap-1.5 glass px-2 py-1 rounded-full border border-border/50">
+                {THEME_IDS.map((id) => {
+                  const t = PROPOSAL_THEMES[id];
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      title={t.label}
+                      onClick={() => updateTheme(id)}
+                      className={cn(
+                        'w-6 h-6 rounded-full border border-black/10 transition-all hover:scale-110 shadow-sm',
+                        themeId === id ? 'ring-2 ring-primary ring-offset-1 scale-110' : ''
+                      )}
+                      style={{ backgroundColor: t.swatch }}
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={customThemeHex}
+                  onChange={(e) => setCustomThemeHex(e.target.value)}
+                  placeholder="#1D4ED8"
+                  className="h-8 w-28 text-xs uppercase"
+                />
+                <Button type="button" variant="outline" size="sm" className="h-8" onClick={handleApplyCustomTheme}>
+                  Aplicar
+                </Button>
+              </div>
             </div>
-          </div>        </div>
-      </div>
+          </div>
+        }
+      />
 
       <ScrollArea className="flex-1">
         <div className="p-6 space-y-4">
@@ -587,26 +744,26 @@ export function ProposalsView() {
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={!row.pdf_url}
+                            disabled={!row.pdf_url && !canGenerateFromRow(row)}
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (row.pdf_url) window.open(row.pdf_url, '_blank');
+                              handleDownloadProposal(row);
                             }}
                           >
                             <ExternalLink className="w-4 h-4 mr-1" />
-                            Ver PDF
+                            Baixar Proposta
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={!row.share_url && !row.pdf_url}
+                            disabled={!canGenerateFromRow(row)}
                             onClick={(e) => {
                               e.stopPropagation();
-                              copyLink(row.share_url || row.pdf_url);
+                              handleDownloadScript(row);
                             }}
                           >
-                            <Copy className="w-4 h-4 mr-1" />
-                            Copiar link
+                            <FileText className="w-4 h-4 mr-1" />
+                            Baixar Roteiro
                           </Button>
                         </div>
                       </td>
@@ -678,20 +835,20 @@ export function ProposalsView() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!selectedRow.pdf_url}
-                  onClick={() => selectedRow.pdf_url && window.open(selectedRow.pdf_url, '_blank')}
+                  disabled={!selectedRow.pdf_url && !canGenerateFromRow(selectedRow)}
+                  onClick={() => handleDownloadProposal(selectedRow)}
                 >
                   <ExternalLink className="w-4 h-4 mr-1" />
-                  Ver PDF
+                  Baixar Proposta
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!selectedRow.share_url && !selectedRow.pdf_url}
-                  onClick={() => copyLink(selectedRow.share_url || selectedRow.pdf_url)}
+                  disabled={!canGenerateFromRow(selectedRow)}
+                  onClick={() => handleDownloadScript(selectedRow)}
                 >
-                  <Copy className="w-4 h-4 mr-1" />
-                  Copiar link
+                  <FileText className="w-4 h-4 mr-1" />
+                  Baixar Roteiro
                 </Button>
               </div>
             </div>

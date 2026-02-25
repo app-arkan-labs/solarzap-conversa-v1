@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import {
-  type ProposalThemeId,
+  type ProposalThemeValue,
   type ProposalColorTheme,
   getThemeById,
 } from '@/utils/proposalColorThemes';
@@ -11,7 +11,7 @@ import {
 export function useProposalTheme() {
   const { orgId } = useAuth();
   const { toast } = useToast();
-  const [themeId, setThemeId] = useState<ProposalThemeId>('verde');
+  const [themeId, setThemeId] = useState<ProposalThemeValue>('verde');
   const [loading, setLoading] = useState(false);
 
   // Fetch current theme from company_profile
@@ -26,7 +26,7 @@ export function useProposalTheme() {
           .eq('org_id', orgId)
           .maybeSingle();
         if (!cancelled && !error && data?.proposal_theme) {
-          setThemeId(data.proposal_theme as ProposalThemeId);
+          setThemeId(data.proposal_theme as ProposalThemeValue);
         }
       } catch { /* keep default */ }
     })();
@@ -35,7 +35,7 @@ export function useProposalTheme() {
 
   const theme: ProposalColorTheme = getThemeById(themeId);
 
-  const updateTheme = useCallback(async (newId: ProposalThemeId) => {
+  const updateTheme = useCallback(async (newId: ProposalThemeValue) => {
     if (!orgId) return;
     setThemeId(newId);
     setLoading(true);
