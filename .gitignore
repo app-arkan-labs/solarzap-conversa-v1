@@ -38,3 +38,4 @@ tsc_errors*.txt
 diff_*.txt
 dupes.txt
 modified_files*.txt
+fix_imports.cjs
