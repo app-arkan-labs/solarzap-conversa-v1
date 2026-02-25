@@ -89,6 +89,18 @@ function getCustoDisponibilidadeKwh(tipoCliente?: string): number {
   }
 }
 
+/** Detect image format from data URL or file extension for jsPDF addImage */
+function detectImageFormat(src: string): string {
+  if (src.startsWith('data:image/jpeg') || src.startsWith('data:image/jpg')) return 'JPEG';
+  if (src.startsWith('data:image/png')) return 'PNG';
+  if (src.startsWith('data:image/webp')) return 'WEBP';
+  // Fallback: check file extension
+  const lower = src.toLowerCase();
+  if (lower.includes('.jpg') || lower.includes('.jpeg')) return 'JPEG';
+  if (lower.includes('.webp')) return 'WEBP';
+  return 'PNG'; // default
+}
+
 const fmtCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const fmtNumber = (v: number) =>
@@ -328,7 +340,7 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
     doc.rect(0, 0, W, h2H, 'F');
     doc.setFillColor(C.gold[0], C.gold[1], C.gold[2]);
     doc.rect(0, h2H, W, 2, 'F');
-    try { doc.addImage(logoSrc, 'PNG', M, 4, 16, 16); } catch {
+    try { doc.addImage(logoSrc, detectImageFormat(logoSrc), M, 4, 16, 16); } catch {
       // Logo fallback: render text instead of blank space
       doc.setTextColor(255, 255, 255); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
       doc.text('SOLARZAP', M + 1, 13);
@@ -360,7 +372,7 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
   doc.setFillColor(C.gold[0], C.gold[1], C.gold[2]);
   doc.rect(0, headerH, W, 3, 'F');
 
-  try { doc.addImage(logoSrc, 'PNG', M, 6, 24, 24); } catch {
+  try { doc.addImage(logoSrc, detectImageFormat(logoSrc), M, 6, 24, 24); } catch {
     // Logo fallback: render text instead of blank space (Sprint 3)
     doc.setFillColor(255, 255, 255); doc.roundedRect(M, 6, 24, 24, 2, 2, 'F');
     doc.setTextColor(C.header[0], C.header[1], C.header[2]); doc.setFontSize(8); doc.setFont('helvetica', 'bold');
@@ -506,7 +518,7 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
     economiaMensal: econMensal,
     econAnual,
     custo25AnosSem: contaEstimada * 12 * 25,
-    custo25AnosCom: contaComSolar * 12 * 25 + data.valorTotal,
+    custo25AnosCom: contaComSolar * 12 * 25,
   };
   const baH = drawBeforeAfterComparison(doc, M, y, W - 2 * M, baData, chartTheme);
   y += baH + 8;
@@ -875,7 +887,7 @@ export function generateSellerScriptPDF(data: SellerScriptPDFData): Blob | void 
   // Sprint 3: Add logo to seller script header
   let logoW = 0;
   try {
-    doc.addImage(logoSrc, 'PNG', M, 5, 18, 18);
+    doc.addImage(logoSrc, detectImageFormat(logoSrc), M, 5, 18, 18);
     logoW = 22;
   } catch {
     // Logo fallback: text instead of blank
