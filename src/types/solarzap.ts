@@ -1,4 +1,5 @@
 // SolarZap CRM Types
+import type { LeadStageData } from './ai';
 
 
 export type ActiveTab = 'conversas' | 'pipelines' | 'calendario' | 'contatos' | 'propostas' | 'dashboard' | 'integracoes' | 'automacoes' | 'banco_ia' | 'ia_agentes' | 'admin_members' | 'minha_conta';
@@ -54,6 +55,7 @@ export interface Contact {
   instanceName?: string; // NEW
   assignedToUserId?: string | null;
   notes?: string;
+  stageData?: LeadStageData;
   // AI Control (New)
   aiEnabled?: boolean;
   aiPausedReason?: string | null;
