@@ -82,7 +82,7 @@ export function WhatsAppInstanceCard({
     },
   };
 
-  const status = statusConfig[instance.status];
+  const status = statusConfig[instance.status] || statusConfig.disconnected;
   const StatusIcon = status.icon;
 
   const handleRename = () => {
@@ -151,7 +151,7 @@ export function WhatsAppInstanceCard({
                 />
               </div>
 
-              {instance.status === 'disconnected' && (
+              {instance.status !== 'connected' && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -163,25 +163,7 @@ export function WhatsAppInstanceCard({
                   ) : (
                     <>
                       <QrCode className="w-4 h-4 mr-1" />
-                      Reconectar
-                    </>
-                  )}
-                </Button>
-              )}
-
-              {instance.status === 'connecting' && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onReconnect(instance.id)}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <QrCode className="w-4 h-4 mr-1" />
-                      Ver QR
+                      {instance.status === 'connecting' ? 'Ver QR' : 'Reconectar'}
                     </>
                   )}
                 </Button>

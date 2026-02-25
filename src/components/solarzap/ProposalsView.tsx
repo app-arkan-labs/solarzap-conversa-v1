@@ -170,7 +170,9 @@ export function ProposalsView() {
           row.premium_payload?.public_pdf_url ||
           row.premium_payload?.client_pdf_url ||
           row.premium_payload?.pdf_url ||
-          null,
+          (row.premium_payload?.storage
+            ? `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/${(row.premium_payload.storage as any).bucket}/${(row.premium_payload.storage as any).path}`
+            : null),
         share_url: row.premium_payload?.share_url || null,
       };
     });

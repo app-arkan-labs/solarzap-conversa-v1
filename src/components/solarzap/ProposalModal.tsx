@@ -137,11 +137,17 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
 
   // ── Auto-calculate system ──
   const calculateSystem = useCallback((consumo: number) => {
+    const TARIFA_KWH = 0.85; // R$/kWh média com impostos
+    // Custo de disponibilidade ANEEL (bifásico residencial = 50 kWh)
+    const CUSTO_DISP_KWH = 50;
     const potencia = Math.ceil((consumo * 12) / (4.5 * 30 * 12));
     const paineis = Math.ceil(potencia * 1000 / 550);
     const valor = potencia * 4500;
-    const economiaAnual = consumo * 0.85 * 12;
-    const payback = Math.ceil((valor / economiaAnual) * 12);
+    const contaMensal = consumo * TARIFA_KWH;
+    const taxaMinima = Math.min(CUSTO_DISP_KWH, consumo) * TARIFA_KWH;
+    const economiaMensal = Math.max(contaMensal - taxaMinima, 0);
+    const economiaAnual = economiaMensal * 12;
+    const payback = economiaAnual > 0 ? Math.ceil((valor / economiaAnual) * 12) : 0;
     setFormData(prev => ({ ...prev, consumoMensal: consumo, potenciaSistema: potencia, quantidadePaineis: paineis, valorTotal: valor, economiaAnual, paybackMeses: payback }));
   }, []);
 

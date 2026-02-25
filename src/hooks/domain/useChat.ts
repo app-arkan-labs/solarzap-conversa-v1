@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '@/hooks/use-toast';
 import { supabase, InteracaoDB } from '@/lib/supabase';
@@ -51,6 +51,9 @@ export function useChat(contacts: Contact[] = []) {
         () => ['interactions', orgId, user?.id] as const,
         [orgId, user?.id]
     );
+
+    // Suppress refetch for a few seconds after marking as read to avoid race condition
+    const lastMarkReadRef = useRef<number>(0);
 
     /**
      * Shared human-takeover handler.
@@ -164,7 +167,11 @@ export function useChat(contacts: Contact[] = []) {
         },
         enabled: !!user && !!orgId,
         staleTime: 5000,
-        refetchInterval: 3000,
+        refetchInterval: () => {
+            // Suppress refetch for 6s after marking as read to prevent optimistic cache revert
+            if (Date.now() - lastMarkReadRef.current < 6000) return false;
+            return 3000;
+        },
     });
 
     // --- REALTIME & POLLING LOGIC ---
@@ -996,6 +1003,9 @@ export function useChat(contacts: Contact[] = []) {
         if (!user || !orgId) return;
         const leadId = Number(conversationId);
         if (isNaN(leadId)) return;
+
+        // Suppress refetch to prevent race condition overwrite
+        lastMarkReadRef.current = Date.now();
 
         // Optimistic: mark messages read in cache immediately
         queryClient.setQueriesData(

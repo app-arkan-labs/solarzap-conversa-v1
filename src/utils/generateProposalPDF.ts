@@ -75,6 +75,20 @@ import { calcPMT } from '@/utils/financingCalc';
 
 type RGB = [number, number, number];
 
+// ── Tarifa e custo de disponibilidade (ANEEL) ────────────
+const TARIFA_MEDIA_KWH = 0.85; // R$/kWh média Brasil com impostos
+
+/** Custo de disponibilidade em kWh por tipo de conexão/cliente (ANEEL REN 1.000/2021) */
+function getCustoDisponibilidadeKwh(tipoCliente?: string): number {
+  switch (tipoCliente?.toLowerCase()) {
+    case 'residencial': return 50;   // bifásico (padrão residencial)
+    case 'comercial':   return 100;  // trifásico
+    case 'industrial':  return 100;  // trifásico
+    case 'rural':       return 30;   // monofásico
+    default:            return 50;
+  }
+}
+
 const fmtCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const fmtNumber = (v: number) =>
@@ -234,8 +248,13 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
     { item: 'Cabos e Conectores', spec: 'Solar CC 6mm\u00B2 + MC4', qty: 'Kit completo', warranty: '10 anos' },
     { item: 'String Box / Protecao', spec: 'DPS + chave seccionadora CC/CA', qty: 1, warranty: '5 anos' },
   ];
-  const contaEstimada = econMensal * 1.15;
-  const contaComSolar = contaEstimada - econMensal;
+  // Conta mensal real: consumo × tarifa média
+  const contaEstimada = data.consumoMensal > 0
+    ? data.consumoMensal * TARIFA_MEDIA_KWH
+    : econMensal + getCustoDisponibilidadeKwh(data.tipo_cliente) * TARIFA_MEDIA_KWH;
+  // Com solar: paga apenas a taxa de disponibilidade (custo mínimo ANEEL)
+  const custoDispKwh = getCustoDisponibilidadeKwh(data.tipo_cliente);
+  const contaComSolar = Math.min(custoDispKwh * TARIFA_MEDIA_KWH, contaEstimada);
   const termsConditions: string[] = premium?.termsConditions || [
     `Validade: ${validadeDias} dias corridos a partir da data de emissao.`,
     `Valores estimados baseados no consumo de ${fmtNumber(data.consumoMensal)} kWh/mes, sujeitos a vistoria tecnica.`,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/use-toast';
@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Loader2, User, Mail, Lock, ShieldCheck, LogOut } from 'lucide-react';
+import { Loader2, User, Mail, Lock, ShieldCheck, LogOut, Camera } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
 
@@ -21,13 +21,60 @@ export function ConfiguracoesContaView() {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [currentPassword, setCurrentPassword] = useState('');
+    const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+    const avatarInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (user) {
             setEmail(user.email || '');
             setProfileName(getAuthUserDisplayName(user));
+            setAvatarUrl(user.user_metadata?.avatar_url || null);
         }
     }, [user]);
+
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !user) return;
+
+        const validTypes = ['image/png', 'image/jpeg', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+            toast({ title: 'Formato inválido', description: 'Use PNG, JPG ou WebP.', variant: 'destructive' });
+            return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+            toast({ title: 'Arquivo muito grande', description: 'A foto deve ter no máximo 2 MB.', variant: 'destructive' });
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+            const path = `${user.id}/avatar.${ext}`;
+
+            const { error: upErr } = await supabase.storage
+                .from('avatars')
+                .upload(path, file, { contentType: file.type, upsert: true });
+            if (upErr) throw upErr;
+
+            const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+            const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+
+            const { error: metaErr } = await supabase.auth.updateUser({
+                data: { ...user.user_metadata, avatar_url: publicUrl },
+            });
+            if (metaErr) throw metaErr;
+
+            setAvatarUrl(publicUrl);
+            await supabase.auth.refreshSession();
+            toast({ title: 'Foto atualizada', description: 'Sua foto de perfil foi salva.' });
+        } catch (err: any) {
+            console.error('Avatar upload error:', err);
+            toast({ title: 'Erro ao enviar foto', description: err.message || 'Tente novamente.', variant: 'destructive' });
+        } finally {
+            setIsLoading(false);
+            if (avatarInputRef.current) avatarInputRef.current.value = '';
+        }
+    };
 
     const handleUpdateProfile = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -137,6 +184,36 @@ export function ConfiguracoesContaView() {
                         </CardHeader>
                         <CardContent>
                             <form id="profile-form" onSubmit={handleUpdateProfile} className="space-y-4">
+                                {/* Avatar upload */}
+                                <div className="flex flex-col items-center gap-3 pb-4 border-b">
+                                    <div className="relative group">
+                                        <div className="w-20 h-20 rounded-full overflow-hidden bg-muted border-2 border-border">
+                                            {avatarUrl ? (
+                                                <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-2xl font-semibold text-muted-foreground">
+                                                    {profileName?.charAt(0)?.toUpperCase() || '?'}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <input
+                                            ref={avatarInputRef}
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/webp"
+                                            className="hidden"
+                                            onChange={handleAvatarUpload}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => avatarInputRef.current?.click()}
+                                            disabled={isLoading}
+                                            className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center shadow-md hover:bg-primary/90 disabled:opacity-50"
+                                        >
+                                            <Camera className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">Clique no ícone para alterar a foto</p>
+                                </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="name">Nome Completo</Label>
                                     <Input

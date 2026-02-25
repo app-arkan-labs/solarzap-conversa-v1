@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-// Sprint 10: queries now filter by org_id instead of user_id
+// Sprint 10: queries filter by org_id; fallback to user_id if column doesn't exist
 
 export type ProposalSegment = 'residencial' | 'empresarial' | 'agro' | 'usina' | 'unknown';
 
@@ -16,30 +16,39 @@ export interface ProposalMetrics {
 
 async function countDeliveryEvents(params: {
   orgId: string;
+  userId: string;
   startIso: string;
   endIso: string;
   eventType: string;
   metadataKind?: string;
 }): Promise<number> {
-  let q = supabase
-    .from('proposal_delivery_events')
-    .select('id', { count: 'exact', head: true })
-    .eq('org_id', params.orgId)
-    .eq('event_type', params.eventType)
-    .gte('created_at', params.startIso)
-    .lte('created_at', params.endIso);
+  // Try org_id filter first; if column doesn't exist yet, fall back to user_id
+  for (const filterCol of ['org_id', 'user_id'] as const) {
+    const filterVal = filterCol === 'org_id' ? params.orgId : params.userId;
+    let q = supabase
+      .from('proposal_delivery_events')
+      .select('id', { count: 'exact', head: true })
+      .eq(filterCol, filterVal)
+      .eq('event_type', params.eventType)
+      .gte('created_at', params.startIso)
+      .lte('created_at', params.endIso);
 
-  if (params.metadataKind) {
-    q = q.contains('metadata', { kind: params.metadataKind });
+    if (params.metadataKind) {
+      q = q.contains('metadata', { kind: params.metadataKind });
+    }
+
+    const { count, error } = await q;
+    if (!error) return Number(count || 0);
+    // If org_id column doesn't exist, PostgREST returns error — try user_id
+    if (filterCol === 'org_id') continue;
+    throw error;
   }
-
-  const { count, error } = await q;
-  if (error) throw error;
-  return Number(count || 0);
+  return 0;
 }
 
 export function useProposalMetrics(params: { start: Date; end: Date }) {
-  const { orgId } = useAuth();
+  const { orgId, user } = useAuth();
+  const userId = user?.id || '';
 
   return useQuery({
     queryKey: ['proposal-metrics', orgId, params.start.toISOString(), params.end.toISOString()],
@@ -50,11 +59,11 @@ export function useProposalMetrics(params: { start: Date; end: Date }) {
       const endIso = params.end.toISOString();
 
       const [generated, shared, opened, downloadedClient, downloadedSeller] = await Promise.all([
-        countDeliveryEvents({ orgId, startIso, endIso, eventType: 'generated' }),
-        countDeliveryEvents({ orgId, startIso, endIso, eventType: 'shared' }),
-        countDeliveryEvents({ orgId, startIso, endIso, eventType: 'opened' }),
-        countDeliveryEvents({ orgId, startIso, endIso, eventType: 'downloaded', metadataKind: 'client_proposal' }),
-        countDeliveryEvents({ orgId, startIso, endIso, eventType: 'downloaded', metadataKind: 'seller_script' }),
+        countDeliveryEvents({ orgId, userId, startIso, endIso, eventType: 'generated' }),
+        countDeliveryEvents({ orgId, userId, startIso, endIso, eventType: 'shared' }),
+        countDeliveryEvents({ orgId, userId, startIso, endIso, eventType: 'opened' }),
+        countDeliveryEvents({ orgId, userId, startIso, endIso, eventType: 'downloaded', metadataKind: 'client_proposal' }),
+        countDeliveryEvents({ orgId, userId, startIso, endIso, eventType: 'downloaded', metadataKind: 'seller_script' }),
       ]);
 
       // Segment distribution is best-effort; used only to show what's being generated more no período.
