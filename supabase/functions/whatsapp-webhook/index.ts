@@ -486,6 +486,7 @@ Deno.serve(async (req: Request) => {
             }
             case 'MESSAGES_UPSERT':
             case 'MESSAGES_UPDATE': {
+                const isMessageUpdateEvent = event === 'MESSAGES_UPDATE'
                 const msg = resolveMessagePayload(body, data)
                 if (!msg) {
                     console.warn('⚠️ MESSAGES_UPSERT/UPDATE without message payload shape, skipping')
@@ -546,6 +547,15 @@ Deno.serve(async (req: Request) => {
                     }
 
                     await supabase.from('interacoes').update({ reactions: newReactions }).eq('id', originalMsg.id)
+                    break
+                }
+
+                // Evolution envia vários updates de status/ack/edição no evento MESSAGES_UPDATE.
+                // Eles não representam uma nova mensagem e, se passarem pelo fluxo de insert,
+                // criam conversas/contatos com placeholders "tipo: desconhecido".
+                // Mantemos apenas reações acima; demais updates são ignorados aqui.
+                if (isMessageUpdateEvent) {
+                    console.log('⏭️ Skipping non-reaction MESSAGES_UPDATE to avoid duplicate placeholder interactions')
                     break
                 }
 
