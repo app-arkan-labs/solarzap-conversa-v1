@@ -28,3 +28,13 @@ test-results
 .env
 .env.production
 _deploy_tmp/
+
+# Local debug/build artifacts
+build_err*.txt
+build_error*.txt
+build_output*.txt
+debug_*.cjs
+tsc_errors*.txt
+diff_*.txt
+dupes.txt
+modified_files*.txt
