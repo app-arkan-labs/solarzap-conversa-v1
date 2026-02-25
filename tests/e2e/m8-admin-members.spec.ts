@@ -212,6 +212,11 @@ test('M8 admin members: list, invite(create), update, remove', async ({ page }) 
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByTestId(`member-remove-${state.invitedUserId}`).click();
 
+  const removeDialog = page.getByRole('dialog', { name: /Remover Membro/i });
+  if (await removeDialog.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await removeDialog.getByRole('button', { name: /^Remover$/ }).click();
+  }
+
   await expect
     .poll(
       async () => {
