@@ -124,6 +124,32 @@
   }
 }
 
+@layer utilities {
+  .glass {
+    @apply backdrop-blur-md bg-white/70 border border-white/20 shadow-lg dark:bg-black/30 dark:border-white/10;
+  }
+  
+  .animate-stagger-1 {
+    animation-delay: 100ms;
+  }
+  .animate-stagger-2 {
+    animation-delay: 200ms;
+  }
+  .animate-stagger-3 {
+    animation-delay: 300ms;
+  }
+  .animate-stagger-4 {
+    animation-delay: 400ms;
+  }
+  .animate-stagger-5 {
+    animation-delay: 500ms;
+  }
+
+  .recharts-tooltip-custom {
+    @apply glass rounded-xl px-4 py-3 text-sm font-medium border border-border/50 shadow-xl;
+  }
+}
+
 /* Custom scrollbar for WhatsApp feel */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;

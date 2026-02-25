@@ -26,9 +26,9 @@ export function DashboardCharts({ data, isLoading }: ChartProps) {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Leads by Source */}
-                <Card>
+                <Card className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
                     <CardHeader>
-                        <CardTitle>Origem dos Leads</CardTitle>
+                        <CardTitle className="text-foreground">Origem dos Leads</CardTitle>
                         <CardDescription>Volume de leads por canal</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
@@ -56,9 +56,9 @@ export function DashboardCharts({ data, isLoading }: ChartProps) {
                 </Card>
 
                 {/* Sales by Source */}
-                <Card>
+                <Card className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
                     <CardHeader>
-                        <CardTitle>Vendas por Origem</CardTitle>
+                        <CardTitle className="text-foreground">Vendas por Origem</CardTitle>
                         <CardDescription>Canais que mais convertem em vendas</CardDescription>
                     </CardHeader>
                     <CardContent className="h-[300px]">
@@ -87,9 +87,9 @@ export function DashboardCharts({ data, isLoading }: ChartProps) {
             </div>
 
             {/* Monthly Performance - Full Width */}
-            <Card className="mt-4">
+            <Card className="mt-4 border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
                 <CardHeader>
-                    <CardTitle>Análise de Vendas</CardTitle>
+                    <CardTitle className="text-foreground">Análise de Vendas</CardTitle>
                     <CardDescription>Leads vs Vendas e Taxa de Conversão</CardDescription>
                 </CardHeader>
                 <CardContent className="h-[300px]">
