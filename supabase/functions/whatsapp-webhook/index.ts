@@ -1,4 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import {
+    extractInboundMessageContent,
+    resolveExplicitInboundPhoneCandidate,
+    resolveInboundMessageNodeAndType,
+    shouldSkipLidMessageWithoutPhone,
+} from '../_shared/whatsappWebhookMessageParsing.ts'
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
 if (!ALLOWED_ORIGIN) {
@@ -128,6 +134,13 @@ function resolveMessageId(msg: any, data: any, body: any): string | null {
     return raw ? String(raw) : null
 }
 
+function normalizeJidUserPart(remoteJid: string): string {
+    const localPart = String(remoteJid)
+        .replace(/@(s\.whatsapp\.net|c\.us)$/i, '')
+        .trim()
+    return localPart.replace(/:\d+$/, '')
+}
+
 function resolveFromMe(msg: any, data: any, body: any): boolean {
     const candidates = [
         msg?.key?.fromMe,
@@ -152,36 +165,6 @@ function resolveFromMe(msg: any, data: any, body: any): boolean {
     }
 
     return false
-}
-
-function extractMessageContent(msg: any) {
-    const m = msg?.message || {}
-    const type = msg?.messageType || msg?.type || Object.keys(m)[0]
-
-    if (type === 'conversation') return m.conversation
-    if (type === 'extendedTextMessage') return m.extendedTextMessage?.text
-
-    if (type === 'audioMessage') {
-        const duration = m.audioMessage?.seconds || 0
-        return `🎤 Áudio (${duration}s)`
-    }
-    if (type === 'imageMessage') {
-        return `🖼️ ${m.imageMessage?.caption || 'Imagem recebida'}`
-    }
-    if (type === 'videoMessage') {
-        return `🎬 ${m.videoMessage?.caption || 'Vídeo recebido'}`
-    }
-    if (type === 'documentMessage') {
-        return `📎 ${m.documentMessage?.fileName || 'Documento'}`
-    }
-    if (type === 'stickerMessage') {
-        return `🖼️ Sticker`
-    }
-
-    if (m?.conversation) return m.conversation
-    if (m?.extendedTextMessage?.text) return m.extendedTextMessage.text
-
-    return `Mensagem recebida (tipo: ${type || 'desconhecido'})`
 }
 
 function normalizeProtocolVersion(raw: any): 'legacy' | 'pipeline_pdf_v1' {
@@ -499,18 +482,13 @@ Deno.serve(async (req: Request) => {
                 let pushName = msg?.pushName || msg?.notifyName || null
                 if (isFromMe) pushName = null
 
-                // UNWRAP ViewOnce
-                let m = msg?.message || {}
-                let msgType = msg?.messageType || msg?.type || Object.keys(m)[0]
-
-                if (msgType === 'viewOnceMessage' || msgType === 'viewOnceMessageV2') {
-                    const inner = m[msgType]?.message
-                    if (inner) {
-                        m = inner
-                        msg.message = inner
-                        msgType = Object.keys(inner)[0]
-                    }
+                // Normalize wrapper envelopes (viewOnce/ephemeral/deviceSent/etc.) so only real content reaches persistence.
+                const normalizedInbound = resolveInboundMessageNodeAndType(msg)
+                msg.message = normalizedInbound.messageNode
+                if (normalizedInbound.msgType) {
+                    msg.messageType = normalizedInbound.msgType
                 }
+                const msgType = normalizedInbound.msgType || ''
 
                 // Reaction Logic
                 if (msgType === 'reactionMessage') {
@@ -559,23 +537,70 @@ Deno.serve(async (req: Request) => {
                     break
                 }
 
-                if (!remoteJid || String(remoteJid).endsWith('@g.us')) break
+                if (!remoteJid) break
+                const remoteJidStr = String(remoteJid)
+                if (
+                    remoteJidStr.endsWith('@g.us') ||
+                    remoteJidStr === 'status@broadcast' ||
+                    remoteJidStr.endsWith('@broadcast')
+                ) {
+                    break
+                }
 
-                let text = extractMessageContent(msg)
+                let text = extractInboundMessageContent(msg)
+                if (!text) {
+                    console.log('⏭️ Skipping message without user-content payload', {
+                        event,
+                        instanceName,
+                        waMessageId,
+                        remoteJid: remoteJidStr,
+                        msgType: msgType || 'unknown'
+                    })
+                    break
+                }
+
+                if (shouldSkipLidMessageWithoutPhone(remoteJidStr, msg, data, body)) {
+                    console.log('⏭️ Skipping @lid message without resolvable phone number', {
+                        event,
+                        instanceName,
+                        waMessageId,
+                        remoteJid: remoteJidStr,
+                        msgType: msgType || 'unknown'
+                    })
+                    break
+                }
 
                 // Get Lead
-                const rawRemoteJid = String(remoteJid).replace('@s.whatsapp.net', '')
-                let phoneE164 = rawRemoteJid.replace(/\D/g, '')
+                const rawRemoteJid = normalizeJidUserPart(remoteJidStr)
+                const remoteDigits = onlyDigits(rawRemoteJid)
+                const shouldResolveExplicitPhone =
+                    remoteJidStr.toLowerCase().endsWith('@lid') || !remoteDigits
+                const explicitPhoneCandidate = shouldResolveExplicitPhone
+                    ? resolveExplicitInboundPhoneCandidate(msg, data, body)
+                    : null
+                const leadPhoneRaw = explicitPhoneCandidate || rawRemoteJid
+                let phoneE164 = onlyDigits(leadPhoneRaw)
+                if (!phoneE164) {
+                    console.log('⏭️ Skipping message without usable phone digits for lead upsert', {
+                        event,
+                        instanceName,
+                        waMessageId,
+                        remoteJid: remoteJidStr,
+                        msgType: msgType || 'unknown'
+                    })
+                    break
+                }
                 if (phoneE164.length >= 10 && phoneE164.length <= 11 && !phoneE164.startsWith('55')) {
                     phoneE164 = '55' + phoneE164
                 }
+                const leadTelefone = explicitPhoneCandidate || rawRemoteJid
 
                 let leadId = null
                 const { data: leadData, error: upsertLeadError } = await supabase.rpc('upsert_lead_canonical', {
                     p_user_id: userId,
                     p_instance_name: instanceName,
                     p_phone_e164: phoneE164,
-                    p_telefone: rawRemoteJid,
+                    p_telefone: leadTelefone,
                     p_name: pushName,
                     p_push_name: pushName,
                     p_source: 'whatsapp'
@@ -586,6 +611,7 @@ Deno.serve(async (req: Request) => {
                         instanceName,
                         phoneE164,
                         rawRemoteJid,
+                        leadTelefone,
                         error: upsertLeadError.message
                     })
                 } else if (leadData) {

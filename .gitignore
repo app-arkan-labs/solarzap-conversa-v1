@@ -39,3 +39,8 @@ diff_*.txt
 dupes.txt
 modified_files*.txt
 fix_imports.cjs
+
+# Codex/Supabase temporary artifacts
+.supabase-deploy-prompts-temp-*/
+vite.config.ts.timestamp-*.mjs
+implementation_plan.md.resolved
