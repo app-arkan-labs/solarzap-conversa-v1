@@ -105,6 +105,15 @@ export function AIAgentsView() {
     const activeCount = ACTIVE_PIPELINE_AGENTS.filter(
         a => stageConfigs.find(c => c.status_pipeline === a.stage)?.is_active
     ).length;
+    const editingConfig = editingStage ? stageConfigs.find(c => c.status_pipeline === editingStage) : null;
+    const editingPromptVersion = editingConfig?.prompt_override_version ?? 0;
+    const promptLength = tempPrompt.length;
+    const promptWarnings = [
+        promptLength > 0 && promptLength < 50 ? `Prompt curto (${promptLength} < 50 caracteres)` : null,
+        promptLength > 15000 ? `Prompt longo (${promptLength} > 15000 caracteres)` : null,
+        tempPrompt && !/ETAPA:/i.test(tempPrompt) ? 'Aviso: sem "ETAPA:"' : null,
+        tempPrompt && !/OBJETIVO:/i.test(tempPrompt) ? 'Aviso: sem "OBJETIVO:"' : null,
+    ].filter(Boolean) as string[];
 
     return (
         <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-hidden">
@@ -287,6 +296,9 @@ export function AIAgentsView() {
                                                         >
                                                             {isEnabled ? "Ativo" : "Desativado"}
                                                         </Badge>
+                                                        <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                                            Versao {config?.prompt_override_version ?? 0}
+                                                        </Badge>
                                                     </div>
                                                     <p className="text-xs font-medium text-slate-600 mb-0.5">
                                                         🎯 {agent.objective}
@@ -376,6 +388,26 @@ export function AIAgentsView() {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 py-4 min-h-0">
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="h-5 px-2 text-[10px]">
+                                Versao {editingPromptVersion}
+                            </Badge>
+                            <Badge variant="secondary" className="h-5 px-2 text-[10px]">
+                                {promptLength} caracteres
+                            </Badge>
+                            {promptWarnings.map((warning) => (
+                                <Badge
+                                    key={warning}
+                                    variant="outline"
+                                    className="h-5 border-amber-300 bg-amber-50 px-2 text-[10px] text-amber-800"
+                                >
+                                    {warning}
+                                </Badge>
+                            ))}
+                            {promptWarnings.length > 0 && (
+                                <span className="text-[11px] text-slate-500">Avisos nao bloqueiam o salvamento.</span>
+                            )}
+                        </div>
                         <Textarea
                             className="h-full resize-none font-mono text-sm"
                             value={tempPrompt}

@@ -28,6 +28,7 @@ export interface AIStageConfig {
     agent_goal: string;
     default_prompt?: string;  // System Default
     prompt_override?: string; // User Edit
+    prompt_override_version?: number;
     updated_at: string;
 }
 

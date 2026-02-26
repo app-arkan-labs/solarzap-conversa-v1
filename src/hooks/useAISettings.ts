@@ -6,8 +6,9 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const STAGE_COL = 'pipeline_stage';
 const LEGACY_COL = 'status_pipeline';
-const STAGE_CONFIG_BASE_FIELDS =
+const STAGE_CONFIG_REQUIRED_FIELDS =
   'id, org_id, is_active, agent_goal, default_prompt, prompt_override, updated_at';
+const STAGE_CONFIG_VERSION_FIELD = 'prompt_override_version';
 const STAGE_SCHEMA_ERRORS = new Set(['PGRST204', '42703']);
 
 const isStageSchemaMismatch = (error: any): boolean => {
@@ -15,11 +16,35 @@ const isStageSchemaMismatch = (error: any): boolean => {
   return STAGE_SCHEMA_ERRORS.has(code);
 };
 
-const stageConfigSelect = (stageCol: string): string => `${STAGE_CONFIG_BASE_FIELDS}, ${stageCol}`;
+const stageConfigSelect = (stageCol: string, includeVersion = true): string => {
+  const baseFields = includeVersion
+    ? `${STAGE_CONFIG_REQUIRED_FIELDS}, ${STAGE_CONFIG_VERSION_FIELD}`
+    : STAGE_CONFIG_REQUIRED_FIELDS;
+  return `${baseFields}, ${stageCol}`;
+};
+
+const hasOwn = (obj: object, key: string): boolean => Object.prototype.hasOwnProperty.call(obj, key);
+
+const stripPromptVersionField = (updates: Partial<AIStageConfig>): Partial<AIStageConfig> => {
+  if (!hasOwn(updates as object, 'prompt_override_version')) return updates;
+  const { prompt_override_version, ...rest } = updates;
+  return rest;
+};
+
+const stageUpdateVariants = (updates: Partial<AIStageConfig>): Partial<AIStageConfig>[] => {
+  const variants: Partial<AIStageConfig>[] = [updates];
+  const stripped = stripPromptVersionField(updates);
+  if (stripped !== updates) variants.push(stripped);
+  return variants;
+};
 
 const normalizeStageConfig = (row: any): AIStageConfig => ({
   ...row,
   status_pipeline: row?.[STAGE_COL] ?? row?.[LEGACY_COL] ?? 'novo_lead',
+  prompt_override_version:
+    typeof row?.prompt_override_version === 'number' && Number.isFinite(row.prompt_override_version)
+      ? row.prompt_override_version
+      : 0,
 });
 
 const getStageKey = (row: Partial<AIStageConfig> | undefined): string =>
@@ -46,6 +71,37 @@ const getStageSeedDefaults = (stage: string): Pick<AIStageConfig, 'is_active' | 
 type StageUpdateResult = {
   stageColUsed: string;
   hasRowAfterUpdate: boolean;
+};
+
+const fetchStageConfigsRows = async (orgId: string) => {
+  const attempts: Array<{ stageCol: string; includeVersion: boolean }> = [
+    { stageCol: STAGE_COL, includeVersion: true },
+    { stageCol: STAGE_COL, includeVersion: false },
+    { stageCol: LEGACY_COL, includeVersion: true },
+    { stageCol: LEGACY_COL, includeVersion: false },
+  ];
+
+  let lastSchemaError: any = null;
+
+  for (const attempt of attempts) {
+    const resp = await supabase
+      .from('ai_stage_config')
+      .select(stageConfigSelect(attempt.stageCol, attempt.includeVersion))
+      .eq('org_id', orgId)
+      .order('id');
+
+    if (!resp.error) return resp.data || [];
+
+    if (isStageSchemaMismatch(resp.error)) {
+      lastSchemaError = resp.error;
+      continue;
+    }
+
+    throw resp.error;
+  }
+
+  if (lastSchemaError) throw lastSchemaError;
+  return [];
 };
 
 export function useAISettings() {
@@ -94,26 +150,11 @@ export function useAISettings() {
         }
       }
 
-      let { data: stagesData, error: stagesError } = await supabase
-        .from('ai_stage_config')
-        .select(stageConfigSelect(STAGE_COL))
-        .eq('org_id', orgId)
-        .order('id');
-
-      if (stagesError && isStageSchemaMismatch(stagesError)) {
-        const legacyFetch = await supabase
-          .from('ai_stage_config')
-          .select(stageConfigSelect(LEGACY_COL))
-          .eq('org_id', orgId)
-          .order('id');
-        stagesData = legacyFetch.data;
-        stagesError = legacyFetch.error;
-      }
-
-      if (stagesError) {
-        console.error('Error fetching AI stages:', stagesError);
-      } else {
+      try {
+        const stagesData = await fetchStageConfigsRows(orgId);
         setStageConfigs((stagesData || []).map(normalizeStageConfig));
+      } catch (stagesError) {
+        console.error('Error fetching AI stages:', stagesError);
       }
     } catch (error) {
       console.error('Unexpected error in useAISettings:', error);
@@ -190,34 +231,36 @@ export function useAISettings() {
     orgIdValue: string,
     updates: Partial<AIStageConfig>,
   ): Promise<StageUpdateResult> => {
-    let stageColUsed = STAGE_COL;
-    let updateResp = await supabase
-      .from('ai_stage_config')
-      .update(updates)
-      .eq(stageColUsed, stage)
-      .eq('org_id', orgIdValue)
-      .select(stageConfigSelect(stageColUsed))
-      .maybeSingle();
+    let lastSchemaError: any = null;
 
-    if (updateResp.error && isStageSchemaMismatch(updateResp.error)) {
-      stageColUsed = LEGACY_COL;
-      updateResp = await supabase
-        .from('ai_stage_config')
-        .update(updates)
-        .eq(stageColUsed, stage)
-        .eq('org_id', orgIdValue)
-        .select(stageConfigSelect(stageColUsed))
-        .maybeSingle();
+    for (const stageColUsed of [STAGE_COL, LEGACY_COL]) {
+      for (const updateVariant of stageUpdateVariants(updates)) {
+        const updateResp = await supabase
+          .from('ai_stage_config')
+          .update(updateVariant)
+          .eq(stageColUsed, stage)
+          .eq('org_id', orgIdValue)
+          .select(stageConfigSelect(stageColUsed, false))
+          .maybeSingle();
+
+        if (!updateResp.error) {
+          return {
+            stageColUsed,
+            hasRowAfterUpdate: Boolean(updateResp.data),
+          };
+        }
+
+        if (isStageSchemaMismatch(updateResp.error)) {
+          lastSchemaError = updateResp.error;
+          continue;
+        }
+
+        throw updateResp.error;
+      }
     }
 
-    if (updateResp.error) {
-      throw updateResp.error;
-    }
-
-    return {
-      stageColUsed,
-      hasRowAfterUpdate: Boolean(updateResp.data),
-    };
+    if (lastSchemaError) throw lastSchemaError;
+    throw new Error('Unable to update ai_stage_config row');
   };
 
   const upsertStageRow = async (
@@ -227,57 +270,88 @@ export function useAISettings() {
     updates: Partial<AIStageConfig>,
   ) => {
     const stageSeed = getStageSeedDefaults(stage);
-    const payload = {
-      org_id: orgIdValue,
-      [stageColUsed]: stage,
-      ...stageSeed,
+    const stageColAttempts =
+      stageColUsed === LEGACY_COL ? [LEGACY_COL, STAGE_COL] : [STAGE_COL, LEGACY_COL];
+    let lastSchemaError: any = null;
+
+    for (const stageColCandidate of stageColAttempts) {
+      const conflictCols = stageColCandidate === LEGACY_COL ? 'org_id,status_pipeline' : 'org_id,pipeline_stage';
+
+      for (const updateVariant of stageUpdateVariants(updates)) {
+        const payload = {
+          org_id: orgIdValue,
+          [stageColCandidate]: stage,
+          ...stageSeed,
+          ...updateVariant,
+        };
+
+        const upsertResp = await supabase
+          .from('ai_stage_config')
+          .upsert(payload, { onConflict: conflictCols })
+          .select(stageConfigSelect(stageColCandidate, false))
+          .maybeSingle();
+
+        if (!upsertResp.error) return;
+
+        if (isStageSchemaMismatch(upsertResp.error)) {
+          lastSchemaError = upsertResp.error;
+          continue;
+        }
+
+        throw upsertResp.error;
+      }
+    }
+
+    if (lastSchemaError) throw lastSchemaError;
+    throw new Error('Unable to upsert ai_stage_config row');
+  };
+
+  const withPromptVersion = (stage: string | number, updates: Partial<AIStageConfig>): Partial<AIStageConfig> => {
+    if (!hasOwn(updates as object, 'prompt_override')) return updates;
+
+    const currentVersion =
+      typeof stage === 'number'
+        ? (stageConfigs.find((cfg) => cfg.id === stage)?.prompt_override_version ?? 0)
+        : (stageConfigs.find((cfg) => cfg.status_pipeline === String(stage))?.prompt_override_version ?? 0);
+
+    const safeCurrentVersion = Number.isFinite(Number(currentVersion)) ? Number(currentVersion) : 0;
+    return {
       ...updates,
+      prompt_override_version: Math.max(0, safeCurrentVersion) + 1,
     };
-
-    const conflictCols = stageColUsed === LEGACY_COL ? 'org_id,status_pipeline' : 'org_id,pipeline_stage';
-    let upsertResp = await supabase
-      .from('ai_stage_config')
-      .upsert(payload, { onConflict: conflictCols })
-      .select(stageConfigSelect(stageColUsed))
-      .maybeSingle();
-
-    if (upsertResp.error && stageColUsed === LEGACY_COL) {
-      const retryPayload = {
-        org_id: orgIdValue,
-        [STAGE_COL]: stage,
-        ...stageSeed,
-        ...updates,
-      };
-      upsertResp = await supabase
-        .from('ai_stage_config')
-        .upsert(retryPayload, { onConflict: 'org_id,pipeline_stage' })
-        .select(stageConfigSelect(STAGE_COL))
-        .maybeSingle();
-    }
-
-    if (upsertResp.error) {
-      throw upsertResp.error;
-    }
   };
 
   const updateStageConfig = async (stage: string | number, updates: Partial<AIStageConfig>) => {
     try {
       if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+      const effectiveUpdates = withPromptVersion(stage, updates);
 
       if (typeof stage === 'number') {
-        const { error } = await supabase
+        let { error } = await supabase
           .from('ai_stage_config')
-          .update(updates)
+          .update(effectiveUpdates)
           .eq('id', stage)
           .eq('org_id', orgId);
+
+        if (error && isStageSchemaMismatch(error)) {
+          const fallbackUpdates = stripPromptVersionField(effectiveUpdates);
+          if (fallbackUpdates !== effectiveUpdates) {
+            const retry = await supabase
+              .from('ai_stage_config')
+              .update(fallbackUpdates)
+              .eq('id', stage)
+              .eq('org_id', orgId);
+            error = retry.error;
+          }
+        }
 
         if (error) throw error;
       } else {
         const stageKey = String(stage);
-        const updateResult = await updateExistingStageRow(stageKey, orgId, updates);
+        const updateResult = await updateExistingStageRow(stageKey, orgId, effectiveUpdates);
 
         if (!updateResult.hasRowAfterUpdate) {
-          await upsertStageRow(stageKey, updateResult.stageColUsed, orgId, updates);
+          await upsertStageRow(stageKey, updateResult.stageColUsed, orgId, effectiveUpdates);
         }
       }
 
@@ -289,23 +363,7 @@ export function useAISettings() {
     }
   };
 
-  const restoreDefaultPrompt = async (stage: string) => {
-    try {
-      if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
-
-      const updateResult = await updateExistingStageRow(stage, orgId, { prompt_override: null });
-
-      if (!updateResult.hasRowAfterUpdate) {
-        await upsertStageRow(stage, updateResult.stageColUsed, orgId, { prompt_override: null });
-      }
-
-      toast({ title: 'Prompt restaurado para o padrao!' });
-      await fetchSettings();
-    } catch (error) {
-      console.error('Error restoring default prompt:', error);
-      toast({ title: 'Erro ao restaurar', variant: 'destructive' });
-    }
-  };
+  const restoreDefaultPrompt = async (stage: string) => updateStageConfig(stage, { prompt_override: null });
 
   return {
     settings: settings || (DEFAULT_AI_SETTINGS as AISettings),
