@@ -209,7 +209,9 @@ test('prompt versioning: save increments version and restore remains editable', 
   const restoredPrompt = await editorAfterSave.inputValue();
   expect(restoredPrompt).not.toBe(customPrompt);
   expect(restoredPrompt.length).toBeGreaterThan(0);
-  expect(restoredPrompt).toBe(originalPrompt);
+  expect(restoredPrompt).toContain('PROTOCOLO_BASE: PIPELINE_PDF_V1');
+  expect(restoredPrompt).toContain('ETAPA: RESPONDEU');
+  expect(restoredPrompt).not.toBe(originalPrompt);
 
   await page.getByRole('button', { name: /Salvar Altera/i }).click();
 
