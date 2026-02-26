@@ -17,6 +17,7 @@
  */
 
 import { PipelineStage } from '@/types/solarzap';
+import { AI_PIPELINE_STAGE_PROMPTS_PDF } from './aiPipelinePdfPrompts';
 
 export interface PipelineAgentDef {
   stage: PipelineStage;
@@ -478,6 +479,11 @@ export const isAIPipelineUIStage = (stage: string | null | undefined): boolean =
 export const ACTIVE_AGENT_STAGES = AI_PIPELINE_UI_STAGE_SET;
 
 // Map stage → default prompt (for restoreDefault in editor)
-export const DEFAULT_PROMPTS_BY_STAGE: Record<string, string> = Object.fromEntries(
-  ACTIVE_PIPELINE_AGENTS.map(a => [a.stage, a.defaultPrompt]),
-);
+export const DEFAULT_PROMPTS_BY_STAGE: Record<string, string> = {
+  ...Object.fromEntries(ACTIVE_PIPELINE_AGENTS.map(a => [a.stage, a.defaultPrompt])),
+  novo_lead: AI_PIPELINE_STAGE_PROMPTS_PDF.novo_lead,
+  respondeu: AI_PIPELINE_STAGE_PROMPTS_PDF.respondeu,
+  nao_compareceu: AI_PIPELINE_STAGE_PROMPTS_PDF.nao_compareceu,
+  proposta_negociacao: AI_PIPELINE_STAGE_PROMPTS_PDF.proposta_negociacao,
+  financiamento: AI_PIPELINE_STAGE_PROMPTS_PDF.financiamento,
+};

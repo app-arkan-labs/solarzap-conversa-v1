@@ -271,6 +271,7 @@ export function AIAgentsView() {
                                 const effectivePrompt =
                                     config?.prompt_override ||
                                     config?.default_prompt ||
+                                    DEFAULT_PROMPTS_BY_STAGE[agent.stage] ||
                                     agent.defaultPrompt;
 
                                 return (
