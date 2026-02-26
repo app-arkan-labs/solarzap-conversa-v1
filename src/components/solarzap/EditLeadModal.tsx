@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Loader2, Save, User, Building, Phone, Mail, MapPin, Zap, DollarSign, FileText } from 'lucide-react';
+import { LeadStageDataSection } from './LeadStageDataSection';
 
 interface EditLeadModalProps {
   contact: Contact | null;
@@ -388,6 +389,8 @@ export function EditLeadModal({ contact, isOpen, onClose, onSave }: EditLeadModa
               rows={4}
             />
           </div>
+
+          <LeadStageDataSection contact={contact} />
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>

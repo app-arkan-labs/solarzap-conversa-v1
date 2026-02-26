@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useAutomationSettings } from '@/hooks/useAutomationSettings';
 import { EditLeadModal, UpdateLeadData } from './EditLeadModal';
+import { StageBadges } from './StageBadges';
 
 import { ProposalModal, ProposalData } from './ProposalModal';
 import { ProposalReadyModal } from './ProposalReadyModal';
@@ -778,6 +779,8 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
                               </div>
                             )}
                           </div>
+
+                          <StageBadges contact={contact} className="mb-3" />
 
                           {/* Value */}
                           <div className="flex items-center gap-1 text-sm font-bold text-green-600 mb-1">
