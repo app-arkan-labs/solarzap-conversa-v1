@@ -15,6 +15,36 @@ const FETCH_TIMEOUT_MS = 10_000;
 
 const DAYS_IN_MONTH = [31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
+const UF_TO_STATE_NAME: Record<string, string> = {
+  AC: "Acre",
+  AL: "Alagoas",
+  AP: "Amapa",
+  AM: "Amazonas",
+  BA: "Bahia",
+  CE: "Ceara",
+  DF: "Distrito Federal",
+  ES: "Espirito Santo",
+  GO: "Goias",
+  MA: "Maranhao",
+  MT: "Mato Grosso",
+  MS: "Mato Grosso do Sul",
+  MG: "Minas Gerais",
+  PA: "Para",
+  PB: "Paraiba",
+  PR: "Parana",
+  PE: "Pernambuco",
+  PI: "Piaui",
+  RJ: "Rio de Janeiro",
+  RN: "Rio Grande do Norte",
+  RS: "Rio Grande do Sul",
+  RO: "Rondonia",
+  RR: "Roraima",
+  SC: "Santa Catarina",
+  SP: "Sao Paulo",
+  SE: "Sergipe",
+  TO: "Tocantins",
+};
+
 const BRAZIL_STATES_IRRADIANCE: Record<string, number> = {
   AC: 4.5,
   AL: 5.3,
@@ -56,6 +86,12 @@ const toFinite = (value: unknown, fallback = 0): number => {
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+const normalizeText = (value: string): string =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 
 const normalizeFactors = (factors: number[]): number[] => {
   const safe = factors.map((v) => Math.max(0, toFinite(v, 0)));
@@ -106,6 +142,58 @@ function buildFallbackFromUF(ufRaw: unknown, lat: number | null, lon: number | n
 async function geocodeCity(city: string, uf: string): Promise<{ lat: number; lon: number } | null> {
   const name = city.trim();
   if (!name) return null;
+  const normalizedUf = uf.trim().toUpperCase();
+
+  const extractUfFromGoogleResult = (result: any): string => {
+    const components = Array.isArray(result?.address_components) ? result.address_components : [];
+    const stateComponent = components.find((component: any) =>
+      Array.isArray(component?.types) && component.types.includes("administrative_area_level_1"));
+
+    const shortName = String(stateComponent?.short_name || "").trim().toUpperCase();
+    if (shortName.length === 2) return shortName;
+
+    const longNameNormalized = normalizeText(String(stateComponent?.long_name || ""));
+    if (!longNameNormalized) return "";
+    const byLongName = Object.entries(UF_TO_STATE_NAME).find(([, state]) =>
+      normalizeText(state) === longNameNormalized);
+    return byLongName?.[0] || "";
+  };
+
+  const geocodeWithGoogle = async (apiKey: string): Promise<{ lat: number; lon: number } | null> => {
+    if (!apiKey) return null;
+    const stateLabel = UF_TO_STATE_NAME[normalizedUf] || normalizedUf;
+    const address = [name, stateLabel, "Brasil"].filter(Boolean).join(", ");
+    const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+    url.searchParams.set("address", address);
+    url.searchParams.set("components", "country:BR");
+    url.searchParams.set("region", "br");
+    url.searchParams.set("language", "pt-BR");
+    url.searchParams.set("key", apiKey);
+
+    const response = await fetchWithTimeout(url.toString());
+    if (!response.ok) return null;
+
+    const data = await response.json().catch(() => null);
+    if ((data as any)?.status !== "OK") return null;
+    const results = Array.isArray((data as any)?.results) ? (data as any).results : [];
+    if (results.length === 0) return null;
+
+    const ufMatch = normalizedUf
+      ? results.find((row: any) => extractUfFromGoogleResult(row) === normalizedUf)
+      : null;
+    const selected = ufMatch || results[0];
+
+    const lat = toFinite(selected?.geometry?.location?.lat, NaN);
+    const lon = toFinite(selected?.geometry?.location?.lng, NaN);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    return { lat, lon };
+  };
+
+  const googleApiKey = (Deno.env.get("GEOCODING_API_KEY") || Deno.env.get("GOOGLE_GEOCODING_API_KEY") || "").trim();
+  if (googleApiKey) {
+    const googleResult = await geocodeWithGoogle(googleApiKey).catch(() => null);
+    if (googleResult) return googleResult;
+  }
 
   const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
   url.searchParams.set("name", name);
@@ -113,6 +201,10 @@ async function geocodeCity(city: string, uf: string): Promise<{ lat: number; lon
   url.searchParams.set("language", "pt");
   url.searchParams.set("format", "json");
   url.searchParams.set("countryCode", "BR");
+  const openMeteoApiKey = (Deno.env.get("OPEN_METEO_API_KEY") || "").trim();
+  if (openMeteoApiKey) {
+    url.searchParams.set("apikey", openMeteoApiKey);
+  }
 
   const response = await fetchWithTimeout(url.toString());
   if (!response.ok) return null;
@@ -120,7 +212,6 @@ async function geocodeCity(city: string, uf: string): Promise<{ lat: number; lon
   const results = Array.isArray((data as any)?.results) ? (data as any).results : [];
   if (results.length === 0) return null;
 
-  const normalizedUf = uf.trim().toUpperCase();
   const withUf = normalizedUf
     ? results.find((row: any) => String(row?.admin1 || "").toUpperCase().includes(normalizedUf))
     : null;
