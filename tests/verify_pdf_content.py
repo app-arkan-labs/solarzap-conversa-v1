@@ -25,6 +25,13 @@ def verify_pdf(file_path):
             "[object object]"
         ]
         
+        mojibake_markers = [
+            "Ã",
+            "Â",
+            "â€",
+            "�",
+        ]
+
         found_forbidden = []
         for term in forbidden:
             if term in text_lower:
@@ -32,6 +39,15 @@ def verify_pdf(file_path):
         
         if found_forbidden:
             print(f"FAILED: Found forbidden terms in PDF: {found_forbidden}")
+            sys.exit(1)
+
+        found_mojibake = []
+        for marker in mojibake_markers:
+            if marker in text:
+                found_mojibake.append(marker)
+
+        if found_mojibake:
+            print(f"FAILED: Found mojibake markers in PDF: {found_mojibake}")
             sys.exit(1)
             
         # Required terms (ensure basic content is there)
