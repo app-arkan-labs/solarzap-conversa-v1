@@ -814,6 +814,7 @@ export function SolarZapLayout() {
         paybackMeses: data.paybackMeses,
         garantiaAnos: data.garantiaAnos,
         tipo_cliente: data.tipo_cliente,
+        rentabilityRatePerKwh: (data as any).rentabilityRatePerKwh,
         premiumContent: premiumContentFromPayload ? {
           segment: premiumContentFromPayload.segment,
           segmentLabel: premiumContentFromPayload.segmentLabel,
@@ -840,7 +841,17 @@ export function SolarZapLayout() {
         taxaFinanciamento: (data as any).taxaFinanciamento,
         parcela36x: (data as any).parcela36x,
         parcela60x: (data as any).parcela60x,
+        paymentConditions: (data as any).paymentConditions,
+        financingConditions: (data as any).financingConditions,
+        financingPrimaryInstitutionId: (data as any).financingPrimaryInstitutionId,
+        showFinancingSimulation: (data as any).showFinancingSimulation,
+        secondaryColorHex: (data as any).secondaryColorHex,
         validadeDias: (data as any).validadeDias,
+        annualEnergyIncreasePct: (data as any).annualEnergyIncreasePct,
+        moduleDegradationPct: (data as any).moduleDegradationPct,
+        financialInputs: (data as any).financialInputs,
+        financialOutputs: (data as any).financialOutputs,
+        financialModelVersion: (data as any).financialModelVersion,
         propNum: (data as any).propNum,
         proposalVersionId: (saveResult as any)?.proposalVersionId || null,
         propostaId: (saveResult as any)?.proposal?.id || null,
@@ -857,6 +868,14 @@ export function SolarZapLayout() {
       data: {
         valor_estimado: data.valorTotal,
         consumo_kwh: data.consumoMensal,
+        uf: data.estado,
+        concessionaria: data.concessionaria,
+        tipo_ligacao: data.tipoLigacao,
+        tarifa_kwh: data.rentabilityRatePerKwh ?? data.tarifaKwh,
+        custo_disponibilidade_kwh: data.custoDisponibilidadeKwh,
+        performance_ratio: data.performanceRatio,
+        preco_por_kwp: data.precoPorKwp,
+        abater_custo_disponibilidade_no_dimensionamento: data.abaterCustoDisponibilidadeNoDimensionamento,
       }
     });
 
