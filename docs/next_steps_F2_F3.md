@@ -1,26 +1,23 @@
-# Next Steps F2/F3
+# Next Steps apos F2/F3/F4
 
-## F2 - Evolucao do modelo (sem implementar neste ciclo)
+Este arquivo registra o backlog residual apos a entrega de F2/F3 e dos itens F4 de alto impacto.
 
-1. Ajustar `diasMes` para `30.4375` no dimensionamento e revisar impacto em potencia/valor.
-2. Introduzir perfis sazonais por regiao/UF (substituir perfil unico nacional).
-3. Incluir custo anual de O&M no fluxo de caixa e refletir no ROI/payback.
-4. Aplicar degradacao de geracao para todos os cenarios que exibem serie de longo prazo.
-5. Melhorar transparencia no PDF:
-   - exibir premissas usadas (tarifa, degradacao, reajuste, horizonte, perfil sazonal)
-   - exibir fonte da irradiancia/perfil e data da referencia
+## Entregue neste ciclo
 
-## F3 - Quebra do monolito de PDF
+- Recurso solar externo com cache e fallback por UF.
+- Integracao de irradiancia georreferenciada com feature flag.
+- `diasMes=30.4375` e sazonalidade baseada em fatores mensais externos.
+- O&M e degradacao ampliada por flags.
+- TUSD/TE simplificado conservador (`tusdCompensationPct` default 0%).
+- Shadow mode financeiro (legado vs novo).
+- Transparencia de premissas no PDF com flags avancadas.
+- Renderer PDF modular com fachada e ativacao por `VITE_USE_PDF_RENDERER_V2`.
 
-1. Extrair `generateProposalPDF.ts` em modulos por pagina/bloco:
-   - `pdfPages/cover.ts`
-   - `pdfPages/financialAnalysis.ts`
-   - `pdfPages/technical.ts`
-   - `pdfPages/financing.ts`
-   - `pdfPages/closing.ts`
-2. Extrair helpers compartilhados:
-   - cabecalho/rodape
-   - tipografia/cores
-   - formatacao de moeda e numeros
-3. Reduzir duplicacao entre proposta comercial e roteiro do vendedor com blocos reutilizaveis.
-4. Manter testes golden por pagina e um golden end-to-end consolidado.
+## Backlog tecnico recomendado
+
+1. Simulacao horaria (8760h) para aumentar fidelidade de sazonalidade e perdas.
+2. Modelagem regulatoria avancada por distribuidora (regras de compensacao TUSD/TE por classe).
+3. Custo O&M mais detalhado (escada por porte, inflacao especifica, troca de inversor).
+4. Cobertura de testes para Edge Function `solar-resource` com mocks de timeout/erro de provedor.
+5. Expandir renderer V2 para renderizacao 100% nativa por modulo (reduzir dependencia do legado).
+6. Monitoramento de rollout por flag com telemetria de deltas do shadow mode.

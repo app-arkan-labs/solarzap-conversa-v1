@@ -1,6 +1,6 @@
-# Premissas do Modelo Financeiro (AS-IS)
+# Premissas do Modelo Financeiro (estado atual)
 
-Este documento registra o comportamento atual do motor de propostas sem aplicar correcoes de logica.
+Este documento descreve o comportamento atual do gerador de propostas apos as entregas F0/F1/F2/F3/F4 deste ciclo.
 
 ## Escopo
 
@@ -8,80 +8,115 @@ Este documento registra o comportamento atual do motor de propostas sem aplicar 
 - `src/utils/proposalFinancialModel.ts`
 - `src/utils/proposalCharts.ts`
 - `src/utils/generateProposalPDF.ts`
+- `src/utils/pdf/*`
 
-## Defaults financeiros atuais
+## Defaults base
 
 - `DEFAULT_TARIFF_KWH`: `0.76`
 - `DEFAULT_ANALYSIS_YEARS`: `25`
 - `DEFAULT_ANNUAL_INCREASE_PCT`: `8`
 - `DEFAULT_MODULE_DEGRADATION_PCT`: `0.8`
 
-## Tarifa aplicada
+## Feature flags e comportamento
 
-A tarifa usada no modelo financeiro segue esta prioridade:
+Todas as evolucoes de F2/F3/F4 foram entregues com rollout por flag.
 
-1. tarifa manual
-2. tarifa do lead
-3. tarifa inferida pela distribuidora
+- `VITE_USE_UNIFIED_GENERATION` (default OFF)
+  - ON: financeiro usa geracao anual derivada de `sum(calcMonthlyGeneration)`.
+- `VITE_USE_SOLAR_RESOURCE_API` (default OFF)
+  - ON: usa Edge Function `solar-resource` (geocoder Open-Meteo + PVGIS + cache + fallback UF).
+- `VITE_USE_OM_COST_MODEL` (default OFF)
+  - ON: aplica O&M anual no fluxo financeiro (default `1% a.a.` quando nao informado).
+- `VITE_USE_DEGRADATION_ALL_CLIENTS` (default OFF)
+  - ON: aplica degradacao para todos os segmentos, nao apenas usina.
+- `VITE_USE_TUSD_TE_SIMPLIFIED` (default OFF)
+  - ON: separa economia por componentes TE/TUSD.
+  - `tusdCompensationPct` default conservador: `0%`.
+- `VITE_USE_PDF_RENDERER_V2` (default OFF)
+  - ON: ativa fachada modular do renderer (`src/utils/pdf/*`) mantendo API publica.
+- `VITE_USE_FINANCIAL_SHADOW_MODE` (default OFF)
+  - ON: calcula legado vs novo em paralelo e grava deltas em `premiumPayload.shadowComparison`.
+
+## Tarifa e prioridade
+
+Resolucao de tarifa segue prioridade:
+
+1. manual
+2. lead
+3. inferida
 4. fallback
 
-## Premissas de dimensionamento (AS-IS)
+## Dimensionamento
 
-- `diasMes` fixo em `30`
-- potencia base:
+- Potencia base:
   `consumoBaseDimensionamento / (irradiancia * diasMes * performanceRatio)`
-- quantidade de modulos:
+- Quantidade de modulos:
   `ceil((potenciaBase * 1000) / moduloPotenciaW)`
-- potencia instalada:
-  `((qtdModulos * moduloPotenciaW) / 1000)` com arredondamento em 2 casas
-- valor total:
+- Potencia instalada:
+  `((qtdModulos * moduloPotenciaW) / 1000)` (2 casas)
+- Valor total:
   `round(potenciaInstalada * precoPorKwp)`
+- `diasMes`:
+  - OFF (legado): `30`
+  - ON (`VITE_USE_SOLAR_RESOURCE_API`): `30.4375`
 
-## Premissas financeiras (AS-IS)
+## Geracao mensal e anual
+
+- Perfil mensal:
+  - ON com recurso externo: fatores mensais da API/cache
+  - OFF/falha: `LEGACY_SEASONAL_PROFILE` normalizado
+- Com `VITE_USE_UNIFIED_GENERATION=ON`:
+  - `annualGenerationKwhYear1 = sum(monthlyGeneration[12])`
+
+## Modelo financeiro
 
 ### Nao-usina
 
-- `annualGenerationKwhYear1 = consumoMensalKwh * 12`
-- conta antes:
-  `consumoMensalKwh * tarifa`
-- conta com solar:
-  `min(consumoMensalKwh, custoDisponibilidadeKwh) * tarifa`
-- economia mensal:
-  `contaAntes - contaComSolar`
-- economia anual:
-  `economiaMensal * 12`
+- Conta antes: `consumoMensal * tarifaEfetiva`
+- Conta apos solar: `custoDisponibilidade * tarifaEfetiva`
+- Economia mensal/anual derivada dessa diferenca
+- Com TUSD/TE ON:
+  - `teSavingsMonthly = compensableKwh * teRatePerKwh`
+  - `tusdSavingsMonthly = compensableKwh * tusdRatePerKwh * (tusdCompensationPct/100)`
+  - Economia total = `TE + TUSD compensada`
 
 ### Usina
 
-- `annualGenerationKwhYear1 = consumoMensalKwh * 12`
-- receita ano 1:
-  `annualGenerationKwhYear1 * tarifa`
-- para cada ano:
-  `receitaAnoN = receitaAno1 * (1 + annualEnergyIncreasePct)^n * (1 - moduleDegradationPct)^n`
+- Receita ano 1 baseada em geracao anual e taxa efetiva
+- Serie anual aplica:
+  - reajuste (`annualEnergyIncreasePct`)
+  - degradacao (`moduleDegradationPct`), conforme flag de abrangencia
 
-## Payback (AS-IS)
+### O&M
 
-- payback principal por interpolacao no ano em que o acumulado cruza o investimento
-- fallback:
-  `(investimentoTotal / annualRevenueYear1) * 12`
+- Se `VITE_USE_OM_COST_MODEL=ON`:
+  - `annualOmCostYear1 = investimento * annualOmCostPct/100 + annualOmCostFixed`
+  - Receita anual liquida = receita bruta - O&M
 
-## Series e indicadores (AS-IS)
+## Payback e indicadores
 
-- serie anual de receita com horizonte `analysisYears`
-- serie acumulada por soma anual
-- `roi25Pct` sobre acumulado de 25 anos
-- `retornoPorReal`, `retornoPorKwpAno`, `retornoPorKwh` derivados da receita ano 1 e acumulados
+- Payback por interpolacao no ano de cruzamento do investimento
+- Fallback: `(investimento / annualRevenueYear1) * 12`
+- Indicadores:
+  - `roi25Pct`
+  - `retornoPorReal`
+  - `retornoPorKwpAno`
+  - `retornoPorKwh`
 
-## Geração mensal no PDF (AS-IS)
+## PDF e transparencia de premissas
 
-- perfil sazonal fixo Brasil com media normalizada em `1.0`
-- se `consumoMensal` existe:
-  `monthlyGen = consumoMensal * fatorSazonal`
-- fallback por potencia:
-  `potencia * 4.5 * 30 * 0.8 * fatorSazonal`
+- Golden OFF permanece estavel.
+- Com flags avancadas ON, o PDF exibe premissas tecnicas/financeiras:
+  - fonte de irradiancia
+  - coordenadas (quando houver)
+  - `diasMes`
+  - PR
+  - tarifa efetiva / TE / TUSD / fator de compensacao
+  - O&M
+  - degradacao
+  - horizonte
+  - versao do modelo financeiro
 
-## Impacto ambiental (AS-IS)
+## Versionamento
 
-- fator de emissao SIN: `0.0817 tCO2/MWh`
-- `co2Tons = (kWhTotal / 1000) * 0.0817`
-- `trees` e `carKm` convertidos por fatores fixos
+- `FINANCIAL_MODEL_VERSION`: `v3_geo_om_tusdte_flagged`
