@@ -622,21 +622,7 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
       Number(data.financialInputs?.analysisYears || DEFAULT_ANALYSIS_YEARS) || DEFAULT_ANALYSIS_YEARS,
     ),
   };
-  const hasFinancialSnapshot = Boolean(
-    data.financialOutputs
-    && Number.isFinite(data.financialOutputs.annualRevenueYear1)
-    && data.financialOutputs.annualRevenueYear1 >= 0
-    && Number.isFinite(data.financialOutputs.paybackMonths)
-    && (
-      isUsina
-      || (
-        Number.isFinite(data.financialOutputs.billBeforeMonthly as number)
-        && Number.isFinite(data.financialOutputs.billAfterMonthly as number)
-        && Number.isFinite(data.financialOutputs.savingsMonthly as number)
-      )
-    ),
-  );
-  const financialOutputs: FinancialOutputs = hasFinancialSnapshot
+  const financialOutputs: FinancialOutputs = data.financialOutputs
     ? (data.financialOutputs as FinancialOutputs)
     : calculateProposalFinancials(resolvedFinancialInputs);
   const econAnualRaw = (financialOutputs?.annualRevenueYear1 ?? 0) > 0
