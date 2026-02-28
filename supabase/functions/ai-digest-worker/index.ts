@@ -1,15 +1,39 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
 import { digestEmail, type DigestLeadSummary } from '../_shared/emailTemplates.ts'
 
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
-if (!ALLOWED_ORIGIN) {
-  throw new Error('Missing ALLOWED_ORIGIN env')
+const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim()
+const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true'
+if (!ALLOWED_ORIGIN && !ALLOW_WILDCARD_CORS) {
+  throw new Error('Missing ALLOWED_ORIGIN env (or set ALLOW_WILDCARD_CORS=true)')
+}
+if (!ALLOWED_ORIGIN && ALLOW_WILDCARD_CORS) {
+  console.warn('[ai-digest-worker] wildcard CORS enabled by ALLOW_WILDCARD_CORS=true')
 }
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+const DIGEST_SETTINGS_BASE_SELECT = [
+  'org_id',
+  'enabled_notifications',
+  'enabled_whatsapp',
+  'enabled_email',
+  'whatsapp_instance_name',
+  'email_recipients',
+  'daily_digest_enabled',
+  'weekly_digest_enabled',
+  'daily_digest_time',
+  'weekly_digest_time',
+  'timezone',
+].join(', ')
+
+const DIGEST_SETTINGS_FULL_SELECT = [
+  DIGEST_SETTINGS_BASE_SELECT,
+  'email_sender_name',
+  'email_reply_to',
+].join(', ')
 
 type NotificationSettingsRow = {
   org_id: string
@@ -25,6 +49,89 @@ type NotificationSettingsRow = {
   daily_digest_time: string
   weekly_digest_time: string
   timezone: string
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  const code = typeof error === 'object' && error !== null ? String((error as any).code || '') : ''
+  const message = typeof error === 'object' && error !== null ? String((error as any).message || '') : String(error || '')
+  return (
+    code === 'PGRST204' ||
+    code === '42703' ||
+    (/column/i.test(message) && /notification_settings/i.test(message))
+  )
+}
+
+function toBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === 'boolean') return value
+  if (value == null) return fallback
+  const normalized = String(value).trim().toLowerCase()
+  if (['true', 't', '1', 'yes', 'y'].includes(normalized)) return true
+  if (['false', 'f', '0', 'no', 'n'].includes(normalized)) return false
+  return fallback
+}
+
+function toStringOrNull(value: unknown): string | null {
+  const out = String(value ?? '').trim()
+  return out || null
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => String(item ?? '').trim())
+    .filter(Boolean)
+}
+
+function normalizeDigestSettingsRow(row: Record<string, unknown>): NotificationSettingsRow {
+  return {
+    org_id: String(row.org_id || ''),
+    enabled_notifications: toBoolean(row.enabled_notifications, false),
+    enabled_whatsapp: toBoolean(row.enabled_whatsapp, false),
+    enabled_email: toBoolean(row.enabled_email, false),
+    whatsapp_instance_name: toStringOrNull(row.whatsapp_instance_name),
+    email_recipients: toStringArray(row.email_recipients),
+    email_sender_name: toStringOrNull(row.email_sender_name),
+    email_reply_to: toStringOrNull(row.email_reply_to),
+    daily_digest_enabled: toBoolean(row.daily_digest_enabled, false),
+    weekly_digest_enabled: toBoolean(row.weekly_digest_enabled, false),
+    daily_digest_time: String(row.daily_digest_time || '19:00:00'),
+    weekly_digest_time: String(row.weekly_digest_time || '18:00:00'),
+    timezone: String(row.timezone || 'America/Sao_Paulo'),
+  }
+}
+
+async function fetchDigestSettingsRows(
+  supabase: ReturnType<typeof createClient>,
+): Promise<NotificationSettingsRow[]> {
+  const fullResult = await supabase
+    .from('notification_settings')
+    .select(DIGEST_SETTINGS_FULL_SELECT)
+    .or('daily_digest_enabled.eq.true,weekly_digest_enabled.eq.true')
+
+  if (!fullResult.error) {
+    return Array.isArray(fullResult.data)
+      ? fullResult.data.map((row) => normalizeDigestSettingsRow(row as Record<string, unknown>))
+      : []
+  }
+
+  if (!isMissingColumnError(fullResult.error)) {
+    throw new Error(`settings_fetch_failed:${fullResult.error.message}`)
+  }
+
+  console.warn('[ai-digest-worker] notification_settings missing optional columns; using compatibility fallback select')
+
+  const baseResult = await supabase
+    .from('notification_settings')
+    .select(DIGEST_SETTINGS_BASE_SELECT)
+    .or('daily_digest_enabled.eq.true,weekly_digest_enabled.eq.true')
+
+  if (baseResult.error) {
+    throw new Error(`settings_fetch_failed:${baseResult.error.message}`)
+  }
+
+  return Array.isArray(baseResult.data)
+    ? baseResult.data.map((row) => normalizeDigestSettingsRow(row as Record<string, unknown>))
+    : []
 }
 
 type DigestContext = {
@@ -461,16 +568,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-    const { data: settingsRows, error: settingsError } = await supabase
-      .from('notification_settings')
-      .select('org_id, enabled_notifications, enabled_whatsapp, enabled_email, whatsapp_instance_name, email_recipients, email_sender_name, email_reply_to, daily_digest_enabled, weekly_digest_enabled, daily_digest_time, weekly_digest_time, timezone')
-      .or('daily_digest_enabled.eq.true,weekly_digest_enabled.eq.true')
-
-    if (settingsError) {
-      throw new Error(`settings_fetch_failed:${settingsError.message}`)
-    }
-
-    const rows = Array.isArray(settingsRows) ? (settingsRows as NotificationSettingsRow[]) : []
+    const rows = await fetchDigestSettingsRows(supabase)
 
     let candidates = 0
     let processed = 0

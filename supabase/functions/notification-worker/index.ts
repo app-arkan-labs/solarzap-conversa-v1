@@ -1,15 +1,43 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
 import { buildEmailContent, type TemplateContext } from '../_shared/emailTemplates.ts'
 
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
-if (!ALLOWED_ORIGIN) {
-  throw new Error('Missing ALLOWED_ORIGIN env')
+const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim()
+const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true'
+if (!ALLOWED_ORIGIN && !ALLOW_WILDCARD_CORS) {
+  throw new Error('Missing ALLOWED_ORIGIN env (or set ALLOW_WILDCARD_CORS=true)')
+}
+if (!ALLOWED_ORIGIN && ALLOW_WILDCARD_CORS) {
+  console.warn('[notification-worker] wildcard CORS enabled by ALLOW_WILDCARD_CORS=true')
 }
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+const NOTIFICATION_SETTINGS_BASE_SELECT = [
+  'org_id',
+  'enabled_notifications',
+  'enabled_whatsapp',
+  'enabled_email',
+  'enabled_reminders',
+  'whatsapp_instance_name',
+  'email_recipients',
+].join(', ')
+
+const NOTIFICATION_SETTINGS_FULL_SELECT = [
+  NOTIFICATION_SETTINGS_BASE_SELECT,
+  'whatsapp_recipients',
+  'email_sender_name',
+  'email_reply_to',
+  'evt_novo_lead',
+  'evt_stage_changed',
+  'evt_visita_agendada',
+  'evt_visita_realizada',
+  'evt_chamada_agendada',
+  'evt_chamada_realizada',
+  'evt_financiamento_update',
+].join(', ')
 
 type NotificationEventRow = {
   id: string
@@ -40,6 +68,92 @@ type NotificationSettingsRow = {
   evt_chamada_agendada: boolean
   evt_chamada_realizada: boolean
   evt_financiamento_update: boolean
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  const code = typeof error === 'object' && error !== null ? String((error as any).code || '') : ''
+  const message = typeof error === 'object' && error !== null ? String((error as any).message || '') : String(error || '')
+  return (
+    code === 'PGRST204' ||
+    code === '42703' ||
+    (/column/i.test(message) && /notification_settings/i.test(message))
+  )
+}
+
+function toBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === 'boolean') return value
+  if (value == null) return fallback
+  const normalized = String(value).trim().toLowerCase()
+  if (['true', 't', '1', 'yes', 'y'].includes(normalized)) return true
+  if (['false', 'f', '0', 'no', 'n'].includes(normalized)) return false
+  return fallback
+}
+
+function toStringOrNull(value: unknown): string | null {
+  const out = String(value ?? '').trim()
+  return out || null
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => String(item ?? '').trim())
+    .filter(Boolean)
+}
+
+function normalizeNotificationSettingsRow(row: Record<string, unknown>): NotificationSettingsRow {
+  return {
+    org_id: String(row.org_id || ''),
+    enabled_notifications: toBoolean(row.enabled_notifications, false),
+    enabled_whatsapp: toBoolean(row.enabled_whatsapp, false),
+    enabled_email: toBoolean(row.enabled_email, false),
+    enabled_reminders: toBoolean(row.enabled_reminders, false),
+    whatsapp_instance_name: toStringOrNull(row.whatsapp_instance_name),
+    whatsapp_recipients: toStringArray(row.whatsapp_recipients),
+    email_recipients: toStringArray(row.email_recipients),
+    email_sender_name: toStringOrNull(row.email_sender_name),
+    email_reply_to: toStringOrNull(row.email_reply_to),
+    evt_novo_lead: toBoolean(row.evt_novo_lead, true),
+    evt_stage_changed: toBoolean(row.evt_stage_changed, true),
+    evt_visita_agendada: toBoolean(row.evt_visita_agendada, true),
+    evt_visita_realizada: toBoolean(row.evt_visita_realizada, true),
+    evt_chamada_agendada: toBoolean(row.evt_chamada_agendada, true),
+    evt_chamada_realizada: toBoolean(row.evt_chamada_realizada, true),
+    evt_financiamento_update: toBoolean(row.evt_financiamento_update, true),
+  }
+}
+
+async function fetchNotificationSettings(
+  supabase: ReturnType<typeof createClient>,
+  orgId: string,
+): Promise<NotificationSettingsRow | null> {
+  const fullResult = await supabase
+    .from('notification_settings')
+    .select(NOTIFICATION_SETTINGS_FULL_SELECT)
+    .eq('org_id', orgId)
+    .maybeSingle()
+
+  if (!fullResult.error) {
+    return fullResult.data ? normalizeNotificationSettingsRow(fullResult.data as Record<string, unknown>) : null
+  }
+
+  if (!isMissingColumnError(fullResult.error)) {
+    throw new Error(`settings_error:${fullResult.error.message}`)
+  }
+
+  console.warn('[notification-worker] notification_settings missing optional columns; using compatibility fallback select')
+
+  const baseResult = await supabase
+    .from('notification_settings')
+    .select(NOTIFICATION_SETTINGS_BASE_SELECT)
+    .eq('org_id', orgId)
+    .maybeSingle()
+
+  if (baseResult.error) {
+    throw new Error(`settings_error:${baseResult.error.message}`)
+  }
+
+  return baseResult.data ? normalizeNotificationSettingsRow(baseResult.data as Record<string, unknown>) : null
 }
 
 function toDigits(value: unknown): string {
@@ -303,17 +417,7 @@ async function processEvent(
   serviceRoleKey: string,
   event: NotificationEventRow,
 ) {
-  const { data: settingsRow, error: settingsError } = await supabase
-    .from('notification_settings')
-    .select('org_id, enabled_notifications, enabled_whatsapp, enabled_email, enabled_reminders, whatsapp_instance_name, whatsapp_recipients, email_recipients, email_sender_name, email_reply_to, evt_novo_lead, evt_stage_changed, evt_visita_agendada, evt_visita_realizada, evt_chamada_agendada, evt_chamada_realizada, evt_financiamento_update')
-    .eq('org_id', event.org_id)
-    .maybeSingle()
-
-  if (settingsError) {
-    throw new Error(`settings_error:${settingsError.message}`)
-  }
-
-  const settings = settingsRow as NotificationSettingsRow | null
+  const settings = await fetchNotificationSettings(supabase, event.org_id)
 
   const notificationsActive = Boolean(
     settings && (
