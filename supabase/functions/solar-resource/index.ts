@@ -139,10 +139,17 @@ function buildFallbackFromUF(ufRaw: unknown, lat: number | null, lon: number | n
   };
 }
 
-async function geocodeCity(city: string, uf: string): Promise<{ lat: number; lon: number } | null> {
+async function geocodeCity(
+  city: string,
+  uf: string,
+  addressLine = "",
+  zip = "",
+): Promise<{ lat: number; lon: number } | null> {
   const name = city.trim();
-  if (!name) return null;
+  const normalizedAddress = String(addressLine || "").trim();
+  if (!name && !normalizedAddress) return null;
   const normalizedUf = uf.trim().toUpperCase();
+  const normalizedZip = String(zip || "").replace(/\D/g, "").slice(0, 8);
 
   const extractUfFromGoogleResult = (result: any): string => {
     const components = Array.isArray(result?.address_components) ? result.address_components : [];
@@ -162,7 +169,13 @@ async function geocodeCity(city: string, uf: string): Promise<{ lat: number; lon
   const geocodeWithGoogle = async (apiKey: string): Promise<{ lat: number; lon: number } | null> => {
     if (!apiKey) return null;
     const stateLabel = UF_TO_STATE_NAME[normalizedUf] || normalizedUf;
-    const address = [name, stateLabel, "Brasil"].filter(Boolean).join(", ");
+    const address = [
+      normalizedAddress,
+      name,
+      stateLabel,
+      normalizedZip || undefined,
+      "Brasil",
+    ].filter(Boolean).join(", ");
     const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
     url.searchParams.set("address", address);
     url.searchParams.set("components", "country:BR");
@@ -195,8 +208,47 @@ async function geocodeCity(city: string, uf: string): Promise<{ lat: number; lon
     if (googleResult) return googleResult;
   }
 
+  if (normalizedAddress) {
+    const nominatimUrl = new URL("https://nominatim.openstreetmap.org/search");
+    nominatimUrl.searchParams.set(
+      "q",
+      [
+        normalizedAddress,
+        name || undefined,
+        UF_TO_STATE_NAME[normalizedUf] || normalizedUf || undefined,
+        normalizedZip || undefined,
+        "Brasil",
+      ].filter(Boolean).join(", "),
+    );
+    nominatimUrl.searchParams.set("format", "jsonv2");
+    nominatimUrl.searchParams.set("limit", "5");
+    nominatimUrl.searchParams.set("countrycodes", "br");
+    nominatimUrl.searchParams.set("addressdetails", "1");
+
+    const nominatimResponse = await fetchWithTimeout(nominatimUrl.toString());
+    if (nominatimResponse.ok) {
+      const nominatimData = await nominatimResponse.json().catch(() => null);
+      const nominatimRows = Array.isArray(nominatimData) ? nominatimData : [];
+      const ufMatch = normalizedUf
+        ? nominatimRows.find((row: any) => {
+          const stateCode = String((row as any)?.address?.state_code || "").trim().toUpperCase();
+          if (stateCode.length === 2) return stateCode === normalizedUf;
+          const stateName = normalizeText(String((row as any)?.address?.state || ""));
+          const expected = normalizeText(UF_TO_STATE_NAME[normalizedUf] || "");
+          return stateName.length > 0 && stateName === expected;
+        })
+        : null;
+      const selected = ufMatch || nominatimRows[0];
+      if (selected) {
+        const lat = toFinite((selected as any)?.lat, NaN);
+        const lon = toFinite((selected as any)?.lon, NaN);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
+      }
+    }
+  }
+
   const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
-  url.searchParams.set("name", name);
+  url.searchParams.set("name", name || normalizedAddress);
   url.searchParams.set("count", "5");
   url.searchParams.set("language", "pt");
   url.searchParams.set("format", "json");
@@ -303,11 +355,13 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const city = String((body as any)?.city || "").trim();
     const uf = String((body as any)?.uf || "").trim().toUpperCase();
+    const addressLine = String((body as any)?.addressLine || "").trim();
+    const zip = String((body as any)?.zip || "").trim();
     let lat = toFinite((body as any)?.lat, NaN);
     let lon = toFinite((body as any)?.lon, NaN);
 
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      const geocoded = await geocodeCity(city, uf).catch(() => null);
+      const geocoded = await geocodeCity(city, uf, addressLine, zip).catch(() => null);
       if (geocoded) {
         lat = geocoded.lat;
         lon = geocoded.lon;
