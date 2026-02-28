@@ -12,10 +12,8 @@ services:
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
         VITE_EVOLUTION_API_URL: ${VITE_EVOLUTION_API_URL}
-    env_file:
-      - .env.production
     environment:
-      SOLARZAP_DOMAIN: ${SOLARZAP_DOMAIN}
+      SOLARZAP_DOMAINS: ${SOLARZAP_DOMAINS}
       CADDY_EMAIL: ${CADDY_EMAIL}
     restart: unless-stopped
     ports:

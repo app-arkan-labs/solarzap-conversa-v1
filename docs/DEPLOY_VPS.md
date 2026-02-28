@@ -1,6 +1,6 @@
 # Deploy VPS - SolarZap (Docker + Caddy)
 
-Data: 2026-02-19
+Data: 2026-02-28
 
 ## 1) Pre-requisitos (Ubuntu 22.04+)
 ```bash
@@ -28,10 +28,11 @@ sudo ufw status
 ```
 
 ## 3) DNS
-- Criar registro `A`:
-  - Host: `solarzap.seudominio.com.br` (ou seu subdominio)
-  - Valor: `IP_PUBLICO_DA_VPS`
-- Aguarde propagacao antes do SSL automatico.
+Criar os dois registros `A` apontando para o mesmo `IP_PUBLICO_DA_VPS`:
+- `solarzap.arkanlabs.com.br`
+- `solarzap.com.br`
+
+Aguarde propagacao antes do SSL automatico do Caddy.
 
 ## 4) Copiar repo para VPS
 ```bash
@@ -49,8 +50,8 @@ nano .env.production
 ```
 
 Preencher no minimo:
-- `SOLARZAP_DOMAIN`
-- `CADDY_EMAIL`
+- `SOLARZAP_DOMAINS=solarzap.arkanlabs.com.br, solarzap.com.br`
+- `CADDY_EMAIL=seu-email@dominio.com`
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
@@ -68,17 +69,22 @@ curl -I http://IP_PUBLICO_DA_VPS
 ```
 2. HTTPS por dominio:
 ```bash
-curl -I https://SEU_DOMINIO
-curl -s https://SEU_DOMINIO | grep -o '<title>.*</title>'
+curl -I https://solarzap.arkanlabs.com.br
+curl -I https://solarzap.com.br
 ```
 3. Login manual no app e carga de dashboard.
 
 ## 8) Pos-deploy Supabase Auth
-- Em Supabase Dashboard:
-  - `Authentication -> URL Configuration -> Site URL` = `https://SEU_DOMINIO`
-  - Adicionar `https://SEU_DOMINIO` em Redirect URLs.
+No Supabase Dashboard (`Authentication -> URL Configuration`):
+- `Site URL`: `https://solarzap.arkanlabs.com.br`
+- `Redirect URLs`: adicionar os dois dominios:
+  - `https://solarzap.arkanlabs.com.br`
+  - `https://solarzap.com.br`
 
-## 9) Rollback rapido
+## 9) Deploy com Portainer
+Se voce gerencia a VPS com Portainer, siga [DEPLOY_PORTAINER.md](./DEPLOY_PORTAINER.md).
+
+## 10) Rollback rapido
 ```bash
 cd /opt/solarzap
 docker compose -f docker-compose.vps.yml down
@@ -87,7 +93,7 @@ git checkout <tag_ou_commit_estavel>
 docker compose --env-file .env.production -f docker-compose.vps.yml up -d --build
 ```
 
-## 10) Comandos de operacao
+## 11) Comandos de operacao
 ```bash
 docker compose -f docker-compose.vps.yml logs -f web
 docker compose -f docker-compose.vps.yml restart web
