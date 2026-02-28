@@ -25,6 +25,14 @@ function sanitizePathPart(value: string): string {
     return value.replace(/[^a-zA-Z0-9._-]/g, '_')
 }
 
+function perfNowMs(): number {
+    try {
+        return performance.now()
+    } catch {
+        return Date.now()
+    }
+}
+
 function normalizeEvent(raw: string | null) {
     if (!raw) return null
     return raw.trim().toUpperCase().replaceAll('.', '_').replaceAll('-', '_')
@@ -470,6 +478,7 @@ Deno.serve(async (req: Request) => {
             case 'MESSAGES_UPSERT':
             case 'MESSAGES_UPDATE': {
                 const isMessageUpdateEvent = event === 'MESSAGES_UPDATE'
+                const messageStartedAt = perfNowMs()
                 const msg = resolveMessagePayload(body, data)
                 if (!msg) {
                     console.warn('⚠️ MESSAGES_UPSERT/UPDATE without message payload shape, skipping')
@@ -596,6 +605,7 @@ Deno.serve(async (req: Request) => {
                 const leadTelefone = explicitPhoneCandidate || rawRemoteJid
 
                 let leadId = null
+                const upsertLeadStartedAt = perfNowMs()
                 const { data: leadData, error: upsertLeadError } = await supabase.rpc('upsert_lead_canonical', {
                     p_user_id: userId,
                     p_instance_name: instanceName,
@@ -617,8 +627,14 @@ Deno.serve(async (req: Request) => {
                 } else if (leadData) {
                     leadId = leadData.id
                 }
+                console.log('[WHATSAPP_WEBHOOK_LATENCY] upsert_lead_canonical_ms', {
+                    event,
+                    instanceName,
+                    waMessageId,
+                    ms: Math.round(perfNowMs() - upsertLeadStartedAt)
+                })
 
-                // Process Media
+                // Fast-path media placeholder (actual download/upload/transcription is resolved asynchronously)
                 const isMediaMessage = ['audioMessage', 'imageMessage', 'videoMessage', 'documentMessage', 'stickerMessage'].includes(msgType)
                 let dbPublicUrl = null
                 let dbAttachmentType = null
@@ -626,30 +642,34 @@ Deno.serve(async (req: Request) => {
                 else if (msgType === 'videoMessage') dbAttachmentType = 'video'
                 else if (msgType === 'audioMessage') dbAttachmentType = 'audio'
                 else if (msgType === 'documentMessage') dbAttachmentType = 'document'
+                else if (msgType === 'stickerMessage') dbAttachmentType = 'image'
+
+                const mediaNode = (msg?.message?.[msgType] ?? msg?.[msgType] ?? null) as any
+                const mediaMimeType = String(
+                    mediaNode?.mimetype ??
+                    mediaNode?.mimeType ??
+                    mediaNode?.fileMimetype ??
+                    ''
+                ).trim() || null
+                const mediaFileName = String(
+                    mediaNode?.fileName ??
+                    mediaNode?.filename ??
+                    mediaNode?.title ??
+                    ''
+                ).trim() || null
 
                 if (isMediaMessage) {
-                    const evolutionResult = await fetchBase64FromEvolution(instanceName, msg)
-                    if (evolutionResult) {
-                        let mimeType = evolutionResult.mimeType || 'application/octet-stream'
-                        if (msgType === 'videoMessage' && mimeType === 'application/octet-stream') mimeType = 'video/mp4'
+                    const baseCaption = (text || '').trim()
+                    const placeholder =
+                        msgType === 'imageMessage' ? '📷 Imagem'
+                            : msgType === 'videoMessage' ? '🎬 Vídeo'
+                                : msgType === 'audioMessage' ? '🎤 Áudio'
+                                    : msgType === 'documentMessage' ? '📄 Documento'
+                                        : '🖼️ Sticker'
 
-                        if (msgType === 'audioMessage') {
-                            const transcript = await transcribeAudioWithOpenAI(evolutionResult.base64, mimeType)
-                            if (transcript) {
-                                text = `🎤 ${transcript}`
-                            } else {
-                                text = `${text}\n(transcrição indisponível)`
-                            }
-                        }
-
-                        const publicUrl = await uploadMedia(supabase, evolutionResult.base64, mimeType, orgId, instanceName, 'base64')
-                        if (publicUrl) {
-                            if (msgType !== 'audioMessage') {
-                                text = `${text}\n${publicUrl}`
-                            }
-                            dbPublicUrl = publicUrl
-                        }
-                    }
+                    text = baseCaption && baseCaption !== placeholder
+                        ? `${placeholder}: ${baseCaption}`
+                        : placeholder
                 }
 
                 // Interaction Insert
@@ -665,7 +685,9 @@ Deno.serve(async (req: Request) => {
                     wa_message_id: waMessageId,
                     attachment_url: dbPublicUrl,
                     attachment_type: dbAttachmentType,
-                    attachment_ready: true,
+                    attachment_ready: isMediaMessage ? false : true,
+                    attachment_mimetype: isMediaMessage ? mediaMimeType : null,
+                    attachment_name: isMediaMessage ? mediaFileName : null,
                     wa_from_me: isFromMe
                 }
 
@@ -673,16 +695,19 @@ Deno.serve(async (req: Request) => {
                 if (waMessageId) {
                     const { data: existingInteraction } = await supabase
                         .from('interacoes')
-                        .select('id')
+                        .select('id, attachment_ready')
                         .eq('instance_name', instanceName)
                         .eq('wa_message_id', waMessageId)
                         .maybeSingle()
 
                     if (existingInteraction?.id) {
-                        await supabase
-                            .from('interacoes')
-                            .update(interactionPayload)
-                            .eq('id', existingInteraction.id)
+                        // Avoid clobbering resolver-populated attachment fields on duplicate media webhooks.
+                        if (!isMediaMessage || existingInteraction.attachment_ready !== true) {
+                            await supabase
+                                .from('interacoes')
+                                .update(interactionPayload)
+                                .eq('id', existingInteraction.id)
+                        }
                         inserted = { id: Number(existingInteraction.id) }
                     }
                 }
@@ -690,6 +715,60 @@ Deno.serve(async (req: Request) => {
                 if (!inserted) {
                     const { data: insertedRow } = await supabase.from('interacoes').insert(interactionPayload).select('id').single()
                     inserted = insertedRow
+                }
+
+                console.log('[WHATSAPP_WEBHOOK_LATENCY] insert_before_webhook_ms', {
+                    event,
+                    instanceName,
+                    waMessageId,
+                    interactionId: inserted?.id || null,
+                    isMediaMessage,
+                    msgType,
+                    ms: Math.round(perfNowMs() - messageStartedAt)
+                })
+
+                if (isMediaMessage && inserted?.id) {
+                    const mediaResolverSecret =
+                        Deno.env.get('MEDIA_RESOLVER_INTERNAL_SECRET')
+                        || Deno.env.get('ARKAN_WEBHOOK_SECRET')
+                        || ''
+                    supabase.functions
+                        .invoke('media-resolver', {
+                            ...(mediaResolverSecret
+                                ? { headers: { 'x-internal-secret': mediaResolverSecret } }
+                                : {}),
+                            body: {
+                                orgId,
+                                interactionId: inserted.id,
+                                instanceName,
+                                waMessageId,
+                                remoteJid,
+                                mediaType: msgType,
+                                mimeType: mediaMimeType,
+                                fileName: mediaFileName,
+                                leadId,
+                                userId,
+                            }
+                        })
+                        .then(({ error: mediaResolverError }) => {
+                            if (!mediaResolverError) return
+                            console.error('❌ Failed to invoke media-resolver from whatsapp-webhook', {
+                                orgId,
+                                instanceName,
+                                waMessageId,
+                                interactionId: inserted?.id,
+                                error: mediaResolverError.message,
+                            })
+                        })
+                        .catch((mediaResolverErr) => {
+                            console.error('❌ Exception invoking media-resolver from whatsapp-webhook', {
+                                orgId,
+                                instanceName,
+                                waMessageId,
+                                interactionId: inserted?.id,
+                                error: mediaResolverErr instanceof Error ? mediaResolverErr.message : String(mediaResolverErr),
+                            })
+                        })
                 }
 
                 if (isFromMe && leadId) {

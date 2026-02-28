@@ -157,7 +157,8 @@ export async function sendMessage(
   instanceName: string,
   phone: string,
   message: string,
-  quoted?: any
+  quoted?: any,
+  options?: { clientTraceId?: string }
 ): Promise<EvolutionApiResponse<SendMessageResponse>> {
   return callEvolutionApi<SendMessageResponse>('sendMessage', {
     instanceName,
@@ -166,6 +167,7 @@ export async function sendMessage(
     text: message,
     message,
     quoted,
+    clientTraceId: options?.clientTraceId,
   });
 }
 

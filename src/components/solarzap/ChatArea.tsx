@@ -32,7 +32,26 @@ import { listMembers } from '@/lib/orgAdminClient';
 interface ChatAreaProps {
   conversation: Conversation | null;
   conversations?: Conversation[];
-  onSendMessage: (conversationId: string, content: string, instanceName?: string, replyTo?: { id: string }) => Promise<void>;
+  onSendMessage: (
+    conversationId: string,
+    content: string,
+    instanceName?: string,
+    replyTo?: { id: string },
+    options?: {
+      contactPhone?: string;
+      contactPhoneE164?: string;
+      replyMeta?: {
+        id: string;
+        waMessageId?: string;
+        remoteJid?: string;
+        instanceName?: string;
+        isFromClient?: boolean;
+        preview?: string;
+        type?: string;
+        content?: string;
+      };
+    }
+  ) => Promise<void>;
   onSendAttachment?: (conversationId: string, file: File, fileType: string, caption?: string, instanceName?: string) => Promise<void>;
   onSendAudio?: (conversationId: string, audioBlob: Blob, durationSeconds: number, instanceName?: string) => Promise<void>;
   onSendReaction?: (messageId: string, waMessageId: string, remoteJid: string, emoji: string, instanceName: string) => Promise<void>;
@@ -261,11 +280,6 @@ export function ChatArea({
       }
 
       const fileType = getFileType(file);
-      toast({
-        title: "Enviando arquivo...",
-        description: file.name,
-      });
-
       await onSendAttachment(conversation.id, file, fileType, caption, selectedInstance?.instance_name);
     }
   };
@@ -366,6 +380,18 @@ export function ChatArea({
     const selectedInstance = instances.find(i => i.id === selectedInstanceId);
     const msgToSend = message;
     const replyToSend = replyToTarget;
+    const replyMeta = replyTarget
+      ? {
+          id: replyTarget.id,
+          waMessageId: replyTarget.waMessageId,
+          remoteJid: replyTarget.remoteJid,
+          instanceName: replyTarget.instanceName,
+          isFromClient: replyTarget.isFromClient,
+          preview: replyTarget.replyTo?.content || replyTarget.content?.substring(0, 60) || undefined,
+          type: replyTarget.replyTo?.type || (replyTarget.attachment_type ? String(replyTarget.attachment_type) : 'text'),
+          content: replyTarget.content,
+        }
+      : undefined;
 
     // Clear input immediately for responsiveness
     setMessage('');
@@ -374,14 +400,12 @@ export function ChatArea({
       inputRef.current.style.height = 'auto';
     }
 
-    toast({
-      title: "Enviando mensagem...",
-      description: `Usando instância: ${selectedInstance?.display_name || 'Automática'} (${selectedInstance?.instance_name || 'Default'})`,
-      duration: 2000
-    });
-
     try {
-      await onSendMessage(conversation.id, msgToSend, selectedInstance?.instance_name, replyToSend);
+      await onSendMessage(conversation.id, msgToSend, selectedInstance?.instance_name, replyToSend, {
+        contactPhone: conversation.contact.phone,
+        contactPhoneE164: conversation.contact.phoneE164,
+        replyMeta,
+      });
     } catch {
       // Error is already handled by SolarZapLayout's try/catch + toast
       // Restore message on failure so user doesn't lose their text
@@ -390,6 +414,20 @@ export function ChatArea({
   };
 
   const replyToTarget = replyTarget ? { id: replyTarget.id } : undefined;
+
+  const retryFailedMessage = async (msg: Message) => {
+    if (!conversation) return;
+    const selectedInstance = instances.find(i => i.id === selectedInstanceId);
+    const targetInstanceName = msg.instanceName || selectedInstance?.instance_name;
+    try {
+      await onSendMessage(conversation.id, msg.content, targetInstanceName, undefined, {
+        contactPhone: conversation.contact.phone,
+        contactPhoneE164: conversation.contact.phoneE164,
+      });
+    } catch {
+      // upstream toast already handles errors
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -425,10 +463,6 @@ export function ChatArea({
     const selectedInstance = instances.find(i => i.id === selectedInstanceId);
 
     try {
-      toast({
-        title: "Enviando arquivo...",
-        description: file.name,
-      });
       await onSendAttachment(conversation.id, file, attachmentType || 'document', caption, selectedInstance?.instance_name);
       e.target.value = '';
 
@@ -698,11 +732,6 @@ export function ChatArea({
 
     if (!content) return;
 
-    toast({
-      title: "Encaminhando...",
-      description: `Iniciando envio para ${contactIds.length} contato(s).`,
-    });
-
     for (const contactId of contactIds) {
       try {
         const targetConv = conversations.find(c => c.id === contactId);
@@ -710,7 +739,10 @@ export function ChatArea({
         const targetInstanceName = targetConv?.contact?.instanceName
           || instances.find(i => i.id === selectedInstanceId)?.instance_name;
 
-        await onSendMessage(contactId, content, targetInstanceName);
+        await onSendMessage(contactId, content, targetInstanceName, undefined, {
+          contactPhone: targetConv?.contact?.phone,
+          contactPhoneE164: targetConv?.contact?.phoneE164,
+        });
         successCount++;
       } catch (error) {
         console.error(`Falha ao encaminhar para ${contactId}:`, error);
@@ -1119,7 +1151,9 @@ export function ChatArea({
                       isSent
                         ? 'bg-chat-sent rounded-tr-none ml-auto'
                         : 'bg-chat-received rounded-tl-none mr-auto',
-                      isSelected && 'ring-2 ring-primary'
+                      isSelected && 'ring-2 ring-primary',
+                      msg.status === 'pending' && 'opacity-70',
+                      msg.status === 'failed' && 'ring-2 ring-red-400/70'
                     )}
                     style={messageStyle}
                   >
@@ -1196,9 +1230,30 @@ export function ChatArea({
                       attachmentName={msg.attachment_name}
                     />
                     <div className="flex items-center justify-end gap-1 mt-1">
-                      <span className="text-[10px] text-muted-foreground">
-                        {formatMessageTime(msg.timestamp)}
-                      </span>
+                      {msg.status === 'pending' ? (
+                        <span className="text-[10px] text-muted-foreground font-medium">Enviando...</span>
+                      ) : msg.status === 'failed' ? (
+                        <>
+                          <span className="text-[10px] text-red-600 font-medium">Falhou</span>
+                          {!isSelectionMode && isSent && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void retryFailedMessage(msg);
+                              }}
+                              className="text-[10px] text-red-700 hover:text-red-800 underline"
+                              title={msg.errorMessage || 'Tentar novamente'}
+                            >
+                              Tentar novamente
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatMessageTime(msg.timestamp)}
+                        </span>
+                      )}
                     </div>
                     {/* Reactions Badge */}
                     {msg.reactions && msg.reactions.length > 0 && (

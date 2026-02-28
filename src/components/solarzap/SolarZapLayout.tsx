@@ -980,10 +980,25 @@ export function SolarZapLayout() {
             conversation={activeConversation}
             conversations={conversations}
             onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
-            onSendMessage={async (conversationId, content, instanceName, replyTo) => {
-              import.meta.env.DEV && console.log('SolarZapLayout: onSendMessage called', { conversationId, contentLength: content.length, instanceName, replyTo });
+            onSendMessage={async (conversationId, content, instanceName, replyTo, options) => {
+              import.meta.env.DEV && console.log('SolarZapLayout: onSendMessage called', {
+                conversationId,
+                contentLength: content.length,
+                instanceName,
+                replyTo,
+                hasContactPhone: Boolean(options?.contactPhone || options?.contactPhoneE164),
+                hasReplyMeta: Boolean(options?.replyMeta),
+              });
               try {
-                await sendMessage({ conversationId, content, instanceName, replyTo });
+                await sendMessage({
+                  conversationId,
+                  content,
+                  instanceName,
+                  replyTo,
+                  contactPhone: options?.contactPhone,
+                  contactPhoneE164: options?.contactPhoneE164,
+                  replyMeta: options?.replyMeta,
+                });
                 onSellerResponse(conversationId);
               } catch (error) {
                 console.error('Failed to send message:', error);

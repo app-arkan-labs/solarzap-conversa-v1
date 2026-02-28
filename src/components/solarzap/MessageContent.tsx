@@ -46,6 +46,10 @@ const parseMessageContent = (
 
   // Fallback: Placeholder logic for pending uploads
   if (attachmentReady === false) {
+    if (attachmentType === 'image') return { type: 'image', text: 'Carregando imagem...', fileName: 'Carregando...' }
+    if (attachmentType === 'video') return { type: 'video', text: 'Carregando vídeo...', fileName: 'Carregando...' }
+    if (attachmentType === 'audio') return { type: 'audio', text: 'Carregando áudio...', fileName: 'Carregando...' }
+    if (attachmentType === 'document') return { type: 'document', text: 'Carregando documento...', fileName: 'Carregando...' }
     if (content.includes('📷 Imagem')) return { type: 'image', text: 'Carregando imagem...', fileName: 'Carregando...' }
     if (content.includes('🎬 Vídeo')) return { type: 'video', text: 'Carregando vídeo...', fileName: 'Carregando...' }
     if (content.includes('🎤 Áudio')) return { type: 'audio', text: 'Carregando áudio...', fileName: 'Carregando...' }

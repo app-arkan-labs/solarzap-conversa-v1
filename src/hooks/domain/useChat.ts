@@ -13,6 +13,84 @@ const vendedorTypes = [
     'video_vendedor',
 ];
 
+type RealtimeHealth = 'connecting' | 'subscribed' | 'degraded' | 'closed';
+
+type ReplyMetaInput = {
+    id: string;
+    waMessageId?: string;
+    remoteJid?: string;
+    instanceName?: string;
+    isFromClient?: boolean;
+    preview?: string;
+    type?: string;
+    content?: string;
+};
+
+type SendMessageInput = {
+    conversationId: string;
+    content: string;
+    instanceName?: string;
+    replyTo?: { id: string };
+    contactPhone?: string;
+    contactPhoneE164?: string;
+    replyMeta?: ReplyMetaInput;
+    clientTraceId?: string;
+    clientTempId?: string;
+};
+
+type SendMessageMutationContext = {
+    clientTempId: string;
+    clientTraceId: string;
+    startedAtPerf: number;
+};
+
+const INTERACOES_SELECT_COLUMNS = [
+    'id',
+    'lead_id',
+    'mensagem',
+    'tipo',
+    'created_at',
+    'read_at',
+    'instance_name',
+    'phone_e164',
+    'remote_jid',
+    'wa_message_id',
+    'reply_to_interacao_id',
+    'reply_preview',
+    'reply_type',
+    'reactions',
+    'attachment_url',
+    'attachment_type',
+    'attachment_ready',
+    'attachment_mimetype',
+    'attachment_name',
+].join(',');
+
+const toPerfNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now());
+
+const parseMessageNumericId = (value: string | number | null | undefined): number => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const buildFallbackRemoteJid = (phone: string): string => `${phone}@s.whatsapp.net`;
+
+const normalizeOutboundPhone = (phone: string): string => {
+    const cleaned = String(phone || '').replace(/\D/g, '');
+    if (cleaned.length === 10 || cleaned.length === 11) return `55${cleaned}`;
+    return cleaned;
+};
+
+const buildReplyPreviewFromType = (tipo: string | undefined, mensagem: string | undefined | null): string => {
+    if (!tipo) return (mensagem || '').substring(0, 60) || '...';
+    if (['audio_vendedor', 'audio_cliente'].includes(tipo)) return '🎤 Áudio';
+    if (['video_vendedor', 'video_cliente'].includes(tipo)) return '🎬 Vídeo';
+    if (['anexo_vendedor', 'anexo_cliente'].includes(tipo)) return '📄 Documento/Imagem';
+    return (mensagem || '').substring(0, 60) || '...';
+};
+
 const interacaoToMessage = (interacao: InteracaoDB): Message => {
     const isFromClient = !vendedorTypes.includes(interacao.tipo);
 
@@ -23,9 +101,11 @@ const interacaoToMessage = (interacao: InteracaoDB): Message => {
         timestamp: new Date(interacao.created_at),
         isFromClient,
         isRead: !isFromClient || !!interacao.read_at, // Seller msgs always read; client msgs read if read_at set
+        status: 'sent',
         isAutomation: interacao.tipo === 'automacao',
         instanceName: interacao.instance_name || undefined,
         phoneE164: interacao.phone_e164 || undefined, // NEW
+        remoteJid: interacao.remote_jid || undefined,
         waMessageId: interacao.wa_message_id,
         replyTo: interacao.reply_to_interacao_id
             ? {
@@ -56,6 +136,112 @@ export function useChat(contacts: Contact[] = []) {
     // Used to override isRead in the conversations memo so unread badges
     // never reappear after a refetch — even if the DB UPDATE was slow.
     const readAtOverrides = useRef<Map<string, number>>(new Map());
+    const maxSeenInteractionIdRef = useRef(0);
+    const realtimeHealthRef = useRef<RealtimeHealth>('connecting');
+    const lastRealtimeStatusAtRef = useRef(Date.now());
+    const lastLightReconcileAtRef = useRef(0);
+    const lastFullRefetchAtRef = useRef(0);
+    const incrementalSyncInFlightRef = useRef(false);
+
+    const updateMaxSeenFromMessages = useCallback((messages: Message[] | undefined) => {
+        if (!Array.isArray(messages) || messages.length === 0) return;
+        let nextMax = maxSeenInteractionIdRef.current;
+        for (const msg of messages) {
+            const idNum = parseMessageNumericId(msg.id);
+            if (idNum > nextMax) nextMax = idNum;
+        }
+        maxSeenInteractionIdRef.current = nextMax;
+    }, []);
+
+    const mergeMessages = useCallback((existing: Message[] | undefined, incoming: Message[]): Message[] => {
+        if (!Array.isArray(existing) || existing.length === 0) {
+            const sorted = [...incoming].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+            updateMaxSeenFromMessages(sorted);
+            return sorted;
+        }
+
+        const byId = new Map<string, Message>();
+        for (const msg of existing) byId.set(msg.id, msg);
+        for (const msg of incoming) {
+            const prev = byId.get(msg.id);
+            byId.set(msg.id, prev ? { ...prev, ...msg } : msg);
+        }
+
+        const merged = Array.from(byId.values()).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        updateMaxSeenFromMessages(merged);
+        return merged;
+    }, [updateMaxSeenFromMessages]);
+
+    const appendMessagesToCache = useCallback((incoming: Message[]) => {
+        if (!incoming.length) return;
+        queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => mergeMessages(old, incoming));
+    }, [interactionsQueryKey, mergeMessages, queryClient]);
+
+    const fetchInteractionsFull = useCallback(async (): Promise<Message[]> => {
+        if (!user || !orgId) return [];
+        const t0 = toPerfNow();
+        import.meta.env.DEV && console.log('[CHAT_LATENCY] full_fetch_start', { orgId, userId: user.id });
+
+        const { data, error } = await supabase
+            .from('interacoes')
+            .select(INTERACOES_SELECT_COLUMNS)
+            .eq('org_id', orgId)
+            .order('created_at', { ascending: false })
+            .limit(1000);
+
+        if (error) throw error;
+
+        const messages = (data || []).reverse().map(interacaoToMessage);
+        updateMaxSeenFromMessages(messages);
+        import.meta.env.DEV && console.log('[CHAT_LATENCY] full_fetch_done', {
+            count: messages.length,
+            elapsed_ms: Math.round(toPerfNow() - t0),
+            maxSeenId: maxSeenInteractionIdRef.current,
+        });
+        return messages;
+    }, [orgId, queryClient, updateMaxSeenFromMessages, user]);
+
+    const runIncrementalSync = useCallback(async (reason: 'degraded' | 'light_reconcile') => {
+        if (!user || !orgId) return;
+
+        const now = Date.now();
+        const maxSeenId = maxSeenInteractionIdRef.current;
+        if (maxSeenId <= 0) {
+            if (now - lastFullRefetchAtRef.current > 5000) {
+                lastFullRefetchAtRef.current = now;
+                import.meta.env.DEV && console.log('[CHAT_LATENCY] incremental_sync_no_cursor -> full_refetch', { reason });
+                queryClient.invalidateQueries({ queryKey: interactionsQueryKey });
+            }
+            return;
+        }
+
+        const t0 = toPerfNow();
+        const { data, error } = await supabase
+            .from('interacoes')
+            .select(INTERACOES_SELECT_COLUMNS)
+            .eq('org_id', orgId)
+            .gt('id', maxSeenId)
+            .order('id', { ascending: true })
+            .limit(500);
+
+        if (error) {
+            console.warn('[CHAT_LATENCY] incremental_sync_error', { reason, error: error.message, maxSeenId });
+            return;
+        }
+
+        const incoming = (data || []).map(interacaoToMessage);
+        if (incoming.length > 0) {
+            appendMessagesToCache(incoming);
+        }
+
+        import.meta.env.DEV && console.log('[CHAT_LATENCY] incremental_sync_done', {
+            reason,
+            maxSeenIdBefore: maxSeenId,
+            count: incoming.length,
+            elapsed_ms: Math.round(toPerfNow() - t0),
+            maxSeenIdAfter: maxSeenInteractionIdRef.current,
+        });
+    }, [appendMessagesToCache, interactionsQueryKey, orgId, queryClient, user]);
 
     /**
      * Shared human-takeover handler.
@@ -149,33 +335,17 @@ export function useChat(contacts: Contact[] = []) {
 
     const messagesQuery = useQuery({
         queryKey: interactionsQueryKey,
-        queryFn: async () => {
-            if (!user || !orgId) return [];
-            import.meta.env.DEV && console.log('[FETCH] Fetching latest interactions...');
-            // CRITICAL FIX: Fetch NEWEST 1000 messages (descending), then reverse to chronological
-            // Supabase default limit is 1000 - we want the NEWEST, not oldest
-            const { data, error } = await supabase
-                .from('interacoes')
-                .select('*')
-                .eq('org_id', orgId)
-                .order('created_at', { ascending: false }) // Get newest first
-                .limit(1000); // Explicit limit
-
-            if (error) throw error;
-            import.meta.env.DEV && console.log('[FETCH] Got', data?.length || 0, 'interactions (newest first, will reverse)');
-            // Reverse to get chronological order (oldest->newest for display)
-            return (data || []).reverse().map(interacaoToMessage);
-        },
+        queryFn: fetchInteractionsFull,
         enabled: !!user && !!orgId,
         staleTime: 5000,
-        refetchInterval: 3000,
     });
 
-    // --- REALTIME & POLLING LOGIC ---
+    // --- REALTIME + INCREMENTAL FALLBACK ---
     useEffect(() => {
         if (!user || !orgId) return;
 
-        // 1. Single Channel Global Subscription (User Scoped)
+        realtimeHealthRef.current = 'connecting';
+        lastRealtimeStatusAtRef.current = Date.now();
         import.meta.env.DEV && console.log('[RT] Setting up robust subscription for org:', orgId);
         const channelName = `rt:interacoes:${orgId}:${user.id}`;
 
@@ -191,12 +361,10 @@ export function useChat(contacts: Contact[] = []) {
                 },
                 (payload) => {
                     import.meta.env.DEV && console.log('🔴 [RT INSERT]', payload.new.id);
+                    realtimeHealthRef.current = 'subscribed';
+                    lastRealtimeStatusAtRef.current = Date.now();
                     const newMessage = interacaoToMessage(payload.new as InteracaoDB);
-                    queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
-                        if (!old) return [newMessage];
-                        if (old.some(m => m.id === newMessage.id)) return old;
-                        return [...old, newMessage];
-                    });
+                    appendMessagesToCache([newMessage]);
                 }
             )
             .on(
@@ -209,22 +377,32 @@ export function useChat(contacts: Contact[] = []) {
                 },
                 (payload) => {
                     import.meta.env.DEV && console.log('🟡 [RT UPDATE]', payload.new.id, payload.new.attachment_ready);
+                    realtimeHealthRef.current = 'subscribed';
+                    lastRealtimeStatusAtRef.current = Date.now();
                     const updatedMessage = interacaoToMessage(payload.new as InteracaoDB);
-
-                    queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
-                        if (!old) return [updatedMessage];
-                        return old.map(m => m.id === updatedMessage.id ? updatedMessage : m);
-                    });
+                    appendMessagesToCache([updatedMessage]);
                 }
             )
             .subscribe((status) => {
-                import.meta.env.DEV && console.log('🔵 [RT STATUS]', status);
+                const normalizedStatus = String(status || '').toUpperCase();
+                lastRealtimeStatusAtRef.current = Date.now();
+                if (normalizedStatus === 'SUBSCRIBED') {
+                    realtimeHealthRef.current = 'subscribed';
+                } else if (normalizedStatus === 'CLOSED') {
+                    realtimeHealthRef.current = 'closed';
+                } else if (normalizedStatus === 'CHANNEL_ERROR' || normalizedStatus === 'TIMED_OUT') {
+                    realtimeHealthRef.current = 'degraded';
+                } else {
+                    realtimeHealthRef.current = 'connecting';
+                }
+                import.meta.env.DEV && console.log('🔵 [RT STATUS]', status, '=>', realtimeHealthRef.current);
             });
 
-        // 2. Visibility change reconciliation (removed useless 5s heartbeat — Sprint 2/#24)
+        // Visibility change reconciliation
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
                 import.meta.env.DEV && console.log('[RT] Tab active, reconciling...');
+                lastFullRefetchAtRef.current = Date.now();
                 queryClient.invalidateQueries({ queryKey: ['interactions', orgId] });
             }
         };
@@ -232,15 +410,83 @@ export function useChat(contacts: Contact[] = []) {
 
         return () => {
             import.meta.env.DEV && console.log('[RT] Cleanup channel:', channelName);
+            realtimeHealthRef.current = 'closed';
+            lastRealtimeStatusAtRef.current = Date.now();
             supabase.removeChannel(subscription);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [user, orgId, queryClient, interactionsQueryKey]);
+    }, [appendMessagesToCache, orgId, queryClient, user]);
 
-    const sendMessageMutation = useMutation({
-        mutationFn: async ({ conversationId, content, instanceName, replyTo }: { conversationId: string; content: string; instanceName?: string, replyTo?: { id: string } }) => {
+    useEffect(() => {
+        if (!user || !orgId) return;
+
+        const interval = window.setInterval(() => {
+            if (incrementalSyncInFlightRef.current) return;
+
+            const now = Date.now();
+            const health = realtimeHealthRef.current;
+            const statusAgeMs = now - lastRealtimeStatusAtRef.current;
+            const shouldDegradeSync = health !== 'subscribed' && statusAgeMs > 1000;
+            const shouldLightReconcile = health === 'subscribed' && (now - lastLightReconcileAtRef.current) >= 10000;
+
+            if (!shouldDegradeSync && !shouldLightReconcile) return;
+
+            if (shouldDegradeSync && realtimeHealthRef.current !== 'degraded') {
+                realtimeHealthRef.current = 'degraded';
+                import.meta.env.DEV && console.warn('[CHAT_LATENCY] realtime_degraded -> incremental_polling', { statusAgeMs });
+            }
+
+            incrementalSyncInFlightRef.current = true;
+            const reason = shouldDegradeSync ? 'degraded' as const : 'light_reconcile' as const;
+            if (reason === 'light_reconcile') {
+                lastLightReconcileAtRef.current = now;
+            }
+
+            void runIncrementalSync(reason)
+                .catch((err) => {
+                    console.warn('[CHAT_LATENCY] incremental_sync_unhandled', err);
+                })
+                .finally(() => {
+                    incrementalSyncInFlightRef.current = false;
+                });
+        }, 1000);
+
+        return () => {
+            window.clearInterval(interval);
+        };
+    }, [orgId, runIncrementalSync, user]);
+
+    const sendMessageMutation = useMutation<Message, Error, SendMessageInput, SendMessageMutationContext>({
+        mutationFn: async ({
+            conversationId,
+            content,
+            instanceName,
+            replyTo,
+            contactPhone,
+            contactPhoneE164,
+            replyMeta,
+            clientTraceId,
+        }) => {
             if (!user) throw new Error('User not authenticated');
             if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            const perf = {
+                sendStart: toPerfNow(),
+                leadLookup: 0,
+                replyLookup: 0,
+                instanceLookup: 0,
+                evolutionProxy: 0,
+                dbInsert: 0,
+            };
+            const traceId = clientTraceId || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : `trace_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+            import.meta.env.DEV && console.log('[CHAT_LATENCY] send_start', {
+                traceId,
+                conversationId,
+                hasReply: Boolean(replyTo),
+                hasReplyMeta: Boolean(replyMeta),
+                hasPhoneContext: Boolean(contactPhone || contactPhoneE164),
+            });
 
             // Validate content before sending
             const MAX_MESSAGE_LENGTH = 4096;
@@ -249,28 +495,35 @@ export function useChat(contacts: Contact[] = []) {
             if (trimmedContent.length > MAX_MESSAGE_LENGTH) throw new Error(`Mensagem excede o limite de ${MAX_MESSAGE_LENGTH} caracteres`);
             const sanitizedContent = trimmedContent;
 
-            // 1. Get Lead Phone
-            const { data: lead, error: leadError } = await supabase
-                .from('leads')
-                .select('telefone, phone_e164')
-                .eq('id', conversationId)
-                .eq('org_id', orgId)
-                .single();
+            // 1. Resolve target phone (prefer UI context to avoid roundtrip)
+            let formattedPhone = normalizeOutboundPhone(contactPhoneE164 || contactPhone || '');
+            let finalPhoneE164 = normalizeOutboundPhone(contactPhoneE164 || '');
 
-            if (leadError || !lead) throw new Error('Lead not found');
+            if (!formattedPhone) {
+                const leadLookupStart = toPerfNow();
+                const { data: lead, error: leadError } = await supabase
+                    .from('leads')
+                    .select('telefone, phone_e164')
+                    .eq('id', conversationId)
+                    .eq('org_id', orgId)
+                    .single();
+                perf.leadLookup = Math.round(toPerfNow() - leadLookupStart);
+                import.meta.env.DEV && console.log('[CHAT_LATENCY] lead_lookup_ms', { traceId, ms: perf.leadLookup });
 
-            // Helper to format phone number
-            const formatPhoneNumber = (phone: string) => {
-                const cleaned = phone.replace(/\D/g, '');
-                if (cleaned.length === 10 || cleaned.length === 11) {
-                    return `55${cleaned}`;
-                }
-                return cleaned;
-            };
+                if (leadError || !lead) throw new Error('Lead not found');
+                formattedPhone = normalizeOutboundPhone(lead.phone_e164 || lead.telefone);
+                finalPhoneE164 = normalizeOutboundPhone(lead.phone_e164 || formattedPhone);
+            }
 
-            const formattedPhone = formatPhoneNumber(lead.telefone);
-            const finalPhoneE164 = lead.phone_e164 || formattedPhone; // Use strict if available
-            const fallbackRemoteJid = `${formattedPhone}@s.whatsapp.net`;
+            if (!formattedPhone) {
+                throw new Error('Telefone do lead não encontrado');
+            }
+
+            if (!finalPhoneE164) {
+                finalPhoneE164 = formattedPhone;
+            }
+
+            const fallbackRemoteJid = buildFallbackRemoteJid(formattedPhone);
 
             // 2. Fetch Reply Details (Early) - needed for Instance selection and Preview
             let quotedPayload: any = undefined;
@@ -282,37 +535,60 @@ export function useChat(contacts: Contact[] = []) {
                 type: 'text'
             };
             let forcedInstanceName: string | undefined;
+            let fallbackReplyLookupNeeded = false;
 
             if (replyTo) {
-                const { data: originalMsg } = await supabase
-                    .from('interacoes')
-                    .select('wa_message_id, mensagem, tipo, instance_name, remote_jid')
-                    .eq('id', replyTo.id)
-                    .single();
+                replyToValues.id = Number(replyTo.id);
 
-                if (originalMsg) {
-                    if (originalMsg.wa_message_id) {
-                        quotedMessageId = originalMsg.wa_message_id;
-                        // Construct FULL Quoted Object (Format B - generally more robust for multi-instance)
+                if (replyMeta) {
+                    replyToValues.type = replyMeta.type || 'text';
+                    replyToValues.preview = replyMeta.preview
+                        || buildReplyPreviewFromType(replyMeta.type, replyMeta.content);
+                    if (replyMeta.instanceName) forcedInstanceName = replyMeta.instanceName;
+
+                    if (replyMeta.waMessageId) {
+                        quotedMessageId = replyMeta.waMessageId;
                         quotedPayload = {
                             key: {
-                                id: originalMsg.wa_message_id,
-                                remoteJid: originalMsg.remote_jid || fallbackRemoteJid, // Fallback for old messages
-                                fromMe: ['mensagem_vendedor', 'audio_vendedor', 'video_vendedor', 'anexo_vendedor'].includes(originalMsg.tipo)
+                                id: replyMeta.waMessageId,
+                                remoteJid: replyMeta.remoteJid || fallbackRemoteJid,
+                                fromMe: Boolean(replyMeta.isFromClient === false),
                             },
-                            message: { conversation: originalMsg.mensagem || '' }
+                            message: { conversation: replyMeta.content || '' }
                         };
+                    } else {
+                        fallbackReplyLookupNeeded = true;
                     }
-                    if (originalMsg.instance_name) forcedInstanceName = originalMsg.instance_name;
+                } else {
+                    fallbackReplyLookupNeeded = true;
+                }
 
-                    replyToValues.id = Number(replyTo.id);
-                    replyToValues.type = originalMsg.tipo;
+                if (fallbackReplyLookupNeeded) {
+                    const replyLookupStart = toPerfNow();
+                    const { data: originalMsg } = await supabase
+                        .from('interacoes')
+                        .select('wa_message_id, mensagem, tipo, instance_name, remote_jid')
+                        .eq('id', replyTo.id)
+                        .single();
+                    perf.replyLookup = Math.round(toPerfNow() - replyLookupStart);
+                    import.meta.env.DEV && console.log('[CHAT_LATENCY] reply_lookup_ms', { traceId, ms: perf.replyLookup });
 
-                    // Generate Preview
-                    if (['audio_vendedor', 'audio_cliente'].includes(originalMsg.tipo)) replyToValues.preview = '🎤 Áudio';
-                    else if (['video_vendedor', 'video_cliente'].includes(originalMsg.tipo)) replyToValues.preview = '🎬 Vídeo';
-                    else if (['anexo_vendedor', 'anexo_cliente'].includes(originalMsg.tipo)) replyToValues.preview = '📄 Documento/Imagem';
-                    else replyToValues.preview = originalMsg.mensagem?.substring(0, 60) || '...';
+                    if (originalMsg) {
+                        if (originalMsg.wa_message_id) {
+                            quotedMessageId = originalMsg.wa_message_id;
+                            quotedPayload = {
+                                key: {
+                                    id: originalMsg.wa_message_id,
+                                    remoteJid: originalMsg.remote_jid || fallbackRemoteJid,
+                                    fromMe: ['mensagem_vendedor', 'audio_vendedor', 'video_vendedor', 'anexo_vendedor'].includes(originalMsg.tipo)
+                                },
+                                message: { conversation: originalMsg.mensagem || '' }
+                            };
+                        }
+                        if (originalMsg.instance_name) forcedInstanceName = originalMsg.instance_name;
+                        replyToValues.type = originalMsg.tipo;
+                        replyToValues.preview = buildReplyPreviewFromType(originalMsg.tipo, originalMsg.mensagem);
+                    }
                 }
             }
 
@@ -320,22 +596,13 @@ export function useChat(contacts: Contact[] = []) {
             // Priority: Forced (Reply) > Requested (New) > Default
             const targetInstanceName = forcedInstanceName || instanceName;
 
-            let instance;
+            let instance: { instance_name: string };
             if (targetInstanceName) {
-                const { data: specificInstance, error: instanceError } = await supabase
-                    .from('whatsapp_instances')
-                    .select('instance_name')
-                    .eq('user_id', user.id)
-                    .eq('instance_name', targetInstanceName)
-                    .eq('status', 'connected')
-                    .single();
-
-                if (instanceError || !specificInstance) {
-                    throw new Error(`Instância "${targetInstanceName}" não encontrada ou não conectada. (Necessária para responder a mensagem original).`);
-                }
-                instance = specificInstance;
+                // Fast path: trust UI-selected instance and let evolution-proxy enforce org/user scope.
+                instance = { instance_name: targetInstanceName };
             } else {
                 // Default fallback
+                const instanceLookupStart = toPerfNow();
                 const { data: defaultInstance, error: instanceError } = await supabase
                     .from('whatsapp_instances')
                     .select('instance_name')
@@ -343,6 +610,8 @@ export function useChat(contacts: Contact[] = []) {
                     .eq('status', 'connected')
                     .limit(1)
                     .maybeSingle();
+                perf.instanceLookup = Math.round(toPerfNow() - instanceLookupStart);
+                import.meta.env.DEV && console.log('[CHAT_LATENCY] instance_lookup_ms', { traceId, ms: perf.instanceLookup });
 
                 if (instanceError) throw instanceError;
                 if (!defaultInstance) throw new Error('Nenhuma instância do WhatsApp conectada. Conecte-se primeiro.');
@@ -358,15 +627,19 @@ export function useChat(contacts: Contact[] = []) {
                     instance: instance.instance_name,
                     phone: formattedPhone,
                     contentLength: sanitizedContent.length,
-                    quotedPayload
+                    quotedPayload,
+                    traceId,
                 });
-
+                const evoStart = toPerfNow();
                 response = await evolutionApi.sendMessage(
                     instance.instance_name,
                     formattedPhone,
                     sanitizedContent,
-                    quotedPayload // Passing the full object now
+                    quotedPayload,
+                    { clientTraceId: traceId }
                 );
+                perf.evolutionProxy = Math.round(toPerfNow() - evoStart);
+                import.meta.env.DEV && console.log('[CHAT_LATENCY] evolution_proxy_ms', { traceId, ms: perf.evolutionProxy });
                 import.meta.env.DEV && console.log('Evolution API Response:', response);
 
                 if (!response.success) {
@@ -379,6 +652,7 @@ export function useChat(contacts: Contact[] = []) {
 
             // 5. Save to DB
             const leadIdCheck = Number(conversationId);
+            const dbInsertStart = toPerfNow();
             const { data, error } = await supabase
                 .from('interacoes')
                 .insert({
@@ -399,29 +673,140 @@ export function useChat(contacts: Contact[] = []) {
                 })
                 .select()
                 .single();
+            perf.dbInsert = Math.round(toPerfNow() - dbInsertStart);
+            import.meta.env.DEV && console.log('[CHAT_LATENCY] db_insert_ms', { traceId, ms: perf.dbInsert });
 
             if (error) {
                 console.error('Supabase Insert Error:', error);
                 throw error;
             }
-            return interacaoToMessage(data);
+            const newMessage = interacaoToMessage(data);
+            import.meta.env.DEV && console.log('[CHAT_LATENCY] send_total_ms', {
+                traceId,
+                lead_lookup_ms: perf.leadLookup,
+                reply_lookup_ms: perf.replyLookup,
+                instance_lookup_ms: perf.instanceLookup,
+                evolution_proxy_ms: perf.evolutionProxy,
+                db_insert_ms: perf.dbInsert,
+                total_ms: Math.round(toPerfNow() - perf.sendStart),
+            });
+            return newMessage;
         },
-        onSuccess: async (newMessage) => {
+        onMutate: async (variables) => {
+            const startedAtPerf = toPerfNow();
+            const clientTempId = variables.clientTempId
+                || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                    ? `tmp_${crypto.randomUUID()}`
+                    : `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+            const clientTraceId = variables.clientTraceId
+                || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                    ? crypto.randomUUID()
+                    : `trace_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+            variables.clientTempId = clientTempId;
+            variables.clientTraceId = clientTraceId;
+
+            const pendingMessage: Message = {
+                id: clientTempId,
+                clientTempId,
+                contactId: variables.conversationId,
+                content: variables.content.trim(),
+                timestamp: new Date(),
+                isFromClient: false,
+                isRead: true,
+                status: 'pending',
+                errorMessage: null,
+                instanceName: variables.replyMeta?.instanceName || variables.instanceName,
+                phoneE164: variables.contactPhoneE164
+                    ? normalizeOutboundPhone(variables.contactPhoneE164)
+                    : (variables.contactPhone ? normalizeOutboundPhone(variables.contactPhone) : undefined),
+                remoteJid: normalizeOutboundPhone(variables.contactPhoneE164 || variables.contactPhone || '')
+                    ? buildFallbackRemoteJid(normalizeOutboundPhone(variables.contactPhoneE164 || variables.contactPhone || ''))
+                    : undefined,
+                replyTo: variables.replyTo
+                    ? {
+                        id: variables.replyTo.id,
+                        content: variables.replyMeta?.preview
+                            || buildReplyPreviewFromType(variables.replyMeta?.type, variables.replyMeta?.content)
+                            || 'Mensagem respondida',
+                        type: variables.replyMeta?.type || 'text',
+                    }
+                    : undefined,
+            };
+
+            queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
+                if (!old) return [pendingMessage];
+                if (old.some(m => m.clientTempId === clientTempId || m.id === clientTempId)) return old;
+                return [...old, pendingMessage];
+            });
+
+            import.meta.env.DEV && console.log('[CHAT_LATENCY] pending_inserted', {
+                clientTempId,
+                clientTraceId,
+                cache_update_ms: Math.round(toPerfNow() - startedAtPerf),
+            });
+
+            return { clientTempId, clientTraceId, startedAtPerf };
+        },
+        onError: (error, variables, context) => {
+            const tempId = context?.clientTempId || variables.clientTempId;
+            if (tempId) {
+                queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
+                    if (!old) return old;
+                    return old.map(m => (
+                        (m.clientTempId === tempId || m.id === tempId)
+                            ? { ...m, status: 'failed', errorMessage: error.message || 'Falha ao enviar mensagem' }
+                            : m
+                    ));
+                });
+            }
+            import.meta.env.DEV && console.warn('[CHAT_LATENCY] send_failed', {
+                clientTraceId: context?.clientTraceId || variables.clientTraceId,
+                clientTempId: tempId,
+                error: error.message,
+                send_total_ms: context ? Math.round(toPerfNow() - context.startedAtPerf) : undefined,
+            });
+        },
+        onSuccess: (newMessage, variables, context) => {
             import.meta.env.DEV && console.log('✅ [SEND SUCCESS] Message sent, updating cache immediately:', newMessage?.id);
-            // Optimistic update: Add message to cache immediately
             if (newMessage) {
                 queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
-                    if (!old) return [newMessage];
-                    // Avoid duplicates
-                    if (old.some(m => m.id === newMessage.id)) return old;
-                    return [...old, newMessage];
+                    const finalMessage = { ...newMessage, status: 'sent', errorMessage: null } as Message;
+                    if (!old) return [finalMessage];
+                    const tempId = context?.clientTempId || variables.clientTempId;
+                    let replaced = false;
+                    const next = old.map(m => {
+                        if (tempId && (m.clientTempId === tempId || m.id === tempId)) {
+                            replaced = true;
+                            return finalMessage;
+                        }
+                        return m;
+                    });
+                    if (!replaced && !next.some(m => m.id === newMessage.id)) {
+                        next.push(finalMessage);
+                    }
+                    const dedupedById = new Map<string, Message>();
+                    for (const msg of next) dedupedById.set(msg.id, msg);
+                    return Array.from(dedupedById.values()).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
                 });
+                updateMaxSeenFromMessages([newMessage]);
 
-                // --- HUMAN TAKEOVER ---
-                await handleHumanTakeover(newMessage, 'sendMessage');
+                const takeoverStart = toPerfNow();
+                void handleHumanTakeover(newMessage, 'sendMessage')
+                    .then(() => {
+                        import.meta.env.DEV && console.log('[CHAT_LATENCY] human_takeover_ms', {
+                            clientTraceId: context?.clientTraceId || variables.clientTraceId,
+                            ms: Math.round(toPerfNow() - takeoverStart),
+                            source: 'sendMessage',
+                        });
+                    })
+                    .catch((err) => {
+                        console.warn('[CHAT_LATENCY] human_takeover_error', err);
+                    });
             }
-            // NOTE: Do NOT invalidate here - it overwrites the optimistic update!
-            // Polling and realtime will sync eventually.
+            import.meta.env.DEV && context && console.log('[CHAT_LATENCY] cache_update_ms', {
+                clientTraceId: context.clientTraceId,
+                ms: Math.round(toPerfNow() - context.startedAtPerf),
+            });
         },
     });
 
@@ -686,7 +1071,7 @@ export function useChat(contacts: Contact[] = []) {
             if (error) throw error;
             return interacaoToMessage(data);
         },
-        onSuccess: async (newMessage) => {
+        onSuccess: (newMessage) => {
             import.meta.env.DEV && console.log('✅ [ATTACHMENT SUCCESS] Attachment sent:', newMessage?.id);
             if (newMessage) {
                 queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
@@ -696,7 +1081,9 @@ export function useChat(contacts: Contact[] = []) {
                 });
 
                 // --- HUMAN TAKEOVER ---
-                await handleHumanTakeover(newMessage, 'sendAttachment');
+                void handleHumanTakeover(newMessage, 'sendAttachment').catch((err) => {
+                    console.warn('[CHAT_LATENCY] human_takeover_error', err);
+                });
             }
             // NOTE: Do NOT invalidate - lets polling/realtime sync
         }
@@ -855,7 +1242,7 @@ export function useChat(contacts: Contact[] = []) {
             }
             return interacaoToMessage(data);
         },
-        onSuccess: async (newMessage) => {
+        onSuccess: (newMessage) => {
             import.meta.env.DEV && console.log('✅ [AUDIO SUCCESS] Audio sent:', newMessage?.id);
             if (newMessage) {
                 queryClient.setQueryData(interactionsQueryKey, (old: Message[] | undefined) => {
@@ -865,7 +1252,9 @@ export function useChat(contacts: Contact[] = []) {
                 });
 
                 // --- HUMAN TAKEOVER ---
-                await handleHumanTakeover(newMessage, 'sendAudio');
+                void handleHumanTakeover(newMessage, 'sendAudio').catch((err) => {
+                    console.warn('[CHAT_LATENCY] human_takeover_error', err);
+                });
             }
             // NOTE: Do NOT invalidate - lets polling/realtime sync
         }

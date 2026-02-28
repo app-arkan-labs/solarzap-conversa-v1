@@ -1,12 +1,16 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
-if (!ALLOWED_ORIGIN) {
-  throw new Error('Missing ALLOWED_ORIGIN env')
+const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim()
+const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true'
+if (!ALLOWED_ORIGIN && !ALLOW_WILDCARD_CORS) {
+  throw new Error('Missing ALLOWED_ORIGIN env (or set ALLOW_WILDCARD_CORS=true)')
+}
+if (!ALLOWED_ORIGIN && ALLOW_WILDCARD_CORS) {
+  console.warn('[evolution-proxy] wildcard CORS enabled by ALLOW_WILDCARD_CORS=true')
 }
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-api-key',
 }
 
@@ -25,6 +29,45 @@ type RequestContext = {
   role: string | null
   isOrgManager: boolean
   internal: boolean
+}
+
+type CacheEntry<T> = {
+  value: T
+  expiresAt: number
+}
+
+const MEMBERSHIP_CACHE_TTL_MS = 30_000
+const INSTANCE_SCOPE_CACHE_TTL_MS = 15_000
+const membershipCache = new Map<string, CacheEntry<RequestContext>>()
+const instanceScopeCache = new Map<string, CacheEntry<Record<string, unknown>>>()
+
+function nowMs(): number {
+  return Date.now()
+}
+
+function perfNow(): number {
+  try {
+    return performance.now()
+  } catch {
+    return Date.now()
+  }
+}
+
+function getCache<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
+  const entry = cache.get(key)
+  if (!entry) return null
+  if (entry.expiresAt <= nowMs()) {
+    cache.delete(key)
+    return null
+  }
+  return entry.value
+}
+
+function setCache<T>(cache: Map<string, CacheEntry<T>>, key: string, value: T, ttlMs: number) {
+  cache.set(key, {
+    value,
+    expiresAt: nowMs() + ttlMs,
+  })
 }
 
 function jsonResponse(payload: unknown, status = 200) {
@@ -228,6 +271,18 @@ async function resolveContext(
     throw new Error('Invalid user token')
   }
 
+  const membershipCacheKey = user.id
+  const cachedMembership = getCache(membershipCache, membershipCacheKey)
+  if (cachedMembership) {
+    console.log('[EVOLUTION_PROXY] membership_cache_hit', {
+      userId: user.id,
+      orgId: cachedMembership.orgId,
+      role: cachedMembership.role,
+    })
+    return { ...cachedMembership, internal: false, userId: user.id }
+  }
+  console.log('[EVOLUTION_PROXY] membership_cache_miss', { userId: user.id })
+
   // for normal user tokens we ignore any orgId sent in the POST body; 
   // organization is derived solely from the authenticated user membership.
   const memberQuery = supabaseAdmin
@@ -246,14 +301,15 @@ async function resolveContext(
   }
 
   const role = String(member.role || 'user').toLowerCase()
-
-  return {
+  const resolvedCtx: RequestContext = {
     orgId: member.org_id,
     userId: user.id,
     role,
     isOrgManager: role === 'owner' || role === 'admin',
     internal: false,
   }
+  setCache(membershipCache, membershipCacheKey, resolvedCtx, MEMBERSHIP_CACHE_TTL_MS)
+  return resolvedCtx
 }
 
 async function ensureInstanceScoped(
@@ -261,6 +317,22 @@ async function ensureInstanceScoped(
   ctx: RequestContext,
   instanceName: string,
 ) {
+  const cacheKey = `${ctx.orgId}:${ctx.userId || 'internal'}:${ctx.internal ? '1' : '0'}:${ctx.isOrgManager ? '1' : '0'}:${instanceName}`
+  const cachedInstance = getCache(instanceScopeCache, cacheKey)
+  if (cachedInstance) {
+    console.log('[EVOLUTION_PROXY] instance_scope_cache_hit', {
+      orgId: ctx.orgId,
+      userId: ctx.userId,
+      instanceName,
+    })
+    return cachedInstance
+  }
+  console.log('[EVOLUTION_PROXY] instance_scope_cache_miss', {
+    orgId: ctx.orgId,
+    userId: ctx.userId,
+    instanceName,
+  })
+
   let query = supabaseAdmin
     .from('whatsapp_instances')
     .select('id, instance_name, org_id, user_id, is_active')
@@ -277,6 +349,7 @@ async function ensureInstanceScoped(
     throw new Error('Instance not found in organization scope')
   }
 
+  setCache(instanceScopeCache, cacheKey, instance as Record<string, unknown>, INSTANCE_SCOPE_CACHE_TTL_MS)
   return instance
 }
 
@@ -292,6 +365,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const requestStartedAt = perfNow()
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
     const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     if (!supabaseUrl || !serviceRole) {
@@ -309,12 +383,25 @@ Deno.serve(async (req) => {
       body.payload && typeof body.payload === 'object'
         ? (body.payload as Record<string, unknown>)
         : fallbackPayload
+    const clientTraceId = typeof payload.clientTraceId === 'string'
+      ? payload.clientTraceId
+      : (req.headers.get('x-client-trace-id') || '')
+    const traceId = clientTraceId || crypto.randomUUID()
 
     if (!action) {
       throw new Error('Missing action')
     }
-
+    const resolveContextStartedAt = perfNow()
     const ctx = await resolveContext(req, payload, supabaseAdmin)
+    const resolveContextMs = Math.round(perfNow() - resolveContextStartedAt)
+    console.log('[EVOLUTION_PROXY_LATENCY] resolve_context_ms', {
+      traceId,
+      action,
+      ms: resolveContextMs,
+      orgId: ctx.orgId,
+      userId: ctx.userId,
+      internal: ctx.internal,
+    })
 
     const actionsWithInstance = new Set([
       'send-text',
@@ -330,10 +417,28 @@ Deno.serve(async (req) => {
     const instanceName = typeof payload.instanceName === 'string' ? payload.instanceName.trim() : ''
     if (actionsWithInstance.has(action)) {
       if (!instanceName) throw new Error('Missing required field: instanceName')
+      const ensureStartedAt = perfNow()
       await ensureInstanceScoped(supabaseAdmin, ctx, instanceName)
+      console.log('[EVOLUTION_PROXY_LATENCY] ensure_instance_scoped_ms', {
+        traceId,
+        action,
+        instanceName,
+        ms: Math.round(perfNow() - ensureStartedAt),
+      })
     }
 
     let data: unknown
+    const evolutionRequestTimed = async (endpoint: string, options: RequestInit = {}) => {
+      const evolutionStartedAt = perfNow()
+      const response = await evolutionRequest(endpoint, options)
+      console.log('[EVOLUTION_PROXY_LATENCY] evolution_request_ms', {
+        traceId,
+        action,
+        endpoint,
+        ms: Math.round(perfNow() - evolutionStartedAt),
+      })
+      return response
+    }
 
     switch (action) {
       case 'ping': {
@@ -358,7 +463,7 @@ Deno.serve(async (req) => {
           throw new Error('Instance name already in use by another organization')
         }
 
-        data = await evolutionRequest('/instance/create', {
+        data = await evolutionRequestTimed('/instance/create', {
           method: 'POST',
           body: JSON.stringify({
             instanceName: candidateName,
@@ -370,12 +475,12 @@ Deno.serve(async (req) => {
       }
 
       case 'instance-connect': {
-        data = await evolutionRequest(`/instance/connect/${instanceName}`, { method: 'GET' })
+        data = await evolutionRequestTimed(`/instance/connect/${instanceName}`, { method: 'GET' })
         break
       }
 
       case 'instance-status': {
-        data = await evolutionRequest(`/instance/connectionState/${instanceName}`, { method: 'GET' })
+        data = await evolutionRequestTimed(`/instance/connectionState/${instanceName}`, { method: 'GET' })
         break
       }
 
@@ -398,12 +503,12 @@ Deno.serve(async (req) => {
       }
 
       case 'instance-delete': {
-        data = await evolutionRequest(`/instance/delete/${instanceName}`, { method: 'DELETE' })
+        data = await evolutionRequestTimed(`/instance/delete/${instanceName}`, { method: 'DELETE' })
         break
       }
 
       case 'instance-logout': {
-        data = await evolutionRequest(`/instance/logout/${instanceName}`, { method: 'DELETE' })
+        data = await evolutionRequestTimed(`/instance/logout/${instanceName}`, { method: 'DELETE' })
         break
       }
 
@@ -414,7 +519,7 @@ Deno.serve(async (req) => {
 
         if (!number) throw new Error('Invalid number')
 
-        data = await evolutionRequest(`/message/sendText/${instanceName}`, {
+        data = await evolutionRequestTimed(`/message/sendText/${instanceName}`, {
           method: 'POST',
           body: JSON.stringify({
             number,
@@ -436,7 +541,7 @@ Deno.serve(async (req) => {
         }
 
         if (mediaType === 'audio') {
-          data = await evolutionRequest(`/message/sendWhatsAppAudio/${instanceName}`, {
+          data = await evolutionRequestTimed(`/message/sendWhatsAppAudio/${instanceName}`, {
             method: 'POST',
             body: JSON.stringify({
               number,
@@ -446,7 +551,7 @@ Deno.serve(async (req) => {
           break
         }
 
-        data = await evolutionRequest(`/message/sendMedia/${instanceName}`, {
+        data = await evolutionRequestTimed(`/message/sendMedia/${instanceName}`, {
           method: 'POST',
           body: JSON.stringify({
             number,
@@ -474,7 +579,7 @@ Deno.serve(async (req) => {
           webhookHeaders['x-arkan-webhook-secret'] = serverWebhookSecret
         }
 
-        const evolution = await evolutionRequest(`/webhook/set/${instanceName}`, {
+        const evolution = await evolutionRequestTimed(`/webhook/set/${instanceName}`, {
           method: 'POST',
           body: JSON.stringify({
             webhook: {
@@ -503,7 +608,7 @@ Deno.serve(async (req) => {
 
         const remoteJid = key.remoteJid.includes('@') ? key.remoteJid : `${key.remoteJid}@s.whatsapp.net`
 
-        data = await evolutionRequest(`/message/sendReaction/${instanceName}`, {
+        data = await evolutionRequestTimed(`/message/sendReaction/${instanceName}`, {
           method: 'POST',
           body: JSON.stringify({
             key: {
@@ -520,6 +625,11 @@ Deno.serve(async (req) => {
         throw new Error(`Unknown action: ${action}`)
     }
 
+    console.log('[EVOLUTION_PROXY_LATENCY] request_total_ms', {
+      traceId,
+      action,
+      ms: Math.round(perfNow() - requestStartedAt),
+    })
     return jsonResponse({ success: true, data })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unexpected error'
