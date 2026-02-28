@@ -1,4 +1,9 @@
 import { ClientType, Contact } from '@/types/solarzap';
+import {
+  PAYMENT_CONDITION_LABEL_BY_ID,
+  type FinancingCondition,
+  type PaymentConditionOptionId,
+} from '@/types/proposalFinancing';
 
 export type ProposalSegment = 'residencial' | 'empresarial' | 'agronegocio' | 'usina' | 'indefinido';
 
@@ -131,6 +136,8 @@ interface BuildPremiumProposalInput {
   taxaFinanciamento?: number;
   parcela36x?: number;
   parcela60x?: number;
+  paymentConditions?: PaymentConditionOptionId[];
+  financingConditions?: FinancingCondition[];
 }
 
 const segmentConfig: Record<
@@ -280,23 +287,23 @@ export function calculatePersuasionScore(content: PremiumProposalContent): {
 } {
   const clarity = clampScore(
     55 +
-      Math.min(20, Math.floor((content.executiveSummary?.length || 0) / 65)) +
-      (content.headline ? 8 : 0)
+    Math.min(20, Math.floor((content.executiveSummary?.length || 0) / 65)) +
+    (content.headline ? 8 : 0)
   );
   const personalization = clampScore(
     45 +
-      Math.min(20, content.valuePillars.length * 4) +
-      (content.executiveSummary?.includes('cliente') ? 8 : 0)
+    Math.min(20, content.valuePillars.length * 4) +
+    (content.executiveSummary?.includes('cliente') ? 8 : 0)
   );
   const value = clampScore(
     50 +
-      Math.min(24, content.valuePillars.length * 4) +
-      Math.min(16, content.proofPoints.length * 3)
+    Math.min(24, content.valuePillars.length * 4) +
+    Math.min(16, content.proofPoints.length * 3)
   );
   const trust = clampScore(
     45 +
-      Math.min(20, content.proofPoints.length * 4) +
-      Math.min(16, content.assumptions.length * 3)
+    Math.min(20, content.proofPoints.length * 4) +
+    Math.min(16, content.assumptions.length * 3)
   );
   const cta = clampScore(40 + (content.nextStepCta ? 35 : 0) + Math.min(18, content.objectionHandlers.length * 6));
 
@@ -351,18 +358,20 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
     })
     .filter(Boolean);
 
-  const headline = `${input.contact.name}: ${formatCurrency(monthlySavings)}/mês em economia com retorno estimado em ${formatYears(
-    input.metrics.paybackMeses
-  )}`;
+  const isUsina = segment === 'usina';
+
+  const headline = isUsina
+    ? `${input.contact.name}: ${formatCurrency(monthlySavings)}/mês em receita estimada com retorno em ${formatYears(input.metrics.paybackMeses)}`
+    : `${input.contact.name}: ${formatCurrency(monthlySavings)}/mês em economia com retorno estimado em ${formatYears(input.metrics.paybackMeses)}`;
 
   const summaryParts = [
     `Projeto ${cfg.label.toLowerCase()} desenhado para ${cfg.promise}.`,
-    `Investimento previsto de ${formatCurrency(input.metrics.valorTotal)}, economia anual estimada de ${formatCurrency(
-      input.metrics.economiaAnual
-    )} e payback em aproximadamente ${formatYears(input.metrics.paybackMeses)}.`,
-    `Na janela de 25 anos, o potencial acumulado de economia é de ${formatCurrency(longTermSavings)} (ROI estimado de ${formatPercent(
-      roiPercent
-    )}).`,
+    isUsina
+      ? `Investimento previsto de ${formatCurrency(input.metrics.valorTotal)}, receita anual estimada de ${formatCurrency(input.metrics.economiaAnual)} e payback em aproximadamente ${formatYears(input.metrics.paybackMeses)}.`
+      : `Investimento previsto de ${formatCurrency(input.metrics.valorTotal)}, economia anual estimada de ${formatCurrency(input.metrics.economiaAnual)} e payback em aproximadamente ${formatYears(input.metrics.paybackMeses)}.`,
+    isUsina
+      ? `Na janela de 25 anos, a receita acumulada estimada é de ${formatCurrency(longTermSavings)} (ROI estimado de ${formatPercent(roiPercent)}).`
+      : `Na janela de 25 anos, o potencial acumulado de economia é de ${formatCurrency(longTermSavings)} (ROI estimado de ${formatPercent(roiPercent)}).`,
   ];
 
   if (companyPitch) summaryParts.push(companyPitch);
@@ -381,7 +390,9 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
   const valuePillars = [...cfg.pillars, ...commentSignals].slice(0, 5);
 
   const assumptions = [
-    'Simulação baseada no perfil de consumo informado e histórico de consumo disponível.',
+    isUsina
+      ? 'Simulação baseada na capacidade de geração e potência instalada do projeto.'
+      : 'Simulação baseada no perfil de consumo informado e histórico de consumo disponível.',
     'Valores sujeitos à vistoria técnica final e confirmação das condições do local.',
     'Dimensionamento alinhado às regras vigentes de geração distribuída (Lei 14.300).',
     'Condições comerciais sujeitas à disponibilidade de equipamentos na data de aprovação.',
@@ -435,18 +446,18 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
   const environmentalImpact: EnvironmentalImpact = { co2Tons, trees, carKm };
 
   // ── Monthly Generation Estimate ──
-  const avgDailyIrrad = 4.5; // kWh/m²/day national average
-  const perfRatio = 0.80;
-  const monthFactors = [0.95, 0.92, 0.98, 1.00, 1.02, 0.96, 1.00, 1.05, 1.08, 1.10, 1.02, 0.92];
+  // Use consumoMensal (the user's actual generation/consumption input) as the average,
+  // then vary by seasonal irradiation factors
+  const monthFactors = [1.19, 1.16, 1.09, 0.96, 0.79, 0.71, 0.75, 0.89, 0.97, 1.08, 1.17, 1.24];
   const monthlyGeneration = monthFactors.map(
-    (f) => Math.round(input.metrics.potenciaSistema * avgDailyIrrad * 30 * perfRatio * f)
+    (f) => Math.round(input.metrics.consumoMensal * f)
   );
 
   // ── Equipment Specs (defaults — overridden by AI or user input when available) ──
   const equipmentSpecs: EquipmentSpec[] = [
     { item: 'Modulos Fotovoltaicos', spec: 'Monocristalino 550W+ Tier 1', qty: input.metrics.quantidadePaineis, warranty: '12 anos produto / 25 anos performance' },
-    { item: 'Inversor', spec: 'On-Grid alta eficiencia (>97%)', qty: 1, warranty: '10 anos' },
-    { item: 'Estrutura de Fixacao', spec: 'Aluminio anodizado com perfil trilho', qty: `${input.metrics.quantidadePaineis} conjuntos`, warranty: '15 anos contra corrosao' },
+    { item: 'Inversor', spec: isUsina ? 'Inversor Central / String alta eficiencia' : 'On-Grid alta eficiencia (>97%)', qty: 1, warranty: '10 anos' },
+    { item: 'Estrutura de Fixacao', spec: isUsina ? 'Estrutura de solo (Tracker ou Fixa)' : 'Aluminio anodizado com perfil trilho', qty: `${input.metrics.quantidadePaineis} conjuntos`, warranty: '15 anos contra corrosao' },
     { item: 'Cabos e Conectores', spec: 'Solar CC 6mm² + MC4', qty: 'Kit completo', warranty: '10 anos' },
     { item: 'String Box / Protecao', spec: 'DPS + chave seccionadora CC/CA', qty: 1, warranty: '5 anos' },
   ];
@@ -457,29 +468,40 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
   const custo25SemSolar = contaAtual * 12 * 25;
   const custo25ComSolar = contaComSolar * 12 * 25 + input.metrics.valorTotal;
   const beforeAfter: BeforeAfterRow[] = [
-    { label: 'Conta mensal', before: formatCurrency(contaAtual), after: formatCurrency(contaComSolar) },
-    { label: 'Custo anual com energia', before: formatCurrency(contaAtual * 12), after: formatCurrency(contaComSolar * 12) },
-    { label: 'Gasto em 25 anos', before: formatCurrency(custo25SemSolar), after: formatCurrency(custo25ComSolar) },
-    { label: 'Economia mensal', before: '-', after: formatCurrency(monthlySavings) },
-    { label: 'Economia acumulada (25 anos)', before: '-', after: formatCurrency(longTermSavings) },
+    { label: isUsina ? 'Custo oportunidade mensal' : 'Conta mensal', before: formatCurrency(contaAtual), after: formatCurrency(contaComSolar) },
+    { label: isUsina ? 'Custo oportunidade anual' : 'Custo anual com energia', before: formatCurrency(contaAtual * 12), after: formatCurrency(contaComSolar * 12) },
+    { label: isUsina ? 'Custo oportunidade (25 anos)' : 'Gasto em 25 anos', before: formatCurrency(custo25SemSolar), after: formatCurrency(custo25ComSolar) },
+    { label: isUsina ? 'Receita mensal' : 'Economia mensal', before: '-', after: formatCurrency(monthlySavings) },
+    { label: isUsina ? 'Receita acumulada (25 anos)' : 'Economia acumulada (25 anos)', before: '-', after: formatCurrency(longTermSavings) },
   ];
 
   // ── Terms & Conditions ──
+  const paymentLabels = Array.from(new Set((input.paymentConditions || []).map((id) => PAYMENT_CONDITION_LABEL_BY_ID[id] || id)));
+  const hasFinancing = (input.paymentConditions || []).includes('financiamento_bancario');
   const termsConditions = [
     `Validade desta proposta: 15 dias corridos a partir da data de emissao.`,
-    `Os valores apresentados sao estimativas baseadas no consumo informado de ${input.metrics.consumoMensal} kWh/mes e estao sujeitos a vistoria tecnica.`,
+    isUsina
+      ? `Os valores apresentados sao estimativas baseadas na potencia projetada de ${input.metrics.potenciaSistema} kWp e estao sujeitos a vistoria tecnica.`
+      : `Os valores apresentados sao estimativas baseadas no consumo informado de ${input.metrics.consumoMensal} kWh/mes e estao sujeitos a vistoria tecnica.`,
     `O dimensionamento segue as normas da ANEEL e da Lei 14.300/2022 (geracao distribuida).`,
-    `A economia projetada considera a tarifa vigente e pode variar conforme reajustes tarifarios.`,
+    isUsina
+      ? `A receita projetada considera a tarifa vigente ou mercado livre e pode variar conforme reajustes tarifarios/contratos.`
+      : `A economia projetada considera a tarifa vigente e pode variar conforme reajustes tarifarios.`,
     `Garantia dos equipamentos conforme fabricante: modulos (12 anos produto / 25 anos performance linear), inversor (conforme marca selecionada).`,
     `A instalacao inclui: projeto eletrico, instalacao mecanica e eletrica, comissionamento e solicitacao de vistoria junto a concessionaria.`,
     `Prazo estimado de instalacao: 7 a 15 dias uteis apos aprovacao do projeto e disponibilidade de materiais.`,
-    `Condicoes de pagamento e financiamento sujeitas a aprovacao de credito pela instituicao financeira.`,
+    paymentLabels.length > 0
+      ? `Condicoes de pagamento selecionadas: ${paymentLabels.join(', ')}.`
+      : 'Condicoes de pagamento sob consulta comercial.',
+    hasFinancing
+      ? 'Financiamento bancario (quando selecionado) esta sujeito a aprovacao de credito pela instituicao financeira.'
+      : 'Nao ha simulacao de financiamento vinculada nesta proposta, salvo negociacao comercial posterior.',
   ];
 
   // ── Next Steps Detailed ──
   const nextStepsDetailed: NextStepDetailed[] = [
     { step: 'Aprovacao da Proposta', description: 'Confirmacao dos termos comerciais e assinatura do contrato.' },
-    { step: 'Vistoria Tecnica', description: 'Visita ao local para validacao das condicoes do telhado, rede eletrica e dimensionamento final.' },
+    { step: isUsina ? 'Estudo de Viabilidade' : 'Vistoria Tecnica', description: isUsina ? 'Levantamento topografico, analise de solo e conexao com a rede.' : 'Visita ao local para validacao das condicoes do telhado, rede eletrica e dimensionamento final.' },
     { step: 'Projeto Executivo', description: 'Elaboracao do projeto eletrico e registro junto a concessionaria de energia.' },
     { step: 'Instalacao', description: 'Montagem dos equipamentos, conexao eletrica e comissionamento do sistema.' },
     { step: 'Homologacao', description: 'Solicitacao de vistoria pela concessionaria e troca do medidor para bidirecional.' },

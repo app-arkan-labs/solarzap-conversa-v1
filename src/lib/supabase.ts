@@ -33,6 +33,13 @@ export interface LeadDB {
   cidade?: string | null;
   uf?: string | null;
   cep?: string | null;
+  concessionaria?: string | null;
+  tipo_ligacao?: 'monofasico' | 'bifasico' | 'trifasico' | null;
+  tarifa_kwh?: number | null;
+  custo_disponibilidade_kwh?: number | null;
+  performance_ratio?: number | null;
+  preco_por_kwp?: number | null;
+  abater_custo_disponibilidade_no_dimensionamento?: boolean | null;
   name_source?: string | null;
   name_updated_at?: string | null;
   // AI Control

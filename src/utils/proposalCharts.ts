@@ -55,6 +55,22 @@ function fmtCurrencyShort(v: number): string {
 function fmtCurrency(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
+function fmtNumber(v: number): string {
+  return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(v);
+}
+function fmtNumberShort(v: number): string {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)} mil`;
+  return fmtNumber(v);
+}
+
+function mixRgb(base: RGB, target: RGB, alpha: number): RGB {
+  return [
+    Math.max(0, Math.min(255, Math.round(base[0] * (1 - alpha) + target[0] * alpha))),
+    Math.max(0, Math.min(255, Math.round(base[1] * (1 - alpha) + target[1] * alpha))),
+    Math.max(0, Math.min(255, Math.round(base[2] * (1 - alpha) + target[2] * alpha))),
+  ];
+}
 
 // ══════════════════════════════════════════════════════════
 // 1) BAR CHART: "Conta de Luz Antes vs Com Solar"
@@ -134,13 +150,109 @@ export function drawSavingsBarChart(
 }
 
 // ══════════════════════════════════════════════════════════
+// 1b) BAR CHART: Usina — Investimento vs Receita Anual
+// ══════════════════════════════════════════════════════════
+export function drawRevenueBarChart(
+  doc: jsPDF,
+  x: number, y: number, w: number, h: number,
+  data: {
+    investimento: number;
+    receitaAnual: number;
+    receita5Anos?: number;
+    receita15Anos?: number;
+    receita25Anos?: number;
+    paybackYears?: number;
+  },
+  theme: ChartTheme = DEFAULT_CHART_THEME,
+) {
+  const padding = { top: 18, bottom: 22, left: 9, right: 8 };
+  const chartH = h - padding.top - padding.bottom;
+  const chartW = w - padding.left - padding.right;
+
+  // Background card
+  setFill(doc, theme.white);
+  setDraw(doc, theme.gridLine);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(x, y, w, h, 2, 2, 'FD');
+
+  // Title
+  setTextC(doc, theme.text);
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+  doc.text('Investimento vs Receita Projetada', x + w / 2, y + 10, { align: 'center' });
+
+  const receita5Anos = data.receita5Anos ?? (data.receitaAnual * 5);
+  const receita15Anos = data.receita15Anos ?? (data.receitaAnual * 15);
+  const receita25Anos = data.receita25Anos ?? (data.receitaAnual * 25);
+
+  const items = [
+    { label: 'Investimento', value: data.investimento, color: theme.red },
+    { label: 'Receita 5 anos', value: receita5Anos, color: [56, 189, 248] as RGB },
+    { label: 'Receita 15 anos', value: receita15Anos, color: [22, 163, 74] as RGB },
+    { label: 'Receita 25 anos', value: receita25Anos, color: [5, 150, 105] as RGB },
+  ];
+
+  const maxVal = Math.max(...items.map(i => i.value), 1) * 1.1;
+  const slotW = chartW / items.length;
+  const barW = slotW * 0.62;
+  const gapW = slotW - barW;
+  const startX = x + padding.left;
+  const baseY = y + padding.top + chartH;
+
+  // Grid lines
+  doc.setLineWidth(0.15);
+  setDraw(doc, theme.gridLine);
+  for (let i = 0; i <= 3; i++) {
+    const gy = baseY - (chartH / 3) * i;
+    doc.line(x + padding.left, gy, x + w - padding.right, gy);
+    setTextC(doc, theme.textLight);
+    doc.setFontSize(6); doc.setFont('helvetica', 'normal');
+    doc.text(fmtCurrencyShort((maxVal / 3) * i), x + padding.left - 1, gy - 1, { align: 'right' });
+  }
+
+  items.forEach((item, i) => {
+    const bx = startX + i * slotW + gapW / 2;
+    const bh = Math.max((item.value / maxVal) * chartH, 1);
+
+    setFill(doc, item.color as RGB);
+    doc.roundedRect(bx, baseY - bh, barW, bh, 1.5, 1.5, 'F');
+    setTextC(doc, item.color as RGB);
+    doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
+    doc.text(fmtCurrencyShort(item.value), bx + barW / 2, baseY - bh - 3, { align: 'center' });
+    setTextC(doc, theme.text);
+    doc.setFontSize(6); doc.setFont('helvetica', 'normal');
+    const labelLines = doc.splitTextToSize(item.label, barW + 8);
+    doc.text(labelLines, bx + barW / 2, baseY + 5, { align: 'center' });
+  });
+
+  // Payback badge
+  const paybackAnos = Number.isFinite(data.paybackYears as number) && (data.paybackYears as number) > 0
+    ? (data.paybackYears as number)
+    : (data.receitaAnual > 0 ? (data.investimento / data.receitaAnual) : 0);
+  if (paybackAnos > 0) {
+    setFill(doc, theme.primaryLight);
+    const badgeText = `Payback: ${paybackAnos.toFixed(1)} anos`;
+    const badgeW = doc.getTextWidth(badgeText) + 8;
+    doc.roundedRect(x + w / 2 - badgeW / 2, baseY + 9, badgeW, 8, 2, 2, 'F');
+    setTextC(doc, theme.primary);
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+    doc.text(badgeText, x + w / 2, baseY + 14, { align: 'center' });
+  }
+}
+
+// ══════════════════════════════════════════════════════════
 // 2) AREA CHART: Cumulative Savings Over 25 Years
 // ══════════════════════════════════════════════════════════
 export function drawCumulativeSavingsChart(
   doc: jsPDF,
   x: number, y: number, w: number, h: number,
-  data: { valorTotal: number; economiaMensal: number; paybackMeses: number },
+  data: {
+    valorTotal: number;
+    economiaMensal: number;
+    paybackMeses: number;
+    cumulativeRevenueSeries?: number[];
+  },
   theme: ChartTheme = DEFAULT_CHART_THEME,
+  isUsina: boolean = false,
 ) {
   const padding = { top: 18, bottom: 24, left: 10, right: 10 };
   const chartH = h - padding.top - padding.bottom;
@@ -155,14 +267,32 @@ export function drawCumulativeSavingsChart(
   // Title
   setTextC(doc, theme.text);
   doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-  doc.text('Economia Acumulada em 25 Anos', x + w / 2, y + 10, { align: 'center' });
+  doc.text(isUsina ? 'Receita Acumulada em 25 Anos' : 'Economia Acumulada em 25 Anos', x + w / 2, y + 10, { align: 'center' });
 
   const baseY = y + padding.top + chartH;
   const baseX = x + padding.left;
-  const totalYears = 25;
+  const totalYears = Math.max(1, data.cumulativeRevenueSeries?.length || 25);
   const econAnual = data.economiaMensal * 12;
-  const maxSavings = econAnual * totalYears;
+  const maxSavings = data.cumulativeRevenueSeries?.length
+    ? Math.max(0, data.cumulativeRevenueSeries[data.cumulativeRevenueSeries.length - 1] || 0)
+    : econAnual * totalYears;
   const maxY = Math.max(maxSavings, data.valorTotal) * 1.1;
+  const paybackYears = data.paybackMeses / 12;
+  const getSavingsAtYear = (yearRaw: number) => {
+    const year = Math.max(0, Math.min(totalYears, yearRaw));
+    if (!data.cumulativeRevenueSeries?.length) return econAnual * year;
+    if (year <= 0) return 0;
+    if (year >= totalYears) return data.cumulativeRevenueSeries[totalYears - 1] || 0;
+    const lower = Math.floor(year);
+    const upper = Math.ceil(year);
+    if (lower === upper) {
+      return lower <= 0 ? 0 : (data.cumulativeRevenueSeries[lower - 1] || 0);
+    }
+    const lowerValue = lower <= 0 ? 0 : (data.cumulativeRevenueSeries[lower - 1] || 0);
+    const upperValue = data.cumulativeRevenueSeries[upper - 1] || lowerValue;
+    const ratio = year - lower;
+    return lowerValue + ((upperValue - lowerValue) * ratio);
+  };
 
   // Grid lines
   doc.setLineWidth(0.15);
@@ -213,7 +343,7 @@ export function drawCumulativeSavingsChart(
     ctx.beginPath();
     ctx.moveTo(0, cH);
     for (let yr = 0; yr <= totalYears; yr++) {
-      const savings = econAnual * yr;
+      const savings = getSavingsAtYear(yr);
       const px = (yr / totalYears) * cW;
       const py = cH - (savings / maxY) * cH;
       if (yr === 0) ctx.lineTo(px, py);
@@ -227,21 +357,54 @@ export function drawCumulativeSavingsChart(
     ctx.fillStyle = grad;
     ctx.fill();
 
-    // Draw line on top
-    ctx.beginPath();
-    for (let yr = 0; yr <= totalYears; yr++) {
-      const savings = econAnual * yr;
-      const px = (yr / totalYears) * cW;
-      const py = cH - (savings / maxY) * cH;
-      if (yr === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+    // Draw line on top with green gains after payback.
+    const safePaybackYears = Number.isFinite(paybackYears)
+      ? Math.max(0, Math.min(totalYears, paybackYears))
+      : 0;
+    const splitX = (safePaybackYears / totalYears) * cW;
+    const splitY = cH - ((getSavingsAtYear(safePaybackYears) / maxY) * cH);
+
+    if (safePaybackYears <= 0 || safePaybackYears >= totalYears) {
+      ctx.beginPath();
+      for (let yr = 0; yr <= totalYears; yr++) {
+        const savings = getSavingsAtYear(yr);
+        const px = (yr / totalYears) * cW;
+        const py = cH - (savings / maxY) * cH;
+        if (yr === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = `rgb(${theme.primary[0]}, ${theme.primary[1]}, ${theme.primary[2]})`;
+      ctx.lineWidth = 3 * dpr;
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      for (let yr = 0; yr <= safePaybackYears; yr += 0.2) {
+        const savings = getSavingsAtYear(yr);
+        const px = (yr / totalYears) * cW;
+        const py = cH - (savings / maxY) * cH;
+        if (yr === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.lineTo(splitX, splitY);
+      ctx.strokeStyle = `rgb(${theme.primary[0]}, ${theme.primary[1]}, ${theme.primary[2]})`;
+      ctx.lineWidth = 3 * dpr;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(splitX, splitY);
+      for (let yr = safePaybackYears; yr <= totalYears; yr += 0.2) {
+        const savings = getSavingsAtYear(yr);
+        const px = (yr / totalYears) * cW;
+        const py = cH - (savings / maxY) * cH;
+        ctx.lineTo(px, py);
+      }
+      ctx.lineTo(cW, cH - (getSavingsAtYear(totalYears) / maxY) * cH);
+      ctx.strokeStyle = `rgb(${theme.green[0]}, ${theme.green[1]}, ${theme.green[2]})`;
+      ctx.lineWidth = 3 * dpr;
+      ctx.stroke();
     }
-    ctx.strokeStyle = `rgb(${theme.primary[0]}, ${theme.primary[1]}, ${theme.primary[2]})`;
-    ctx.lineWidth = 3 * dpr;
-    ctx.stroke();
 
     // Payback marker
-    const paybackYears = data.paybackMeses / 12;
     if (paybackYears > 0 && paybackYears <= totalYears) {
       const px = (paybackYears / totalYears) * cW;
       const py = cH - (data.valorTotal / maxY) * cH;
@@ -263,7 +426,6 @@ export function drawCumulativeSavingsChart(
   }
 
   // Payback annotation
-  const paybackYears = data.paybackMeses / 12;
   if (paybackYears > 0 && paybackYears <= totalYears) {
     const paybackX = baseX + (paybackYears / totalYears) * chartW;
     setDraw(doc, theme.accent);
@@ -278,11 +440,15 @@ export function drawCumulativeSavingsChart(
   }
 
   // Total savings badge
-  setFill(doc, theme.primaryLight);
-  const totalText = `Economia total: ${fmtCurrencyShort(maxSavings)} em 25 anos`;
+  const totalBadgeFill = isUsina
+    ? mixRgb(theme.green, [255, 255, 255], 0.83)
+    : theme.primaryLight;
+  const totalBadgeText = isUsina ? theme.green : theme.primary;
+  setFill(doc, totalBadgeFill);
+  const totalText = `${isUsina ? 'Receita total' : 'Economia total'}: ${fmtCurrencyShort(maxSavings)} em 25 anos`;
   const tw = doc.getTextWidth(totalText) + 8;
   doc.roundedRect(x + w / 2 - tw / 2, baseY + 14, tw, 7, 2, 2, 'F');
-  setTextC(doc, theme.primary);
+  setTextC(doc, totalBadgeText);
   doc.setFontSize(7); doc.setFont('helvetica', 'bold');
   doc.text(totalText, x + w / 2, baseY + 19, { align: 'center' });
 }
@@ -306,9 +472,9 @@ export function drawROIPieChart(
   doc.setFontSize(9); doc.setFont('helvetica', 'bold');
   doc.text('Retorno sobre Investimento', x + w / 2, y + 10, { align: 'center' });
 
-  const total = data.valorTotal + data.retornoLiquido;
-  const investPct = data.valorTotal / total;
-  const retornoPct = data.retornoLiquido / total;
+  const total = Math.max(0, data.valorTotal + data.retornoLiquido);
+  const investPct = total > 0 ? data.valorTotal / total : 0;
+  const retornoPct = total > 0 ? data.retornoLiquido / total : 0;
 
   const cx = x + w * 0.35;
   const cy = y + h * 0.55;
@@ -331,7 +497,7 @@ export function drawROIPieChart(
     const retornoEnd = startAngle + retornoPct * Math.PI * 2;
     ctx.arc(cr, cr, r, startAngle, retornoEnd);
     ctx.closePath();
-    ctx.fillStyle = `rgb(${theme.primary[0]}, ${theme.primary[1]}, ${theme.primary[2]})`;
+    ctx.fillStyle = `rgb(${theme.green[0]}, ${theme.green[1]}, ${theme.green[2]})`;
     ctx.fill();
 
     // Investimento slice
@@ -339,7 +505,7 @@ export function drawROIPieChart(
     ctx.moveTo(cr, cr);
     ctx.arc(cr, cr, r, retornoEnd, startAngle + Math.PI * 2);
     ctx.closePath();
-    ctx.fillStyle = `rgb(${theme.accent[0]}, ${theme.accent[1]}, ${theme.accent[2]})`;
+    ctx.fillStyle = `rgb(${theme.red[0]}, ${theme.red[1]}, ${theme.red[2]})`;
     ctx.fill();
 
     // White center for donut effect
@@ -357,36 +523,45 @@ export function drawROIPieChart(
   }
 
   // ROI text in center
-  const roiPct = data.retornoLiquido > 0
+  const roiPct = data.valorTotal > 0 && data.retornoLiquido > 0
     ? `${((data.retornoLiquido / data.valorTotal) * 100).toFixed(0)}%`
     : '-';
   setTextC(doc, theme.text);
-  doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-  doc.text(roiPct, cx, cy + 1, { align: 'center' });
+  const innerDiameter = radius;
+  const maxCenterTextW = innerDiameter * 0.88;
+  let roiFont = 12.5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(roiFont);
+  while (roiFont > 7 && doc.getTextWidth(roiPct) > maxCenterTextW) {
+    roiFont -= 0.5;
+    doc.setFontSize(roiFont);
+  }
+  doc.text(roiPct, cx, cy + 0.6, { align: 'center' });
   doc.setFontSize(5.5); doc.setFont('helvetica', 'normal');
-  doc.text('ROI 25 anos', cx, cy + 5, { align: 'center' });
+  doc.text('ROI 25 anos', cx, cy + 4.8, { align: 'center' });
 
   // Legend (right side)
   const lx = x + w * 0.6;
   const ly = cy - 10;
 
-  setFill(doc, theme.primary);
+  setFill(doc, theme.green);
   doc.rect(lx, ly, 4, 4, 'F');
   setTextC(doc, theme.text);
   doc.setFontSize(7); doc.setFont('helvetica', 'normal');
   doc.text(`Retorno: ${fmtCurrencyShort(data.retornoLiquido)}`, lx + 6, ly + 3.5);
   doc.text(`(${(retornoPct * 100).toFixed(0)}%)`, lx + 6, ly + 8);
 
-  setFill(doc, theme.accent);
+  setFill(doc, theme.red);
   doc.rect(lx, ly + 14, 4, 4, 'F');
   doc.text(`Investimento: ${fmtCurrencyShort(data.valorTotal)}`, lx + 6, ly + 17.5);
   doc.text(`(${(investPct * 100).toFixed(0)}%)`, lx + 6, ly + 22);
 
   // Summary line
-  setTextC(doc, theme.primary);
+  const retornoPorReal = data.valorTotal > 0 ? (data.retornoLiquido / data.valorTotal + 1) : 0;
+  setTextC(doc, theme.green);
   doc.setFontSize(7); doc.setFont('helvetica', 'bold');
   doc.text(
-    `Para cada R$ 1 investido, voce recupera R$ ${(data.retornoLiquido / data.valorTotal + 1).toFixed(1)}`,
+    `Para cada R$ 1 investido, voce recupera R$ ${retornoPorReal.toFixed(1)}`,
     x + w / 2, y + h - 6, { align: 'center' }
   );
 }
@@ -440,7 +615,7 @@ export function drawEnvironmentalImpact(
   const items = [
     {
       value: `${data.co2Tons.toFixed(1)} t`,
-      label: 'CO\u2082 evitado',
+      label: 'CO2 evitado',
       sub: `${(data.co2Tons * 1000).toFixed(0)} kg de gas carbonico`,
       color: theme.primary,
     },
@@ -466,11 +641,12 @@ export function drawEnvironmentalImpact(
     setFill(doc, item.color as RGB);
     doc.circle(cx, iy, 6, 'F');
 
-    // Icon symbol (text-based)
+    // Icon token (ASCII-safe for Helvetica)
     setTextC(doc, theme.white);
-    doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-    const icon = i === 0 ? 'CO\u2082' : i === 1 ? '\u2741' : '\u2699';
-    doc.text(icon, cx, iy + 1.5, { align: 'center' });
+    const icon = i === 0 ? 'CO2' : i === 1 ? 'ARV' : 'KM';
+    doc.setFontSize(icon.length > 2 ? 5.5 : 7);
+    doc.setFont('helvetica', 'bold');
+    doc.text(icon, cx, iy + 1.6, { align: 'center' });
 
     // Value
     setTextC(doc, theme.text);
@@ -493,21 +669,30 @@ export function drawEnvironmentalImpact(
 // ══════════════════════════════════════════════════════════
 // 5) MONTHLY GENERATION BAR CHART
 // ══════════════════════════════════════════════════════════
-export const BRAZIL_MONTHLY_IRRADIATION_FACTOR = [
-  0.95, 0.92, 0.98, 1.00, 1.02, 0.96,
-  1.00, 1.05, 1.08, 1.10, 1.02, 0.92,
+const LEGACY_SEASONAL_PROFILE = [
+  1.18, 1.15, 1.08, 0.95, 0.78, 0.70,
+  0.74, 0.88, 0.96, 1.07, 1.16, 1.23,
 ];
+const normalizeFactors = (factors: number[]): number[] => {
+  const avg = factors.reduce((acc, v) => acc + v, 0) / factors.length;
+  if (!Number.isFinite(avg) || avg <= 0) return factors;
+  return factors.map((v) => v / avg);
+};
+export const BRAZIL_MONTHLY_IRRADIATION_FACTOR = normalizeFactors(LEGACY_SEASONAL_PROFILE);
 const MONTH_LABELS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-export function calcMonthlyGeneration(potenciaKwp: number): number[] {
-  // Average daily irradiation in Brazil: ~4.5 kWh/m²/day
-  // Performance ratio: ~0.8 for residential systems
-  // Monthly = kWp × irradiation × 30 × PR × monthly factor
+export function calcMonthlyGeneration(potenciaKwp: number, consumoMensal?: number): number[] {
+  const consumoBase = Number(consumoMensal);
+  if (Number.isFinite(consumoBase) && consumoBase > 0) {
+    return BRAZIL_MONTHLY_IRRADIATION_FACTOR.map((factor) => Math.round(consumoBase * factor));
+  }
+
+  // Fallback from installed power
   const avgDaily = 4.5;
   const pr = 0.80;
-  return BRAZIL_MONTHLY_IRRADIATION_FACTOR.map(
-    (f) => Math.round(potenciaKwp * avgDaily * 30 * pr * f),
-  );
+  const potenciaBase = Math.max(Number(potenciaKwp) || 0, 0);
+  const monthlyAvg = potenciaBase * avgDaily * 30 * pr;
+  return BRAZIL_MONTHLY_IRRADIATION_FACTOR.map((factor) => Math.round(monthlyAvg * factor));
 }
 
 export function drawMonthlyGenerationChart(
@@ -516,7 +701,7 @@ export function drawMonthlyGenerationChart(
   monthlyKwh: number[],
   theme: ChartTheme = DEFAULT_CHART_THEME,
 ) {
-  const padding = { top: 18, bottom: 18, left: 8, right: 8 };
+  const padding = { top: 20, bottom: 20, left: 18, right: 8 };
   const chartH = h - padding.top - padding.bottom;
   const chartW = w - padding.left - padding.right;
 
@@ -530,63 +715,89 @@ export function drawMonthlyGenerationChart(
   doc.setFontSize(9); doc.setFont('helvetica', 'bold');
   doc.text('Geracao Mensal Estimada (kWh)', x + w / 2, y + 10, { align: 'center' });
 
-  const maxKwh = Math.max(...monthlyKwh) * 1.15;
+  const values = monthlyKwh.slice(0, 12).map((value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return 0;
+    return Math.round(numeric);
+  });
+  while (values.length < 12) values.push(0);
+
+  const rawMax = Math.max(...values, 1);
+  const magnitude = Math.pow(10, Math.max(0, Math.floor(Math.log10(rawMax))));
+  const scaled = rawMax / magnitude;
+  const niceScale = scaled <= 1 ? 1 : scaled <= 2 ? 2 : scaled <= 2.5 ? 2.5 : scaled <= 5 ? 5 : 10;
+  const maxKwh = niceScale * magnitude;
+
   const baseY = y + padding.top + chartH;
   const baseX = x + padding.left;
-  const barW = (chartW / 12) * 0.7;
-  const barGap = (chartW / 12) * 0.3;
+  const slotW = chartW / 12;
+  const barW = slotW * 0.7;
+  const barGap = slotW - barW;
 
-  // Grid lines
-  doc.setLineWidth(0.1);
+  // Grid lines + Y labels
+  doc.setLineWidth(0.12);
   setDraw(doc, theme.gridLine);
-  for (let i = 1; i <= 3; i++) {
-    const gy = baseY - (chartH / 3) * i;
+  for (let i = 0; i <= 4; i++) {
+    const gy = baseY - (chartH / 4) * i;
     doc.line(baseX, gy, baseX + chartW, gy);
+    setTextC(doc, theme.textLight);
+    doc.setFontSize(5.8); doc.setFont('helvetica', 'normal');
+    const axisValue = (maxKwh / 4) * i;
+    doc.text(fmtNumber(axisValue), baseX - 2, gy + 1.5, { align: 'right' });
   }
+  setTextC(doc, theme.textLight);
+  doc.setFontSize(5.5); doc.setFont('helvetica', 'normal');
+  doc.text('(kWh)', baseX - 2, baseY + 6, { align: 'right' });
 
-  monthlyKwh.forEach((kwh, i) => {
-    const bx = baseX + (chartW / 12) * i + barGap / 2;
-    const bh = (kwh / maxKwh) * chartH;
+  values.forEach((kwh, i) => {
+    const bx = baseX + slotW * i + barGap / 2;
+    const bh = Math.max((kwh / maxKwh) * chartH, 1);
 
-    // Gradient effect: use two rects (darker bottom, lighter top)
-    const halfH = bh / 2;
     setFill(doc, theme.primary);
     doc.roundedRect(bx, baseY - bh, barW, bh, 1, 1, 'F');
-    // Lighter overlay on top half
     setFill(doc, [
       Math.min(255, theme.primary[0] + 30),
       Math.min(255, theme.primary[1] + 30),
       Math.min(255, theme.primary[2] + 30),
     ] as RGB);
-    doc.roundedRect(bx, baseY - bh, barW, halfH, 1, 1, 'F');
+    doc.roundedRect(bx, baseY - bh, barW, bh / 2, 1, 1, 'F');
 
     // Value on top
     setTextC(doc, theme.text);
-    doc.setFontSize(5.5); doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6); doc.setFont('helvetica', 'bold');
     doc.text(`${kwh}`, bx + barW / 2, baseY - bh - 2, { align: 'center' });
 
     // Month label
     setTextC(doc, theme.textLight);
-    doc.setFontSize(5.5); doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6); doc.setFont('helvetica', 'normal');
     doc.text(MONTH_LABELS[i], bx + barW / 2, baseY + 4, { align: 'center' });
   });
 
   // Average line
-  const avg = monthlyKwh.reduce((a, b) => a + b, 0) / 12;
+  const avg = values.reduce((acc, value) => acc + value, 0) / values.length;
   const avgY = baseY - (avg / maxKwh) * chartH;
   setDraw(doc, theme.accent);
   doc.setLineWidth(0.4);
   doc.setLineDashPattern([2, 1.5], 0);
   doc.line(baseX, avgY, baseX + chartW, avgY);
   doc.setLineDashPattern([], 0);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.1);
+  const avgText = `Media: ${fmtNumberShort(avg)} kWh`;
+  const avgBadgeW = doc.getTextWidth(avgText) + 6;
+  const avgBadgeX = baseX + chartW - avgBadgeW;
+  const avgBadgeY = y + 11;
+  setFill(doc, theme.white);
+  setDraw(doc, theme.accent);
+  doc.setLineWidth(0.2);
+  doc.roundedRect(avgBadgeX, avgBadgeY - 4.1, avgBadgeW, 5, 1, 1, 'FD');
   setTextC(doc, theme.accent);
-  doc.setFontSize(6); doc.setFont('helvetica', 'bold');
-  doc.text(`Media: ${Math.round(avg)} kWh`, baseX + chartW, avgY - 2, { align: 'right' });
+  doc.text(avgText, avgBadgeX + avgBadgeW / 2, avgBadgeY - 0.4, { align: 'center' });
 
   // Total annual
-  const totalAnual = monthlyKwh.reduce((a, b) => a + b, 0);
-  setTextC(doc, theme.primary);
-  doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+  const totalAnual = values.reduce((acc, value) => acc + value, 0);
+  setTextC(doc, theme.green);
+  doc.setFontSize(7.2); doc.setFont('helvetica', 'bold');
   doc.text(`Total anual estimado: ${totalAnual.toLocaleString('pt-BR')} kWh`, x + w / 2, baseY + 12, { align: 'center' });
 }
 
@@ -661,6 +872,7 @@ export function drawBeforeAfterComparison(
   x: number, y: number, w: number,
   data: { contaAtual: number; contaComSolar: number; economiaMensal: number; econAnual: number; custo25AnosSem: number; custo25AnosCom: number },
   theme: ChartTheme = DEFAULT_CHART_THEME,
+  isUsina: boolean = false
 ): number {
   const colW = (w - 4) / 2;
   const rowH = 10;
@@ -670,11 +882,11 @@ export function drawBeforeAfterComparison(
   const economiaMensal = data.contaAtual - data.contaComSolar;
   const economia25Anos = data.custo25AnosSem - data.custo25AnosCom;
   const rows = [
-    { label: 'Conta mensal', before: fmtCurrency(data.contaAtual), after: fmtCurrency(data.contaComSolar) },
-    { label: 'Custo anual', before: fmtCurrency(data.contaAtual * 12), after: fmtCurrency(data.contaComSolar * 12) },
-    { label: 'Custo em 25 anos', before: fmtCurrency(data.custo25AnosSem), after: fmtCurrency(data.custo25AnosCom) },
-    { label: 'Economia mensal', before: '-', after: fmtCurrency(economiaMensal) },
-    { label: 'Economia em 25 anos', before: '-', after: fmtCurrency(economia25Anos) },
+    { label: isUsina ? 'Custo oportunidade mensal' : 'Conta mensal', before: fmtCurrency(data.contaAtual), after: fmtCurrency(data.contaComSolar) },
+    { label: isUsina ? 'Custo oportunidade anual' : 'Custo anual', before: fmtCurrency(data.contaAtual * 12), after: fmtCurrency(data.contaComSolar * 12) },
+    { label: isUsina ? 'Custo oportunidade (25 anos)' : 'Custo em 25 anos', before: fmtCurrency(data.custo25AnosSem), after: fmtCurrency(data.custo25AnosCom) },
+    { label: isUsina ? 'Receita mensal estimada' : 'Economia mensal', before: '-', after: fmtCurrency(economiaMensal) },
+    { label: isUsina ? 'Receita acumulada (25 anos)' : 'Economia em 25 anos', before: '-', after: fmtCurrency(economia25Anos) },
   ];
 
   const totalH = headerH + rows.length * rowH + 4;
@@ -686,14 +898,14 @@ export function drawBeforeAfterComparison(
   doc.rect(x, y + headerH - 3, colW, 3, 'F');
   setTextC(doc, theme.white);
   doc.setFontSize(8.5); doc.setFont('helvetica', 'bold');
-  doc.text('Sem Solar', x + colW / 2, y + 7, { align: 'center' });
+  doc.text(isUsina ? 'Sem Usina' : 'Sem Solar', x + colW / 2, y + 7, { align: 'center' });
 
   // "Com Solar"
   setFill(doc, theme.green);
   doc.roundedRect(x + colW + 4, y, colW, headerH, 2, 2, 'F');
   doc.rect(x + colW + 4, y + headerH - 3, colW, 3, 'F');
   setTextC(doc, theme.white);
-  doc.text('Com Solar', x + colW + 4 + colW / 2, y + 7, { align: 'center' });
+  doc.text(isUsina ? 'Com Usina' : 'Com Solar', x + colW + 4 + colW / 2, y + 7, { align: 'center' });
 
   // Rows
   rows.forEach((row, i) => {

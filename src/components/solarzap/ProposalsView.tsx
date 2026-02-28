@@ -27,7 +27,7 @@ import { PIPELINE_STAGES, PipelineStage, ClientType, Contact } from '@/types/sol
 import { Check, ChevronDown, ExternalLink, FileText, Palette, ImagePlus, X } from 'lucide-react';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
-import { PROPOSAL_THEMES, THEME_IDS, isValidThemeHex, toCustomThemeValue } from '@/utils/proposalColorThemes';
+import { PROPOSAL_THEMES, THEME_IDS, getThemeById, isValidThemeHex, normalizeThemeHex, toCustomThemeValue } from '@/utils/proposalColorThemes';
 import { generateProposalPDF, generateSellerScriptPDF } from '@/utils/generateProposalPDF';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
@@ -95,7 +95,7 @@ const STATUS_COLORS: Record<string, string> = {
 export function ProposalsView() {
   const { orgId } = useAuth();
   const { toast } = useToast();
-  const { themeId, updateTheme } = useProposalTheme();
+  const { themeId, secondaryColorHex, updateTheme, updateSecondaryColor } = useProposalTheme();
   const { logoUrl, uploadLogo, removeLogo, loading: logoLoading } = useProposalLogo();
   const logoInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -116,6 +116,18 @@ export function ProposalsView() {
   const [dateTo, setDateTo] = useState('');
   const [selectedRow, setSelectedRow] = useState<ProposalRow | null>(null);
   const [customThemeHex, setCustomThemeHex] = useState('');
+  const [customSecondaryHex, setCustomSecondaryHex] = useState('');
+
+  const secondaryPalette = [
+    '#1D4ED8',
+    '#EA580C',
+    '#DC2626',
+    '#0D9488',
+    '#7C3AED',
+    '#CA8A04',
+    '#334155',
+    '#16A34A',
+  ];
 
   const fetchProposalsFallback = useCallback(async () => {
     if (!orgId) return [] as ProposalRow[];
@@ -409,6 +421,23 @@ export function ProposalsView() {
       return;
     }
 
+    const payload = (row.premium_payload as any) || {};
+    const payloadRentabilityRate = Number(
+      payload?.financialInputs?.rentabilityRatePerKwh
+      ?? payload?.rentabilityRatePerKwh
+      ?? payload?.technicalInputs?.rentabilityRatePerKwh
+      ?? payload?.financialInputs?.tarifaKwh
+      ?? payload?.technicalInputs?.tarifaKwh
+      ?? payload?.tarifaKwh
+      ?? 0,
+    ) || undefined;
+    const signature = (payload.signature || {}) as {
+      companyName?: string;
+      companyCnpj?: string;
+      contractorName?: string;
+      contractorCnpj?: string;
+    };
+
     generateProposalPDF({
       contact: buildContactFromRow(row),
       consumoMensal: Number(row.consumo_kwh || 0),
@@ -419,8 +448,34 @@ export function ProposalsView() {
       paybackMeses: Number(row.payback_anos || 0) * 12,
       garantiaAnos: 25,
       tipo_cliente: row.tipo_cliente || 'residencial',
-      premiumContent: (row.premium_payload as any) || undefined,
+      tipoLigacao: payload?.technicalInputs?.tipoLigacao || undefined,
+      rentabilityRatePerKwh: payloadRentabilityRate,
+      tarifaKwh: payloadRentabilityRate,
+      custoDisponibilidadeKwh: Number(
+        payload?.technicalInputs?.custoDisponibilidadeKwh
+        ?? payload?.financialInputs?.custoDisponibilidadeKwh
+        ?? 0,
+      ) || undefined,
+      premiumContent: payload || undefined,
+      taxaFinanciamento: Number(payload.taxaFinanciamento) || undefined,
+      parcela36x: Number(payload.parcela36x) || undefined,
+      parcela60x: Number(payload.parcela60x) || undefined,
+      paymentConditions: Array.isArray(payload.paymentConditions) ? payload.paymentConditions : undefined,
+      financingConditions: Array.isArray(payload.financingConditions) ? payload.financingConditions : undefined,
+      financingPrimaryInstitutionId: payload.financingPrimaryInstitutionId || undefined,
+      showFinancingSimulation: Boolean(payload.showFinancingSimulation),
+      annualEnergyIncreasePct: Number(payload.annualEnergyIncreasePct) || undefined,
+      moduleDegradationPct: Number(payload.moduleDegradationPct) || undefined,
+      financialInputs: payload.financialInputs || undefined,
+      financialOutputs: payload.financialOutputs || undefined,
+      financialModelVersion: payload.financialModelVersion || undefined,
       propNum: `V${row.version_no || 1}`,
+      colorTheme: getThemeById(themeId),
+      secondaryColorHex: secondaryColorHex || undefined,
+      signatureCompanyName: signature.companyName,
+      signatureCompanyCnpj: signature.companyCnpj,
+      signatureContractorName: signature.contractorName,
+      signatureContractorCnpj: signature.contractorCnpj,
     });
   };
 
@@ -430,6 +485,16 @@ export function ProposalsView() {
       return;
     }
 
+    const payload = (row.premium_payload as any) || {};
+    const payloadRentabilityRate = Number(
+      payload?.financialInputs?.rentabilityRatePerKwh
+      ?? payload?.rentabilityRatePerKwh
+      ?? payload?.technicalInputs?.rentabilityRatePerKwh
+      ?? payload?.financialInputs?.tarifaKwh
+      ?? payload?.technicalInputs?.tarifaKwh
+      ?? payload?.tarifaKwh
+      ?? 0,
+    ) || undefined;
     generateSellerScriptPDF({
       contact: buildContactFromRow(row),
       consumoMensal: Number(row.consumo_kwh || 0),
@@ -440,9 +505,30 @@ export function ProposalsView() {
       paybackMeses: Number(row.payback_anos || 0) * 12,
       garantiaAnos: 25,
       tipo_cliente: row.tipo_cliente || 'residencial',
-      premiumContent: (row.premium_payload as any) || undefined,
+      tipoLigacao: payload?.technicalInputs?.tipoLigacao || undefined,
+      rentabilityRatePerKwh: payloadRentabilityRate,
+      tarifaKwh: payloadRentabilityRate,
+      custoDisponibilidadeKwh: Number(
+        payload?.technicalInputs?.custoDisponibilidadeKwh
+        ?? payload?.financialInputs?.custoDisponibilidadeKwh
+        ?? 0,
+      ) || undefined,
+      premiumContent: payload || undefined,
+      taxaFinanciamento: Number(payload.taxaFinanciamento) || undefined,
+      parcela36x: Number(payload.parcela36x) || undefined,
+      parcela60x: Number(payload.parcela60x) || undefined,
+      paymentConditions: Array.isArray(payload.paymentConditions) ? payload.paymentConditions : undefined,
+      financingConditions: Array.isArray(payload.financingConditions) ? payload.financingConditions : undefined,
+      financingPrimaryInstitutionId: payload.financingPrimaryInstitutionId || undefined,
+      showFinancingSimulation: Boolean(payload.showFinancingSimulation),
+      annualEnergyIncreasePct: Number(payload.annualEnergyIncreasePct) || undefined,
+      moduleDegradationPct: Number(payload.moduleDegradationPct) || undefined,
+      financialInputs: payload.financialInputs || undefined,
+      financialOutputs: payload.financialOutputs || undefined,
+      financialModelVersion: payload.financialModelVersion || undefined,
       propNum: `V${row.version_no || 1}`,
-      colorTheme: PROPOSAL_THEMES[themeId],
+      colorTheme: getThemeById(themeId),
+      secondaryColorHex: secondaryColorHex || undefined,
     });
   };
 
@@ -458,11 +544,30 @@ export function ProposalsView() {
     setCustomThemeHex(customValue.replace('custom:', '').toUpperCase());
   };
 
+  const handleApplySecondaryColor = () => {
+    const normalized = normalizeThemeHex(customSecondaryHex || '');
+    if (!normalized) {
+      toast({ title: 'Cor secundária inválida', description: 'Use um código HEX válido, ex: #1D4ED8', variant: 'destructive' });
+      return;
+    }
+    updateSecondaryColor(normalized);
+    setCustomSecondaryHex(normalized.toUpperCase());
+  };
+
+  const handleResetSecondaryColor = () => {
+    updateSecondaryColor(null);
+    setCustomSecondaryHex('');
+  };
+
   useEffect(() => {
     if (themeId.startsWith('custom:')) {
       setCustomThemeHex(themeId.replace('custom:', '').toUpperCase());
     }
   }, [themeId]);
+
+  useEffect(() => {
+    setCustomSecondaryHex(secondaryColorHex ? secondaryColorHex.toUpperCase() : '');
+  }, [secondaryColorHex]);
 
   return (
     <div className="flex-1 flex flex-col h-full w-full overflow-hidden bg-muted/30 relative">
@@ -557,6 +662,43 @@ export function ProposalsView() {
                 />
                 <Button type="button" variant="outline" size="sm" className="h-8" onClick={handleApplyCustomTheme}>
                   Aplicar
+                </Button>
+              </div>
+            </div>
+
+            {/* Secondary color */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground mr-1">Secundária:</span>
+              <div className="flex gap-1.5 glass px-2 py-1 rounded-full border border-border/50">
+                {secondaryPalette.map((hex) => (
+                  <button
+                    key={hex}
+                    type="button"
+                    title={`Secundária ${hex}`}
+                    onClick={() => {
+                      setCustomSecondaryHex(hex);
+                      updateSecondaryColor(hex);
+                    }}
+                    className={cn(
+                      'w-5 h-5 rounded-full border border-black/10 transition-all hover:scale-110 shadow-sm',
+                      (secondaryColorHex || '').toUpperCase() === hex ? 'ring-2 ring-primary ring-offset-1 scale-110' : ''
+                    )}
+                    style={{ backgroundColor: hex }}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={customSecondaryHex}
+                  onChange={(e) => setCustomSecondaryHex(e.target.value)}
+                  placeholder="#1D4ED8"
+                  className="h-8 w-28 text-xs uppercase"
+                />
+                <Button type="button" variant="outline" size="sm" className="h-8" onClick={handleApplySecondaryColor}>
+                  Aplicar
+                </Button>
+                <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={handleResetSecondaryColor}>
+                  Auto
                 </Button>
               </div>
             </div>

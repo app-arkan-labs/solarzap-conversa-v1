@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { BRAZIL_STATES } from '@/constants/solarIrradiance';
 import { Loader2, Save, User, Building, Phone, Mail, MapPin, Zap, DollarSign, FileText, MessageSquare } from 'lucide-react';
 
 interface CreateLeadModalProps {
@@ -37,6 +38,7 @@ export interface CreateLeadData {
   canal: Channel;
   endereco?: string;
   cidade?: string;
+  uf?: string;
   cep?: string;
   consumo_kwh?: number;
   valor_estimado?: number;
@@ -61,6 +63,7 @@ const initialFormData: CreateLeadData = {
   canal: 'whatsapp',
   endereco: '',
   cidade: '',
+  uf: '',
   cep: '',
   consumo_kwh: 0,
   valor_estimado: 0,
@@ -264,7 +267,7 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="cidade">Cidade</Label>
                 <Input
@@ -274,6 +277,20 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
                   placeholder="Cidade"
                   maxLength={100}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="uf">UF</Label>
+                <Select value={formData.uf || ''} onValueChange={(value) => handleChange('uf', value)}>
+                  <SelectTrigger id="uf">
+                    <SelectValue placeholder="UF" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover max-h-60">
+                    {BRAZIL_STATES.map((s) => (
+                      <SelectItem key={s.uf} value={s.uf}>{s.uf}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">

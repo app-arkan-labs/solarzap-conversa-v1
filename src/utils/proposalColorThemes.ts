@@ -130,7 +130,7 @@ function clamp(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
-function normalizeHex(input: string): string | null {
+export function normalizeThemeHex(input: string): string | null {
   const raw = String(input || '').trim();
   const withHash = raw.startsWith('#') ? raw : `#${raw}`;
   if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(withHash)) return null;
@@ -151,6 +151,12 @@ function hexToRgb(hex: string): [number, number, number] {
   return [r, g, b];
 }
 
+export function parseThemeHexToRgb(input: string): [number, number, number] | null {
+  const normalized = normalizeThemeHex(input);
+  if (!normalized) return null;
+  return hexToRgb(normalized);
+}
+
 function mix(base: [number, number, number], target: [number, number, number], alpha: number): [number, number, number] {
   return [
     clamp(base[0] * (1 - alpha) + target[0] * alpha),
@@ -160,17 +166,17 @@ function mix(base: [number, number, number], target: [number, number, number], a
 }
 
 export function toCustomThemeValue(hexCode: string): ProposalThemeValue | null {
-  const normalized = normalizeHex(hexCode);
+  const normalized = normalizeThemeHex(hexCode);
   if (!normalized) return null;
   return `custom:${normalized}`;
 }
 
 export function isValidThemeHex(hexCode: string): boolean {
-  return !!normalizeHex(hexCode);
+  return !!normalizeThemeHex(hexCode);
 }
 
 export function createCustomTheme(hexCode: string): ProposalColorTheme {
-  const normalized = normalizeHex(hexCode) || '#16a34a';
+  const normalized = normalizeThemeHex(hexCode) || '#16a34a';
   const primary = hexToRgb(normalized);
   const primaryDark = mix(primary, [0, 0, 0], 0.22);
   const primaryLight = mix(primary, [255, 255, 255], 0.86);

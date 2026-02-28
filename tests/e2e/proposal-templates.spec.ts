@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -20,6 +21,7 @@ const rand = (n = 8) => Math.random().toString(16).slice(2, 2 + n);
 test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) geram PDF sem erro', async ({ page }) => {
   const email = `e2e.templates.${Date.now()}.${rand(6)}@example.com`;
   const password = `S!moke_${Date.now()}_${rand(10)}`;
+  const orgId = randomUUID();
 
   let userId: string | null = null;
   let leadId: number | null = null;
@@ -30,21 +32,38 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
       email,
       password,
       email_confirm: true,
-      user_metadata: { e2e: true },
+      user_metadata: { e2e: true, org_id: orgId },
     });
     if (createErr || !created?.user?.id) {
       throw new Error(`Failed to create user: ${createErr?.message || 'unknown'}`);
     }
     userId = created.user.id;
 
+    // Create org
+    const { error: orgErr } = await admin.from('organizations').insert({
+      id: orgId,
+      name: `E2E TPL Org ${Date.now()}`
+    });
+    if (orgErr) throw new Error(`Failed to create org: ${orgErr.message}`);
+
+    const { error: memberErr } = await admin.from('organization_members').insert({
+      org_id: orgId,
+      user_id: userId,
+      role: 'owner',
+      can_view_team_leads: true,
+    });
+    if (memberErr) throw new Error(`Failed to create membership: ${memberErr.message}`);
+
     leadName = `E2E_TPL_${Date.now()}_${rand(4)}`;
     const phone = `55119888${Math.floor(1000 + Math.random() * 8999)}`;
     const { data: lead, error: leadErr } = await admin
       .from('leads')
       .insert({
+        org_id: orgId,
         nome: leadName,
         telefone: phone,
         user_id: userId,
+        assigned_to_user_id: userId,
         ai_enabled: true,
         status_pipeline: 'respondeu',
         consumo_kwh: 650,
@@ -80,7 +99,6 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
     for (const c of cases) {
       await search.fill(leadName);
 
-      // Avoid strict-mode violations: leadName can appear in multiple places (list + modal + status).
       await expect(page.getByTestId(`lead-actions-${String(leadId)}`)).toBeVisible({ timeout: 30_000 });
 
       await page.getByTestId(`lead-actions-${String(leadId)}`).click();
@@ -113,5 +131,7 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
     if (userId) {
       await admin.auth.admin.deleteUser(userId);
     }
+    await admin.from('organization_members').delete().eq('org_id', orgId);
+    await admin.from('organizations').delete().eq('id', orgId);
   }
 });

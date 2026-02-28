@@ -13,6 +13,9 @@ import { useAutomationSettings } from '@/hooks/useAutomationSettings';
 import { generateSellerScriptPDF } from '@/utils/generateProposalPDF';
 import { PremiumProposalContent } from '@/utils/proposalPersonalization';
 import { supabase } from '@/lib/supabase';
+import type { FinancingCondition, PaymentConditionOptionId } from '@/types/proposalFinancing';
+import type { ProposalColorTheme } from '@/utils/proposalColorThemes';
+import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
 
 interface ProposalReadyModalProps {
   isOpen: boolean;
@@ -32,15 +35,28 @@ interface ProposalReadyModalProps {
     paybackMeses: number;
     garantiaAnos: number;
     tipo_cliente?: string;
+    rentabilityRatePerKwh?: number;
     premiumContent?: PremiumProposalContent;
     taxaFinanciamento?: number;
     parcela36x?: number;
     parcela60x?: number;
+    paymentConditions?: PaymentConditionOptionId[];
+    financingConditions?: FinancingCondition[];
+    financingPrimaryInstitutionId?: string;
+    showFinancingSimulation?: boolean;
+    secondaryColorHex?: string | null;
     validadeDias?: number;
+    annualEnergyIncreasePct?: number;
+    moduleDegradationPct?: number;
+    financialInputs?: FinancialInputs;
+    financialOutputs?: FinancialOutputs;
+    financialModelVersion?: string;
     propNum?: string;
     proposalVersionId?: string | null;
     propostaId?: number | null;
     shareUrl?: string | null;
+    colorTheme?: ProposalColorTheme;
+    logoDataUrl?: string | null;
   } | null;
 }
 
@@ -86,11 +102,22 @@ export function ProposalReadyModal({
         paybackMeses: sellerScriptData.paybackMeses,
         garantiaAnos: sellerScriptData.garantiaAnos,
         tipo_cliente: sellerScriptData.tipo_cliente,
+        rentabilityRatePerKwh: sellerScriptData.rentabilityRatePerKwh,
         premiumContent: sellerScriptData.premiumContent,
         taxaFinanciamento: sellerScriptData.taxaFinanciamento,
         parcela36x: sellerScriptData.parcela36x,
         parcela60x: sellerScriptData.parcela60x,
+        paymentConditions: sellerScriptData.paymentConditions,
+        financingConditions: sellerScriptData.financingConditions,
+        financingPrimaryInstitutionId: sellerScriptData.financingPrimaryInstitutionId,
+        showFinancingSimulation: sellerScriptData.showFinancingSimulation,
+        secondaryColorHex: sellerScriptData.secondaryColorHex,
         validadeDias: sellerScriptData.validadeDias,
+        annualEnergyIncreasePct: sellerScriptData.annualEnergyIncreasePct,
+        moduleDegradationPct: sellerScriptData.moduleDegradationPct,
+        financialInputs: sellerScriptData.financialInputs,
+        financialOutputs: sellerScriptData.financialOutputs,
+        financialModelVersion: sellerScriptData.financialModelVersion,
         propNum: sellerScriptData.propNum,
         // Sprint 3: pass theme/logo for seller script branding
         colorTheme: sellerScriptData.colorTheme,

@@ -204,9 +204,11 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
 
   // handleSchedule REMOVED
 
-  const handleProposal = async (data: ProposalData) => {
+  const handleProposal = async (
+    data: ProposalData,
+  ): Promise<{ proposalVersionId: string | null; proposal?: any } | void> => {
     if (onGenerateProposal) {
-      return onGenerateProposal(data);
+      return onGenerateProposal(data) as Promise<{ proposalVersionId: string | null; proposal?: any } | void>;
     }
 
     // Store contactId and name in refs BEFORE any state changes - this survives batching

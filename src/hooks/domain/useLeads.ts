@@ -17,6 +17,13 @@ interface ExtendedLeadFields {
     cep?: string;
     tipo_cliente?: ClientType;
     uf?: string;
+    concessionaria?: string;
+    tipo_ligacao?: 'monofasico' | 'bifasico' | 'trifasico';
+    tarifa_kwh?: number;
+    custo_disponibilidade_kwh?: number;
+    performance_ratio?: number;
+    preco_por_kwp?: number;
+    abater_custo_disponibilidade_no_dimensionamento?: boolean;
 }
 
 // Helper: Extract valid JSON from observations if present
@@ -41,6 +48,21 @@ const cleanObservations = (obs: string | null | undefined): string => {
     if (!obs) return '';
     if (!obs.includes(META_TAG)) return obs;
     return obs.split(META_TAG)[0].trim();
+};
+
+// DB column `leads.consumo_kwh` may be bigint/int in some deployments.
+// Normalize fractional UI inputs (e.g. 15533.22) before writes to avoid Postgres bigint cast errors.
+const normalizeConsumokwhForDb = (value: number | undefined): number | undefined => {
+    if (value === undefined) return undefined;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.max(0, Math.round(numeric));
+};
+
+const toOptionalNumber = (value: unknown): number | undefined => {
+    if (value === null || value === undefined || value === '') return undefined;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : undefined;
 };
 
 const parseLeadStageData = (raw: unknown): LeadStageData | undefined => {
@@ -142,6 +164,13 @@ export const leadToContact = (lead: any): Contact => {
         // Zip isn't in standard LeadDB usually, but we check:
         // @ts-ignore
         zip: lead.cep || meta.cep, // Maps to 'cep' in UI usually
+        energyDistributor: lead.concessionaria || meta.concessionaria,
+        connectionType: (lead.tipo_ligacao || meta.tipo_ligacao) as Contact['connectionType'] | undefined,
+        energyTariffKwh: toOptionalNumber(lead.tarifa_kwh ?? meta.tarifa_kwh),
+        availabilityCostKwh: toOptionalNumber(lead.custo_disponibilidade_kwh ?? meta.custo_disponibilidade_kwh),
+        performanceRatio: toOptionalNumber(lead.performance_ratio ?? meta.performance_ratio),
+        pricePerKwp: toOptionalNumber(lead.preco_por_kwp ?? meta.preco_por_kwp),
+        subtractAvailabilityInSizing: (lead.abater_custo_disponibilidade_no_dimensionamento ?? meta.abater_custo_disponibilidade_no_dimensionamento) ?? undefined,
 
         consumption: lead.consumo_kwh || 0,
         projectValue: lead.valor_estimado || 0,
@@ -173,6 +202,14 @@ export interface LeadPatch {
     endereco?: string;
     cidade?: string;
     cep?: string;
+    uf?: string;
+    concessionaria?: string;
+    tipo_ligacao?: 'monofasico' | 'bifasico' | 'trifasico';
+    tarifa_kwh?: number;
+    custo_disponibilidade_kwh?: number;
+    performance_ratio?: number;
+    preco_por_kwp?: number;
+    abater_custo_disponibilidade_no_dimensionamento?: boolean;
     consumo_kwh?: number;
     valor_estimado?: number;
     observacoes?: string;
@@ -296,17 +333,37 @@ export function useLeads() {
         extendedPayload: ExtendedLeadFields,
         matchId?: number
     ) => {
+        const hasExtendedData = Object.values(extendedPayload).some(
+            (value) => value !== undefined && value !== null && value !== ''
+        );
+
+        const buildFallbackPayload = async () => {
+            // If there is no extended data to pack, do not touch observations implicitly.
+            if (!hasExtendedData) return { ...basePayload };
+
+            let currentObs = basePayload.observacoes;
+            if (operation === 'UPDATE' && currentObs === undefined && matchId !== undefined) {
+                const { data: existing } = await supabase
+                    .from(table)
+                    .select('observacoes')
+                    .eq('id', matchId)
+                    .maybeSingle();
+                currentObs = existing?.observacoes;
+            }
+
+            return {
+                ...basePayload,
+                observacoes: packLeadMeta(currentObs, extendedPayload),
+            };
+        };
+
         // Prepare FULL payload attempt
         const fullPayload = { ...basePayload, ...extendedPayload };
-
-        // Prepare FALLBACK payload (extended packed into observacoes)
-        // We need 'observacoes' from basePayload to append to it
-        const fallbackObs = packLeadMeta(basePayload.observacoes, extendedPayload);
-        const fallbackPayload = { ...basePayload, observacoes: fallbackObs };
 
         // Optimization: If we already know DB fails on extended cols, go straight to fallback
         if (dbSupportsExtendedColumns === false) {
             // console.log('Using Cached Fallback (Meta JSON)');
+            const fallbackPayload = await buildFallbackPayload();
             if (operation === 'INSERT') return supabase.from(table).insert(fallbackPayload).select().single();
             else return supabase.from(table).update(fallbackPayload).eq('id', matchId).select().single();
         }
@@ -330,12 +387,13 @@ export function useLeads() {
             dbSupportsExtendedColumns = false; // Cache failure for session
 
             // Retry with FALLBACK
+            const fallbackPayload = await buildFallbackPayload();
             if (operation === 'INSERT') return supabase.from(table).insert(fallbackPayload).select().single();
             else return supabase.from(table).update(fallbackPayload).eq('id', matchId).select().single();
         } else if (!error) {
             // Success! We know columns exist (or we didn't send any extended fields that mattered)
             // Only set to true if we actually sent extended fields and it worked
-            if (Object.keys(extendedPayload).length > 0) {
+            if (hasExtendedData) {
                 dbSupportsExtendedColumns = true;
             }
         }
@@ -357,7 +415,7 @@ export function useLeads() {
                 email: data.email || null,
                 empresa: data.empresa || null,
                 canal: data.canal || 'whatsapp',
-                consumo_kwh: data.consumo_kwh || 0,
+                consumo_kwh: normalizeConsumokwhForDb(data.consumo_kwh) || 0,
                 valor_estimado: data.valor_estimado || 0,
                 status_pipeline: data.status_pipeline || 'novo_lead',
                 observacoes: data.observacoes || '',
@@ -368,6 +426,14 @@ export function useLeads() {
                 endereco: data.endereco,
                 cidade: data.cidade,
                 cep: data.cep,
+                uf: data.uf,
+                concessionaria: data.concessionaria,
+                tipo_ligacao: data.tipo_ligacao,
+                tarifa_kwh: data.tarifa_kwh,
+                custo_disponibilidade_kwh: data.custo_disponibilidade_kwh,
+                performance_ratio: data.performance_ratio,
+                preco_por_kwp: data.preco_por_kwp,
+                abater_custo_disponibilidade_no_dimensionamento: data.abater_custo_disponibilidade_no_dimensionamento,
             };
 
             const { data: newLead, error } = await safeSupabaseWrite('INSERT', 'leads', basePayload, extendedPayload);
@@ -394,7 +460,7 @@ export function useLeads() {
             if (data.telefone !== undefined) basePayload.telefone = data.telefone;
             if (data.email !== undefined) basePayload.email = data.email || null;
             if (data.empresa !== undefined) basePayload.empresa = data.empresa || null;
-            if (data.consumo_kwh !== undefined) basePayload.consumo_kwh = data.consumo_kwh;
+            if (data.consumo_kwh !== undefined) basePayload.consumo_kwh = normalizeConsumokwhForDb(data.consumo_kwh);
             if (data.valor_estimado !== undefined) basePayload.valor_estimado = data.valor_estimado;
             if (data.status_pipeline !== undefined) {
                 basePayload.status_pipeline = data.status_pipeline;
@@ -409,6 +475,16 @@ export function useLeads() {
             if (data.endereco !== undefined) extendedPayload.endereco = data.endereco;
             if (data.cidade !== undefined) extendedPayload.cidade = data.cidade;
             if (data.cep !== undefined) extendedPayload.cep = data.cep;
+            if (data.uf !== undefined) extendedPayload.uf = data.uf;
+            if (data.concessionaria !== undefined) extendedPayload.concessionaria = data.concessionaria;
+            if (data.tipo_ligacao !== undefined) extendedPayload.tipo_ligacao = data.tipo_ligacao;
+            if (data.tarifa_kwh !== undefined) extendedPayload.tarifa_kwh = data.tarifa_kwh;
+            if (data.custo_disponibilidade_kwh !== undefined) extendedPayload.custo_disponibilidade_kwh = data.custo_disponibilidade_kwh;
+            if (data.performance_ratio !== undefined) extendedPayload.performance_ratio = data.performance_ratio;
+            if (data.preco_por_kwp !== undefined) extendedPayload.preco_por_kwp = data.preco_por_kwp;
+            if (data.abater_custo_disponibilidade_no_dimensionamento !== undefined) {
+                extendedPayload.abater_custo_disponibilidade_no_dimensionamento = data.abater_custo_disponibilidade_no_dimensionamento;
+            }
 
             const { error } = await safeSupabaseWrite('UPDATE', 'leads', basePayload, extendedPayload, Number(contactId));
 
@@ -447,7 +523,7 @@ export function useLeads() {
                         email: c.email || null,
                         empresa: c.empresa || null,
                         canal: c.canal || 'whatsapp',
-                        consumo_kwh: c.consumo_kwh || 0,
+                        consumo_kwh: normalizeConsumokwhForDb(c.consumo_kwh as number | undefined) || 0,
                         valor_estimado: c.valor_estimado || 0,
                         status_pipeline: c.status_pipeline || 'novo_lead',
                         observacoes: c.observacoes || '',

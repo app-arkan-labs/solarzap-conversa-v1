@@ -47,6 +47,13 @@ export interface Contact {
   city?: string;
   state?: string;
   zip?: string;
+  energyDistributor?: string;
+  connectionType?: 'monofasico' | 'bifasico' | 'trifasico';
+  energyTariffKwh?: number;
+  availabilityCostKwh?: number;
+  performanceRatio?: number;
+  pricePerKwp?: number;
+  subtractAvailabilityInSizing?: boolean;
   cpfCnpj?: string;
   createdAt: Date;
   lastContact: Date;
@@ -69,11 +76,15 @@ export interface Message {
   timestamp: Date;
   isFromClient: boolean;
   isRead: boolean;
+  status?: 'pending' | 'sent' | 'failed';
+  clientTempId?: string;
+  errorMessage?: string | null;
   attachments?: Attachment[];
   isAutomation?: boolean;
   automationNote?: string;
   instanceName?: string;
   phoneE164?: string; // NEW
+  remoteJid?: string;
   waMessageId?: string;
   replyTo?: {
     id: string;
