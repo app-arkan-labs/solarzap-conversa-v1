@@ -88,7 +88,9 @@ export function calculateProposalFinancials(input: FinancialInputs): FinancialOu
     : buildNonUsinaBillSnapshot(consumoMensalKwh, custoDisponibilidadeKwh, rentabilityRatePerKwh);
 
   const unifiedMonthlyGeneration = unifiedGenerationEnabled
-    ? calcMonthlyGeneration(potenciaSistemaKwp, consumoMensalKwh)
+    ? calcMonthlyGeneration(potenciaSistemaKwp, consumoMensalKwh, {
+      monthlyGenerationFactors: input.monthlyGenerationFactors,
+    })
     : null;
   const legacyAnnualGenerationKwhYear1 = clampNonNegative(consumoMensalKwh * 12);
   const annualGenerationKwhYear1 = unifiedMonthlyGeneration

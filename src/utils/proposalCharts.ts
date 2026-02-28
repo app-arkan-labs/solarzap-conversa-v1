@@ -4,6 +4,7 @@
 // primitives and optional offscreen canvas for complex shapes.
 // ══════════════════════════════════════════════════════════
 import jsPDF from 'jspdf';
+import { isSolarResourceApiEnabled } from '@/config/featureFlags';
 
 type RGB = [number, number, number];
 
@@ -673,6 +674,15 @@ const LEGACY_SEASONAL_PROFILE = [
   1.18, 1.15, 1.08, 0.95, 0.78, 0.70,
   0.74, 0.88, 0.96, 1.07, 1.16, 1.23,
 ];
+export const normalizeGenerationFactors = (factors: number[]): number[] => {
+  if (!Array.isArray(factors) || factors.length !== 12) return BRAZIL_MONTHLY_IRRADIATION_FACTOR;
+  const safeFactors = factors.map((value) => Math.max(0, Number(value) || 0));
+  if (safeFactors.some((value) => value <= 0)) return BRAZIL_MONTHLY_IRRADIATION_FACTOR;
+  const avg = safeFactors.reduce((acc, v) => acc + v, 0) / safeFactors.length;
+  if (!Number.isFinite(avg) || avg <= 0) return BRAZIL_MONTHLY_IRRADIATION_FACTOR;
+  return safeFactors.map((v) => v / avg);
+};
+
 const normalizeFactors = (factors: number[]): number[] => {
   const avg = factors.reduce((acc, v) => acc + v, 0) / factors.length;
   if (!Number.isFinite(avg) || avg <= 0) return factors;
@@ -681,18 +691,26 @@ const normalizeFactors = (factors: number[]): number[] => {
 export const BRAZIL_MONTHLY_IRRADIATION_FACTOR = normalizeFactors(LEGACY_SEASONAL_PROFILE);
 const MONTH_LABELS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-export function calcMonthlyGeneration(potenciaKwp: number, consumoMensal?: number): number[] {
+export function calcMonthlyGeneration(
+  potenciaKwp: number,
+  consumoMensal?: number,
+  options?: {
+    monthlyGenerationFactors?: number[] | null;
+  },
+): number[] {
+  const seasonalFactors = normalizeGenerationFactors(options?.monthlyGenerationFactors || BRAZIL_MONTHLY_IRRADIATION_FACTOR);
   const consumoBase = Number(consumoMensal);
   if (Number.isFinite(consumoBase) && consumoBase > 0) {
-    return BRAZIL_MONTHLY_IRRADIATION_FACTOR.map((factor) => Math.round(consumoBase * factor));
+    return seasonalFactors.map((factor) => Math.round(consumoBase * factor));
   }
 
   // Fallback from installed power
   const avgDaily = 4.5;
   const pr = 0.80;
+  const daysInMonth = isSolarResourceApiEnabled() ? 30.4375 : 30;
   const potenciaBase = Math.max(Number(potenciaKwp) || 0, 0);
-  const monthlyAvg = potenciaBase * avgDaily * 30 * pr;
-  return BRAZIL_MONTHLY_IRRADIATION_FACTOR.map((factor) => Math.round(monthlyAvg * factor));
+  const monthlyAvg = potenciaBase * avgDaily * daysInMonth * pr;
+  return seasonalFactors.map((factor) => Math.round(monthlyAvg * factor));
 }
 
 export function drawMonthlyGenerationChart(

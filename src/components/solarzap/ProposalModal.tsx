@@ -336,6 +336,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
       annualEnergyIncreasePct: Math.max(0, Number(next.annualEnergyIncreasePct) || DEFAULT_ANNUAL_INCREASE_PCT),
       moduleDegradationPct: Math.max(0, Number(next.moduleDegradationPct) || DEFAULT_MODULE_DEGRADATION_PCT),
       analysisYears: DEFAULT_ANALYSIS_YEARS,
+      monthlyGenerationFactors: next.monthlyGenerationFactors,
     };
     const financialOutputs = calculateProposalFinancials(financialInputs);
     return { financialInputs, financialOutputs };

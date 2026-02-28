@@ -14,6 +14,7 @@ export interface FinancialInputs {
   annualEnergyIncreasePct?: number;
   moduleDegradationPct?: number;
   analysisYears?: number;
+  monthlyGenerationFactors?: number[];
 }
 
 export interface FinancialOutputs {

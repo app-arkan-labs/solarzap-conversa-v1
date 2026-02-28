@@ -1,3 +1,5 @@
+import { isSolarResourceApiEnabled } from '@/config/featureFlags';
+
 export interface SolarSizingParams {
   consumoMensal: number;
   irradiancia: number;
@@ -17,6 +19,9 @@ export interface SolarSizingResult {
   valorTotal: number;
 }
 
+export const LEGACY_DAYS_IN_MONTH = 30;
+export const PRECISE_DAYS_IN_MONTH = 30.4375;
+
 const toSafeNumber = (value: number | undefined, fallback: number) => {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
@@ -27,7 +32,8 @@ export function calculateSolarSizing(params: SolarSizingParams): SolarSizingResu
   const irradiancia = Math.max(0.01, toSafeNumber(params.irradiancia, 4.5));
   const moduloPotenciaW = Math.max(1, toSafeNumber(params.moduloPotenciaW, 550));
   const performanceRatio = Math.max(0.01, toSafeNumber(params.performanceRatio, 0.8));
-  const diasMes = Math.max(1, toSafeNumber(params.diasMes, 30));
+  const defaultDaysInMonth = isSolarResourceApiEnabled() ? PRECISE_DAYS_IN_MONTH : LEGACY_DAYS_IN_MONTH;
+  const diasMes = Math.max(1, toSafeNumber(params.diasMes, defaultDaysInMonth));
   const precoPorKwp = Math.max(0, toSafeNumber(params.precoPorKwp, 4500));
   const custoDisponibilidadeKwh = Math.max(0, toSafeNumber(params.custoDisponibilidadeKwh, 50));
   const aplicarCustoDisponibilidadeNoDimensionamento = Boolean(params.aplicarCustoDisponibilidadeNoDimensionamento);

@@ -49,4 +49,24 @@ describe('calculateSolarSizing', () => {
     expect(withAbate.basePotenciaKwp).toBeLessThan(withoutAbate.basePotenciaKwp);
     expect(withAbate.quantidadePaineis).toBeLessThan(withoutAbate.quantidadePaineis);
   });
+
+  it('usa 30.4375 dias/mes quando VITE_USE_SOLAR_RESOURCE_API esta ativa', () => {
+    const previous = process.env.VITE_USE_SOLAR_RESOURCE_API;
+    process.env.VITE_USE_SOLAR_RESOURCE_API = 'true';
+
+    try {
+      const result = calculateSolarSizing({
+        consumoMensal: 350,
+        irradiancia: 4.52,
+        moduloPotenciaW: 550,
+        performanceRatio: 0.8,
+        precoPorKwp: 4500,
+      });
+
+      expect(result.basePotenciaKwp).toBeCloseTo(3.1800, 3);
+    } finally {
+      if (previous === undefined) delete process.env.VITE_USE_SOLAR_RESOURCE_API;
+      else process.env.VITE_USE_SOLAR_RESOURCE_API = previous;
+    }
+  });
 });

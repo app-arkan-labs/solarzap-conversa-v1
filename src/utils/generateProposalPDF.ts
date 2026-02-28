@@ -688,7 +688,9 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
   const envImpact: EnvironmentalImpact = premium?.environmentalImpact
     || calcEnvironmentalImpact(data.consumoMensal * 12, 25);
   const unifiedGenerationEnabled = isUnifiedGenerationEnabled();
-  const fallbackMonthlyGen = calcMonthlyGeneration(data.potenciaSistema, data.consumoMensal);
+  const fallbackMonthlyGen = calcMonthlyGeneration(data.potenciaSistema, data.consumoMensal, {
+    monthlyGenerationFactors: data.monthlyGenerationFactors || data.financialInputs?.monthlyGenerationFactors,
+  });
   const premiumMonthlyGen = Array.isArray(premium?.monthlyGeneration)
     ? premium.monthlyGeneration.slice(0, 12).map((v) => {
       const n = Number(v);
