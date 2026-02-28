@@ -29,6 +29,12 @@ import {
   getDefaultTariffByDistributor,
   normalizeUf,
 } from '@/constants/energyDistributors';
+import {
+  DEFAULT_ANALYSIS_YEARS,
+  DEFAULT_ANNUAL_INCREASE_PCT,
+  DEFAULT_MODULE_DEGRADATION_PCT,
+  DEFAULT_TARIFF_FALLBACK,
+} from '@/constants/financialDefaults';
 import { calculateSolarSizing } from '@/utils/solarSizing';
 import {
   buildPremiumProposalContent,
@@ -139,7 +145,6 @@ const CUSTO_DISPONIBILIDADE_POR_LIGACAO: Record<TipoLigacao, number> = {
 };
 
 const DEFAULT_PAYMENT_CONDITIONS: PaymentConditionOptionId[] = ['pix_avista', 'boleto_avista'];
-const DEFAULT_TARIFF_FALLBACK = 0.76;
 
 function createDefaultFinancingCondition(): FinancingCondition {
   return {
@@ -185,8 +190,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
     financingPrimaryInstitutionId: '' as string,
     showFinancingSimulation: false,
     validadeDias: 15,
-    annualEnergyIncreasePct: 8,
-    moduleDegradationPct: 0.8,
+    annualEnergyIncreasePct: DEFAULT_ANNUAL_INCREASE_PCT,
+    moduleDegradationPct: DEFAULT_MODULE_DEGRADATION_PCT,
     financialInputs: undefined as FinancialInputs | undefined,
     financialOutputs: undefined as FinancialOutputs | undefined,
     financialModelVersion: FINANCIAL_MODEL_VERSION as typeof FINANCIAL_MODEL_VERSION,
@@ -270,9 +275,9 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
       tariffSource: tariffResolved.source,
       custoDisponibilidadeKwh: Math.max(0, Number(next.custoDisponibilidadeKwh) || 0),
       abaterCustoDisponibilidadeNoDimensionamento: Boolean(next.abaterCustoDisponibilidadeNoDimensionamento),
-      annualEnergyIncreasePct: Math.max(0, Number(next.annualEnergyIncreasePct) || 8),
-      moduleDegradationPct: Math.max(0, Number(next.moduleDegradationPct) || 0.8),
-      analysisYears: 25,
+      annualEnergyIncreasePct: Math.max(0, Number(next.annualEnergyIncreasePct) || DEFAULT_ANNUAL_INCREASE_PCT),
+      moduleDegradationPct: Math.max(0, Number(next.moduleDegradationPct) || DEFAULT_MODULE_DEGRADATION_PCT),
+      analysisYears: DEFAULT_ANALYSIS_YEARS,
     };
     const financialOutputs = calculateProposalFinancials(financialInputs);
     return { financialInputs, financialOutputs };
@@ -906,8 +911,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
           financingPrimaryInstitutionId: defaultFinancingCondition.id,
           showFinancingSimulation: false,
           validadeDias: 15,
-          annualEnergyIncreasePct: 8,
-          moduleDegradationPct: 0.8,
+          annualEnergyIncreasePct: DEFAULT_ANNUAL_INCREASE_PCT,
+          moduleDegradationPct: DEFAULT_MODULE_DEGRADATION_PCT,
           estado: uf,
           irradiancia: uf ? getIrradianceByUF(uf) : 4.5,
           concessionaria: inferredDistributor,
@@ -1247,7 +1252,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
                 <Input
                   type="number"
                   step="0.1"
-                  value={formData.annualEnergyIncreasePct ?? 8}
+                  value={formData.annualEnergyIncreasePct ?? DEFAULT_ANNUAL_INCREASE_PCT}
                   onChange={(e) => handleChange('annualEnergyIncreasePct', parseFloat(e.target.value) || 0)}
                 />
               </div>
@@ -1256,7 +1261,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
                 <Input
                   type="number"
                   step="0.1"
-                  value={formData.moduleDegradationPct ?? 0.8}
+                  value={formData.moduleDegradationPct ?? DEFAULT_MODULE_DEGRADATION_PCT}
                   onChange={(e) => handleChange('moduleDegradationPct', parseFloat(e.target.value) || 0)}
                 />
               </div>

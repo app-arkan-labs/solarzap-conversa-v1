@@ -1,9 +1,10 @@
 import type { FinancialInputs, FinancialOutputs, TariffSource } from '@/types/proposalFinancial';
-
-const DEFAULT_ANALYSIS_YEARS = 25;
-const DEFAULT_TARIFF_KWH = 0.76;
-const DEFAULT_ANNUAL_INCREASE_PCT = 8;
-const DEFAULT_MODULE_DEGRADATION_PCT = 0.8;
+import {
+  DEFAULT_ANALYSIS_YEARS,
+  DEFAULT_ANNUAL_INCREASE_PCT,
+  DEFAULT_MODULE_DEGRADATION_PCT,
+  DEFAULT_TARIFF_KWH,
+} from '@/constants/financialDefaults';
 
 const toFinite = (value: unknown, fallback = 0) => {
   const numeric = Number(value);

@@ -31,6 +31,12 @@ import {
 } from '@/types/proposalFinancing';
 import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
 import { calculateProposalFinancials } from '@/utils/proposalFinancialModel';
+import {
+  DEFAULT_ANALYSIS_YEARS,
+  DEFAULT_ANNUAL_INCREASE_PCT,
+  DEFAULT_MODULE_DEGRADATION_PCT,
+  DEFAULT_RENTABILITY_RATE_PER_KWH,
+} from '@/constants/financialDefaults';
 
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 // INTERFACES
@@ -201,7 +207,6 @@ function deriveComplementary(base: RGB): RGB {
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Tarifa e custo de disponibilidade (ANEEL) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-const DEFAULT_RENTABILITY_RATE_PER_KWH = 0.76;
 
 /** Custo de disponibilidade em kWh por tipo de conexÃƒÂ£o/cliente (ANEEL REN 1.000/2021) */
 function getCustoDisponibilidadeFallback(tipoCliente?: string): number {
@@ -588,9 +593,16 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
     abaterCustoDisponibilidadeNoDimensionamento: Boolean(
       data.financialInputs?.abaterCustoDisponibilidadeNoDimensionamento,
     ),
-    annualEnergyIncreasePct: Number(data.annualEnergyIncreasePct ?? data.financialInputs?.annualEnergyIncreasePct ?? 8) || 8,
-    moduleDegradationPct: Number(data.moduleDegradationPct ?? data.financialInputs?.moduleDegradationPct ?? 0.8) || 0.8,
-    analysisYears: Math.max(1, Number(data.financialInputs?.analysisYears || 25) || 25),
+    annualEnergyIncreasePct: Number(
+      data.annualEnergyIncreasePct ?? data.financialInputs?.annualEnergyIncreasePct ?? DEFAULT_ANNUAL_INCREASE_PCT,
+    ) || DEFAULT_ANNUAL_INCREASE_PCT,
+    moduleDegradationPct: Number(
+      data.moduleDegradationPct ?? data.financialInputs?.moduleDegradationPct ?? DEFAULT_MODULE_DEGRADATION_PCT,
+    ) || DEFAULT_MODULE_DEGRADATION_PCT,
+    analysisYears: Math.max(
+      1,
+      Number(data.financialInputs?.analysisYears || DEFAULT_ANALYSIS_YEARS) || DEFAULT_ANALYSIS_YEARS,
+    ),
   };
   const hasFinancialSnapshot = Boolean(
     data.financialOutputs

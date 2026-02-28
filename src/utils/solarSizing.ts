@@ -1,3 +1,5 @@
+import { DEFAULT_TARIFF_KWH } from '@/constants/financialDefaults';
+
 export interface SolarSizingParams {
   consumoMensal: number;
   irradiancia: number;
@@ -32,7 +34,7 @@ export function calculateSolarSizing(params: SolarSizingParams): SolarSizingResu
   const performanceRatio = Math.max(0.01, toSafeNumber(params.performanceRatio, 0.8));
   const diasMes = Math.max(1, toSafeNumber(params.diasMes, 30));
   const precoPorKwp = Math.max(0, toSafeNumber(params.precoPorKwp, 4500));
-  const tarifaKwh = Math.max(0, toSafeNumber(params.tarifaKwh, 0.76));
+  const tarifaKwh = Math.max(0, toSafeNumber(params.tarifaKwh, DEFAULT_TARIFF_KWH));
   const custoDisponibilidadeKwh = Math.max(0, toSafeNumber(params.custoDisponibilidadeKwh, 50));
   const aplicarCustoDisponibilidadeNoDimensionamento = Boolean(params.aplicarCustoDisponibilidadeNoDimensionamento);
 
