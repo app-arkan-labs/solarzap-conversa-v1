@@ -247,13 +247,13 @@ function deriveComplementary(base: RGB): RGB {
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Tarifa e custo de disponibilidade (ANEEL) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
-/** Custo de disponibilidade em kWh por tipo de conexÃƒÂ£o/cliente (ANEEL REN 1.000/2021) */
+/** Custo de disponibilidade em kWh por tipo de conexao/cliente (ANEEL REN 1.000/2021) */
 function getCustoDisponibilidadeFallback(tipoCliente?: string): number {
   switch (tipoCliente?.toLowerCase()) {
-    case 'residencial': return 50;   // bifÃƒÂ¡sico (padrÃƒÂ£o residencial)
-    case 'comercial': return 100;  // trifÃƒÂ¡sico
-    case 'industrial': return 100;  // trifÃƒÂ¡sico
-    case 'rural': return 30;   // monofÃƒÂ¡sico
+    case 'residencial': return 50;   // bifasico (padrao residencial)
+    case 'comercial': return 100;  // trifasico
+    case 'industrial': return 100;  // trifasico
+    case 'rural': return 30;   // monofasico
     default: return 50;
   }
 }
