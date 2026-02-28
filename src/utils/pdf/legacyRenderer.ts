@@ -44,6 +44,7 @@ import {
   DEFAULT_MODULE_DEGRADATION_PCT,
   DEFAULT_RENTABILITY_RATE_PER_KWH,
 } from '@/constants/financialDefaults';
+import { buildProposalFileName, buildSellerScriptFileName } from '@/utils/pdf/shared';
 
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 // INTERFACES
@@ -1564,7 +1565,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     drawFooter(i, pages);
   }
 
-  const fileName = `Proposta_${isUsina ? 'Usina' : 'Energia'}_Solar_${data.contact.name.replace(/\s+/g, '_')}_${propNum}.pdf`;
+  const fileName = buildProposalFileName(data.contact.name, propNum, isUsina);
   if (data.returnBlob) return doc.output('blob');
   doc.save(fileName);
 }
@@ -1964,7 +1965,7 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
     drawFooterInternal(i, total);
   }
 
-  const fileName = `Roteiro_Vendedor_${data.contact.name.replace(/\s+/g, '_')}_${propNum}.pdf`;
+  const fileName = buildSellerScriptFileName(data.contact.name, propNum);
   if (data.returnBlob) return doc.output('blob');
   doc.save(fileName);
 }

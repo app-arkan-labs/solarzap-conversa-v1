@@ -46,3 +46,19 @@ export function sanitizeFileToken(value: string): string {
   const normalized = String(value || '').trim().replace(/\s+/g, '_');
   return normalized.replace(/[^a-zA-Z0-9_.-]/g, '');
 }
+
+export function buildProposalFileName(
+  customerName: string,
+  proposalNumber: string,
+  isUsina: boolean,
+): string {
+  const customerToken = sanitizeFileToken(customerName) || 'cliente';
+  const proposalToken = sanitizeFileToken(proposalNumber) || 'PROP-00000000';
+  return `Proposta_${isUsina ? 'Usina' : 'Energia'}_Solar_${customerToken}_${proposalToken}.pdf`;
+}
+
+export function buildSellerScriptFileName(customerName: string, proposalNumber: string): string {
+  const customerToken = sanitizeFileToken(customerName) || 'cliente';
+  const proposalToken = sanitizeFileToken(proposalNumber) || 'PROP-00000000';
+  return `Roteiro_Vendedor_${customerToken}_${proposalToken}.pdf`;
+}
