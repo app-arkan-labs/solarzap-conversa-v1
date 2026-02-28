@@ -719,6 +719,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     || tusdTeSimplifiedEnabled;
   const mapIrradianceSourceLabel = (source: string): string => {
     if (source === 'pvgis') return 'PVGIS georreferenciado';
+    if (source === 'open_meteo') return 'Open-Meteo georreferenciado';
     if (source === 'cache') return 'cache georreferenciado';
     if (source === 'uf_fallback') return 'fallback por UF';
     if (source === 'legacy_profile') return 'perfil sazonal legado';

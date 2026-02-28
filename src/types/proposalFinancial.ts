@@ -21,7 +21,7 @@ export interface FinancialInputs {
   teRatePerKwh?: number;
   tusdRatePerKwh?: number;
   tusdCompensationPct?: number;
-  irradianceSource?: 'uf_fallback' | 'pvgis' | 'cache';
+  irradianceSource?: 'uf_fallback' | 'pvgis' | 'open_meteo' | 'cache';
   latitude?: number;
   longitude?: number;
 }

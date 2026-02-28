@@ -103,7 +103,7 @@ const normalizeFactors = (factors: number[]): number[] => {
 const LEGACY_FACTORS = normalizeFactors(LEGACY_SEASONAL_PROFILE);
 
 type SolarResourcePayload = {
-  source: "pvgis" | "cache" | "uf_fallback";
+  source: "pvgis" | "open_meteo" | "cache" | "uf_fallback";
   lat: number | null;
   lon: number | null;
   annualIrradianceKwhM2Day: number;
@@ -345,7 +345,7 @@ async function fetchPvgisMonthly(lat: number, lon: number): Promise<{
   url.searchParams.set("browser", "0");
   url.searchParams.set("selectrad", "1");
 
-  const response = await fetchWithTimeout(url.toString());
+  const response = await fetchWithTimeout(url.toString(), 25_000);
   if (!response.ok) return null;
 
   const data = await response.json().catch(() => null);
@@ -379,6 +379,62 @@ async function fetchPvgisMonthly(lat: number, lon: number): Promise<{
   const referenceYear = Number.isFinite(Number((data as any)?.inputs?.meteo_data?.year_max))
     ? Number((data as any)?.inputs?.meteo_data?.year_max)
     : null;
+
+  return {
+    annual: Number(annual.toFixed(4)),
+    monthlyDaily: patchedMonthlyDaily.map((value) => Number(value.toFixed(4))),
+    referenceYear,
+  };
+}
+
+async function fetchOpenMeteoMonthly(lat: number, lon: number): Promise<{
+  annual: number;
+  monthlyDaily: number[];
+  referenceYear: number | null;
+} | null> {
+  const referenceYear = 2020;
+  const url = new URL("https://archive-api.open-meteo.com/v1/archive");
+  url.searchParams.set("latitude", String(lat));
+  url.searchParams.set("longitude", String(lon));
+  url.searchParams.set("start_date", `${referenceYear}-01-01`);
+  url.searchParams.set("end_date", `${referenceYear}-12-31`);
+  url.searchParams.set("daily", "shortwave_radiation_sum");
+  url.searchParams.set("timezone", "UTC");
+
+  const response = await fetchWithTimeout(url.toString(), 25_000);
+  if (!response.ok) return null;
+
+  const data = await response.json().catch(() => null);
+  const days = Array.isArray((data as any)?.daily?.time) ? (data as any).daily.time : [];
+  const shortwave = Array.isArray((data as any)?.daily?.shortwave_radiation_sum)
+    ? (data as any).daily.shortwave_radiation_sum
+    : [];
+  if (days.length === 0 || shortwave.length === 0 || days.length !== shortwave.length) return null;
+
+  const monthlySumKwh = new Array<number>(12).fill(0);
+  const monthlyCount = new Array<number>(12).fill(0);
+
+  for (let i = 0; i < days.length; i += 1) {
+    const isoDate = String(days[i] || "");
+    const monthRaw = Number(isoDate.slice(5, 7));
+    const monthIndex = clamp(monthRaw - 1, 0, 11);
+    const mjPerM2 = Math.max(0, toFinite(shortwave[i], 0));
+    if (mjPerM2 <= 0) continue;
+    // Open-Meteo daily shortwave_radiation_sum is MJ/m²/day.
+    const kwhPerM2Day = mjPerM2 / 3.6;
+    monthlySumKwh[monthIndex] += kwhPerM2Day;
+    monthlyCount[monthIndex] += 1;
+  }
+
+  const monthlyDaily = monthlySumKwh.map((sum, idx) => (
+    monthlyCount[idx] > 0 ? (sum / monthlyCount[idx]) : 0
+  ));
+  const validCount = monthlyDaily.filter((value) => value > 0.01).length;
+  if (validCount < 8) return null;
+
+  const knownAvg = monthlyDaily.filter((v) => v > 0).reduce((acc, v) => acc + v, 0) / validCount;
+  const patchedMonthlyDaily = monthlyDaily.map((value) => (value > 0 ? value : knownAvg));
+  const annual = patchedMonthlyDaily.reduce((acc, value, idx) => acc + value * DAYS_IN_MONTH[idx], 0) / 365.25;
 
   return {
     annual: Number(annual.toFixed(4)),
@@ -479,33 +535,40 @@ Deno.serve(async (req) => {
       }
 
       const pvgis = await fetchPvgisMonthly(latRounded, lonRounded).catch(() => null);
-      if (pvgis) {
-        const factors = normalizeFactors(pvgis.monthlyDaily);
+      const openMeteo = pvgis ? null : await fetchOpenMeteoMonthly(latRounded, lonRounded).catch(() => null);
+      const resource = pvgis
+        ? { source: "pvgis" as const, ...pvgis }
+        : (openMeteo ? { source: "open_meteo" as const, ...openMeteo } : null);
+
+      if (resource) {
+        const factors = normalizeFactors(resource.monthlyDaily);
         const payload: SolarResourcePayload = {
-          source: "pvgis",
+          source: resource.source,
           lat: latRounded,
           lon: lonRounded,
-          annualIrradianceKwhM2Day: pvgis.annual,
-          monthlyIrradianceKwhM2Day: pvgis.monthlyDaily,
+          annualIrradianceKwhM2Day: resource.annual,
+          monthlyIrradianceKwhM2Day: resource.monthlyDaily,
           monthlyGenerationFactors: factors.map((factor) => Number(factor.toFixed(6))),
-          referenceYear: pvgis.referenceYear,
+          referenceYear: resource.referenceYear,
           cached: false,
         };
 
-        await serviceClient.from("solar_resource_cache").upsert({
-          cache_key: cacheKey,
-          city: city || null,
-          uf: uf || null,
-          latitude: latRounded,
-          longitude: lonRounded,
-          source: "pvgis",
-          annual_irradiance_kwh_m2_day: payload.annualIrradianceKwhM2Day,
-          monthly_irradiance_kwh_m2_day: payload.monthlyIrradianceKwhM2Day,
-          monthly_generation_factors: payload.monthlyGenerationFactors,
-          reference_year: payload.referenceYear,
-          fetched_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "cache_key" });
+        if (payload.source === "pvgis") {
+          await serviceClient.from("solar_resource_cache").upsert({
+            cache_key: cacheKey,
+            city: city || null,
+            uf: uf || null,
+            latitude: latRounded,
+            longitude: lonRounded,
+            source: "pvgis",
+            annual_irradiance_kwh_m2_day: payload.annualIrradianceKwhM2Day,
+            monthly_irradiance_kwh_m2_day: payload.monthlyIrradianceKwhM2Day,
+            monthly_generation_factors: payload.monthlyGenerationFactors,
+            reference_year: payload.referenceYear,
+            fetched_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "cache_key" });
+        }
 
         return new Response(JSON.stringify(payload), {
           status: 200,

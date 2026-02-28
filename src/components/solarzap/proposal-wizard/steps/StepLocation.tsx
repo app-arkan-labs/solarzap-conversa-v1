@@ -21,6 +21,8 @@ export function StepLocation({ form }: StepLocationProps) {
     && Number.isFinite(Number(form.formData.longitude));
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
+    : form.formData.irradianceSource === 'open_meteo'
+      ? 'Open-Meteo por coordenada'
     : form.formData.irradianceSource === 'cache'
       ? 'cache solar'
       : 'media por UF (fallback)';

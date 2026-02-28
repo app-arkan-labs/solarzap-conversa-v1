@@ -14,6 +14,8 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
     .map((option) => option.label);
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
+    : form.formData.irradianceSource === 'open_meteo'
+      ? 'Open-Meteo por coordenada'
     : form.formData.irradianceSource === 'cache'
       ? 'cache solar'
       : 'media por UF (fallback)';

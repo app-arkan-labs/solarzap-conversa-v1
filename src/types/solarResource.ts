@@ -1,4 +1,4 @@
-export type SolarResourceSource = 'pvgis' | 'cache' | 'uf_fallback';
+export type SolarResourceSource = 'pvgis' | 'open_meteo' | 'cache' | 'uf_fallback';
 
 export interface SolarResourceRequest {
   city?: string;
