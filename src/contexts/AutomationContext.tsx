@@ -63,7 +63,7 @@ interface AutomationContextType {
 
     hasChanges: boolean;
     updateSetting: <K extends keyof AutomationSettings>(key: K, value: AutomationSettings[K]) => void;
-    saveChanges: () => void;
+    saveChanges: () => boolean;
     cancelChanges: () => void;
     resetToDefaults: () => void;
 }

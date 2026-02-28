@@ -44,27 +44,8 @@ type SendMessageMutationContext = {
     startedAtPerf: number;
 };
 
-const INTERACOES_SELECT_COLUMNS = [
-    'id',
-    'lead_id',
-    'mensagem',
-    'tipo',
-    'created_at',
-    'read_at',
-    'instance_name',
-    'phone_e164',
-    'remote_jid',
-    'wa_message_id',
-    'reply_to_interacao_id',
-    'reply_preview',
-    'reply_type',
-    'reactions',
-    'attachment_url',
-    'attachment_type',
-    'attachment_ready',
-    'attachment_mimetype',
-    'attachment_name',
-].join(',');
+const INTERACOES_SELECT_COLUMNS =
+    'id,lead_id,user_id,mensagem,tipo,created_at,read_at,instance_name,phone_e164,remote_jid,wa_message_id,reply_to_interacao_id,reply_preview,reply_type,reactions,attachment_url,attachment_type,attachment_ready,attachment_mimetype,attachment_name';
 
 const toPerfNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
