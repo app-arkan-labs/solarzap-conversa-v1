@@ -8,6 +8,7 @@ import {
 import {
   isDegradationAllClientsEnabled,
   isOmCostModelEnabled,
+  isTusdTeSimplifiedEnabled,
   isUnifiedGenerationEnabled,
 } from '@/config/featureFlags';
 import { calcMonthlyGeneration } from '@/utils/proposalCharts';
@@ -53,11 +54,36 @@ function buildNonUsinaBillSnapshot(
   consumoMensalKwh: number,
   custoDisponibilidadeKwh: number,
   rentabilityRatePerKwh: number,
+  options?: {
+    tusdTeSimplifiedEnabled?: boolean;
+    teRatePerKwh?: number;
+    tusdRatePerKwh?: number;
+    tusdCompensationPct?: number;
+  },
 ) {
+  const tusdTeSimplifiedEnabled = Boolean(options?.tusdTeSimplifiedEnabled);
+  const teRatePerKwh = tusdTeSimplifiedEnabled
+    ? clampNonNegative(toFinite(options?.teRatePerKwh, rentabilityRatePerKwh))
+    : rentabilityRatePerKwh;
+  const tusdRatePerKwh = tusdTeSimplifiedEnabled
+    ? clampNonNegative(toFinite(options?.tusdRatePerKwh, 0))
+    : 0;
+  const fallbackTotalRate = teRatePerKwh > 0 || tusdRatePerKwh > 0
+    ? (teRatePerKwh + tusdRatePerKwh)
+    : rentabilityRatePerKwh;
+  const tusdCompensationFactor = tusdTeSimplifiedEnabled
+    ? Math.max(0, Math.min(1, clampNonNegative(toFinite(options?.tusdCompensationPct, 0)) / 100))
+    : 1;
+
   const availabilityKwhUsed = clampNonNegative(Math.min(consumoMensalKwh, custoDisponibilidadeKwh));
-  const billBeforeMonthly = clampNonNegative(consumoMensalKwh * rentabilityRatePerKwh);
-  const billAfterMonthly = clampNonNegative(availabilityKwhUsed * rentabilityRatePerKwh);
-  const savingsMonthly = clampNonNegative(billBeforeMonthly - billAfterMonthly);
+  const compensableKwh = clampNonNegative(consumoMensalKwh - availabilityKwhUsed);
+  const billBeforeMonthly = clampNonNegative(consumoMensalKwh * fallbackTotalRate);
+  const billAfterMonthly = clampNonNegative(availabilityKwhUsed * fallbackTotalRate);
+  const teSavingsMonthly = clampNonNegative(compensableKwh * teRatePerKwh);
+  const tusdSavingsMonthly = clampNonNegative(compensableKwh * tusdRatePerKwh * tusdCompensationFactor);
+  const savingsMonthly = tusdTeSimplifiedEnabled
+    ? clampNonNegative(teSavingsMonthly + tusdSavingsMonthly)
+    : clampNonNegative(billBeforeMonthly - billAfterMonthly);
   const savingsAnnual = savingsMonthly * 12;
   const savingsPct = billBeforeMonthly > 0 ? (savingsMonthly / billBeforeMonthly) * 100 : 0;
 
@@ -68,12 +94,15 @@ function buildNonUsinaBillSnapshot(
     savingsAnnual,
     savingsPct,
     availabilityKwhUsed,
+    teSavingsMonthly,
+    tusdSavingsMonthly,
   };
 }
 
 export function calculateProposalFinancials(input: FinancialInputs): FinancialOutputs {
   const omCostModelEnabled = isOmCostModelEnabled();
   const degradationAllClientsEnabled = isDegradationAllClientsEnabled();
+  const tusdTeSimplifiedEnabled = isTusdTeSimplifiedEnabled();
   const tipoCliente = String(input.tipoCliente || '').toLowerCase();
   const isUsina = isUsinaClient(tipoCliente);
   const investimentoTotal = clampNonNegative(toFinite(input.investimentoTotal));
@@ -88,12 +117,30 @@ export function calculateProposalFinancials(input: FinancialInputs): FinancialOu
   const moduleDegradationPct = clampNonNegative(toFinite(input.moduleDegradationPct, DEFAULT_MODULE_DEGRADATION_PCT));
   const annualOmCostPct = clampNonNegative(toFinite(input.annualOmCostPct, omCostModelEnabled ? 1 : 0));
   const annualOmCostFixed = clampNonNegative(toFinite(input.annualOmCostFixed, 0));
+  const teRatePerKwh = tusdTeSimplifiedEnabled
+    ? clampNonNegative(toFinite(input.teRatePerKwh, rentabilityRatePerKwh))
+    : rentabilityRatePerKwh;
+  const tusdRatePerKwh = tusdTeSimplifiedEnabled
+    ? clampNonNegative(toFinite(input.tusdRatePerKwh, 0))
+    : 0;
+  const tusdCompensationPct = tusdTeSimplifiedEnabled
+    ? Math.max(0, Math.min(100, clampNonNegative(toFinite(input.tusdCompensationPct, 0))))
+    : 100;
+  const effectiveTusdCompensationFactor = tusdCompensationPct / 100;
+  const effectiveRevenueRatePerKwh = tusdTeSimplifiedEnabled
+    ? (teRatePerKwh + (tusdRatePerKwh * effectiveTusdCompensationFactor))
+    : rentabilityRatePerKwh;
   const annualEnergyIncrease = annualEnergyIncreasePct / 100;
   const moduleDegradation = Math.min(0.95, moduleDegradationPct / 100);
   const unifiedGenerationEnabled = isUnifiedGenerationEnabled();
   const nonUsinaSnapshot = isUsina
     ? null
-    : buildNonUsinaBillSnapshot(consumoMensalKwh, custoDisponibilidadeKwh, rentabilityRatePerKwh);
+    : buildNonUsinaBillSnapshot(consumoMensalKwh, custoDisponibilidadeKwh, rentabilityRatePerKwh, {
+      tusdTeSimplifiedEnabled,
+      teRatePerKwh,
+      tusdRatePerKwh,
+      tusdCompensationPct,
+    });
 
   const unifiedMonthlyGeneration = unifiedGenerationEnabled
     ? calcMonthlyGeneration(potenciaSistemaKwp, consumoMensalKwh, {
@@ -107,7 +154,7 @@ export function calculateProposalFinancials(input: FinancialInputs): FinancialOu
   const monthlyGenerationAvgKwhYear1 = annualGenerationKwhYear1 / 12;
 
   const annualRevenueYear1Gross = isUsina
-    ? legacyAnnualGenerationKwhYear1 * rentabilityRatePerKwh
+    ? legacyAnnualGenerationKwhYear1 * effectiveRevenueRatePerKwh
     : (nonUsinaSnapshot?.savingsAnnual || 0);
   const annualOmCostYear1 = omCostModelEnabled
     ? ((investimentoTotal * annualOmCostPct) / 100) + annualOmCostFixed
@@ -176,13 +223,19 @@ export function calculateProposalFinancials(input: FinancialInputs): FinancialOu
     savingsMonthly: nonUsinaSnapshot?.savingsMonthly,
     savingsAnnual: nonUsinaSnapshot?.savingsAnnual,
     savingsPct: nonUsinaSnapshot?.savingsPct,
-    rentabilityRatePerKwhUsed: rentabilityRatePerKwh,
+    rentabilityRatePerKwhUsed: tusdTeSimplifiedEnabled ? effectiveRevenueRatePerKwh : rentabilityRatePerKwh,
     availabilityKwhUsed: nonUsinaSnapshot?.availabilityKwhUsed,
+    teSavingsMonthly: nonUsinaSnapshot?.teSavingsMonthly,
+    tusdSavingsMonthly: nonUsinaSnapshot?.tusdSavingsMonthly,
     annualOmCostYear1: omCostModelEnabled ? annualOmCostYear1 : undefined,
     netAnnualRevenueYear1: annualRevenueYear1,
     assumptionsSnapshot: {
       omCostModelEnabled,
       degradationAllClientsEnabled,
+      tusdTeSimplifiedEnabled,
+      teRatePerKwh,
+      tusdRatePerKwh,
+      tusdCompensationPct,
       annualOmCostPct,
       annualOmCostFixed,
       annualEnergyIncreasePct,

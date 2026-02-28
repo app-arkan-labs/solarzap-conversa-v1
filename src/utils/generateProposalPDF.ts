@@ -31,7 +31,7 @@ import {
 } from '@/types/proposalFinancing';
 import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
 import { calculateProposalFinancials } from '@/utils/proposalFinancialModel';
-import { isOmCostModelEnabled, isUnifiedGenerationEnabled } from '@/config/featureFlags';
+import { isOmCostModelEnabled, isTusdTeSimplifiedEnabled, isUnifiedGenerationEnabled } from '@/config/featureFlags';
 import {
   DEFAULT_ANALYSIS_YEARS,
   DEFAULT_ANNUAL_INCREASE_PCT,
@@ -72,6 +72,9 @@ export interface ProposalPDFData {
   moduleDegradationPct?: number;
   annualOmCostPct?: number;
   annualOmCostFixed?: number;
+  teRatePerKwh?: number;
+  tusdRatePerKwh?: number;
+  tusdCompensationPct?: number;
   financialInputs?: FinancialInputs;
   financialOutputs?: FinancialOutputs;
   financialModelVersion?: string;
@@ -131,6 +134,9 @@ export interface SellerScriptPDFData {
   moduleDegradationPct?: number;
   annualOmCostPct?: number;
   annualOmCostFixed?: number;
+  teRatePerKwh?: number;
+  tusdRatePerKwh?: number;
+  tusdCompensationPct?: number;
   financialInputs?: FinancialInputs;
   financialOutputs?: FinancialOutputs;
   financialModelVersion?: string;
@@ -633,6 +639,12 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
     ) || DEFAULT_MODULE_DEGRADATION_PCT,
     annualOmCostPct: Math.max(0, Number(data.annualOmCostPct ?? data.financialInputs?.annualOmCostPct ?? 0) || 0),
     annualOmCostFixed: Math.max(0, Number(data.annualOmCostFixed ?? data.financialInputs?.annualOmCostFixed ?? 0) || 0),
+    teRatePerKwh: Math.max(0, Number(data.teRatePerKwh ?? data.financialInputs?.teRatePerKwh ?? resolvedRentabilityRate) || 0),
+    tusdRatePerKwh: Math.max(0, Number(data.tusdRatePerKwh ?? data.financialInputs?.tusdRatePerKwh ?? 0) || 0),
+    tusdCompensationPct: Math.max(
+      0,
+      Math.min(100, Number(data.tusdCompensationPct ?? data.financialInputs?.tusdCompensationPct ?? 0) || 0),
+    ),
     analysisYears: Math.max(
       1,
       Number(data.financialInputs?.analysisYears || DEFAULT_ANALYSIS_YEARS) || DEFAULT_ANALYSIS_YEARS,
@@ -641,6 +653,16 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
   const financialOutputs: FinancialOutputs = data.financialOutputs
     ? (data.financialOutputs as FinancialOutputs)
     : calculateProposalFinancials(resolvedFinancialInputs);
+  const tusdTeSimplifiedEnabled = isTusdTeSimplifiedEnabled();
+  const effectiveTeRate = Math.max(0, Number(resolvedFinancialInputs.teRatePerKwh) || 0);
+  const effectiveTusdRate = Math.max(0, Number(resolvedFinancialInputs.tusdRatePerKwh) || 0);
+  const effectiveTusdCompensationPct = Math.max(
+    0,
+    Math.min(100, Number(resolvedFinancialInputs.tusdCompensationPct) || 0),
+  );
+  const effectiveTotalRate = tusdTeSimplifiedEnabled
+    ? (effectiveTeRate + (effectiveTusdRate * (effectiveTusdCompensationPct / 100)))
+    : resolvedRentabilityRate;
   const econAnualRaw = (financialOutputs?.annualRevenueYear1 ?? 0) > 0
     ? (financialOutputs?.annualRevenueYear1 || 0)
     : data.economiaAnual;
@@ -735,11 +757,11 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
   ];
   // Conta mensal real: consumo Ãƒâ€” tarifa mÃƒÂ©dia
   const contaEstimada = !isUsina
-    ? (Number(financialOutputs.billBeforeMonthly) || (data.consumoMensal * resolvedRentabilityRate))
+    ? (Number(financialOutputs.billBeforeMonthly) || (data.consumoMensal * effectiveTotalRate))
     : 0;
   const contaComSolar = !isUsina
     ? (Number(financialOutputs.billAfterMonthly)
-      || (Math.min(data.consumoMensal, resolvedFinancialInputs.custoDisponibilidadeKwh || 0) * resolvedRentabilityRate))
+      || (Math.min(data.consumoMensal, resolvedFinancialInputs.custoDisponibilidadeKwh || 0) * effectiveTotalRate))
     : 0;
   if (!isUsina) {
     const diff = Math.abs((contaEstimada - contaComSolar) - econMensal);
@@ -1029,7 +1051,14 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
         ['Investimento Total', fmtCurrency(data.valorTotal)],
         ['Receita Mensal Estimada', fmtCurrency(econMensal)],
         ['Receita Anual Estimada', fmtCurrency(econAnual)],
-        ['Rentabilidade aplicada', `R$ ${fmtDecimal(resolvedRentabilityRate, 2, 4)} / kWh`],
+        ['Rentabilidade aplicada', `R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh`],
+        ...(tusdTeSimplifiedEnabled
+          ? [
+            ['Tarifa TE', `R$ ${fmtDecimal(effectiveTeRate, 2, 4)} / kWh`],
+            ['Tarifa TUSD', `R$ ${fmtDecimal(effectiveTusdRate, 2, 4)} / kWh`],
+            ['Compensacao TUSD', `${fmtDecimal(effectiveTusdCompensationPct, 0, 2)}%`],
+          ]
+          : []),
         ['Receita Acumulada (5 anos)', fmtCurrency(receita5Anos)],
         ['Receita Acumulada (15 anos)', fmtCurrency(receita15Anos)],
         ['Payback Estimado', paybackYearsDetailed],
@@ -1209,7 +1238,14 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
       ['Investimento Total', fmtCurrency(data.valorTotal)],
       [isUsina ? 'Receita Mensal Estimada' : 'Economia Mensal Estimada', fmtCurrency(econMensal)],
       [isUsina ? 'Receita Anual Estimada' : 'Economia Anual Estimada', fmtCurrency(econAnual)],
-      ['Rentabilidade aplicada', `R$ ${fmtDecimal(resolvedRentabilityRate, 2, 4)} / kWh`],
+      ['Rentabilidade aplicada', `R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh`],
+      ...(tusdTeSimplifiedEnabled
+        ? [
+          ['Tarifa TE', `R$ ${fmtDecimal(effectiveTeRate, 2, 4)} / kWh`],
+          ['Tarifa TUSD', `R$ ${fmtDecimal(effectiveTusdRate, 2, 4)} / kWh`],
+          ['Compensacao TUSD', `${fmtDecimal(effectiveTusdCompensationPct, 0, 2)}%`],
+        ]
+        : []),
       ['Tempo de Retorno (Payback)', paybackYearsDetailed],
       [isUsina ? 'Receita em 25 anos' : 'Economia em 25 anos', fmtCurrency(longTermSavings)],
       ['ROI em 25 anos', roi25],

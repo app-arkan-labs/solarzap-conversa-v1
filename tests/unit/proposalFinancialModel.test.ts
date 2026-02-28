@@ -179,4 +179,32 @@ describe('calculateProposalFinancials', () => {
       else process.env.VITE_USE_DEGRADATION_ALL_CLIENTS = previous;
     }
   });
+
+  it('separa TE/TUSD com compensacao conservadora quando VITE_USE_TUSD_TE_SIMPLIFIED esta ativa', () => {
+    const previous = process.env.VITE_USE_TUSD_TE_SIMPLIFIED;
+    process.env.VITE_USE_TUSD_TE_SIMPLIFIED = 'true';
+
+    try {
+      const result = calculateProposalFinancials({
+        tipoCliente: 'residencial',
+        investimentoTotal: 14850,
+        consumoMensalKwh: 350,
+        potenciaSistemaKwp: 3.3,
+        rentabilityRatePerKwh: 0.85,
+        tarifaKwh: 0.85,
+        teRatePerKwh: 0.65,
+        tusdRatePerKwh: 0.20,
+        tusdCompensationPct: 0,
+        custoDisponibilidadeKwh: 50,
+        analysisYears: 25,
+      });
+
+      expect(result.teSavingsMonthly).toBeCloseTo(195, 4);
+      expect(result.tusdSavingsMonthly).toBe(0);
+      expect(result.savingsMonthly).toBeCloseTo(195, 4);
+    } finally {
+      if (previous === undefined) delete process.env.VITE_USE_TUSD_TE_SIMPLIFIED;
+      else process.env.VITE_USE_TUSD_TE_SIMPLIFIED = previous;
+    }
+  });
 });

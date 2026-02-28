@@ -22,7 +22,7 @@ import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
 import { supabase } from '@/lib/supabase';
 import { BRAZIL_STATES, getIrradianceByUF } from '@/constants/solarIrradiance';
-import { isSolarResourceApiEnabled } from '@/config/featureFlags';
+import { isSolarResourceApiEnabled, isTusdTeSimplifiedEnabled } from '@/config/featureFlags';
 import {
   ENERGY_DISTRIBUTOR_OPTIONS,
   inferDistributor,
@@ -101,6 +101,9 @@ export interface ProposalData {
   moduleDegradationPct?: number;
   annualOmCostPct?: number;
   annualOmCostFixed?: number;
+  teRatePerKwh?: number;
+  tusdRatePerKwh?: number;
+  tusdCompensationPct?: number;
   financialInputs?: FinancialInputs;
   financialOutputs?: FinancialOutputs;
   financialModelVersion?: typeof FINANCIAL_MODEL_VERSION;
@@ -203,6 +206,9 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
     moduleDegradationPct: DEFAULT_MODULE_DEGRADATION_PCT,
     annualOmCostPct: 1,
     annualOmCostFixed: 0,
+    teRatePerKwh: DEFAULT_TARIFF_FALLBACK,
+    tusdRatePerKwh: 0,
+    tusdCompensationPct: 0,
     financialInputs: undefined as FinancialInputs | undefined,
     financialOutputs: undefined as FinancialOutputs | undefined,
     financialModelVersion: FINANCIAL_MODEL_VERSION as typeof FINANCIAL_MODEL_VERSION,
@@ -341,6 +347,15 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
       moduleDegradationPct: Math.max(0, Number(next.moduleDegradationPct) || DEFAULT_MODULE_DEGRADATION_PCT),
       annualOmCostPct: Math.max(0, Number(next.annualOmCostPct) || 0),
       annualOmCostFixed: Math.max(0, Number(next.annualOmCostFixed) || 0),
+      teRatePerKwh: Math.max(
+        0,
+        Number(next.teRatePerKwh)
+        || Number(next.rentabilityRatePerKwh)
+        || Number(next.tarifaKwh)
+        || tariffResolved.tariffKwh,
+      ),
+      tusdRatePerKwh: Math.max(0, Number(next.tusdRatePerKwh) || 0),
+      tusdCompensationPct: Math.max(0, Math.min(100, Number(next.tusdCompensationPct) || 0)),
       analysisYears: DEFAULT_ANALYSIS_YEARS,
       monthlyGenerationFactors: next.monthlyGenerationFactors,
     };
@@ -411,6 +426,11 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
       || field === 'tipo_cliente'
       || field === 'annualEnergyIncreasePct'
       || field === 'moduleDegradationPct'
+      || field === 'annualOmCostPct'
+      || field === 'annualOmCostFixed'
+      || field === 'teRatePerKwh'
+      || field === 'tusdRatePerKwh'
+      || field === 'tusdCompensationPct'
       || field === 'abaterCustoDisponibilidadeNoDimensionamento'
     ) {
       setFormData(prev => patchAndRecalculate(prev, { [field]: value } as Partial<typeof formData>));
@@ -423,6 +443,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
       setFormData(prev => patchAndRecalculate(prev, {
         rentabilityRatePerKwh: rate,
         tarifaKwh: rate,
+        teRatePerKwh: isTusdTeSimplifiedEnabled() ? rate : prev.teRatePerKwh,
       }));
       return;
     }
@@ -443,6 +464,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
       setFormData(prev => patchAndRecalculate(prev, {
         tarifaKwh: rate,
         rentabilityRatePerKwh: rate,
+        teRatePerKwh: isTusdTeSimplifiedEnabled() ? rate : prev.teRatePerKwh,
       }));
       return;
     }
@@ -471,6 +493,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         if (!rentabilityManuallyEdited && tariffFromInference !== null) {
           patch.tarifaKwh = tariffFromInference;
           patch.rentabilityRatePerKwh = tariffFromInference;
+          patch.teRatePerKwh = tariffFromInference;
         }
         return patchAndRecalculate(prev, patch);
       });
@@ -506,6 +529,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         if (!rentabilityManuallyEdited && inferredTariff !== null) {
           patch.tarifaKwh = inferredTariff;
           patch.rentabilityRatePerKwh = inferredTariff;
+          patch.teRatePerKwh = inferredTariff;
         }
         return patchAndRecalculate(prev, patch);
       });
@@ -839,6 +863,9 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         moduleDegradationPct: formData.moduleDegradationPct,
         annualOmCostPct: formData.annualOmCostPct,
         annualOmCostFixed: formData.annualOmCostFixed,
+        teRatePerKwh: formData.teRatePerKwh,
+        tusdRatePerKwh: formData.tusdRatePerKwh,
+        tusdCompensationPct: formData.tusdCompensationPct,
         financialInputs,
         financialOutputs,
         financialModelVersion: FINANCIAL_MODEL_VERSION,
@@ -878,6 +905,9 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
           tipoLigacao: formData.tipoLigacao,
           rentabilityRatePerKwh: effectiveRentabilityRate,
           tarifaKwh: effectiveRentabilityRate,
+          teRatePerKwh: formData.teRatePerKwh,
+          tusdRatePerKwh: formData.tusdRatePerKwh,
+          tusdCompensationPct: formData.tusdCompensationPct,
           custoDisponibilidadeKwh: formData.custoDisponibilidadeKwh,
           performanceRatio: formData.performanceRatio,
           precoPorKwp: formData.precoPorKwp,
@@ -911,6 +941,9 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         moduleDegradationPct: formData.moduleDegradationPct,
         annualOmCostPct: formData.annualOmCostPct,
         annualOmCostFixed: formData.annualOmCostFixed,
+        teRatePerKwh: formData.teRatePerKwh,
+        tusdRatePerKwh: formData.tusdRatePerKwh,
+        tusdCompensationPct: formData.tusdCompensationPct,
         financialInputs,
         financialOutputs,
         financialModelVersion: FINANCIAL_MODEL_VERSION,
@@ -943,6 +976,9 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         moduleDegradationPct: formData.moduleDegradationPct,
         annualOmCostPct: formData.annualOmCostPct,
         annualOmCostFixed: formData.annualOmCostFixed,
+        teRatePerKwh: formData.teRatePerKwh,
+        tusdRatePerKwh: formData.tusdRatePerKwh,
+        tusdCompensationPct: formData.tusdCompensationPct,
         financialInputs,
         financialOutputs,
         financialModelVersion: FINANCIAL_MODEL_VERSION,
@@ -1037,6 +1073,9 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
           moduleDegradationPct: DEFAULT_MODULE_DEGRADATION_PCT,
           annualOmCostPct: 1,
           annualOmCostFixed: 0,
+          teRatePerKwh: initialRentability,
+          tusdRatePerKwh: 0,
+          tusdCompensationPct: 0,
           estado: uf,
           irradiancia: uf ? getIrradianceByUF(uf) : 4.5,
           monthlyGenerationFactors: undefined,
