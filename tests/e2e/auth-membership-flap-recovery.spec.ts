@@ -1,0 +1,128 @@
+import { test, expect, Page } from '@playwright/test';
+import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'crypto';
+
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error(
+    'Missing env vars for auth membership flap recovery smoke: SUPABASE_URL/VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY',
+  );
+}
+
+const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+type SetupState = {
+  orgId: string;
+  ownerUserId: string;
+  ownerEmail: string;
+  ownerPassword: string;
+  leadName: string;
+  leadPhone: string;
+};
+
+const state: SetupState = {
+  orgId: randomUUID(),
+  ownerUserId: '',
+  ownerEmail: '',
+  ownerPassword: '',
+  leadName: '',
+  leadPhone: '',
+};
+
+async function login(page: Page, email: string, password: string) {
+  await page.goto('/login');
+  await page.locator('#email').fill(email);
+  await page.locator('#password').fill(password);
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForURL('**/', { timeout: 30_000 });
+}
+
+test.beforeAll(async () => {
+  const suffix = `${Date.now()}`;
+  state.ownerEmail = `auth.flap.owner.${suffix}@example.test`;
+  state.ownerPassword = `AuthFlap!${suffix}Aa1`;
+  state.leadName = `AUTH-FLAP-LEAD-${suffix}`;
+  state.leadPhone = `55${suffix.slice(-10)}`;
+
+  const ownerResp = await admin.auth.admin.createUser({
+    email: state.ownerEmail,
+    password: state.ownerPassword,
+    email_confirm: true,
+    user_metadata: { org_id: state.orgId, auth_membership_flap_e2e: true },
+  });
+  if (ownerResp.error || !ownerResp.data.user?.id) {
+    throw new Error(`Failed to create auth-flap owner user: ${ownerResp.error?.message || 'unknown'}`);
+  }
+  state.ownerUserId = ownerResp.data.user.id;
+
+  const { error: orgErr } = await admin.from('organizations').insert({
+    id: state.orgId,
+    name: `Auth Flap E2E Org ${suffix}`,
+  });
+  if (orgErr) throw new Error(`Failed to create auth-flap org: ${orgErr.message}`);
+
+  const { error: memberErr } = await admin.from('organization_members').insert({
+    org_id: state.orgId,
+    user_id: state.ownerUserId,
+    role: 'owner',
+    can_view_team_leads: true,
+  });
+  if (memberErr) throw new Error(`Failed to create auth-flap membership: ${memberErr.message}`);
+
+  const { error: leadErr } = await admin.from('leads').insert({
+    org_id: state.orgId,
+    user_id: state.ownerUserId,
+    assigned_to_user_id: state.ownerUserId,
+    nome: state.leadName,
+    telefone: state.leadPhone,
+    status_pipeline: 'novo_lead',
+    canal: 'whatsapp',
+  });
+  if (leadErr) throw new Error(`Failed to create auth-flap lead: ${leadErr.message}`);
+});
+
+test.afterAll(async () => {
+  if (state.orgId) {
+    await admin.from('interacoes').delete().eq('org_id', state.orgId);
+    await admin.from('leads').delete().eq('org_id', state.orgId);
+    await admin.from('organization_members').delete().eq('org_id', state.orgId);
+    await admin.from('organizations').delete().eq('id', state.orgId);
+  }
+
+  if (state.ownerUserId) {
+    await admin.auth.admin.deleteUser(state.ownerUserId);
+  }
+});
+
+test('auth membership flap recovery: first organization_members read fails, UI recovers and keeps leads visible', async ({ page }) => {
+  let failedFirstMembershipRead = false;
+
+  await page.route('**/rest/v1/organization_members*', async (route) => {
+    const request = route.request();
+    if (!failedFirstMembershipRead && request.method() === 'GET') {
+      failedFirstMembershipRead = true;
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'transient membership failure (e2e)' }),
+      });
+      return;
+    }
+
+    await route.continue();
+  });
+
+  await login(page, state.ownerEmail, state.ownerPassword);
+
+  await expect
+    .poll(() => failedFirstMembershipRead, { timeout: 10_000 })
+    .toBe(true);
+
+  await page.getByPlaceholder(/Pesquisar/i).fill(state.leadName);
+
+  const row = page.locator('[data-testid="conversation-row"]').filter({ hasText: state.leadName }).first();
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('toggle-team-leads')).toBeVisible({ timeout: 30_000 });
+});

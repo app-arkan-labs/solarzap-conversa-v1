@@ -4,14 +4,33 @@ import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { type OrgRole } from '@/lib/orgAdminClient';
+import { Button } from '@/components/ui/button';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredRoles?: OrgRole[];
 }
 
+const ORG_ERROR_TITLE_BY_KIND = {
+  forbidden_rls: 'Falha de permissao ao carregar organizacao',
+  bootstrap_failed: 'Falha ao recuperar organizacao',
+  missing_after_bootstrap: 'Organizacao nao encontrada apos bootstrap',
+  transient: 'Falha ao carregar organizacao',
+} as const;
+
+const ORG_ERROR_DESCRIPTION_BY_KIND = {
+  forbidden_rls:
+    'Sua sessao esta ativa, mas a leitura do vinculo da organizacao foi bloqueada por permissao/RLS. Verifique a policy de self-select em organization_members.',
+  bootstrap_failed:
+    'Sua sessao esta ativa, mas a funcao org-admin (bootstrap_self) falhou ao recuperar o contexto da organizacao.',
+  missing_after_bootstrap:
+    'A funcao de bootstrap respondeu, mas o vinculo da organizacao permaneceu ausente na reconciliacao. Verifique organization_members e logs da org-admin.',
+  transient:
+    'Sua sessao esta ativa, mas nao foi possivel carregar o contexto da organizacao. Isso pode acontecer por uma falha temporaria de conexao.',
+} as const;
+
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRoles }) => {
-  const { user, loading, role } = useAuth();
+  const { user, loading, role, orgId, signOut, orgResolutionStatus, orgResolutionError } = useAuth();
   const { toast } = useToast();
   const hasShownAccessToastRef = useRef(false);
 
@@ -21,7 +40,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
     (!role || !requiredRoles.includes(role as OrgRole));
 
   useEffect(() => {
-    if (loading || !user) {
+    if (loading || !user || !orgId) {
       return;
     }
 
@@ -38,14 +57,14 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
     if (!missingRequiredRole) {
       hasShownAccessToastRef.current = false;
     }
-  }, [loading, user, missingRequiredRole, toast]);
+  }, [loading, user, orgId, missingRequiredRole, toast]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-green-50">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-8 h-8 animate-spin text-green-600" />
-          <p className="text-green-700">Verificando autenticação...</p>
+          <p className="text-green-700">Verificando autenticacao...</p>
         </div>
       </div>
     );
@@ -53,6 +72,74 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!orgId) {
+    if (orgResolutionStatus !== 'error') {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-green-50">
+          <div className="flex flex-col items-center gap-4 text-center px-6">
+            <Loader2 className="w-8 h-8 animate-spin text-green-600" />
+            <p className="text-green-700">Carregando organizacao...</p>
+            <p className="text-sm text-green-900/70 max-w-md">
+              A sessao foi validada, mas o vinculo da organizacao ainda esta sendo recuperado.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    const errorKind = orgResolutionError?.kind ?? 'transient';
+    const errorTitle = ORG_ERROR_TITLE_BY_KIND[errorKind];
+    const errorDescription = ORG_ERROR_DESCRIPTION_BY_KIND[errorKind];
+    const debugSummary = [
+      orgResolutionError?.kind ? `kind=${orgResolutionError.kind}` : null,
+      typeof orgResolutionError?.status === 'number' ? `status=${orgResolutionError.status}` : null,
+      orgResolutionError?.code ? `code=${orgResolutionError.code}` : null,
+      orgResolutionError?.requestId ? `request_id=${orgResolutionError.requestId}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-green-50 px-6">
+        <div className="w-full max-w-md rounded-xl border border-green-200 bg-white p-6 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5">
+              <Loader2 className="w-5 h-5 text-amber-600" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-base font-semibold text-slate-900">{errorTitle}</h2>
+              <p className="text-sm text-slate-600">{errorDescription}</p>
+              {orgResolutionError?.message && (
+                <p className="text-xs text-slate-500 break-words">{orgResolutionError.message}</p>
+              )}
+              {import.meta.env.DEV && debugSummary && (
+                <p className="text-xs text-slate-500 break-words">{debugSummary}</p>
+              )}
+            </div>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Recarregar
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void signOut();
+              }}
+            >
+              Sair
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (missingRequiredRole) {

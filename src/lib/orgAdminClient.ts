@@ -67,6 +67,36 @@ type OrgAdminErrorResponse = {
   code?: string;
 };
 
+type OrgAdminAction = OrgAdminRequest['action'];
+
+export class OrgAdminInvokeError extends Error {
+  readonly action: OrgAdminAction;
+  readonly status: number | null;
+  readonly code?: string;
+  readonly requestId: string | null;
+
+  constructor(
+    message: string,
+    details: {
+      action: OrgAdminAction;
+      status?: number | null;
+      code?: string;
+      requestId?: string | null;
+    },
+  ) {
+    super(message);
+    this.name = 'OrgAdminInvokeError';
+    this.action = details.action;
+    this.status = details.status ?? null;
+    this.code = details.code;
+    this.requestId = details.requestId ?? null;
+  }
+}
+
+export function isOrgAdminInvokeError(error: unknown): error is OrgAdminInvokeError {
+  return error instanceof OrgAdminInvokeError;
+}
+
 const getRequestId = (response: Response | unknown): string | null => {
   try {
     const headers = (response as Response)?.headers;
@@ -96,9 +126,10 @@ async function invokeOrgAdmin<TExpected extends OrgAdminSuccessResponse>(
     session = result.data.session;
   } catch (authErr) {
     const msg = authErr instanceof Error ? authErr.message : 'Erro ao obter sessão';
-    throw new Error(
-      `[org-admin:${action}] auth_error: ${msg}`,
-    );
+    throw new OrgAdminInvokeError(`[org-admin:${action}] auth_error: ${msg}`, {
+      action,
+      code: 'auth_error',
+    });
   }
 
   const headers = session?.access_token
@@ -134,23 +165,41 @@ async function invokeOrgAdmin<TExpected extends OrgAdminSuccessResponse>(
     const statusPart = status ? `HTTP ${status}` : 'invoke_error';
     const codePart = code ? ` code=${code}` : '';
     const requestIdPart = requestId ? ` request_id=${requestId}` : '';
-    throw new Error(
+    throw new OrgAdminInvokeError(
       `[org-admin:${action}] ${statusPart}${codePart}${requestIdPart}: ${detailedMessage || functionError.message || 'Falha ao chamar org-admin'}`,
+      {
+        action,
+        status,
+        code,
+        requestId,
+      },
     );
   }
 
   const payload = data as OrgAdminSuccessResponse | OrgAdminErrorResponse | null;
   if (!payload) {
-    throw new Error(`[org-admin:${action}] resposta vazia`);
+    throw new OrgAdminInvokeError(`[org-admin:${action}] resposta vazia`, {
+      action,
+      code: 'empty_response',
+    });
   }
 
   if ('ok' in payload && payload.ok === false) {
     const codePart = payload.code ? ` code=${payload.code}` : '';
-    throw new Error(`[org-admin:${action}]${codePart}: ${payload.error || 'Erro desconhecido na org-admin'}`);
+    throw new OrgAdminInvokeError(
+      `[org-admin:${action}]${codePart}: ${payload.error || 'Erro desconhecido na org-admin'}`,
+      {
+        action,
+        code: payload.code,
+      },
+    );
   }
 
   if (!('ok' in payload) || payload.ok !== true) {
-    throw new Error(`[org-admin:${action}] formato de resposta invalido`);
+    throw new OrgAdminInvokeError(`[org-admin:${action}] formato de resposta invalido`, {
+      action,
+      code: 'invalid_response_format',
+    });
   }
 
   return payload as TExpected;
