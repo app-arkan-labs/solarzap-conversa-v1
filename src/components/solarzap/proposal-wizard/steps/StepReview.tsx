@@ -12,6 +12,11 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
   const paymentLabels = form.options.PAYMENT_CONDITION_OPTIONS
     .filter((option) => form.formData.paymentConditions.includes(option.id))
     .map((option) => option.label);
+  const sourceLabel = form.formData.irradianceSource === 'pvgis'
+    ? 'PVGIS'
+    : form.formData.irradianceSource === 'cache'
+      ? 'cache solar'
+      : 'media por UF (fallback)';
 
   return (
     <div className="space-y-4">
@@ -87,7 +92,10 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
           <div>
             <p className="text-xs text-muted-foreground">Localizacao tecnica</p>
             <p className="font-medium">
-              {form.formData.latitude ?? '-'}, {form.formData.longitude ?? '-'} ({form.formData.irradianceSource || 'uf_fallback'})
+              {Number.isFinite(Number(form.formData.latitude)) && Number.isFinite(Number(form.formData.longitude))
+                ? `${Number(form.formData.latitude).toFixed(5)}, ${Number(form.formData.longitude).toFixed(5)}`
+                : '-'}
+              {' '}({sourceLabel})
             </p>
           </div>
         </div>

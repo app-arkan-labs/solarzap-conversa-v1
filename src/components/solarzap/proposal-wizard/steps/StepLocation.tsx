@@ -17,6 +17,13 @@ interface StepLocationProps {
 
 export function StepLocation({ form }: StepLocationProps) {
   const isUsina = form.formData.tipo_cliente === 'usina';
+  const hasCoordinates = Number.isFinite(Number(form.formData.latitude))
+    && Number.isFinite(Number(form.formData.longitude));
+  const sourceLabel = form.formData.irradianceSource === 'pvgis'
+    ? 'PVGIS'
+    : form.formData.irradianceSource === 'cache'
+      ? 'cache solar'
+      : 'media por UF (fallback)';
 
   return (
     <div className="space-y-4">
@@ -25,12 +32,31 @@ export function StepLocation({ form }: StepLocationProps) {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="space-y-1.5">
           <Label>CEP</Label>
-          <Input
-            value={form.formData.cep || ''}
-            maxLength={9}
-            placeholder="00000-000"
-            onChange={(e) => form.handleChange('cep', e.target.value)}
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              value={form.formData.cep || ''}
+              maxLength={9}
+              placeholder="00000-000"
+              onChange={(e) => form.handleChange('cep', e.target.value)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 px-2"
+              disabled={form.locationLoading}
+              onClick={() => {
+                void (async () => {
+                  const cepData = await form.autofillAddressByCep();
+                  if (cepData) await form.resolvePreciseLocation(cepData);
+                })();
+              }}
+              title="Preencher por CEP"
+            >
+              {form.locationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              <span className="hidden md:inline">CEP</span>
+            </Button>
+          </div>
         </div>
         <div className="space-y-1.5 md:col-span-2">
           <Label>Cidade</Label>
@@ -78,43 +104,7 @@ export function StepLocation({ form }: StepLocationProps) {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label>Latitude (opcional)</Label>
-          <Input
-            type="number"
-            step="0.000001"
-            value={form.formData.latitude ?? ''}
-            onChange={(e) => form.handleChange('latitude', parseFloat(e.target.value))}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Longitude (opcional)</Label>
-          <Input
-            type="number"
-            step="0.000001"
-            value={form.formData.longitude ?? ''}
-            onChange={(e) => form.handleChange('longitude', parseFloat(e.target.value))}
-          />
-        </div>
-      </div>
-
       <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          className="gap-2"
-          disabled={form.locationLoading}
-          onClick={() => {
-            void (async () => {
-              const ok = await form.autofillAddressByCep();
-              if (ok) await form.resolvePreciseLocation();
-            })();
-          }}
-        >
-          {form.locationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-          Preencher por CEP
-        </Button>
         <Button
           type="button"
           className="gap-2"
@@ -136,7 +126,11 @@ export function StepLocation({ form }: StepLocationProps) {
           {form.formData.quantidadePaineis || 0} paineis | Irradiancia {Number(form.formData.irradiancia || 0).toFixed(2)} kWh/m2/dia
         </p>
         <p className="text-xs text-muted-foreground">
-          Fonte: {form.formData.irradianceSource || 'uf_fallback'} | Ref: {form.formData.irradianceRefAt ? new Date(form.formData.irradianceRefAt).toLocaleString('pt-BR') : '-'}
+          {hasCoordinates
+            ? `Coordenadas: ${Number(form.formData.latitude).toFixed(5)}, ${Number(form.formData.longitude).toFixed(5)}`
+            : 'Coordenadas: nao resolvidas'}
+          {' | '}Fonte: {sourceLabel}
+          {' | '}Ref: {form.formData.irradianceRefAt ? new Date(form.formData.irradianceRefAt).toLocaleString('pt-BR') : '-'}
         </p>
       </div>
     </div>

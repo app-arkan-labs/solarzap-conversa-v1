@@ -11,7 +11,7 @@ const corsHeaders = {
 };
 
 const CACHE_TTL_DAYS = 30;
-const FETCH_TIMEOUT_MS = 10_000;
+const FETCH_TIMEOUT_MS = 15_000;
 
 const DAYS_IN_MONTH = [31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -113,11 +113,15 @@ type SolarResourcePayload = {
   cached: boolean;
 };
 
-async function fetchWithTimeout(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs = FETCH_TIMEOUT_MS,
+  init?: RequestInit,
+): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { signal: controller.signal });
+    return await fetch(url, { ...(init || {}), signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -225,7 +229,16 @@ async function geocodeCity(
     nominatimUrl.searchParams.set("countrycodes", "br");
     nominatimUrl.searchParams.set("addressdetails", "1");
 
-    const nominatimResponse = await fetchWithTimeout(nominatimUrl.toString());
+    const nominatimResponse = await fetchWithTimeout(
+      nominatimUrl.toString(),
+      FETCH_TIMEOUT_MS,
+      {
+        headers: {
+          "User-Agent": "SolarZap/1.0 (contact@arkanlabs.com.br)",
+          "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        },
+      },
+    );
     if (nominatimResponse.ok) {
       const nominatimData = await nominatimResponse.json().catch(() => null);
       const nominatimRows = Array.isArray(nominatimData) ? nominatimData : [];
@@ -275,46 +288,96 @@ async function geocodeCity(
   return { lat, lon };
 }
 
+async function geocodeZip(zipRaw: string): Promise<{ lat: number; lon: number } | null> {
+  const zip = String(zipRaw || "").replace(/\D/g, "").slice(0, 8);
+  if (zip.length !== 8) return null;
+
+  try {
+    const brasilApiResponse = await fetchWithTimeout(`https://brasilapi.com.br/api/cep/v2/${zip}`);
+    if (brasilApiResponse.ok) {
+      const brasilApiData = await brasilApiResponse.json().catch(() => null);
+      const lat = toFinite((brasilApiData as any)?.location?.coordinates?.latitude, NaN);
+      const lon = toFinite((brasilApiData as any)?.location?.coordinates?.longitude, NaN);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
+    }
+  } catch {
+    // non-blocking fallback to other geocoders
+  }
+
+  const nominatimUrl = new URL("https://nominatim.openstreetmap.org/search");
+  nominatimUrl.searchParams.set("q", `${zip}, Brasil`);
+  nominatimUrl.searchParams.set("format", "jsonv2");
+  nominatimUrl.searchParams.set("limit", "1");
+  nominatimUrl.searchParams.set("countrycodes", "br");
+  const nominatimResponse = await fetchWithTimeout(
+    nominatimUrl.toString(),
+    FETCH_TIMEOUT_MS,
+    {
+      headers: {
+        "User-Agent": "SolarZap/1.0 (contact@arkanlabs.com.br)",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+      },
+    },
+  ).catch(() => null);
+
+  if (nominatimResponse?.ok) {
+    const nominatimData = await nominatimResponse.json().catch(() => null);
+    const first = Array.isArray(nominatimData) ? nominatimData[0] : null;
+    if (first) {
+      const lat = toFinite((first as any)?.lat, NaN);
+      const lon = toFinite((first as any)?.lon, NaN);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
+    }
+  }
+
+  return null;
+}
+
 async function fetchPvgisMonthly(lat: number, lon: number): Promise<{
   annual: number;
   monthlyDaily: number[];
   referenceYear: number | null;
 } | null> {
-  const url = new URL("https://re.jrc.ec.europa.eu/api/v5_2/seriescalc");
+  const url = new URL("https://re.jrc.ec.europa.eu/api/v5_2/MRcalc");
   url.searchParams.set("lat", String(lat));
   url.searchParams.set("lon", String(lon));
   url.searchParams.set("outputformat", "json");
-  url.searchParams.set("pvcalculation", "0");
-  url.searchParams.set("usehorizon", "1");
   url.searchParams.set("browser", "0");
-  url.searchParams.set("startyear", "2020");
-  url.searchParams.set("endyear", "2020");
+  url.searchParams.set("selectrad", "1");
 
   const response = await fetchWithTimeout(url.toString());
   if (!response.ok) return null;
 
   const data = await response.json().catch(() => null);
-  const monthlyRows = Array.isArray((data as any)?.outputs?.monthly?.fixed)
-    ? (data as any).outputs.monthly.fixed
+  const monthlyRows = Array.isArray((data as any)?.outputs?.monthly)
+    ? (data as any).outputs.monthly
     : [];
   if (monthlyRows.length === 0) return null;
 
-  const monthlyDaily = new Array<number>(12).fill(0);
+  const monthlyTotalsByMonth: number[][] = Array.from({ length: 12 }, () => []);
   for (const row of monthlyRows) {
     const monthIndex = clamp(Math.round(toFinite((row as any)?.month, 0)) - 1, 0, 11);
-    const monthlyHm = Math.max(0, toFinite((row as any)?.Hm, 0));
-    const days = DAYS_IN_MONTH[monthIndex] || 30.4375;
-    monthlyDaily[monthIndex] = monthlyHm > 0 ? (monthlyHm / days) : 0;
+    const monthlyIrradianceTotal = Math.max(0, toFinite((row as any)?.["H(i)_m"], 0));
+    if (monthlyIrradianceTotal > 0) {
+      monthlyTotalsByMonth[monthIndex].push(monthlyIrradianceTotal);
+    }
   }
 
-  const validCount = monthlyDaily.filter((value) => value > 0).length;
+  const monthlyDaily = monthlyTotalsByMonth.map((monthTotals, monthIndex) => {
+    if (monthTotals.length === 0) return 0;
+    const averageMonthlyTotal = monthTotals.reduce((acc, value) => acc + value, 0) / monthTotals.length;
+    const days = DAYS_IN_MONTH[monthIndex] || 30.4375;
+    return averageMonthlyTotal > 0 ? (averageMonthlyTotal / days) : 0;
+  });
+
+  const validCount = monthlyDaily.filter((value) => value > 0.01).length;
   if (validCount < 8) return null;
 
   const knownAvg = monthlyDaily.filter((v) => v > 0).reduce((acc, v) => acc + v, 0) / validCount;
   const patchedMonthlyDaily = monthlyDaily.map((value) => (value > 0 ? value : knownAvg));
   const annual = patchedMonthlyDaily.reduce((acc, value, idx) => acc + value * DAYS_IN_MONTH[idx], 0) / 365.25;
-  const referenceYear = Number.isFinite(Number((data as any)?.inputs?.meteo_data?.year))
-    ? Number((data as any)?.inputs?.meteo_data?.year)
+  const referenceYear = Number.isFinite(Number((data as any)?.inputs?.meteo_data?.year_max))
+    ? Number((data as any)?.inputs?.meteo_data?.year_max)
     : null;
 
   return {
@@ -357,8 +420,17 @@ Deno.serve(async (req) => {
     const uf = String((body as any)?.uf || "").trim().toUpperCase();
     const addressLine = String((body as any)?.addressLine || "").trim();
     const zip = String((body as any)?.zip || "").trim();
+    const normalizedZip = String(zip || "").replace(/\D/g, "").slice(0, 8);
     let lat = toFinite((body as any)?.lat, NaN);
     let lon = toFinite((body as any)?.lon, NaN);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      const geocodedFromZip = await geocodeZip(normalizedZip).catch(() => null);
+      if (geocodedFromZip) {
+        lat = geocodedFromZip.lat;
+        lon = geocodedFromZip.lon;
+      }
+    }
 
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       const geocoded = await geocodeCity(city, uf, addressLine, zip).catch(() => null);

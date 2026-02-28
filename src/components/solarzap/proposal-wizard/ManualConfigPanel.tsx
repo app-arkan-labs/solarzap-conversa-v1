@@ -15,6 +15,14 @@ interface ManualConfigPanelProps {
 }
 
 export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
+  const hasCoordinates = Number.isFinite(Number(form.formData.latitude))
+    && Number.isFinite(Number(form.formData.longitude));
+  const sourceLabel = form.formData.irradianceSource === 'pvgis'
+    ? 'PVGIS'
+    : form.formData.irradianceSource === 'cache'
+      ? 'cache solar'
+      : 'media por UF (fallback)';
+
   return (
     <div className="space-y-5 rounded-lg border bg-muted/20 p-4">
       <div className="space-y-3">
@@ -102,23 +110,15 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
               onChange={(e) => form.handleChange('precoPorKwp', parseFloat(e.target.value) || 0)}
             />
           </div>
-          <div className="space-y-1">
-            <Label>Latitude</Label>
-            <Input
-              type="number"
-              step="0.000001"
-              value={form.formData.latitude ?? ''}
-              onChange={(e) => form.handleChange('latitude', parseFloat(e.target.value))}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Longitude</Label>
-            <Input
-              type="number"
-              step="0.000001"
-              value={form.formData.longitude ?? ''}
-              onChange={(e) => form.handleChange('longitude', parseFloat(e.target.value))}
-            />
+          <div className="space-y-1 md:col-span-3">
+            <Label>Localizacao tecnica</Label>
+            <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+              {hasCoordinates
+                ? `${Number(form.formData.latitude).toFixed(5)}, ${Number(form.formData.longitude).toFixed(5)}`
+                : 'Coordenadas nao resolvidas'}
+              {' | '}Fonte: {sourceLabel}
+              {' | '}Ref: {form.formData.irradianceRefAt ? new Date(form.formData.irradianceRefAt).toLocaleString('pt-BR') : '-'}
+            </div>
           </div>
         </div>
         <label className="flex items-start gap-2 rounded border bg-background p-2">

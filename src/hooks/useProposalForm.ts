@@ -9,7 +9,6 @@ import { supabase } from '@/lib/supabase';
 import { BRAZIL_STATES, getIrradianceByUF } from '@/constants/solarIrradiance';
 import {
   isFinancialShadowModeEnabled,
-  isSolarResourceApiEnabled,
   isTusdTeSimplifiedEnabled,
 } from '@/config/featureFlags';
 import {
@@ -280,7 +279,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     lat?: number;
     lon?: number;
   }): Promise<SolarResourceResponse | null> => {
-    if (!isSolarResourceApiEnabled()) return null;
     try {
       const { data, error } = await supabase.functions.invoke('solar-resource', {
         body: {
@@ -410,14 +408,21 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
   const normalizeCep = (value: string) => value.replace(/\D/g, '').slice(0, 8);
 
-  const resolvePreciseLocation = useCallback(async (override?: {
+  const toFiniteOrUndefined = (value: unknown): number | undefined => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : undefined;
+  };
+
+  type LocationOverride = {
     cidade?: string;
     estado?: string;
     endereco?: string;
     cep?: string;
     latitude?: number;
     longitude?: number;
-  }) => {
+  };
+
+  const resolvePreciseLocation = useCallback(async (override?: LocationOverride) => {
     const uf = String(
       override?.estado
       || formData.estado
@@ -434,21 +439,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const latitude = Number.isFinite(latitudeValue) ? latitudeValue : undefined;
     const longitude = Number.isFinite(longitudeValue) ? longitudeValue : undefined;
 
-    if (!isSolarResourceApiEnabled()) {
-      setFormData((prev) => patchAndRecalculate(prev, {
-        estado: uf || prev.estado,
-        cidade: cidade || prev.cidade,
-        endereco: endereco || prev.endereco,
-        cep: cep || prev.cep,
-        irradiancia: uf ? getIrradianceByUF(uf) : prev.irradiancia,
-        irradianceSource: 'uf_fallback',
-        irradianceRefAt: new Date().toISOString(),
-        latitude: latitude ?? prev.latitude,
-        longitude: longitude ?? prev.longitude,
-      }, { preserveValorTotal: true }));
-      return null;
-    }
-
     setLocationLoading(true);
     try {
       const solarResource = await resolveSolarResource({
@@ -463,7 +453,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       if (!solarResource) {
         toast({
           title: 'Nao foi possivel localizar dados solares',
-          description: 'Confirme cidade/UF ou informe latitude e longitude.',
+          description: 'Confirme CEP/endereco/cidade e tente novamente.',
           variant: 'destructive',
         });
         return null;
@@ -520,42 +510,80 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         description: 'Informe um CEP com 8 digitos.',
         variant: 'destructive',
       });
-      return false;
+      return null;
     }
 
     setLocationLoading(true);
     try {
-      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-      if (!response.ok) throw new Error(`viacep_${response.status}`);
-      const data = await response.json();
-      if (data?.erro) throw new Error('cep_not_found');
+      let uf = '';
+      let cidade = '';
+      let endereco = '';
+      let latitude: number | undefined;
+      let longitude: number | undefined;
 
-      const uf = normalizeUf(String(data.uf || '')) || formData.estado || '';
-      const cidade = String(data.localidade || formData.cidade || '').trim();
-      const logradouro = String(data.logradouro || '').trim();
-      const bairro = String(data.bairro || '').trim();
-      const endereco = [logradouro, bairro].filter(Boolean).join(', ');
+      try {
+        const brApiResponse = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`);
+        if (brApiResponse.ok) {
+          const brApiData = await brApiResponse.json();
+          uf = normalizeUf(String(brApiData?.state || brApiData?.uf || '')) || uf;
+          cidade = String(brApiData?.city || brApiData?.locality || '').trim() || cidade;
+          const logradouro = String(brApiData?.street || brApiData?.logradouro || '').trim();
+          const bairro = String(brApiData?.neighborhood || brApiData?.bairro || '').trim();
+          endereco = [logradouro, bairro].filter(Boolean).join(', ');
+
+          latitude = toFiniteOrUndefined(brApiData?.location?.coordinates?.latitude);
+          longitude = toFiniteOrUndefined(brApiData?.location?.coordinates?.longitude);
+        }
+      } catch (error) {
+        console.warn('brasilapi CEP lookup failed:', error);
+      }
+
+      if (!uf || !cidade) {
+        const viaCepResponse = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        if (!viaCepResponse.ok) throw new Error(`viacep_${viaCepResponse.status}`);
+        const viaCepData = await viaCepResponse.json();
+        if (viaCepData?.erro) throw new Error('cep_not_found');
+
+        uf = normalizeUf(String(viaCepData.uf || '')) || uf;
+        cidade = String(viaCepData.localidade || cidade || '').trim();
+        const logradouro = String(viaCepData.logradouro || '').trim();
+        const bairro = String(viaCepData.bairro || '').trim();
+        if (!endereco) {
+          endereco = [logradouro, bairro].filter(Boolean).join(', ');
+        }
+      }
+
+      const nextOverride: LocationOverride = {
+        cep,
+        estado: uf || formData.estado || undefined,
+        cidade: cidade || formData.cidade || undefined,
+        endereco: endereco || formData.endereco || undefined,
+        latitude,
+        longitude,
+      };
 
       setFormData((prev) => patchAndRecalculate(prev, {
         cep,
-        estado: uf || prev.estado,
-        cidade: cidade || prev.cidade,
-        endereco: endereco || prev.endereco,
+        estado: nextOverride.estado || prev.estado,
+        cidade: nextOverride.cidade || prev.cidade,
+        endereco: nextOverride.endereco || prev.endereco,
+        latitude: nextOverride.latitude ?? prev.latitude,
+        longitude: nextOverride.longitude ?? prev.longitude,
       }, { preserveValorTotal: true }));
 
-      return true;
+      return nextOverride;
     } catch (error) {
       console.error('autofillAddressByCep error:', error);
       toast({
         title: 'Falha ao buscar CEP',
-        description: 'Nao foi possivel localizar o CEP informado.',
+        description: 'Nao foi possivel localizar o CEP informado em nenhum provedor.',
         variant: 'destructive',
       });
-      return false;
+      return null;
     } finally {
       setLocationLoading(false);
     }
-  }, [formData.cep, formData.cidade, formData.estado, patchAndRecalculate, toast]);
+  }, [formData.cep, formData.cidade, formData.endereco, formData.estado, patchAndRecalculate, toast]);
 
   // ── Auto-calculate system for ALL types using Kit equipment data ──
 
