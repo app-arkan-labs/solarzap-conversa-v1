@@ -10,7 +10,7 @@ import type { Contact } from '@/types/solarzap';
 import { generateProposalPDF, type ProposalPDFData } from '@/utils/generateProposalPDF';
 import { calculateProposalFinancials } from '@/utils/proposalFinancialModel';
 import { calculateSolarSizing } from '@/utils/solarSizing';
-import { EXPECTED_PROPOSAL_PDF_HASHES } from './expectedHashes';
+import { EXPECTED_PROPOSAL_PDF_HASHES, EXPECTED_PROPOSAL_PDF_HASHES_ADVANCED_FLAGS } from './expectedHashes';
 
 interface ProposalFixture {
   contact: {
@@ -41,6 +41,18 @@ interface ProposalFixture {
 
 const FIXED_NOW = new Date('2026-01-01T00:00:00Z');
 const FIXED_UUID = '00000000-0000-0000-0000-000000000000';
+
+type GoldenFlagOverrides = {
+  unifiedGeneration?: boolean;
+  featureFlags?: Record<string, string | undefined>;
+};
+
+const ADVANCED_FLAGS_ON: Record<string, string> = {
+  VITE_USE_SOLAR_RESOURCE_API: 'true',
+  VITE_USE_OM_COST_MODEL: 'true',
+  VITE_USE_DEGRADATION_ALL_CLIENTS: 'true',
+  VITE_USE_TUSD_TE_SIMPLIFIED: 'true',
+};
 
 function loadFixture(fileName: string): ProposalFixture {
   const fixturePath = join(process.cwd(), 'tests', 'fixtures', fileName);
@@ -120,13 +132,20 @@ function buildProposalData(fixture: ProposalFixture): ProposalPDFData {
   };
 }
 
-async function pdfHashFromFixture(fileName: string, unifiedGeneration?: boolean): Promise<string> {
-  const previous = process.env.VITE_USE_UNIFIED_GENERATION;
-  if (typeof unifiedGeneration === 'boolean') {
-    process.env.VITE_USE_UNIFIED_GENERATION = unifiedGeneration ? 'true' : 'false';
-  } else {
-    delete process.env.VITE_USE_UNIFIED_GENERATION;
-  }
+async function pdfHashFromFixture(fileName: string, options?: GoldenFlagOverrides): Promise<string> {
+  const envUpdates: Record<string, string | undefined> = {
+    VITE_USE_UNIFIED_GENERATION: typeof options?.unifiedGeneration === 'boolean'
+      ? (options.unifiedGeneration ? 'true' : 'false')
+      : undefined,
+    ...(options?.featureFlags || {}),
+  };
+  const previous = new Map<string, string | undefined>();
+
+  Object.entries(envUpdates).forEach(([key, value]) => {
+    previous.set(key, process.env[key]);
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  });
 
   try {
     const fixture = loadFixture(fileName);
@@ -135,28 +154,46 @@ async function pdfHashFromFixture(fileName: string, unifiedGeneration?: boolean)
     const bytes = new Uint8Array(await blob.arrayBuffer());
     return createHash('sha256').update(bytes).digest('hex');
   } finally {
-    if (previous === undefined) delete process.env.VITE_USE_UNIFIED_GENERATION;
-    else process.env.VITE_USE_UNIFIED_GENERATION = previous;
+    previous.forEach((value, key) => {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    });
   }
 }
 
 describe('proposal PDF golden master', () => {
-  it('residencial A mantém hash estável', async () => {
-    const hash = await pdfHashFromFixture('proposal_residencial_A.json', false);
+  it('residencial A keeps stable hash', async () => {
+    const hash = await pdfHashFromFixture('proposal_residencial_A.json', { unifiedGeneration: false });
     expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES.residencialA);
   });
 
-  it('usina B mantém hash estável', async () => {
-    const hash = await pdfHashFromFixture('proposal_usina_B.json', false);
+  it('usina B keeps stable hash', async () => {
+    const hash = await pdfHashFromFixture('proposal_usina_B.json', { unifiedGeneration: false });
     expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES.usinaB);
   });
 
-  it('mantém PDF idêntico com flag OFF e ON para as fixtures atuais', async () => {
+  it('keeps identical hash with unified generation OFF and ON for current fixtures', async () => {
     const fixtureFiles = ['proposal_residencial_A.json', 'proposal_usina_B.json'];
     for (const fileName of fixtureFiles) {
-      const hashOff = await pdfHashFromFixture(fileName, false);
-      const hashOn = await pdfHashFromFixture(fileName, true);
+      const hashOff = await pdfHashFromFixture(fileName, { unifiedGeneration: false });
+      const hashOn = await pdfHashFromFixture(fileName, { unifiedGeneration: true });
       expect(hashOn).toBe(hashOff);
     }
+  });
+
+  it('residencial A has expected hash with advanced flags ON', async () => {
+    const hash = await pdfHashFromFixture('proposal_residencial_A.json', {
+      unifiedGeneration: true,
+      featureFlags: ADVANCED_FLAGS_ON,
+    });
+    expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES_ADVANCED_FLAGS.residencialA);
+  });
+
+  it('usina B has expected hash with advanced flags ON', async () => {
+    const hash = await pdfHashFromFixture('proposal_usina_B.json', {
+      unifiedGeneration: true,
+      featureFlags: ADVANCED_FLAGS_ON,
+    });
+    expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES_ADVANCED_FLAGS.usinaB);
   });
 });

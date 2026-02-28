@@ -31,7 +31,13 @@ import {
 } from '@/types/proposalFinancing';
 import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
 import { calculateProposalFinancials } from '@/utils/proposalFinancialModel';
-import { isOmCostModelEnabled, isTusdTeSimplifiedEnabled, isUnifiedGenerationEnabled } from '@/config/featureFlags';
+import {
+  isDegradationAllClientsEnabled,
+  isOmCostModelEnabled,
+  isSolarResourceApiEnabled,
+  isTusdTeSimplifiedEnabled,
+  isUnifiedGenerationEnabled,
+} from '@/config/featureFlags';
 import {
   DEFAULT_ANALYSIS_YEARS,
   DEFAULT_ANNUAL_INCREASE_PCT,
@@ -58,6 +64,9 @@ export interface ProposalPDFData {
   rentabilityRatePerKwh?: number;
   tarifaKwh?: number;
   custoDisponibilidadeKwh?: number;
+  irradiancia?: number;
+  performanceRatio?: number;
+  precoPorKwp?: number;
   premiumContent?: PremiumProposalContent;
   taxaFinanciamento?: number;
   parcela36x?: number;
@@ -120,6 +129,9 @@ export interface SellerScriptPDFData {
   rentabilityRatePerKwh?: number;
   tarifaKwh?: number;
   custoDisponibilidadeKwh?: number;
+  irradiancia?: number;
+  performanceRatio?: number;
+  precoPorKwp?: number;
   premiumContent?: PremiumProposalContent;
   taxaFinanciamento?: number;
   parcela36x?: number;
@@ -654,6 +666,8 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
     ? (data.financialOutputs as FinancialOutputs)
     : calculateProposalFinancials(resolvedFinancialInputs);
   const tusdTeSimplifiedEnabled = isTusdTeSimplifiedEnabled();
+  const solarResourceApiEnabled = isSolarResourceApiEnabled();
+  const degradationAllClientsEnabled = isDegradationAllClientsEnabled();
   const effectiveTeRate = Math.max(0, Number(resolvedFinancialInputs.teRatePerKwh) || 0);
   const effectiveTusdRate = Math.max(0, Number(resolvedFinancialInputs.tusdRatePerKwh) || 0);
   const effectiveTusdCompensationPct = Math.max(
@@ -742,6 +756,35 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
     ? Math.max(0, Number(financialOutputs.annualGenerationKwhYear1) || 0)
     : annualGenerationFromMonthly;
   const avgMonthlyGenerationKwh = annualGenerationKwh / 12;
+  const daysInMonthAssumption = solarResourceApiEnabled ? 30.4375 : 30;
+  const resolvedPerformanceRatio = Math.max(0, Number(data.performanceRatio ?? 0.8) || 0.8);
+  const resolvedIrradiance = Math.max(0, Number(data.irradiancia) || 0);
+  const resolvedHorizonYears = Math.max(
+    1,
+    Number(resolvedFinancialInputs.analysisYears ?? DEFAULT_ANALYSIS_YEARS) || DEFAULT_ANALYSIS_YEARS,
+  );
+  const resolvedIrradianceSource = String(
+    data.irradianceSource
+    || data.financialInputs?.irradianceSource
+    || (solarResourceApiEnabled ? 'uf_fallback' : 'legacy_profile'),
+  ).toLowerCase();
+  const resolvedLat = Number(data.latitude ?? data.financialInputs?.latitude);
+  const resolvedLon = Number(data.longitude ?? data.financialInputs?.longitude);
+  const showExtendedAssumptions = solarResourceApiEnabled
+    || omCostModelEnabled
+    || degradationAllClientsEnabled
+    || tusdTeSimplifiedEnabled;
+  const mapIrradianceSourceLabel = (source: string): string => {
+    if (source === 'pvgis') return 'PVGIS georreferenciado';
+    if (source === 'cache') return 'cache georreferenciado';
+    if (source === 'uf_fallback') return 'fallback por UF';
+    if (source === 'legacy_profile') return 'perfil sazonal legado';
+    return source || 'nao informado';
+  };
+  const effectiveOmCostPct = Math.max(0, Number(resolvedFinancialInputs.annualOmCostPct) || 0);
+  const effectiveOmCostFixed = Math.max(0, Number(resolvedFinancialInputs.annualOmCostFixed) || 0);
+  const effectiveAnnualIncreasePct = Math.max(0, Number(resolvedFinancialInputs.annualEnergyIncreasePct) || 0);
+  const effectiveModuleDegradationPct = Math.max(0, Number(resolvedFinancialInputs.moduleDegradationPct) || 0);
   const retornoPorKwpAno = (financialOutputs?.retornoPorKwpAno ?? 0) > 0
     ? (financialOutputs?.retornoPorKwpAno || 0)
     : (data.potenciaSistema > 0 ? (econAnual / data.potenciaSistema) : 0);
@@ -1323,17 +1366,81 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
   doc.addPage();
   y = drawCompactHeader('Condicoes, Proximos Passos e Fechamento');
 
+  const assumptionsFromPremium = premium?.assumptions || [];
+  const assumptionsSnapshot = (financialOutputs?.assumptionsSnapshot || {}) as Record<string, unknown>;
+  const resolvedSnapshotOmEnabled = typeof assumptionsSnapshot.omCostModelEnabled === 'boolean'
+    ? Boolean(assumptionsSnapshot.omCostModelEnabled)
+    : omCostModelEnabled;
+  const resolvedSnapshotDegradationAllClients = typeof assumptionsSnapshot.degradationAllClientsEnabled === 'boolean'
+    ? Boolean(assumptionsSnapshot.degradationAllClientsEnabled)
+    : degradationAllClientsEnabled;
+  const resolvedSnapshotTusdTeEnabled = typeof assumptionsSnapshot.tusdTeSimplifiedEnabled === 'boolean'
+    ? Boolean(assumptionsSnapshot.tusdTeSimplifiedEnabled)
+    : tusdTeSimplifiedEnabled;
+  const transparencyAssumptions: string[] = showExtendedAssumptions
+    ? [
+      `Fonte de irradiancia: ${mapIrradianceSourceLabel(resolvedIrradianceSource)}.`,
+      ...(Number.isFinite(resolvedLat) && Number.isFinite(resolvedLon)
+        ? [`Coordenadas de referencia: lat ${fmtDecimal(resolvedLat, 4, 4)} | lon ${fmtDecimal(resolvedLon, 4, 4)}.`]
+        : []),
+      ...(resolvedIrradiance > 0
+        ? [`Irradiancia media utilizada: ${fmtDecimal(resolvedIrradiance, 2, 4)} kWh/m2/dia.`]
+        : []),
+      `Dias medios por mes no dimensionamento: ${fmtDecimal(daysInMonthAssumption, 3, 4)}.`,
+      `Performance ratio (PR) aplicado: ${fmtDecimal(resolvedPerformanceRatio * 100, 1, 3)}%.`,
+      ...(resolvedSnapshotTusdTeEnabled
+        ? [
+          `Tarifa TE: R$ ${fmtDecimal(effectiveTeRate, 2, 4)} / kWh.`,
+          `Tarifa TUSD: R$ ${fmtDecimal(effectiveTusdRate, 2, 4)} / kWh.`,
+          `Compensacao de TUSD aplicada: ${fmtDecimal(effectiveTusdCompensationPct, 0, 2)}%.`,
+          `Rentabilidade efetiva (TE + TUSD compensada): R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh.`,
+        ]
+        : [`Tarifa de referencia aplicada: R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh.`]),
+      ...(resolvedSnapshotOmEnabled
+        ? [
+          `O&M anual considerado: ${fmtDecimal(effectiveOmCostPct, 1, 3)}% do CAPEX + R$ ${fmtDecimal(effectiveOmCostFixed)} por ano.`,
+        ]
+        : ['O&M anual nao aplicado neste calculo.']),
+      `Degradacao anual de modulos: ${fmtDecimal(effectiveModuleDegradationPct, 1, 3)}%.`,
+      resolvedSnapshotDegradationAllClients
+        ? 'Degradacao aplicada para todos os segmentos habilitados.'
+        : 'Degradacao aplicada apenas ao segmento usina (comportamento legado).',
+      `Reajuste anual projetado de energia/tarifa: ${fmtDecimal(effectiveAnnualIncreasePct, 1, 3)}%.`,
+      `Horizonte de analise: ${resolvedHorizonYears} anos.`,
+      `Versao do modelo financeiro: ${data.financialModelVersion || 'nao informada'}.`,
+    ]
+    : [];
+
   // Assumptions
-  if (premium?.assumptions && premium.assumptions.length > 0) {
+  if (assumptionsFromPremium.length > 0 || transparencyAssumptions.length > 0) {
     sectionTitle('Premissas da Proposta');
     doc.setTextColor(100, 100, 100); doc.setFontSize(9);
-    premium.assumptions.forEach((a) => {
+    assumptionsFromPremium.forEach((a) => {
       checkPageBreak(10);
       doc.setFillColor(150, 150, 150); doc.circle(M + 2, y - 1, 1, 'F');
       doc.setTextColor(100, 100, 100);
       const lines = doc.splitTextToSize(a, W - 2 * M - 8);
       doc.text(lines, M + 6, y); y += lines.length * 4 + 3;
     });
+    if (transparencyAssumptions.length > 0) {
+      if (assumptionsFromPremium.length > 0) y += 1;
+      checkPageBreak(8);
+      doc.setTextColor(C.header[0], C.header[1], C.header[2]);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Premissas tecnicas e financeiras aplicadas', M, y);
+      y += 5;
+      doc.setTextColor(100, 100, 100);
+      doc.setFont('helvetica', 'normal');
+      transparencyAssumptions.forEach((item) => {
+        checkPageBreak(10);
+        doc.setFillColor(120, 120, 120);
+        doc.circle(M + 2, y - 1, 1, 'F');
+        const lines = doc.splitTextToSize(item, W - 2 * M - 8);
+        doc.text(lines, M + 6, y);
+        y += lines.length * 4 + 2.5;
+      });
+    }
     y += 4;
   }
 
