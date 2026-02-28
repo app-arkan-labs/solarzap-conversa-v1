@@ -73,6 +73,11 @@ export interface ProposalPDFData {
   financialInputs?: FinancialInputs;
   financialOutputs?: FinancialOutputs;
   financialModelVersion?: string;
+  monthlyGenerationFactors?: number[];
+  irradianceSource?: string;
+  latitude?: number;
+  longitude?: number;
+  irradianceRefAt?: string;
   colorTheme?: ProposalColorTheme;
   returnBlob?: boolean;
   propNum?: string;
@@ -125,6 +130,11 @@ export interface SellerScriptPDFData {
   financialInputs?: FinancialInputs;
   financialOutputs?: FinancialOutputs;
   financialModelVersion?: string;
+  monthlyGenerationFactors?: number[];
+  irradianceSource?: string;
+  latitude?: number;
+  longitude?: number;
+  irradianceRefAt?: string;
   returnBlob?: boolean;
   propNum?: string;
   colorTheme?: ProposalColorTheme;

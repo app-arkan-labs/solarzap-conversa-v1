@@ -7,9 +7,37 @@ function parseFlag(value: unknown): boolean {
   return TRUTHY_VALUES.has(value.trim().toLowerCase());
 }
 
-export function isUnifiedGenerationEnabled(): boolean {
-  const viteValue = (import.meta as ImportMeta & { env?: Record<string, unknown> }).env?.VITE_USE_UNIFIED_GENERATION;
+function readFeatureFlag(name: string): boolean {
+  const viteValue = (import.meta as ImportMeta & { env?: Record<string, unknown> }).env?.[name];
   if (viteValue !== undefined) return parseFlag(viteValue);
-  const nodeValue = typeof process !== 'undefined' ? process.env.VITE_USE_UNIFIED_GENERATION : undefined;
+  const nodeValue = typeof process !== 'undefined' ? process.env[name] : undefined;
   return parseFlag(nodeValue);
+}
+
+export function isUnifiedGenerationEnabled(): boolean {
+  return readFeatureFlag('VITE_USE_UNIFIED_GENERATION');
+}
+
+export function isSolarResourceApiEnabled(): boolean {
+  return readFeatureFlag('VITE_USE_SOLAR_RESOURCE_API');
+}
+
+export function isOmCostModelEnabled(): boolean {
+  return readFeatureFlag('VITE_USE_OM_COST_MODEL');
+}
+
+export function isDegradationAllClientsEnabled(): boolean {
+  return readFeatureFlag('VITE_USE_DEGRADATION_ALL_CLIENTS');
+}
+
+export function isTusdTeSimplifiedEnabled(): boolean {
+  return readFeatureFlag('VITE_USE_TUSD_TE_SIMPLIFIED');
+}
+
+export function isPdfRendererV2Enabled(): boolean {
+  return readFeatureFlag('VITE_USE_PDF_RENDERER_V2');
+}
+
+export function isFinancialShadowModeEnabled(): boolean {
+  return readFeatureFlag('VITE_USE_FINANCIAL_SHADOW_MODE');
 }

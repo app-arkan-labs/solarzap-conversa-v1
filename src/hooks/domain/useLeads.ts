@@ -24,6 +24,10 @@ interface ExtendedLeadFields {
     performance_ratio?: number;
     preco_por_kwp?: number;
     abater_custo_disponibilidade_no_dimensionamento?: boolean;
+    latitude?: number;
+    longitude?: number;
+    irradiance_source?: string;
+    irradiance_ref_at?: string;
 }
 
 // Helper: Extract valid JSON from observations if present
@@ -171,6 +175,10 @@ export const leadToContact = (lead: any): Contact => {
         performanceRatio: toOptionalNumber(lead.performance_ratio ?? meta.performance_ratio),
         pricePerKwp: toOptionalNumber(lead.preco_por_kwp ?? meta.preco_por_kwp),
         subtractAvailabilityInSizing: (lead.abater_custo_disponibilidade_no_dimensionamento ?? meta.abater_custo_disponibilidade_no_dimensionamento) ?? undefined,
+        latitude: toOptionalNumber(lead.latitude ?? meta.latitude),
+        longitude: toOptionalNumber(lead.longitude ?? meta.longitude),
+        irradianceSource: String(lead.irradiance_source ?? meta.irradiance_source ?? '') || undefined,
+        irradianceRefAt: String(lead.irradiance_ref_at ?? meta.irradiance_ref_at ?? '') || undefined,
 
         consumption: lead.consumo_kwh || 0,
         projectValue: lead.valor_estimado || 0,
@@ -210,6 +218,10 @@ export interface LeadPatch {
     performance_ratio?: number;
     preco_por_kwp?: number;
     abater_custo_disponibilidade_no_dimensionamento?: boolean;
+    latitude?: number;
+    longitude?: number;
+    irradiance_source?: string;
+    irradiance_ref_at?: string;
     consumo_kwh?: number;
     valor_estimado?: number;
     observacoes?: string;
@@ -434,6 +446,10 @@ export function useLeads() {
                 performance_ratio: data.performance_ratio,
                 preco_por_kwp: data.preco_por_kwp,
                 abater_custo_disponibilidade_no_dimensionamento: data.abater_custo_disponibilidade_no_dimensionamento,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                irradiance_source: data.irradiance_source,
+                irradiance_ref_at: data.irradiance_ref_at,
             };
 
             const { data: newLead, error } = await safeSupabaseWrite('INSERT', 'leads', basePayload, extendedPayload);
@@ -485,6 +501,10 @@ export function useLeads() {
             if (data.abater_custo_disponibilidade_no_dimensionamento !== undefined) {
                 extendedPayload.abater_custo_disponibilidade_no_dimensionamento = data.abater_custo_disponibilidade_no_dimensionamento;
             }
+            if (data.latitude !== undefined) extendedPayload.latitude = data.latitude;
+            if (data.longitude !== undefined) extendedPayload.longitude = data.longitude;
+            if (data.irradiance_source !== undefined) extendedPayload.irradiance_source = data.irradiance_source;
+            if (data.irradiance_ref_at !== undefined) extendedPayload.irradiance_ref_at = data.irradiance_ref_at;
 
             const { error } = await safeSupabaseWrite('UPDATE', 'leads', basePayload, extendedPayload, Number(contactId));
 

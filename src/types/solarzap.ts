@@ -54,6 +54,10 @@ export interface Contact {
   performanceRatio?: number;
   pricePerKwp?: number;
   subtractAvailabilityInSizing?: boolean;
+  latitude?: number;
+  longitude?: number;
+  irradianceSource?: string;
+  irradianceRefAt?: string;
   cpfCnpj?: string;
   createdAt: Date;
   lastContact: Date;

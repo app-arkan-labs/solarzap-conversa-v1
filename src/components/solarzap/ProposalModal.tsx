@@ -22,6 +22,7 @@ import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
 import { supabase } from '@/lib/supabase';
 import { BRAZIL_STATES, getIrradianceByUF } from '@/constants/solarIrradiance';
+import { isSolarResourceApiEnabled } from '@/config/featureFlags';
 import {
   ENERGY_DISTRIBUTOR_OPTIONS,
   inferDistributor,
@@ -57,6 +58,7 @@ import {
 import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
 import { FINANCIAL_MODEL_VERSION } from '@/types/proposalFinancial';
 import { calculateProposalFinancials, resolveTariffByPriority } from '@/utils/proposalFinancialModel';
+import type { SolarResourceResponse } from '@/types/solarResource';
 
 interface ProposalModalProps {
   isOpen: boolean;
@@ -100,6 +102,11 @@ export interface ProposalData {
   financialInputs?: FinancialInputs;
   financialOutputs?: FinancialOutputs;
   financialModelVersion?: typeof FINANCIAL_MODEL_VERSION;
+  monthlyGenerationFactors?: number[];
+  irradianceSource?: string;
+  latitude?: number;
+  longitude?: number;
+  irradianceRefAt?: string;
   premiumPayload?: Record<string, unknown>;
   contextEngine?: unknown;
   // Sprint 3: Pass theme/logo for seller script
@@ -206,6 +213,11 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
     performanceRatio: 0.8,
     precoPorKwp: 4500,
     abaterCustoDisponibilidadeNoDimensionamento: false,
+    monthlyGenerationFactors: undefined as number[] | undefined,
+    irradianceSource: undefined as string | undefined,
+    latitude: undefined as number | undefined,
+    longitude: undefined as number | undefined,
+    irradianceRefAt: undefined as string | undefined,
     moduloNome: '',
     moduloMarca: '',
     moduloPotencia: 550,
@@ -253,6 +265,52 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
       });
     } catch { /* non-blocking */ }
   };
+
+  const resolveSolarResource = useCallback(async (params: {
+    city?: string | null;
+    uf?: string | null;
+    lat?: number;
+    lon?: number;
+  }): Promise<SolarResourceResponse | null> => {
+    if (!isSolarResourceApiEnabled()) return null;
+    try {
+      const { data, error } = await supabase.functions.invoke('solar-resource', {
+        body: {
+          city: params.city || undefined,
+          uf: params.uf || undefined,
+          lat: params.lat,
+          lon: params.lon,
+        },
+      });
+      if (error || !data) return null;
+      const monthlyFactors = Array.isArray((data as any).monthlyGenerationFactors)
+        ? ((data as any).monthlyGenerationFactors as unknown[])
+          .slice(0, 12)
+          .map((value) => Math.max(0, Number(value) || 0))
+        : [];
+      if (monthlyFactors.length !== 12) return null;
+      const monthlyIrradiance = Array.isArray((data as any).monthlyIrradianceKwhM2Day)
+        ? ((data as any).monthlyIrradianceKwhM2Day as unknown[])
+          .slice(0, 12)
+          .map((value) => Math.max(0, Number(value) || 0))
+        : [];
+      if (monthlyIrradiance.length !== 12) return null;
+
+      return {
+        source: ((data as any).source || 'uf_fallback') as SolarResourceResponse['source'],
+        lat: Number.isFinite(Number((data as any).lat)) ? Number((data as any).lat) : null,
+        lon: Number.isFinite(Number((data as any).lon)) ? Number((data as any).lon) : null,
+        annualIrradianceKwhM2Day: Math.max(0.01, Number((data as any).annualIrradianceKwhM2Day) || 4.5),
+        monthlyIrradianceKwhM2Day: monthlyIrradiance,
+        monthlyGenerationFactors: monthlyFactors,
+        referenceYear: Number.isFinite(Number((data as any).referenceYear)) ? Number((data as any).referenceYear) : null,
+        cached: Boolean((data as any).cached),
+      };
+    } catch (err) {
+      console.warn('solar-resource fallback to UF irradiance:', err);
+      return null;
+    }
+  }, []);
 
   // ── Auto-calculate system for ALL types using Kit equipment data ──
   const buildFinancialSnapshot = useCallback((next: typeof formData) => {
@@ -385,8 +443,15 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
     if (field === 'estado') {
       const uf = value as string;
       const irrad = getIrradianceByUF(uf);
+      const irradianceRefAt = new Date().toISOString();
       setFormData(prev => {
-        const patch: Partial<typeof formData> = { estado: uf, irradiancia: irrad };
+        const patch: Partial<typeof formData> = {
+          estado: uf,
+          irradiancia: irrad,
+          irradianceSource: 'uf_fallback',
+          irradianceRefAt,
+          monthlyGenerationFactors: undefined,
+        };
         const inference = inferDistributor({
           uf,
           city: contact?.city || null,
@@ -402,6 +467,27 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         }
         return patchAndRecalculate(prev, patch);
       });
+
+      void (async () => {
+        const solarResource = await resolveSolarResource({
+          city: contact?.city || null,
+          uf,
+          lat: contact?.latitude,
+          lon: contact?.longitude,
+        });
+        if (!solarResource) return;
+        setFormData(prev => {
+          if (prev.estado !== uf) return prev;
+          return patchAndRecalculate(prev, {
+            irradiancia: solarResource.annualIrradianceKwhM2Day,
+            monthlyGenerationFactors: solarResource.monthlyGenerationFactors,
+            irradianceSource: solarResource.source,
+            latitude: solarResource.lat ?? undefined,
+            longitude: solarResource.lon ?? undefined,
+            irradianceRefAt: new Date().toISOString(),
+          });
+        });
+      })();
       return;
     }
 
@@ -724,6 +810,10 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
           performance_ratio: formData.performanceRatio,
           preco_por_kwp: formData.precoPorKwp,
           abater_custo_disponibilidade_no_dimensionamento: formData.abaterCustoDisponibilidadeNoDimensionamento,
+          latitude: formData.latitude,
+          longitude: formData.longitude,
+          irradiance_source: formData.irradianceSource,
+          irradiance_ref_at: formData.irradianceRefAt,
         },
       })
         .catch(err => console.error('Failed to update lead:', err));
@@ -743,6 +833,11 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         financialInputs,
         financialOutputs,
         financialModelVersion: FINANCIAL_MODEL_VERSION,
+        monthlyGenerationFactors: formData.monthlyGenerationFactors,
+        irradianceSource: formData.irradianceSource,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        irradianceRefAt: formData.irradianceRefAt,
         premiumContent,
         colorTheme: theme,
         taxaFinanciamento: legacyRate,
@@ -778,6 +873,11 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
           performanceRatio: formData.performanceRatio,
           precoPorKwp: formData.precoPorKwp,
           abaterCustoDisponibilidadeNoDimensionamento: formData.abaterCustoDisponibilidadeNoDimensionamento,
+          monthlyGenerationFactors: formData.monthlyGenerationFactors,
+          irradianceSource: formData.irradianceSource,
+          latitude: formData.latitude,
+          longitude: formData.longitude,
+          irradianceRefAt: formData.irradianceRefAt,
           moduloGarantia: formData.moduloGarantia,
           inversorGarantia: formData.inversorGarantia,
           garantiaServicos: formData.garantiaAnos,
@@ -803,6 +903,11 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         financialInputs,
         financialOutputs,
         financialModelVersion: FINANCIAL_MODEL_VERSION,
+        monthlyGenerationFactors: formData.monthlyGenerationFactors,
+        irradianceSource: formData.irradianceSource,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        irradianceRefAt: formData.irradianceRefAt,
         rentabilityRatePerKwh: effectiveRentabilityRate,
         secondaryColorHex: secondaryColorHex || null,
         propNum,
@@ -828,6 +933,11 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         financialInputs,
         financialOutputs,
         financialModelVersion: FINANCIAL_MODEL_VERSION,
+        monthlyGenerationFactors: formData.monthlyGenerationFactors,
+        irradianceSource: formData.irradianceSource,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        irradianceRefAt: formData.irradianceRefAt,
         secondaryColorHex: secondaryColorHex || null,
         premiumPayload,
         contextEngine: contextData || undefined,
@@ -914,6 +1024,11 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
           moduleDegradationPct: DEFAULT_MODULE_DEGRADATION_PCT,
           estado: uf,
           irradiancia: uf ? getIrradianceByUF(uf) : 4.5,
+          monthlyGenerationFactors: undefined,
+          irradianceSource: contact.irradianceSource || 'uf_fallback',
+          latitude: contact.latitude,
+          longitude: contact.longitude,
+          irradianceRefAt: contact.irradianceRefAt || undefined,
           concessionaria: inferredDistributor,
           tipoLigacao,
           rentabilityRatePerKwh: initialRentability,
@@ -927,8 +1042,30 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         },
         { preserveValorTotal: preserveInitialValor },
       ));
+
+      void (async () => {
+        const solarResource = await resolveSolarResource({
+          city: contact.city || null,
+          uf,
+          lat: contact.latitude,
+          lon: contact.longitude,
+        });
+        if (!solarResource) return;
+        setFormData(prev => recalculateSizing(
+          {
+            ...prev,
+            irradiancia: solarResource.annualIrradianceKwhM2Day,
+            monthlyGenerationFactors: solarResource.monthlyGenerationFactors,
+            irradianceSource: solarResource.source,
+            latitude: solarResource.lat ?? undefined,
+            longitude: solarResource.lon ?? undefined,
+            irradianceRefAt: new Date().toISOString(),
+          },
+          { preserveValorTotal: preserveInitialValor },
+        ));
+      })();
     }
-  }, [contact, isOpen, recalculateSizing]);
+  }, [contact, isOpen, recalculateSizing, resolveSolarResource]);
 
   if (!contact || !isOpen) return null;
 
