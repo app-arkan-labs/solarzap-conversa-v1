@@ -31,6 +31,7 @@ import {
 } from '@/types/proposalFinancing';
 import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
 import { calculateProposalFinancials } from '@/utils/proposalFinancialModel';
+import { isUnifiedGenerationEnabled } from '@/config/featureFlags';
 import {
   DEFAULT_ANALYSIS_YEARS,
   DEFAULT_ANNUAL_INCREASE_PCT,
@@ -690,6 +691,7 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
   const logoSrc = data.logoDataUrl || null;
   const envImpact: EnvironmentalImpact = premium?.environmentalImpact
     || calcEnvironmentalImpact(data.consumoMensal * 12, 25);
+  const unifiedGenerationEnabled = isUnifiedGenerationEnabled();
   const fallbackMonthlyGen = calcMonthlyGeneration(data.potenciaSistema, data.consumoMensal);
   const premiumMonthlyGen = Array.isArray(premium?.monthlyGeneration)
     ? premium.monthlyGeneration.slice(0, 12).map((v) => {
@@ -701,10 +703,15 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
     ? (Math.max(...premiumMonthlyGen) - Math.min(...premiumMonthlyGen))
       / Math.max(1, premiumMonthlyGen.reduce((acc, v) => acc + v, 0) / premiumMonthlyGen.length)
     : 0;
-  const monthlyGen: number[] = premiumMonthlyGen && monthlySpread >= 0.25
-    ? premiumMonthlyGen
-    : fallbackMonthlyGen;
-  const annualGenerationKwh = monthlyGen.reduce((acc, value) => acc + Math.max(0, Number(value) || 0), 0);
+  const monthlyGen: number[] = unifiedGenerationEnabled
+    ? fallbackMonthlyGen
+    : (premiumMonthlyGen && monthlySpread >= 0.25
+      ? premiumMonthlyGen
+      : fallbackMonthlyGen);
+  const annualGenerationFromMonthly = monthlyGen.reduce((acc, value) => acc + Math.max(0, Number(value) || 0), 0);
+  const annualGenerationKwh = unifiedGenerationEnabled && Number.isFinite(financialOutputs?.annualGenerationKwhYear1)
+    ? Math.max(0, Number(financialOutputs.annualGenerationKwhYear1) || 0)
+    : annualGenerationFromMonthly;
   const avgMonthlyGenerationKwh = annualGenerationKwh / 12;
   const retornoPorKwpAno = (financialOutputs?.retornoPorKwpAno ?? 0) > 0
     ? (financialOutputs?.retornoPorKwpAno || 0)

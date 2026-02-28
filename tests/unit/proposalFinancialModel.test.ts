@@ -4,6 +4,7 @@ import {
   calculateProposalFinancials,
   resolveTariffByPriority,
 } from '@/utils/proposalFinancialModel';
+import { calcMonthlyGeneration } from '@/utils/proposalCharts';
 
 describe('resolveTariffByPriority', () => {
   it('respeita prioridade manual > lead > inferred > fallback', () => {
@@ -91,5 +92,30 @@ describe('calculateProposalFinancials', () => {
     expect(result.billBeforeMonthly).toBeUndefined();
     expect(result.billAfterMonthly).toBeUndefined();
     expect(result.savingsMonthly).toBeUndefined();
+  });
+
+  it('com USE_UNIFIED_GENERATION ativo, geração anual bate com soma mensal', () => {
+    const previous = process.env.VITE_USE_UNIFIED_GENERATION;
+    process.env.VITE_USE_UNIFIED_GENERATION = 'true';
+
+    try {
+      const result = calculateProposalFinancials({
+        tipoCliente: 'residencial',
+        investimentoTotal: 14850,
+        consumoMensalKwh: 350,
+        potenciaSistemaKwp: 3.3,
+        rentabilityRatePerKwh: 0.85,
+        tarifaKwh: 0.85,
+        custoDisponibilidadeKwh: 50,
+        analysisYears: 25,
+      });
+      const monthlyGen = calcMonthlyGeneration(3.3, 350);
+      const annualFromMonthly = monthlyGen.reduce((acc, value) => acc + value, 0);
+
+      expect(result.annualGenerationKwhYear1).toBe(annualFromMonthly);
+    } finally {
+      if (previous === undefined) delete process.env.VITE_USE_UNIFIED_GENERATION;
+      else process.env.VITE_USE_UNIFIED_GENERATION = previous;
+    }
   });
 });

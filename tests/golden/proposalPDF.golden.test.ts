@@ -121,22 +121,43 @@ function buildProposalData(fixture: ProposalFixture): ProposalPDFData {
   };
 }
 
-async function pdfHashFromFixture(fileName: string): Promise<string> {
-  const fixture = loadFixture(fileName);
-  const proposalData = buildProposalData(fixture);
-  const blob = generateProposalPDF(proposalData, { now: FIXED_NOW, uuid: FIXED_UUID }) as Blob;
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  return createHash('sha256').update(bytes).digest('hex');
+async function pdfHashFromFixture(fileName: string, unifiedGeneration?: boolean): Promise<string> {
+  const previous = process.env.VITE_USE_UNIFIED_GENERATION;
+  if (typeof unifiedGeneration === 'boolean') {
+    process.env.VITE_USE_UNIFIED_GENERATION = unifiedGeneration ? 'true' : 'false';
+  } else {
+    delete process.env.VITE_USE_UNIFIED_GENERATION;
+  }
+
+  try {
+    const fixture = loadFixture(fileName);
+    const proposalData = buildProposalData(fixture);
+    const blob = generateProposalPDF(proposalData, { now: FIXED_NOW, uuid: FIXED_UUID }) as Blob;
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    return createHash('sha256').update(bytes).digest('hex');
+  } finally {
+    if (previous === undefined) delete process.env.VITE_USE_UNIFIED_GENERATION;
+    else process.env.VITE_USE_UNIFIED_GENERATION = previous;
+  }
 }
 
 describe('proposal PDF golden master', () => {
   it('residencial A mantém hash estável', async () => {
-    const hash = await pdfHashFromFixture('proposal_residencial_A.json');
+    const hash = await pdfHashFromFixture('proposal_residencial_A.json', false);
     expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES.residencialA);
   });
 
   it('usina B mantém hash estável', async () => {
-    const hash = await pdfHashFromFixture('proposal_usina_B.json');
+    const hash = await pdfHashFromFixture('proposal_usina_B.json', false);
     expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES.usinaB);
+  });
+
+  it('mantém PDF idêntico com flag OFF e ON para as fixtures atuais', async () => {
+    const fixtureFiles = ['proposal_residencial_A.json', 'proposal_usina_B.json'];
+    for (const fileName of fixtureFiles) {
+      const hashOff = await pdfHashFromFixture(fileName, false);
+      const hashOn = await pdfHashFromFixture(fileName, true);
+      expect(hashOn).toBe(hashOff);
+    }
   });
 });

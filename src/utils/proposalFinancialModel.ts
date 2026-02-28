@@ -5,6 +5,8 @@ import {
   DEFAULT_MODULE_DEGRADATION_PCT,
   DEFAULT_TARIFF_KWH,
 } from '@/constants/financialDefaults';
+import { isUnifiedGenerationEnabled } from '@/config/featureFlags';
+import { calcMonthlyGeneration } from '@/utils/proposalCharts';
 
 const toFinite = (value: unknown, fallback = 0) => {
   const numeric = Number(value);
@@ -80,15 +82,22 @@ export function calculateProposalFinancials(input: FinancialInputs): FinancialOu
   const moduleDegradationPct = clampNonNegative(toFinite(input.moduleDegradationPct, DEFAULT_MODULE_DEGRADATION_PCT));
   const annualEnergyIncrease = annualEnergyIncreasePct / 100;
   const moduleDegradation = Math.min(0.95, moduleDegradationPct / 100);
+  const unifiedGenerationEnabled = isUnifiedGenerationEnabled();
   const nonUsinaSnapshot = isUsina
     ? null
     : buildNonUsinaBillSnapshot(consumoMensalKwh, custoDisponibilidadeKwh, rentabilityRatePerKwh);
 
-  const annualGenerationKwhYear1 = clampNonNegative(consumoMensalKwh * 12);
+  const unifiedMonthlyGeneration = unifiedGenerationEnabled
+    ? calcMonthlyGeneration(potenciaSistemaKwp, consumoMensalKwh)
+    : null;
+  const legacyAnnualGenerationKwhYear1 = clampNonNegative(consumoMensalKwh * 12);
+  const annualGenerationKwhYear1 = unifiedMonthlyGeneration
+    ? clampNonNegative(unifiedMonthlyGeneration.reduce((acc, value) => acc + Math.max(0, Number(value) || 0), 0))
+    : legacyAnnualGenerationKwhYear1;
   const monthlyGenerationAvgKwhYear1 = annualGenerationKwhYear1 / 12;
 
   const annualRevenueYear1 = isUsina
-    ? annualGenerationKwhYear1 * rentabilityRatePerKwh
+    ? legacyAnnualGenerationKwhYear1 * rentabilityRatePerKwh
     : (nonUsinaSnapshot?.savingsAnnual || 0);
 
   const annualRevenueSeries: number[] = [];
