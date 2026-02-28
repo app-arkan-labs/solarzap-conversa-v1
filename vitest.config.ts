@@ -10,6 +10,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['tests/unit/**/*.test.ts', 'tests/golden/**/*.test.ts'],
+    setupFiles: ['tests/setup/vitest.setup.ts'],
     globals: true,
     restoreMocks: true,
     clearMocks: true,

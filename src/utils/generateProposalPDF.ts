@@ -1,4 +1,4 @@
-import jsPDF from 'jspdf';
+﻿import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Contact } from '@/types/solarzap';
 import {
@@ -132,6 +132,11 @@ export interface SellerScriptPDFData {
   signatureCompanyCnpj?: string;
   signatureContractorName?: string;
   signatureContractorCnpj?: string;
+}
+
+export interface PDFGenerationOptions {
+  now?: Date;
+  uuid?: string;
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -547,8 +552,17 @@ function isSensibleAiText(text: string | undefined | null, label = 'AI text'): b
 // CLIENT-FACING PROPOSAL PDF (5+ PAGES)
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 
-export function generateProposalPDF(data: ProposalPDFData): Blob | void {
+export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerationOptions): Blob | void {
+  const now = options?.now ?? new Date();
+  const uuid = options?.uuid ?? crypto.randomUUID();
   const doc = new jsPDF();
+  const normalizedUuid = uuid.replace(/[^0-9a-fA-F]/g, '').padEnd(32, '0').slice(0, 32);
+  if (Number.isFinite(now.getTime()) && typeof (doc as unknown as { setCreationDate?: (value: Date) => void }).setCreationDate === 'function') {
+    (doc as unknown as { setCreationDate: (value: Date) => void }).setCreationDate(now);
+  }
+  if (typeof (doc as unknown as { setFileId?: (value: string) => void }).setFileId === 'function') {
+    (doc as unknown as { setFileId: (value: string) => void }).setFileId(normalizedUuid);
+  }
 
   // Auto-sanitise text for Helvetica (no Unicode support).
   applyPdfTextSanitizers(doc);
@@ -562,7 +576,10 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
   const chartTheme = buildChartTheme(C);
   const premium = data.premiumContent;
   const isUsina = (data.tipo_cliente || '').toLowerCase() === 'usina';
-  const propNum = data.propNum || `PROP-${Date.now().toString().slice(-8)}`;
+  const propNumSuffix = Number.isFinite(now.getTime())
+    ? now.getTime().toString().slice(-8)
+    : normalizedUuid.slice(-8).toUpperCase();
+  const propNum = data.propNum || `PROP-${propNumSuffix}`;
   const validadeDias = data.validadeDias && data.validadeDias > 0 ? data.validadeDias : 15;
   const fallbackCustoDisponibilidade = getCustoDisponibilidadeByLigacao(data.tipoLigacao)
     ?? getCustoDisponibilidadeByLigacao(data.contact.connectionType)
@@ -667,7 +684,7 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
       : (longTermSavings / data.valorTotal))
     : 0;
   const segLabel = (data.tipo_cliente || 'residencial').charAt(0).toUpperCase() + (data.tipo_cliente || 'residencial').slice(1);
-  const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const today = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   // logoDataUrl should always be a valid data:image/... string from useProposalLogo
   const logoSrc = data.logoDataUrl || null;
@@ -1400,8 +1417,17 @@ export function generateProposalPDF(data: ProposalPDFData): Blob | void {
 // SELLER SCRIPT PDF (internal Ã¢â‚¬â€ NOT for client)
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 
-export function generateSellerScriptPDF(data: SellerScriptPDFData): Blob | void {
+export function generateSellerScriptPDF(data: SellerScriptPDFData, options?: PDFGenerationOptions): Blob | void {
+  const now = options?.now ?? new Date();
+  const uuid = options?.uuid ?? crypto.randomUUID();
   const doc = new jsPDF();
+  const normalizedUuid = uuid.replace(/[^0-9a-fA-F]/g, '').padEnd(32, '0').slice(0, 32);
+  if (Number.isFinite(now.getTime()) && typeof (doc as unknown as { setCreationDate?: (value: Date) => void }).setCreationDate === 'function') {
+    (doc as unknown as { setCreationDate: (value: Date) => void }).setCreationDate(now);
+  }
+  if (typeof (doc as unknown as { setFileId?: (value: string) => void }).setFileId === 'function') {
+    (doc as unknown as { setFileId: (value: string) => void }).setFileId(normalizedUuid);
+  }
 
   // Auto-sanitise text for Helvetica (no Unicode support).
   applyPdfTextSanitizers(doc);
@@ -1415,10 +1441,13 @@ export function generateSellerScriptPDF(data: SellerScriptPDFData): Blob | void 
   // logoDataUrl should always be a valid data:image/... string from useProposalLogo
   const logoSrc = data.logoDataUrl || null;
   const premium = data.premiumContent;
-  const propNum = data.propNum || `PROP-${Date.now().toString().slice(-8)}`;
+  const propNumSuffix = Number.isFinite(now.getTime())
+    ? now.getTime().toString().slice(-8)
+    : normalizedUuid.slice(-8).toUpperCase();
+  const propNum = data.propNum || `PROP-${propNumSuffix}`;
   const validadeDias = data.validadeDias && data.validadeDias > 0 ? data.validadeDias : 15;
   const segLabel = (data.tipo_cliente || 'indefinido').charAt(0).toUpperCase() + (data.tipo_cliente || 'indefinido').slice(1);
-  const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const today = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const econAnual = (data.financialOutputs?.annualRevenueYear1 ?? 0) > 0
     ? (data.financialOutputs?.annualRevenueYear1 || 0)
     : data.economiaAnual;
