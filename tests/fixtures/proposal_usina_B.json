@@ -1,0 +1,29 @@
+{
+  "contact": { "name": "Empresa Teste Ltda", "phone": "11999990002", "city": "Uberlândia/MG" },
+  "consumoMensal": 5000,
+  "irradiancia": 5.2,
+  "moduloPotencia": 550,
+  "performanceRatio": 0.82,
+  "precoPorKwp": 3800,
+  "tipo_cliente": "usina",
+  "tipoLigacao": "trifasico",
+  "custoDisponibilidadeKwh": 100,
+  "rentabilityRatePerKwh": 0.65,
+  "tarifaKwh": 0.65,
+  "garantiaAnos": 25,
+  "annualEnergyIncreasePct": 8,
+  "moduleDegradationPct": 0.8,
+  "validadeDias": 30,
+  "paymentConditions": ["pix_avista", "financiamento_bancario"],
+  "showFinancingSimulation": true,
+  "financingConditions": [
+    {
+      "id": "test-1",
+      "institutionName": "BTG Pactual",
+      "interestRateMonthly": 1.5,
+      "installments": [36, 60],
+      "gracePeriodValue": 90,
+      "gracePeriodUnit": "dias"
+    }
+  ]
+}
