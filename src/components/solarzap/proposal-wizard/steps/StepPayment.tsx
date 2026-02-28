@@ -24,6 +24,33 @@ export function StepPayment({ form }: StepPaymentProps) {
     <div className="space-y-4">
       <h3 className="text-base font-semibold">Como sera o pagamento?</h3>
 
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label>Valor total da proposta (R$)</Label>
+          <Input
+            type="number"
+            min={0}
+            value={form.formData.valorTotal || ''}
+            onChange={(e) => form.handleChange('valorTotal', parseFloat(e.target.value) || 0)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Use este valor para ajustar o investimento final negociado com o cliente.
+          </p>
+        </div>
+        <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+          <p className="font-medium">Resumo rapido</p>
+          <p className="text-muted-foreground">
+            Potencia: {Number(form.formData.potenciaSistema || 0).toFixed(2)} kWp
+          </p>
+          <p className="text-muted-foreground">
+            Sistema: {form.formData.quantidadePaineis || 0} paineis
+          </p>
+          <p className="text-muted-foreground">
+            Investimento: {form.formatCurrency(form.formData.valorTotal || 0)}
+          </p>
+        </div>
+      </div>
+
       <div className="space-y-2">
         <Label>Condicoes de pagamento</Label>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">

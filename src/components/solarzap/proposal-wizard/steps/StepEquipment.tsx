@@ -10,7 +10,7 @@ interface StepEquipmentProps {
 export function StepEquipment({ form }: StepEquipmentProps) {
   return (
     <div className="space-y-4">
-      <h3 className="text-base font-semibold">Equipamento e investimento</h3>
+      <h3 className="text-base font-semibold">Equipamento do sistema</h3>
 
       <Tabs defaultValue="modulo" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
@@ -132,33 +132,15 @@ export function StepEquipment({ form }: StepEquipmentProps) {
         </TabsContent>
       </Tabs>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label>Preco por kWp (R$)</Label>
-          <Input
-            type="number"
-            min={0}
-            value={form.formData.precoPorKwp || ''}
-            onChange={(e) => form.handleChange('precoPorKwp', parseFloat(e.target.value) || 0)}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Valor total (R$)</Label>
-          <Input
-            type="number"
-            min={0}
-            value={form.formData.valorTotal || ''}
-            onChange={(e) => form.handleChange('valorTotal', parseFloat(e.target.value) || 0)}
-          />
-        </div>
-      </div>
-
       <div className="rounded-lg border bg-muted/30 p-3 text-sm">
         <p className="font-medium">
           {form.formData.quantidadePaineis || 0} paineis de {form.formData.moduloPotencia || 0}W
         </p>
         <p className="text-muted-foreground">
-          {Number(form.formData.potenciaSistema || 0).toFixed(2)} kWp | Investimento: {form.formatCurrency(form.formData.valorTotal || 0)}
+          Potencia estimada: {Number(form.formData.potenciaSistema || 0).toFixed(2)} kWp
+        </p>
+        <p className="text-xs text-muted-foreground">
+          O valor de investimento e definido na proxima etapa (Pagamento).
         </p>
       </div>
     </div>

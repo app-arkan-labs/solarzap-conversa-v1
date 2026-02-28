@@ -50,11 +50,12 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
     if (currentStep === 3) {
       return (
         Number(form.formData.moduloPotencia) > 0
-        && Number(form.formData.precoPorKwp) > 0
-        && Number(form.formData.valorTotal) > 0
       );
     }
     if (currentStep === 4) {
+      if (Number(form.formData.valorTotal) <= 0) {
+        return false;
+      }
       if (!Array.isArray(form.formData.paymentConditions) || form.formData.paymentConditions.length === 0) {
         return false;
       }
