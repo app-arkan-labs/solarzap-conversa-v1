@@ -71,7 +71,6 @@ function buildProposalData(fixture: ProposalFixture): ProposalPDFData {
     moduloPotenciaW: fixture.moduloPotencia,
     performanceRatio: fixture.performanceRatio,
     precoPorKwp: fixture.precoPorKwp,
-    tarifaKwh: fixture.tarifaKwh,
     custoDisponibilidadeKwh: fixture.custoDisponibilidadeKwh,
     aplicarCustoDisponibilidadeNoDimensionamento: Boolean(fixture.abaterCustoDisponibilidadeNoDimensionamento),
   });

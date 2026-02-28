@@ -10,18 +10,17 @@ describe('calculateSolarSizing', () => {
       moduloPotenciaW: 550,
       performanceRatio: 0.8,
       precoPorKwp: 4500,
-      tarifaKwh: 0.85,
       custoDisponibilidadeKwh: 50,
       aplicarCustoDisponibilidadeNoDimensionamento: false,
     });
 
     expect(result.consumoBaseDimensionamentoKwh).toBe(350);
+    expect(result.basePotenciaKwp).toBeCloseTo(3.2264, 4);
     expect(result.quantidadePaineis).toBe(6);
     expect(result.potenciaSistemaKwp).toBe(3.3);
     expect(result.valorTotal).toBe(14850);
-    expect(result.economiaMensal).toBe(255);
-    expect(result.economiaAnual).toBe(3060);
-    expect(result.paybackMeses).toBe(59);
+    expect(result).not.toHaveProperty('economiaAnual');
+    expect(result).not.toHaveProperty('paybackMeses');
   });
 
   it('abate custo de disponibilidade no consumo base quando flag habilitada', () => {
@@ -31,7 +30,6 @@ describe('calculateSolarSizing', () => {
       moduloPotenciaW: 550,
       performanceRatio: 0.8,
       precoPorKwp: 4500,
-      tarifaKwh: 1,
       custoDisponibilidadeKwh: 100,
       aplicarCustoDisponibilidadeNoDimensionamento: false,
     });
@@ -42,14 +40,13 @@ describe('calculateSolarSizing', () => {
       moduloPotenciaW: 550,
       performanceRatio: 0.8,
       precoPorKwp: 4500,
-      tarifaKwh: 1,
       custoDisponibilidadeKwh: 100,
       aplicarCustoDisponibilidadeNoDimensionamento: true,
     });
 
     expect(withoutAbate.consumoBaseDimensionamentoKwh).toBe(350);
     expect(withAbate.consumoBaseDimensionamentoKwh).toBe(250);
+    expect(withAbate.basePotenciaKwp).toBeLessThan(withoutAbate.basePotenciaKwp);
     expect(withAbate.quantidadePaineis).toBeLessThan(withoutAbate.quantidadePaineis);
-    expect(withAbate.economiaMensal).toBe(250);
   });
 });

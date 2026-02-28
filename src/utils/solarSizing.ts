@@ -1,5 +1,3 @@
-import { DEFAULT_TARIFF_KWH } from '@/constants/financialDefaults';
-
 export interface SolarSizingParams {
   consumoMensal: number;
   irradiancia: number;
@@ -7,19 +5,16 @@ export interface SolarSizingParams {
   performanceRatio?: number;
   diasMes?: number;
   precoPorKwp?: number;
-  tarifaKwh?: number;
   custoDisponibilidadeKwh?: number;
   aplicarCustoDisponibilidadeNoDimensionamento?: boolean;
 }
 
 export interface SolarSizingResult {
   consumoBaseDimensionamentoKwh: number;
+  basePotenciaKwp: number;
   potenciaSistemaKwp: number;
   quantidadePaineis: number;
   valorTotal: number;
-  economiaMensal: number;
-  economiaAnual: number;
-  paybackMeses: number;
 }
 
 const toSafeNumber = (value: number | undefined, fallback: number) => {
@@ -34,7 +29,6 @@ export function calculateSolarSizing(params: SolarSizingParams): SolarSizingResu
   const performanceRatio = Math.max(0.01, toSafeNumber(params.performanceRatio, 0.8));
   const diasMes = Math.max(1, toSafeNumber(params.diasMes, 30));
   const precoPorKwp = Math.max(0, toSafeNumber(params.precoPorKwp, 4500));
-  const tarifaKwh = Math.max(0, toSafeNumber(params.tarifaKwh, DEFAULT_TARIFF_KWH));
   const custoDisponibilidadeKwh = Math.max(0, toSafeNumber(params.custoDisponibilidadeKwh, 50));
   const aplicarCustoDisponibilidadeNoDimensionamento = Boolean(params.aplicarCustoDisponibilidadeNoDimensionamento);
 
@@ -53,19 +47,11 @@ export function calculateSolarSizing(params: SolarSizingParams): SolarSizingResu
     : 0;
   const valorTotal = Math.round(potenciaSistemaKwp * precoPorKwp);
 
-  const contaMensal = consumoMensal * tarifaKwh;
-  const taxaMinima = Math.min(custoDisponibilidadeKwh, consumoMensal) * tarifaKwh;
-  const economiaMensal = Math.max(contaMensal - taxaMinima, 0);
-  const economiaAnual = economiaMensal * 12;
-  const paybackMeses = economiaAnual > 0 ? Math.ceil((valorTotal / economiaAnual) * 12) : 0;
-
   return {
     consumoBaseDimensionamentoKwh,
+    basePotenciaKwp: basePotencia,
     potenciaSistemaKwp,
     quantidadePaineis,
     valorTotal,
-    economiaMensal,
-    economiaAnual,
-    paybackMeses,
   };
 }

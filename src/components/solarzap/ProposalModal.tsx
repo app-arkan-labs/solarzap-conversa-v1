@@ -293,7 +293,6 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
       moduloPotenciaW: next.moduloPotencia || 550,
       performanceRatio: next.performanceRatio || 0.8,
       precoPorKwp: next.precoPorKwp || 4500,
-      tarifaKwh: next.rentabilityRatePerKwh || next.tarifaKwh || DEFAULT_TARIFF_FALLBACK,
       custoDisponibilidadeKwh: next.custoDisponibilidadeKwh ?? 50,
       aplicarCustoDisponibilidadeNoDimensionamento: Boolean(next.abaterCustoDisponibilidadeNoDimensionamento),
     });
@@ -310,8 +309,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
 
     return {
       ...nextWithSizing,
-      economiaAnual: financialOutputs.annualRevenueYear1 > 0 ? financialOutputs.annualRevenueYear1 : sizing.economiaAnual,
-      paybackMeses: financialOutputs.paybackMonths > 0 ? financialOutputs.paybackMonths : sizing.paybackMeses,
+      economiaAnual: Math.max(0, Number(financialOutputs.annualRevenueYear1) || 0),
+      paybackMeses: Math.max(0, Number(financialOutputs.paybackMonths) || 0),
       rentabilityRatePerKwh: financialInputs.rentabilityRatePerKwh ?? financialInputs.tarifaKwh,
       tarifaKwh: financialInputs.tarifaKwh,
       financialInputs,
@@ -435,8 +434,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         const { financialInputs, financialOutputs } = buildFinancialSnapshot(next);
         return {
           ...next,
-          economiaAnual: financialOutputs.annualRevenueYear1 > 0 ? financialOutputs.annualRevenueYear1 : prev.economiaAnual,
-          paybackMeses: financialOutputs.paybackMonths > 0 ? financialOutputs.paybackMonths : prev.paybackMeses,
+          economiaAnual: Math.max(0, Number(financialOutputs.annualRevenueYear1) || 0),
+          paybackMeses: Math.max(0, Number(financialOutputs.paybackMonths) || 0),
           financialInputs,
           financialOutputs,
           financialModelVersion: FINANCIAL_MODEL_VERSION,
@@ -689,8 +688,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
       ? Math.round(calcPMT(legacyRate, 60, formData.valorTotal) * 100) / 100
       : 0;
     const { financialInputs, financialOutputs } = buildFinancialSnapshot(formData);
-    const effectiveEconomiaAnual = financialOutputs.annualRevenueYear1 > 0 ? financialOutputs.annualRevenueYear1 : formData.economiaAnual;
-    const effectivePaybackMeses = financialOutputs.paybackMonths > 0 ? financialOutputs.paybackMonths : formData.paybackMeses;
+    const effectiveEconomiaAnual = Math.max(0, Number(financialOutputs.annualRevenueYear1) || 0);
+    const effectivePaybackMeses = Math.max(0, Number(financialOutputs.paybackMonths) || 0);
     const effectiveRentabilityRate = financialInputs.rentabilityRatePerKwh ?? financialInputs.tarifaKwh;
 
     setIsLoading(true);
