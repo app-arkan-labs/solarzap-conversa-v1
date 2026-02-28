@@ -338,44 +338,57 @@ async function fetchPvgisMonthly(lat: number, lon: number): Promise<{
   monthlyDaily: number[];
   referenceYear: number | null;
 } | null> {
-  const url = new URL("https://re.jrc.ec.europa.eu/api/v5_2/MRcalc");
+  // ── Use PVcalc v5_3 with optimalangles to get irradiance on the optimal tilt plane ──
+  // This matches professional tools (IBS, PVSol, etc.) that use tilted-plane irradiance.
+  // MRcalc with selectrad=1 + angle=0 gives HORIZONTAL irradiance which underestimates by ~15-20%.
+  // PVcalc peakpower=1 + loss=20 + optimalangles=1 gives monthly H(i)_d on the optimal plane.
+  const url = new URL("https://re.jrc.ec.europa.eu/api/v5_3/PVcalc");
   url.searchParams.set("lat", String(lat));
   url.searchParams.set("lon", String(lon));
+  url.searchParams.set("peakpower", "1");
+  url.searchParams.set("loss", "20");
+  url.searchParams.set("optimalangles", "1");
   url.searchParams.set("outputformat", "json");
   url.searchParams.set("browser", "0");
-  url.searchParams.set("selectrad", "1");
 
   const response = await fetchWithTimeout(url.toString(), 25_000);
-  if (!response.ok) return null;
-
-  const data = await response.json().catch(() => null);
-  const monthlyRows = Array.isArray((data as any)?.outputs?.monthly)
-    ? (data as any).outputs.monthly
-    : [];
-  if (monthlyRows.length === 0) return null;
-
-  const monthlyTotalsByMonth: number[][] = Array.from({ length: 12 }, () => []);
-  for (const row of monthlyRows) {
-    const monthIndex = clamp(Math.round(toFinite((row as any)?.month, 0)) - 1, 0, 11);
-    const monthlyIrradianceTotal = Math.max(0, toFinite((row as any)?.["H(i)_m"], 0));
-    if (monthlyIrradianceTotal > 0) {
-      monthlyTotalsByMonth[monthIndex].push(monthlyIrradianceTotal);
-    }
+  if (!response.ok) {
+    console.error(`PVGIS PVcalc failed: HTTP ${response.status} for lat=${lat}, lon=${lon}`);
+    return null;
   }
 
-  const monthlyDaily = monthlyTotalsByMonth.map((monthTotals, monthIndex) => {
-    if (monthTotals.length === 0) return 0;
-    const averageMonthlyTotal = monthTotals.reduce((acc, value) => acc + value, 0) / monthTotals.length;
-    const days = DAYS_IN_MONTH[monthIndex] || 30.4375;
-    return averageMonthlyTotal > 0 ? (averageMonthlyTotal / days) : 0;
-  });
+  const data = await response.json().catch(() => null);
+  const monthlyRows = Array.isArray((data as any)?.outputs?.monthly?.fixed)
+    ? (data as any).outputs.monthly.fixed
+    : [];
+  if (monthlyRows.length === 0) {
+    console.error("PVGIS PVcalc: no monthly rows in response");
+    return null;
+  }
+
+  // Extract H(i)_d (daily irradiance on tilted plane, kWh/m²/day) for each month
+  const monthlyDaily: number[] = new Array(12).fill(0);
+  for (const row of monthlyRows) {
+    const monthIndex = clamp(Math.round(toFinite((row as any)?.month, 0)) - 1, 0, 11);
+    const dailyIrradiance = Math.max(0, toFinite((row as any)?.["H(i)_d"], 0));
+    monthlyDaily[monthIndex] = dailyIrradiance;
+  }
 
   const validCount = monthlyDaily.filter((value) => value > 0.01).length;
-  if (validCount < 8) return null;
+  if (validCount < 8) {
+    console.error(`PVGIS PVcalc: only ${validCount}/12 valid months`);
+    return null;
+  }
 
   const knownAvg = monthlyDaily.filter((v) => v > 0).reduce((acc, v) => acc + v, 0) / validCount;
   const patchedMonthlyDaily = monthlyDaily.map((value) => (value > 0 ? value : knownAvg));
-  const annual = patchedMonthlyDaily.reduce((acc, value, idx) => acc + value * DAYS_IN_MONTH[idx], 0) / 365.25;
+
+  // Annual average: use the totals H(i)_d if available, otherwise compute weighted average
+  const totalsHiD = toFinite((data as any)?.outputs?.totals?.fixed?.["H(i)_d"], 0);
+  const annual = totalsHiD > 0
+    ? totalsHiD
+    : patchedMonthlyDaily.reduce((acc, value, idx) => acc + value * DAYS_IN_MONTH[idx], 0) / 365.25;
+
   const referenceYear = Number.isFinite(Number((data as any)?.inputs?.meteo_data?.year_max))
     ? Number((data as any)?.inputs?.meteo_data?.year_max)
     : null;

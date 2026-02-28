@@ -451,11 +451,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       });
 
       if (!solarResource) {
-        toast({
-          title: 'Nao foi possivel localizar dados solares',
-          description: 'Confirme CEP/endereco/cidade e tente novamente.',
-          variant: 'destructive',
-        });
+        console.warn('resolvePreciseLocation: no solar resource result');
         return null;
       }
 
@@ -585,7 +581,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     }
   }, [formData.cep, formData.cidade, formData.endereco, formData.estado, patchAndRecalculate, toast]);
 
-  // ── Auto-calculate system for ALL types using Kit equipment data ──
+  // ── Auto-calculate system for ALL types using Kit equipment data ──
+
 
   const calculateSystem = useCallback((consumo: number) => {
     setFormData(prev => patchAndRecalculate(prev, { consumoMensal: consumo }));

@@ -8,10 +8,11 @@ function parseFlag(value: unknown): boolean {
 }
 
 function readFeatureFlag(name: string): boolean {
-  const viteValue = (import.meta as ImportMeta & { env?: Record<string, unknown> }).env?.[name];
-  if (viteValue !== undefined) return parseFlag(viteValue);
+  // Check process.env first (allows test overrides), then import.meta.env (Vite runtime)
   const nodeValue = typeof process !== 'undefined' ? process.env[name] : undefined;
-  return parseFlag(nodeValue);
+  if (nodeValue !== undefined) return parseFlag(nodeValue);
+  const viteValue = (import.meta as ImportMeta & { env?: Record<string, unknown> }).env?.[name];
+  return parseFlag(viteValue);
 }
 
 export function isUnifiedGenerationEnabled(): boolean {

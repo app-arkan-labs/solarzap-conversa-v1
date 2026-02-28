@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { calcMonthlyGeneration } from '@/utils/proposalCharts';
 
 describe('calcMonthlyGeneration', () => {
+  const prevSRA = process.env.VITE_USE_SOLAR_RESOURCE_API;
+  beforeEach(() => { process.env.VITE_USE_SOLAR_RESOURCE_API = 'false'; });
+  afterEach(() => { if (prevSRA === undefined) delete process.env.VITE_USE_SOLAR_RESOURCE_API; else process.env.VITE_USE_SOLAR_RESOURCE_API = prevSRA; });
+
   it('usa consumo mensal como base e mantem anual proximo do esperado', () => {
     const monthly = calcMonthlyGeneration(3.3, 350);
     const annual = monthly.reduce((acc, value) => acc + value, 0);

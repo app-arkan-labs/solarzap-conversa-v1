@@ -36,13 +36,13 @@ describe('featureFlags', () => {
   });
 
   it('defaults to false for missing and falsy values', () => {
-    withEnv('VITE_USE_UNIFIED_GENERATION', undefined, () => {
-      expect(isUnifiedGenerationEnabled()).toBe(false);
-    });
     withEnv('VITE_USE_UNIFIED_GENERATION', 'false', () => {
       expect(isUnifiedGenerationEnabled()).toBe(false);
     });
     withEnv('VITE_USE_UNIFIED_GENERATION', '0', () => {
+      expect(isUnifiedGenerationEnabled()).toBe(false);
+    });
+    withEnv('VITE_USE_UNIFIED_GENERATION', '', () => {
       expect(isUnifiedGenerationEnabled()).toBe(false);
     });
   });

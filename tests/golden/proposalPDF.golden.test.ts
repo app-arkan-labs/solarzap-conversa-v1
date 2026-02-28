@@ -54,6 +54,15 @@ const ADVANCED_FLAGS_ON: Record<string, string> = {
   VITE_USE_TUSD_TE_SIMPLIFIED: 'true',
 };
 
+const ALL_FLAGS_OFF: Record<string, string> = {
+  VITE_USE_SOLAR_RESOURCE_API: 'false',
+  VITE_USE_UNIFIED_GENERATION: 'false',
+  VITE_USE_OM_COST_MODEL: 'false',
+  VITE_USE_DEGRADATION_ALL_CLIENTS: 'false',
+  VITE_USE_TUSD_TE_SIMPLIFIED: 'false',
+  VITE_USE_FINANCIAL_SHADOW_MODE: 'false',
+};
+
 function loadFixture(fileName: string): ProposalFixture {
   const fixturePath = join(process.cwd(), 'tests', 'fixtures', fileName);
   return JSON.parse(readFileSync(fixturePath, 'utf8')) as ProposalFixture;
@@ -163,12 +172,18 @@ async function pdfHashFromFixture(fileName: string, options?: GoldenFlagOverride
 
 describe('proposal PDF golden master', () => {
   it('residencial A keeps stable hash', async () => {
-    const hash = await pdfHashFromFixture('proposal_residencial_A.json', { unifiedGeneration: false });
+    const hash = await pdfHashFromFixture('proposal_residencial_A.json', {
+      unifiedGeneration: false,
+      featureFlags: ALL_FLAGS_OFF,
+    });
     expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES.residencialA);
   });
 
   it('usina B keeps stable hash', async () => {
-    const hash = await pdfHashFromFixture('proposal_usina_B.json', { unifiedGeneration: false });
+    const hash = await pdfHashFromFixture('proposal_usina_B.json', {
+      unifiedGeneration: false,
+      featureFlags: ALL_FLAGS_OFF,
+    });
     expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES.usinaB);
   });
 

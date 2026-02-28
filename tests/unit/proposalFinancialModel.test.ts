@@ -51,6 +51,11 @@ describe('calculateProposalFinancials', () => {
       tarifaKwh: 0.85,
       custoDisponibilidadeKwh: 50,
       analysisYears: 25,
+    }, {
+      unifiedGenerationEnabled: false,
+      omCostModelEnabled: false,
+      degradationAllClientsEnabled: false,
+      tusdTeSimplifiedEnabled: false,
     });
 
     expect(result.annualGenerationKwhYear1).toBe(4200);
@@ -81,6 +86,11 @@ describe('calculateProposalFinancials', () => {
       annualEnergyIncreasePct: 8,
       moduleDegradationPct: 0.8,
       analysisYears: 25,
+    }, {
+      unifiedGenerationEnabled: false,
+      omCostModelEnabled: false,
+      degradationAllClientsEnabled: false,
+      tusdTeSimplifiedEnabled: false,
     });
 
     expect(result.annualGenerationKwhYear1).toBe(60000);

@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { calculateSolarSizing } from '@/utils/solarSizing';
 
 describe('calculateSolarSizing', () => {
+  const prevSRA = process.env.VITE_USE_SOLAR_RESOURCE_API;
+  beforeEach(() => { process.env.VITE_USE_SOLAR_RESOURCE_API = 'false'; });
+  afterEach(() => { if (prevSRA === undefined) delete process.env.VITE_USE_SOLAR_RESOURCE_API; else process.env.VITE_USE_SOLAR_RESOURCE_API = prevSRA; });
+
   it('calcula dimensionamento residencial com ordem de grandeza correta', () => {
     const result = calculateSolarSizing({
       consumoMensal: 350,
