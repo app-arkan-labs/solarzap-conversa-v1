@@ -33,4 +33,19 @@ describe('calcMonthlyGeneration', () => {
     expect(new Set(monthly)).toEqual(new Set([350]));
     expect(annual).toBe(4200);
   });
+
+  it('usa fallback sazonal regional por UF quando fatores externos nao estao disponiveis', () => {
+    const monthlySouth = calcMonthlyGeneration(3.3, 350, { uf: 'RS' });
+    const monthlyNorth = calcMonthlyGeneration(3.3, 350, { uf: 'PA' });
+
+    expect(monthlySouth).toHaveLength(12);
+    expect(monthlyNorth).toHaveLength(12);
+    const annualSouth = monthlySouth.reduce((acc, value) => acc + value, 0);
+    const annualNorth = monthlyNorth.reduce((acc, value) => acc + value, 0);
+    expect(annualSouth).toBeGreaterThanOrEqual(4195);
+    expect(annualSouth).toBeLessThanOrEqual(4205);
+    expect(annualNorth).toBeGreaterThanOrEqual(4195);
+    expect(annualNorth).toBeLessThanOrEqual(4205);
+    expect(monthlySouth).not.toEqual(monthlyNorth);
+  });
 });

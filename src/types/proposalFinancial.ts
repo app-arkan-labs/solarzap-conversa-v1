@@ -15,6 +15,7 @@ export interface FinancialInputs {
   moduleDegradationPct?: number;
   analysisYears?: number;
   monthlyGenerationFactors?: number[];
+  uf?: string;
   annualOmCostPct?: number;
   annualOmCostFixed?: number;
   teRatePerKwh?: number;

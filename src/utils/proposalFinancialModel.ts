@@ -163,6 +163,7 @@ export function calculateProposalFinancials(
   const unifiedMonthlyGeneration = unifiedGenerationEnabled
     ? calcMonthlyGeneration(potenciaSistemaKwp, consumoMensalKwh, {
       monthlyGenerationFactors: input.monthlyGenerationFactors,
+      uf: input.uf,
     })
     : null;
   const legacyAnnualGenerationKwhYear1 = clampNonNegative(consumoMensalKwh * 12);

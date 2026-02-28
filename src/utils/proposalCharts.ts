@@ -5,6 +5,10 @@
 // ══════════════════════════════════════════════════════════
 import jsPDF from 'jspdf';
 import { isSolarResourceApiEnabled } from '@/config/featureFlags';
+import {
+  BRAZIL_MONTHLY_IRRADIATION_FACTOR,
+  getRegionalMonthlyGenerationFactorsByUf,
+} from '@/constants/regionalSeasonalProfiles';
 
 type RGB = [number, number, number];
 
@@ -670,25 +674,14 @@ export function drawEnvironmentalImpact(
 // ══════════════════════════════════════════════════════════
 // 5) MONTHLY GENERATION BAR CHART
 // ══════════════════════════════════════════════════════════
-const LEGACY_SEASONAL_PROFILE = [
-  1.18, 1.15, 1.08, 0.95, 0.78, 0.70,
-  0.74, 0.88, 0.96, 1.07, 1.16, 1.23,
-];
-export const normalizeGenerationFactors = (factors: number[]): number[] => {
-  if (!Array.isArray(factors) || factors.length !== 12) return BRAZIL_MONTHLY_IRRADIATION_FACTOR;
+export const normalizeGenerationFactors = (factors: number[], fallbackFactors = BRAZIL_MONTHLY_IRRADIATION_FACTOR): number[] => {
+  if (!Array.isArray(factors) || factors.length !== 12) return [...fallbackFactors];
   const safeFactors = factors.map((value) => Math.max(0, Number(value) || 0));
-  if (safeFactors.some((value) => value <= 0)) return BRAZIL_MONTHLY_IRRADIATION_FACTOR;
+  if (safeFactors.some((value) => value <= 0)) return [...fallbackFactors];
   const avg = safeFactors.reduce((acc, v) => acc + v, 0) / safeFactors.length;
-  if (!Number.isFinite(avg) || avg <= 0) return BRAZIL_MONTHLY_IRRADIATION_FACTOR;
+  if (!Number.isFinite(avg) || avg <= 0) return [...fallbackFactors];
   return safeFactors.map((v) => v / avg);
 };
-
-const normalizeFactors = (factors: number[]): number[] => {
-  const avg = factors.reduce((acc, v) => acc + v, 0) / factors.length;
-  if (!Number.isFinite(avg) || avg <= 0) return factors;
-  return factors.map((v) => v / avg);
-};
-export const BRAZIL_MONTHLY_IRRADIATION_FACTOR = normalizeFactors(LEGACY_SEASONAL_PROFILE);
 const MONTH_LABELS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 export function calcMonthlyGeneration(
@@ -696,9 +689,12 @@ export function calcMonthlyGeneration(
   consumoMensal?: number,
   options?: {
     monthlyGenerationFactors?: number[] | null;
+    uf?: string | null;
   },
 ): number[] {
-  const seasonalFactors = normalizeGenerationFactors(options?.monthlyGenerationFactors || BRAZIL_MONTHLY_IRRADIATION_FACTOR);
+  const regionalFallback = getRegionalMonthlyGenerationFactorsByUf(options?.uf);
+  const defaultFactors = regionalFallback || BRAZIL_MONTHLY_IRRADIATION_FACTOR;
+  const seasonalFactors = normalizeGenerationFactors(options?.monthlyGenerationFactors || defaultFactors, defaultFactors);
   const consumoBase = Number(consumoMensal);
   if (Number.isFinite(consumoBase) && consumoBase > 0) {
     return seasonalFactors.map((factor) => Math.round(consumoBase * factor));

@@ -362,6 +362,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
       tusdCompensationPct: Math.max(0, Math.min(100, Number(next.tusdCompensationPct) || 0)),
       analysisYears: DEFAULT_ANALYSIS_YEARS,
       monthlyGenerationFactors: next.monthlyGenerationFactors,
+      uf: next.estado,
     };
     const financialOutputs = calculateProposalFinancials(financialInputs);
     return { financialInputs, financialOutputs };
