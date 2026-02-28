@@ -15,6 +15,14 @@ export interface FinancialInputs {
   moduleDegradationPct?: number;
   analysisYears?: number;
   monthlyGenerationFactors?: number[];
+  annualOmCostPct?: number;
+  annualOmCostFixed?: number;
+  teRatePerKwh?: number;
+  tusdRatePerKwh?: number;
+  tusdCompensationPct?: number;
+  irradianceSource?: 'uf_fallback' | 'pvgis' | 'cache';
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface FinancialOutputs {
@@ -38,6 +46,11 @@ export interface FinancialOutputs {
   savingsPct?: number;
   rentabilityRatePerKwhUsed?: number;
   availabilityKwhUsed?: number;
+  annualOmCostYear1?: number;
+  netAnnualRevenueYear1?: number;
+  teSavingsMonthly?: number;
+  tusdSavingsMonthly?: number;
+  assumptionsSnapshot?: Record<string, unknown>;
 }
 
-export const FINANCIAL_MODEL_VERSION = 'v2_cashflow_non_usina_coerente' as const;
+export const FINANCIAL_MODEL_VERSION = 'v3_geo_om_tusdte_flagged' as const;

@@ -99,6 +99,8 @@ export interface ProposalData {
   validadeDias?: number;
   annualEnergyIncreasePct?: number;
   moduleDegradationPct?: number;
+  annualOmCostPct?: number;
+  annualOmCostFixed?: number;
   financialInputs?: FinancialInputs;
   financialOutputs?: FinancialOutputs;
   financialModelVersion?: typeof FINANCIAL_MODEL_VERSION;
@@ -199,6 +201,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
     validadeDias: 15,
     annualEnergyIncreasePct: DEFAULT_ANNUAL_INCREASE_PCT,
     moduleDegradationPct: DEFAULT_MODULE_DEGRADATION_PCT,
+    annualOmCostPct: 1,
+    annualOmCostFixed: 0,
     financialInputs: undefined as FinancialInputs | undefined,
     financialOutputs: undefined as FinancialOutputs | undefined,
     financialModelVersion: FINANCIAL_MODEL_VERSION as typeof FINANCIAL_MODEL_VERSION,
@@ -335,6 +339,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
       abaterCustoDisponibilidadeNoDimensionamento: Boolean(next.abaterCustoDisponibilidadeNoDimensionamento),
       annualEnergyIncreasePct: Math.max(0, Number(next.annualEnergyIncreasePct) || DEFAULT_ANNUAL_INCREASE_PCT),
       moduleDegradationPct: Math.max(0, Number(next.moduleDegradationPct) || DEFAULT_MODULE_DEGRADATION_PCT),
+      annualOmCostPct: Math.max(0, Number(next.annualOmCostPct) || 0),
+      annualOmCostFixed: Math.max(0, Number(next.annualOmCostFixed) || 0),
       analysisYears: DEFAULT_ANALYSIS_YEARS,
       monthlyGenerationFactors: next.monthlyGenerationFactors,
     };
@@ -831,6 +837,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         showFinancingSimulation,
         annualEnergyIncreasePct: formData.annualEnergyIncreasePct,
         moduleDegradationPct: formData.moduleDegradationPct,
+        annualOmCostPct: formData.annualOmCostPct,
+        annualOmCostFixed: formData.annualOmCostFixed,
         financialInputs,
         financialOutputs,
         financialModelVersion: FINANCIAL_MODEL_VERSION,
@@ -901,6 +909,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         showFinancingSimulation,
         annualEnergyIncreasePct: formData.annualEnergyIncreasePct,
         moduleDegradationPct: formData.moduleDegradationPct,
+        annualOmCostPct: formData.annualOmCostPct,
+        annualOmCostFixed: formData.annualOmCostFixed,
         financialInputs,
         financialOutputs,
         financialModelVersion: FINANCIAL_MODEL_VERSION,
@@ -931,6 +941,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         showFinancingSimulation,
         annualEnergyIncreasePct: formData.annualEnergyIncreasePct,
         moduleDegradationPct: formData.moduleDegradationPct,
+        annualOmCostPct: formData.annualOmCostPct,
+        annualOmCostFixed: formData.annualOmCostFixed,
         financialInputs,
         financialOutputs,
         financialModelVersion: FINANCIAL_MODEL_VERSION,
@@ -1023,6 +1035,8 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
           validadeDias: 15,
           annualEnergyIncreasePct: DEFAULT_ANNUAL_INCREASE_PCT,
           moduleDegradationPct: DEFAULT_MODULE_DEGRADATION_PCT,
+          annualOmCostPct: 1,
+          annualOmCostFixed: 0,
           estado: uf,
           irradiancia: uf ? getIrradianceByUF(uf) : 4.5,
           monthlyGenerationFactors: undefined,

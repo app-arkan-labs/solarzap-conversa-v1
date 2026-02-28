@@ -31,7 +31,7 @@ import {
 } from '@/types/proposalFinancing';
 import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
 import { calculateProposalFinancials } from '@/utils/proposalFinancialModel';
-import { isUnifiedGenerationEnabled } from '@/config/featureFlags';
+import { isOmCostModelEnabled, isUnifiedGenerationEnabled } from '@/config/featureFlags';
 import {
   DEFAULT_ANALYSIS_YEARS,
   DEFAULT_ANNUAL_INCREASE_PCT,
@@ -70,6 +70,8 @@ export interface ProposalPDFData {
   validadeDias?: number;
   annualEnergyIncreasePct?: number;
   moduleDegradationPct?: number;
+  annualOmCostPct?: number;
+  annualOmCostFixed?: number;
   financialInputs?: FinancialInputs;
   financialOutputs?: FinancialOutputs;
   financialModelVersion?: string;
@@ -127,6 +129,8 @@ export interface SellerScriptPDFData {
   validadeDias?: number;
   annualEnergyIncreasePct?: number;
   moduleDegradationPct?: number;
+  annualOmCostPct?: number;
+  annualOmCostFixed?: number;
   financialInputs?: FinancialInputs;
   financialOutputs?: FinancialOutputs;
   financialModelVersion?: string;
@@ -627,6 +631,8 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
     moduleDegradationPct: Number(
       data.moduleDegradationPct ?? data.financialInputs?.moduleDegradationPct ?? DEFAULT_MODULE_DEGRADATION_PCT,
     ) || DEFAULT_MODULE_DEGRADATION_PCT,
+    annualOmCostPct: Math.max(0, Number(data.annualOmCostPct ?? data.financialInputs?.annualOmCostPct ?? 0) || 0),
+    annualOmCostFixed: Math.max(0, Number(data.annualOmCostFixed ?? data.financialInputs?.annualOmCostFixed ?? 0) || 0),
     analysisYears: Math.max(
       1,
       Number(data.financialInputs?.analysisYears || DEFAULT_ANALYSIS_YEARS) || DEFAULT_ANALYSIS_YEARS,
@@ -641,10 +647,13 @@ export function generateProposalPDF(data: ProposalPDFData, options?: PDFGenerati
   const econMensalRaw = (financialOutputs?.monthlyRevenueYear1 ?? 0) > 0
     ? (financialOutputs?.monthlyRevenueYear1 || 0)
     : (econAnualRaw / 12);
+  const omCostModelEnabled = isOmCostModelEnabled();
   const econAnual = !isUsina && Number.isFinite(financialOutputs.savingsAnnual as number)
+    && !omCostModelEnabled
     ? (financialOutputs.savingsAnnual as number)
     : econAnualRaw;
   const econMensal = !isUsina && Number.isFinite(financialOutputs.savingsMonthly as number)
+    && !omCostModelEnabled
     ? (financialOutputs.savingsMonthly as number)
     : econMensalRaw;
   const cumulative25 = Array.isArray(financialOutputs?.cumulativeRevenueSeries)

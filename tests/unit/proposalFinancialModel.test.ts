@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { calcMonthlyGeneration } from '@/utils/proposalCharts';
 import {
   calculateProposalFinancials,
   resolveTariffByPriority,
 } from '@/utils/proposalFinancialModel';
-import { calcMonthlyGeneration } from '@/utils/proposalCharts';
 
 describe('resolveTariffByPriority', () => {
   it('respeita prioridade manual > lead > inferred > fallback', () => {
@@ -41,7 +41,7 @@ describe('resolveTariffByPriority', () => {
 });
 
 describe('calculateProposalFinancials', () => {
-  it('calcula snapshot financeiro coerente para não-usina', () => {
+  it('calcula snapshot financeiro coerente para nao-usina', () => {
     const result = calculateProposalFinancials({
       tipoCliente: 'residencial',
       investimentoTotal: 14850,
@@ -69,7 +69,7 @@ describe('calculateProposalFinancials', () => {
     expect(result.roi25Pct).toBeLessThan(430);
   });
 
-  it('aplica crescimento/degradação na usina e mantém série crescente neste cenário', () => {
+  it('aplica crescimento/degradacao na usina e mantem serie crescente neste cenario', () => {
     const result = calculateProposalFinancials({
       tipoCliente: 'usina',
       investimentoTotal: 100000,
@@ -94,7 +94,7 @@ describe('calculateProposalFinancials', () => {
     expect(result.savingsMonthly).toBeUndefined();
   });
 
-  it('com USE_UNIFIED_GENERATION ativo, geração anual bate com soma mensal', () => {
+  it('com USE_UNIFIED_GENERATION ativo, geracao anual bate com soma mensal', () => {
     const previous = process.env.VITE_USE_UNIFIED_GENERATION;
     process.env.VITE_USE_UNIFIED_GENERATION = 'true';
 
@@ -116,6 +116,67 @@ describe('calculateProposalFinancials', () => {
     } finally {
       if (previous === undefined) delete process.env.VITE_USE_UNIFIED_GENERATION;
       else process.env.VITE_USE_UNIFIED_GENERATION = previous;
+    }
+  });
+
+  it('aplica O&M anual quando VITE_USE_OM_COST_MODEL esta ativa', () => {
+    const previous = process.env.VITE_USE_OM_COST_MODEL;
+    process.env.VITE_USE_OM_COST_MODEL = 'true';
+
+    try {
+      const resultWithOm = calculateProposalFinancials({
+        tipoCliente: 'residencial',
+        investimentoTotal: 14850,
+        consumoMensalKwh: 350,
+        potenciaSistemaKwp: 3.3,
+        rentabilityRatePerKwh: 0.85,
+        tarifaKwh: 0.85,
+        custoDisponibilidadeKwh: 50,
+        annualOmCostPct: 1,
+        analysisYears: 25,
+      });
+      const resultWithoutOm = calculateProposalFinancials({
+        tipoCliente: 'residencial',
+        investimentoTotal: 14850,
+        consumoMensalKwh: 350,
+        potenciaSistemaKwp: 3.3,
+        rentabilityRatePerKwh: 0.85,
+        tarifaKwh: 0.85,
+        custoDisponibilidadeKwh: 50,
+        annualOmCostPct: 0,
+        analysisYears: 25,
+      });
+
+      expect(resultWithOm.annualOmCostYear1).toBeCloseTo(148.5, 2);
+      expect(resultWithOm.annualRevenueYear1).toBeLessThan(resultWithoutOm.annualRevenueYear1);
+      expect(resultWithOm.netAnnualRevenueYear1).toBe(resultWithOm.annualRevenueYear1);
+    } finally {
+      if (previous === undefined) delete process.env.VITE_USE_OM_COST_MODEL;
+      else process.env.VITE_USE_OM_COST_MODEL = previous;
+    }
+  });
+
+  it('aplica degradacao para nao-usina quando VITE_USE_DEGRADATION_ALL_CLIENTS esta ativa', () => {
+    const previous = process.env.VITE_USE_DEGRADATION_ALL_CLIENTS;
+    process.env.VITE_USE_DEGRADATION_ALL_CLIENTS = 'true';
+
+    try {
+      const result = calculateProposalFinancials({
+        tipoCliente: 'residencial',
+        investimentoTotal: 14850,
+        consumoMensalKwh: 350,
+        potenciaSistemaKwp: 3.3,
+        rentabilityRatePerKwh: 0.85,
+        tarifaKwh: 0.85,
+        custoDisponibilidadeKwh: 50,
+        moduleDegradationPct: 0.8,
+        analysisYears: 25,
+      });
+
+      expect(result.annualRevenueSeries[1]).toBeLessThan(result.annualRevenueSeries[0]);
+    } finally {
+      if (previous === undefined) delete process.env.VITE_USE_DEGRADATION_ALL_CLIENTS;
+      else process.env.VITE_USE_DEGRADATION_ALL_CLIENTS = previous;
     }
   });
 });

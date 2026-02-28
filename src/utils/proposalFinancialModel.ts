@@ -5,7 +5,11 @@ import {
   DEFAULT_MODULE_DEGRADATION_PCT,
   DEFAULT_TARIFF_KWH,
 } from '@/constants/financialDefaults';
-import { isUnifiedGenerationEnabled } from '@/config/featureFlags';
+import {
+  isDegradationAllClientsEnabled,
+  isOmCostModelEnabled,
+  isUnifiedGenerationEnabled,
+} from '@/config/featureFlags';
 import { calcMonthlyGeneration } from '@/utils/proposalCharts';
 
 const toFinite = (value: unknown, fallback = 0) => {
@@ -68,6 +72,8 @@ function buildNonUsinaBillSnapshot(
 }
 
 export function calculateProposalFinancials(input: FinancialInputs): FinancialOutputs {
+  const omCostModelEnabled = isOmCostModelEnabled();
+  const degradationAllClientsEnabled = isDegradationAllClientsEnabled();
   const tipoCliente = String(input.tipoCliente || '').toLowerCase();
   const isUsina = isUsinaClient(tipoCliente);
   const investimentoTotal = clampNonNegative(toFinite(input.investimentoTotal));
@@ -80,6 +86,8 @@ export function calculateProposalFinancials(input: FinancialInputs): FinancialOu
   const years = Math.max(1, Math.round(toFinite(input.analysisYears, DEFAULT_ANALYSIS_YEARS)));
   const annualEnergyIncreasePct = clampNonNegative(toFinite(input.annualEnergyIncreasePct, DEFAULT_ANNUAL_INCREASE_PCT));
   const moduleDegradationPct = clampNonNegative(toFinite(input.moduleDegradationPct, DEFAULT_MODULE_DEGRADATION_PCT));
+  const annualOmCostPct = clampNonNegative(toFinite(input.annualOmCostPct, omCostModelEnabled ? 1 : 0));
+  const annualOmCostFixed = clampNonNegative(toFinite(input.annualOmCostFixed, 0));
   const annualEnergyIncrease = annualEnergyIncreasePct / 100;
   const moduleDegradation = Math.min(0.95, moduleDegradationPct / 100);
   const unifiedGenerationEnabled = isUnifiedGenerationEnabled();
@@ -98,9 +106,12 @@ export function calculateProposalFinancials(input: FinancialInputs): FinancialOu
     : legacyAnnualGenerationKwhYear1;
   const monthlyGenerationAvgKwhYear1 = annualGenerationKwhYear1 / 12;
 
-  const annualRevenueYear1 = isUsina
+  const annualRevenueYear1Gross = isUsina
     ? legacyAnnualGenerationKwhYear1 * rentabilityRatePerKwh
     : (nonUsinaSnapshot?.savingsAnnual || 0);
+  const annualOmCostYear1 = omCostModelEnabled
+    ? ((investimentoTotal * annualOmCostPct) / 100) + annualOmCostFixed
+    : 0;
 
   const annualRevenueSeries: number[] = [];
   const cumulativeRevenueSeries: number[] = [];
@@ -109,12 +120,16 @@ export function calculateProposalFinancials(input: FinancialInputs): FinancialOu
   for (let year = 1; year <= years; year += 1) {
     const yearIndex = year - 1;
     const growthFactor = isUsina ? Math.pow(1 + annualEnergyIncrease, yearIndex) : 1;
-    const degradationFactor = isUsina ? Math.pow(1 - moduleDegradation, yearIndex) : 1;
-    const annualRevenue = clampNonNegative(annualRevenueYear1 * growthFactor * degradationFactor);
+    const degradationFactor = (isUsina || degradationAllClientsEnabled)
+      ? Math.pow(1 - moduleDegradation, yearIndex)
+      : 1;
+    const annualRevenueGross = clampNonNegative(annualRevenueYear1Gross * growthFactor * degradationFactor);
+    const annualRevenue = clampNonNegative(annualRevenueGross - annualOmCostYear1);
     annualRevenueSeries.push(annualRevenue);
     cumulative += annualRevenue;
     cumulativeRevenueSeries.push(cumulative);
   }
+  const annualRevenueYear1 = annualRevenueSeries[0] || 0;
 
   let paybackMonths = 0;
   if (investimentoTotal > 0) {
@@ -163,5 +178,15 @@ export function calculateProposalFinancials(input: FinancialInputs): FinancialOu
     savingsPct: nonUsinaSnapshot?.savingsPct,
     rentabilityRatePerKwhUsed: rentabilityRatePerKwh,
     availabilityKwhUsed: nonUsinaSnapshot?.availabilityKwhUsed,
+    annualOmCostYear1: omCostModelEnabled ? annualOmCostYear1 : undefined,
+    netAnnualRevenueYear1: annualRevenueYear1,
+    assumptionsSnapshot: {
+      omCostModelEnabled,
+      degradationAllClientsEnabled,
+      annualOmCostPct,
+      annualOmCostFixed,
+      annualEnergyIncreasePct,
+      moduleDegradationPct,
+    },
   };
 }
