@@ -406,6 +406,7 @@ export function usePipeline() {
                 source,
                 segment,
                 premium_payload_input: data.premiumPayload || null,
+                shadow_comparison: (data.premiumPayload as Record<string, unknown> | null)?.shadowComparison || null,
                 crm_comments: crmComments
                     .map((c) => ({
                         texto: c.texto,

@@ -22,7 +22,11 @@ import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
 import { supabase } from '@/lib/supabase';
 import { BRAZIL_STATES, getIrradianceByUF } from '@/constants/solarIrradiance';
-import { isSolarResourceApiEnabled, isTusdTeSimplifiedEnabled } from '@/config/featureFlags';
+import {
+  isFinancialShadowModeEnabled,
+  isSolarResourceApiEnabled,
+  isTusdTeSimplifiedEnabled,
+} from '@/config/featureFlags';
 import {
   ENERGY_DISTRIBUTOR_OPTIONS,
   inferDistributor,
@@ -808,6 +812,36 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
     const effectiveEconomiaAnual = Math.max(0, Number(financialOutputs.annualRevenueYear1) || 0);
     const effectivePaybackMeses = Math.max(0, Number(financialOutputs.paybackMonths) || 0);
     const effectiveRentabilityRate = financialInputs.rentabilityRatePerKwh ?? financialInputs.tarifaKwh;
+    const shadowComparison = isFinancialShadowModeEnabled()
+      ? (() => {
+        const legacyOutputs = calculateProposalFinancials(financialInputs, {
+          unifiedGenerationEnabled: false,
+          omCostModelEnabled: false,
+          degradationAllClientsEnabled: false,
+          tusdTeSimplifiedEnabled: false,
+        });
+        const enhancedOutputs = financialOutputs;
+        return {
+          enabled: true,
+          generatedAt: new Date().toISOString(),
+          legacy: {
+            annualRevenueYear1: legacyOutputs.annualRevenueYear1,
+            paybackMonths: legacyOutputs.paybackMonths,
+            roi25Pct: legacyOutputs.roi25Pct,
+          },
+          enhanced: {
+            annualRevenueYear1: enhancedOutputs.annualRevenueYear1,
+            paybackMonths: enhancedOutputs.paybackMonths,
+            roi25Pct: enhancedOutputs.roi25Pct,
+          },
+          delta: {
+            annualRevenueYear1: enhancedOutputs.annualRevenueYear1 - legacyOutputs.annualRevenueYear1,
+            paybackMonths: enhancedOutputs.paybackMonths - legacyOutputs.paybackMonths,
+            roi25Pct: enhancedOutputs.roi25Pct - legacyOutputs.roi25Pct,
+          },
+        };
+      })()
+      : null;
 
     setIsLoading(true);
 
@@ -955,6 +989,7 @@ export function ProposalModal({ isOpen, onClose, contact, onGenerate }: Proposal
         rentabilityRatePerKwh: effectiveRentabilityRate,
         secondaryColorHex: secondaryColorHex || null,
         propNum,
+        shadowComparison,
       };
 
       // 5) Save to pipeline (Sprint 3: pass theme/logo for seller script)

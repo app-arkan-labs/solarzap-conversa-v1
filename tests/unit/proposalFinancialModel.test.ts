@@ -207,4 +207,39 @@ describe('calculateProposalFinancials', () => {
       else process.env.VITE_USE_TUSD_TE_SIMPLIFIED = previous;
     }
   });
+
+  it('permite overrides de flags para shadow mode', () => {
+    const previousOm = process.env.VITE_USE_OM_COST_MODEL;
+    process.env.VITE_USE_OM_COST_MODEL = 'true';
+
+    try {
+      const withEnvOm = calculateProposalFinancials({
+        tipoCliente: 'residencial',
+        investimentoTotal: 14850,
+        consumoMensalKwh: 350,
+        potenciaSistemaKwp: 3.3,
+        rentabilityRatePerKwh: 0.85,
+        tarifaKwh: 0.85,
+        custoDisponibilidadeKwh: 50,
+      });
+      const withOverrideLegacy = calculateProposalFinancials({
+        tipoCliente: 'residencial',
+        investimentoTotal: 14850,
+        consumoMensalKwh: 350,
+        potenciaSistemaKwp: 3.3,
+        rentabilityRatePerKwh: 0.85,
+        tarifaKwh: 0.85,
+        custoDisponibilidadeKwh: 50,
+      }, {
+        omCostModelEnabled: false,
+        degradationAllClientsEnabled: false,
+        tusdTeSimplifiedEnabled: false,
+      });
+
+      expect(withEnvOm.annualRevenueYear1).toBeLessThan(withOverrideLegacy.annualRevenueYear1);
+    } finally {
+      if (previousOm === undefined) delete process.env.VITE_USE_OM_COST_MODEL;
+      else process.env.VITE_USE_OM_COST_MODEL = previousOm;
+    }
+  });
 });

@@ -29,6 +29,13 @@ const formatYearsAndMonths = (monthsRaw: number) => {
   return `${years} anos e ${months} meses`;
 };
 
+export interface FinancialModelFlagOverrides {
+  unifiedGenerationEnabled?: boolean;
+  omCostModelEnabled?: boolean;
+  degradationAllClientsEnabled?: boolean;
+  tusdTeSimplifiedEnabled?: boolean;
+}
+
 export function resolveTariffByPriority(params: {
   manualTariffKwh?: number | null;
   leadTariffKwh?: number | null;
@@ -99,10 +106,19 @@ function buildNonUsinaBillSnapshot(
   };
 }
 
-export function calculateProposalFinancials(input: FinancialInputs): FinancialOutputs {
-  const omCostModelEnabled = isOmCostModelEnabled();
-  const degradationAllClientsEnabled = isDegradationAllClientsEnabled();
-  const tusdTeSimplifiedEnabled = isTusdTeSimplifiedEnabled();
+export function calculateProposalFinancials(
+  input: FinancialInputs,
+  overrides?: FinancialModelFlagOverrides,
+): FinancialOutputs {
+  const omCostModelEnabled = typeof overrides?.omCostModelEnabled === 'boolean'
+    ? overrides.omCostModelEnabled
+    : isOmCostModelEnabled();
+  const degradationAllClientsEnabled = typeof overrides?.degradationAllClientsEnabled === 'boolean'
+    ? overrides.degradationAllClientsEnabled
+    : isDegradationAllClientsEnabled();
+  const tusdTeSimplifiedEnabled = typeof overrides?.tusdTeSimplifiedEnabled === 'boolean'
+    ? overrides.tusdTeSimplifiedEnabled
+    : isTusdTeSimplifiedEnabled();
   const tipoCliente = String(input.tipoCliente || '').toLowerCase();
   const isUsina = isUsinaClient(tipoCliente);
   const investimentoTotal = clampNonNegative(toFinite(input.investimentoTotal));
@@ -132,7 +148,9 @@ export function calculateProposalFinancials(input: FinancialInputs): FinancialOu
     : rentabilityRatePerKwh;
   const annualEnergyIncrease = annualEnergyIncreasePct / 100;
   const moduleDegradation = Math.min(0.95, moduleDegradationPct / 100);
-  const unifiedGenerationEnabled = isUnifiedGenerationEnabled();
+  const unifiedGenerationEnabled = typeof overrides?.unifiedGenerationEnabled === 'boolean'
+    ? overrides.unifiedGenerationEnabled
+    : isUnifiedGenerationEnabled();
   const nonUsinaSnapshot = isUsina
     ? null
     : buildNonUsinaBillSnapshot(consumoMensalKwh, custoDisponibilidadeKwh, rentabilityRatePerKwh, {
