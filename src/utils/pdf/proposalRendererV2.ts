@@ -28,6 +28,9 @@ const PROPOSAL_PAGE_RENDERERS: ProposalPageRenderer[] = [
 
 const SELLER_SCRIPT_RENDERERS: SellerScriptRenderer[] = [sellerScriptRenderer];
 
+// NOTE: V2 is currently a scaffold. It executes module hooks for observability
+// and progressive migration, then delegates rendering to the legacy renderer to
+// keep output fully stable while modules are implemented page by page.
 export function generateProposalPDFV2(data: ProposalPDFData, options?: PDFGenerationOptions): Blob | void {
   runProposalModules(PROPOSAL_PAGE_RENDERERS, data, options);
   return generateProposalPDFLegacy(data, options);

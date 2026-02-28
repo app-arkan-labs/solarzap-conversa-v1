@@ -1,6 +1,4 @@
-// ══════════════════════════════════════════════════════════
-// Proposal Color Theme System
-// ══════════════════════════════════════════════════════════
+// Proposal color theme system.
 
 export type ProposalThemeId =
   | 'verde'
@@ -15,18 +13,19 @@ export type ProposalThemeId =
   | 'grafite';
 
 export type ProposalThemeValue = ProposalThemeId | `custom:${string}`;
+export type RGB = [number, number, number];
 
 export interface ProposalColorTheme {
   id: ProposalThemeValue;
   label: string;
   /** Main color for header, footer, table heads, investment box */
-  primary: [number, number, number];
+  primary: RGB;
   /** Darker accent bar below header */
-  primaryDark: [number, number, number];
+  primaryDark: RGB;
   /** Light tint for section headers bg and alternateRowStyles */
-  primaryLight: [number, number, number];
+  primaryLight: RGB;
   /** Text color used on top of primaryLight bg (section titles) */
-  primaryText: [number, number, number];
+  primaryText: RGB;
   /** CSS-compatible color for the preview swatch in ProposalsView */
   swatch: string;
 }
@@ -143,7 +142,7 @@ export function normalizeThemeHex(input: string): string | null {
   return withHash.toLowerCase();
 }
 
-function hexToRgb(hex: string): [number, number, number] {
+function hexToRgb(hex: string): RGB {
   const clean = hex.replace('#', '');
   const r = parseInt(clean.slice(0, 2), 16);
   const g = parseInt(clean.slice(2, 4), 16);
@@ -151,18 +150,76 @@ function hexToRgb(hex: string): [number, number, number] {
   return [r, g, b];
 }
 
-export function parseThemeHexToRgb(input: string): [number, number, number] | null {
+export function parseThemeHexToRgb(input: string): RGB | null {
   const normalized = normalizeThemeHex(input);
   if (!normalized) return null;
   return hexToRgb(normalized);
 }
 
-function mix(base: [number, number, number], target: [number, number, number], alpha: number): [number, number, number] {
+export function rgbToHsl([rRaw, gRaw, bRaw]: RGB): [number, number, number] {
+  const r = rRaw / 255;
+  const g = gRaw / 255;
+  const b = bRaw / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+    else if (max === g) h = ((b - r) / d + 2) * 60;
+    else h = ((r - g) / d + 4) * 60;
+  }
+  return [h, s, l];
+}
+
+function hueToRgb(p: number, q: number, tRaw: number): number {
+  let t = tRaw;
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1 / 6) return p + (q - p) * 6 * t;
+  if (t < 1 / 2) return q;
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
+
+export function hslToRgb(hRaw: number, s: number, l: number): RGB {
+  const h = ((hRaw % 360) + 360) % 360 / 360;
+  if (s === 0) {
+    const v = clamp(l * 255);
+    return [v, v, v];
+  }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [
+    clamp(hueToRgb(p, q, h + 1 / 3) * 255),
+    clamp(hueToRgb(p, q, h) * 255),
+    clamp(hueToRgb(p, q, h - 1 / 3) * 255),
+  ];
+}
+
+export function mixToward(base: RGB, target: RGB, alpha: number): RGB {
   return [
     clamp(base[0] * (1 - alpha) + target[0] * alpha),
     clamp(base[1] * (1 - alpha) + target[1] * alpha),
     clamp(base[2] * (1 - alpha) + target[2] * alpha),
   ];
+}
+
+/** Derive a readable complementary color from a given theme color. */
+export function deriveComplementary(base: RGB): RGB {
+  const [h, s, l] = rgbToHsl(base);
+  const complementHue = (h + 180) % 360;
+  const safeS = Math.max(0.48, Math.min(0.78, s || 0.58));
+  const safeL = Math.max(0.34, Math.min(0.52, l));
+  return hslToRgb(complementHue, safeS, safeL);
+}
+
+function mix(base: RGB, target: RGB, alpha: number): RGB {
+  return mixToward(base, target, alpha);
 }
 
 export function toCustomThemeValue(hexCode: string): ProposalThemeValue | null {

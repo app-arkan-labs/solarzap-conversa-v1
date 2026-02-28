@@ -1,4 +1,4 @@
-﻿import jsPDF from 'jspdf';
+import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Contact } from '@/types/solarzap';
 import {
@@ -9,7 +9,9 @@ import {
 } from '@/utils/proposalPersonalization';
 import {
   type ProposalColorTheme,
+  deriveComplementary,
   getThemeById,
+  mixToward,
   parseThemeHexToRgb,
 } from '@/utils/proposalColorThemes';
 import {
@@ -46,9 +48,9 @@ import {
 } from '@/constants/financialDefaults';
 import { buildProposalFileName, buildSellerScriptFileName } from '@/utils/pdf/shared';
 
-// Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
 // INTERFACES
-// Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
 
 export interface ProposalPDFData {
   contact: Contact;
@@ -173,7 +175,7 @@ export interface PDFGenerationOptions {
   uuid?: string;
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Helpers
 
 import { calcPMT } from '@/utils/financingCalc';
 
@@ -183,69 +185,7 @@ function clamp255(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
-function rgbToHsl([rRaw, gRaw, bRaw]: RGB): [number, number, number] {
-  const r = rRaw / 255;
-  const g = gRaw / 255;
-  const b = bRaw / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0;
-  let s = 0;
-  const l = (max + min) / 2;
-
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60;
-    else if (max === g) h = ((b - r) / d + 2) * 60;
-    else h = ((r - g) / d + 4) * 60;
-  }
-  return [h, s, l];
-}
-
-function hueToRgb(p: number, q: number, tRaw: number): number {
-  let t = tRaw;
-  if (t < 0) t += 1;
-  if (t > 1) t -= 1;
-  if (t < 1 / 6) return p + (q - p) * 6 * t;
-  if (t < 1 / 2) return q;
-  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-  return p;
-}
-
-function hslToRgb(hRaw: number, s: number, l: number): RGB {
-  const h = ((hRaw % 360) + 360) % 360 / 360;
-  if (s === 0) {
-    const v = clamp255(l * 255);
-    return [v, v, v];
-  }
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  return [
-    clamp255(hueToRgb(p, q, h + 1 / 3) * 255),
-    clamp255(hueToRgb(p, q, h) * 255),
-    clamp255(hueToRgb(p, q, h - 1 / 3) * 255),
-  ];
-}
-
-function mixToward(base: RGB, target: RGB, alpha: number): RGB {
-  return [
-    clamp255(base[0] * (1 - alpha) + target[0] * alpha),
-    clamp255(base[1] * (1 - alpha) + target[1] * alpha),
-    clamp255(base[2] * (1 - alpha) + target[2] * alpha),
-  ];
-}
-
-/** Derive a readable complementary color from a given theme color. */
-function deriveComplementary(base: RGB): RGB {
-  const [h, s, l] = rgbToHsl(base);
-  const complementHue = (h + 180) % 360;
-  const safeS = Math.max(0.48, Math.min(0.78, s || 0.58));
-  const safeL = Math.max(0.34, Math.min(0.52, l));
-  return hslToRgb(complementHue, safeS, safeL);
-}
-
-// Ã¢â€â‚¬Ã¢â€â‚¬ Tarifa e custo de disponibilidade (ANEEL) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  Tarifa e custo de disponibilidade (ANEEL) 
 
 /** Custo de disponibilidade em kWh por tipo de conexao/cliente (ANEEL REN 1.000/2021) */
 function getCustoDisponibilidadeFallback(tipoCliente?: string): number {
@@ -467,7 +407,7 @@ function buildTermsConditionsFromSelection(params: {
   ].filter(Boolean);
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Theme-aware color palette Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  Theme-aware color palette 
 
 interface Palette {
   header: RGB; accent: RGB; teal: RGB; lightBg: RGB; cardBg: RGB;
@@ -521,7 +461,7 @@ function buildChartTheme(P: Palette): ChartTheme {
   };
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Accent sanitisation for Helvetica (standard 14 font Ã¢â‚¬â€ no Unicode glyphs) Ã¢â€â‚¬Ã¢â€â‚¬
+//  Accent sanitisation for Helvetica (standard 14 font  no Unicode glyphs) 
 /** Transliterate common Portuguese/Spanish accented chars so Helvetica can render them. */
 function repairMojibake(text: string): string {
   if (!/[ÃÂâ]/.test(text)) return text;
@@ -570,7 +510,7 @@ function applyPdfTextSanitizers(doc: jsPDF): void {
   }) as typeof doc.splitTextToSize;
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ AI text sanity check Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+//  AI text sanity check 
 /** Returns true if the AI-generated text looks usable (not too short/long/garbled). */
 function isSensibleAiText(text: string | undefined | null, label = 'AI text'): boolean {
   if (!text) return false;
@@ -582,9 +522,9 @@ function isSensibleAiText(text: string | undefined | null, label = 'AI text'): b
   return true;
 }
 
-// Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
 // CLIENT-FACING PROPOSAL PDF (5+ PAGES)
-// Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
 
 export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGenerationOptions): Blob | void {
   const now = options?.now ?? new Date();
@@ -662,6 +602,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
       1,
       Number(data.financialInputs?.analysisYears || DEFAULT_ANALYSIS_YEARS) || DEFAULT_ANALYSIS_YEARS,
     ),
+    uf: data.financialInputs?.uf || data.contact?.state,
   };
   const financialOutputs: FinancialOutputs = data.financialOutputs
     ? (data.financialOutputs as FinancialOutputs)
@@ -736,6 +677,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const unifiedGenerationEnabled = isUnifiedGenerationEnabled();
   const fallbackMonthlyGen = calcMonthlyGeneration(data.potenciaSistema, data.consumoMensal, {
     monthlyGenerationFactors: data.monthlyGenerationFactors || data.financialInputs?.monthlyGenerationFactors,
+    uf: data.contact?.state || data.financialInputs?.uf,
   });
   const premiumMonthlyGen = Array.isArray(premium?.monthlyGeneration)
     ? premium.monthlyGeneration.slice(0, 12).map((v) => {
@@ -799,16 +741,22 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     { item: 'Cabos e Conectores', spec: 'Solar CC 6mm\u00B2 + MC4', qty: 'Kit completo', warranty: '10 anos' },
     { item: 'String Box / Protecao', spec: 'DPS + chave seccionadora CC/CA', qty: 1, warranty: '5 anos' },
   ];
-  // Conta mensal real: consumo Ãƒâ€” tarifa mÃƒÂ©dia
+  // Monthly bill comparison for before/after chart.
+  const billBeforeFromModel = Number(financialOutputs.billBeforeMonthly);
+  const billAfterFromModel = Number(financialOutputs.billAfterMonthly);
+  const fallbackBillBefore = data.consumoMensal * effectiveTotalRate;
+  const fallbackBillAfter = Math.min(data.consumoMensal, resolvedFinancialInputs.custoDisponibilidadeKwh || 0) * effectiveTotalRate;
   const contaEstimada = !isUsina
-    ? (Number(financialOutputs.billBeforeMonthly) || (data.consumoMensal * effectiveTotalRate))
+    ? (Number.isFinite(billBeforeFromModel) ? billBeforeFromModel : fallbackBillBefore)
     : 0;
   const contaComSolar = !isUsina
-    ? (Number(financialOutputs.billAfterMonthly)
-      || (Math.min(data.consumoMensal, resolvedFinancialInputs.custoDisponibilidadeKwh || 0) * effectiveTotalRate))
+    ? (Number.isFinite(billAfterFromModel) ? billAfterFromModel : fallbackBillAfter)
     : 0;
   if (!isUsina) {
-    const diff = Math.abs((contaEstimada - contaComSolar) - econMensal);
+    const comparableSavingsMonthly = Number.isFinite(financialOutputs.savingsMonthly as number)
+      ? Math.max(0, Number(financialOutputs.savingsMonthly) || 0)
+      : econMensal;
+    const diff = Math.abs((contaEstimada - contaComSolar) - comparableSavingsMonthly);
     if (diff > 0.01) {
       console.warn('[proposal-pdf] Incoerencia financeira detectada no comparativo.', { diff });
     }
@@ -854,7 +802,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     return false;
   };
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Gold-underlined section header Ã¢â€â‚¬Ã¢â€â‚¬
+  //  Gold-underlined section header 
   const sectionTitle = (title: string) => {
     checkPageBreak(22);
     doc.setTextColor(C.header[0], C.header[1], C.header[2]);
@@ -879,7 +827,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     y += lines.length * 4.5 + 2.5;
   };
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ FOOTER helper Ã¢â€â‚¬Ã¢â€â‚¬
+  //  FOOTER helper 
   const drawFooter = (pageNum: number, totalPages: number) => {
     const fY = H - 20;
     doc.setDrawColor(C.lightGray[0], C.lightGray[1], C.lightGray[2]);
@@ -896,7 +844,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     }
   };
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Compact page header for pages 2+ Ã¢â€â‚¬Ã¢â€â‚¬
+  //  Compact page header for pages 2+ 
   const drawCompactHeader = (sub: string): number => {
     const h2H = 28;
     doc.setFillColor(C.header[0], C.header[1], C.header[2]);
@@ -926,9 +874,9 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     return h2H + 18;
   };
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
-  // PAGE 1 Ã¢â‚¬â€ COVER / OVERVIEW
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
+  // PAGE 1  COVER / OVERVIEW
+// ---
 
   const headerH = 50;
   doc.setFillColor(C.header[0], C.header[1], C.header[2]);
@@ -962,7 +910,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   y = headerH + 10;
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ DADOS DA PROPOSTA (card) Ã¢â€â‚¬Ã¢â€â‚¬
+  //  DADOS DA PROPOSTA (card) 
   const cardH = 34;
   doc.setFillColor(C.lightBg[0], C.lightBg[1], C.lightBg[2]);
   doc.setDrawColor(C.lightGray[0], C.lightGray[1], C.lightGray[2]);
@@ -986,7 +934,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   y += cardH + TABLE_GAP;
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ THREE METRIC CARDS Ã¢â€â‚¬Ã¢â€â‚¬
+  //  THREE METRIC CARDS 
   const cardWidth = (W - 2 * M - 8) / 3;
   const metricH = 20;
   const metricsArr = [
@@ -1013,7 +961,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   });
   y += metricH + 10;
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ "Quanto custa e quanto economiza" Ã¢â€â‚¬Ã¢â€â‚¬
+  //  "Quanto custa e quanto economiza" 
   sectionTitle(isUsina ? 'Investimento e Retorno Financeiro' : 'Quanto custa e quanto economiza');
 
   if (premium?.headline && isSensibleAiText(premium.headline, 'headline')) {
@@ -1033,7 +981,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   doc.text(narLines, M, y);
   y += narLines.length * 4.5 + BLOCK_GAP;
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ "Objetivo do Projeto" Ã¢â€â‚¬Ã¢â€â‚¬
+  //  "Objetivo do Projeto" 
   if (premium?.executiveSummary) {
     sectionTitle('Objetivo do Projeto');
     doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
@@ -1044,7 +992,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     y += sumLines.length * 4.5 + BLOCK_GAP;
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ "Beneficios principais" Ã¢â€â‚¬Ã¢â€â‚¬
+  //  "Beneficios principais" 
   if (premium?.valuePillars && premium.valuePillars.length > 0) {
     sectionTitle('Beneficios principais');
     premium.valuePillars.forEach((p) => {
@@ -1053,7 +1001,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     y += 2;
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ "Por que confiar" Ã¢â€â‚¬Ã¢â€â‚¬
+  //  "Por que confiar" 
   const trustItems = [
     ...(premium?.proofPoints || []),
     `Garantias comerciais: modulo ${data.moduloGarantia || 25} anos, inversor ${data.inversorGarantia || 10} anos e servicos ${data.garantiaAnos} anos.`,
@@ -1064,9 +1012,9 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     bullet(pt, C.teal);
   });
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
-  // PAGE 2 Ã¢â‚¬â€ ANÃƒÂLISE DE ECONOMIA + GRÃƒÂFICOS
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
+  // PAGE 2  ANLISE DE ECONOMIA + GRFICOS
+// ---
   doc.addPage();
   y = drawCompactHeader(isUsina ? 'Analise de Investimento e Retorno' : 'Analise de Economia e Retorno');
 
@@ -1196,9 +1144,9 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     y += 8;
   }
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
-  // PAGE 3 Ã¢â‚¬â€ TÃƒâ€°CNICO + EQUIPAMENTOS + AMBIENTAL
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
+  // PAGE 3  TCNICO + EQUIPAMENTOS + AMBIENTAL
+// ---
   doc.addPage();
   y = drawCompactHeader('Dimensionamento Tecnico e Equipamentos');
 
@@ -1237,7 +1185,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const invQtd = data.inversorQtd || 1;
   const estrutura = data.estruturaTipo || (isUsina ? 'Solo' : 'Telhado');
 
-  // MÃƒÂ³dulo row
+  // Mdulo row
   const kitBody: string[][] = [
     ['Modulo', `${moduloNome}${moduloMarca ? ` | Marca: ${moduloMarca}` : ''}\nPotencia: ${moduloPot}W | Tipo: ${moduloTipo} | Garantia: ${moduloGar} anos`, String(data.quantidadePaineis)],
     ['Inversor', `${invNome}${invMarca ? ` | Marca: ${invMarca}` : ''}\nPotencia: ${fmtNumber(invPot)} kWp | Tensao: ${invTensao}V | Garantia: ${invGar} anos`, String(invQtd)],
@@ -1268,9 +1216,9 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   drawEnvChart(doc, M, y, W - 2 * M, 56, envImpact, chartTheme);
   y += 62;
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
-  // PAGE 4 Ã¢â‚¬â€ FINANCEIRO + FINANCIAMENTO
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
+  // PAGE 4  FINANCEIRO + FINANCIAMENTO
+// ---
   doc.addPage();
   y = drawCompactHeader('Analise Financeira e Financiamento');
 
@@ -1361,9 +1309,9 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     doc.text(obs, M, y); y += obs.length * 4.5 + BLOCK_GAP;
   }
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
-  // PAGE 5 Ã¢â‚¬â€ TERMOS, PRÃƒâ€œXIMOS PASSOS, CTA
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
+  // PAGE 5  TERMOS, PRXIMOS PASSOS, CTA
+// ---
   doc.addPage();
   y = drawCompactHeader('Condicoes, Proximos Passos e Fechamento');
 
@@ -1558,7 +1506,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     y += companyCnpj ? 19 : 15;
   }
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ FOOTER on all pages Ã¢â€â‚¬Ã¢â€â‚¬
+  //  FOOTER on all pages 
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
@@ -1571,9 +1519,9 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 }
 
 
-// Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
-// SELLER SCRIPT PDF (internal Ã¢â‚¬â€ NOT for client)
-// Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
+// SELLER SCRIPT PDF (internal  NOT for client)
+// ---
 
 export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options?: PDFGenerationOptions): Blob | void {
   const now = options?.now ?? new Date();
@@ -1678,9 +1626,9 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
     doc.text(`Pagina ${pageNum} de ${totalPages}`, W - M, fY + 7, { align: 'right' });
   };
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
   // PAGE 1
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
   const headerH = 44;
   doc.setFillColor(C.header[0], C.header[1], C.header[2]);
   doc.rect(0, 0, W, headerH, 'F');
@@ -1784,9 +1732,9 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
     y += 4;
   }
 
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
   // PAGE 2
-  // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+// ---
   doc.addPage();
 
   const h2H = 28;
