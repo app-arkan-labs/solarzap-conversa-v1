@@ -57,3 +57,12 @@ verify_jwt = false
 
 [functions.ai-pipeline-agent]
 verify_jwt = false
+
+[functions.solar-resource]
+verify_jwt = false
+
+[functions.notification-worker]
+verify_jwt = true
+
+[functions.ai-digest-worker]
+verify_jwt = true

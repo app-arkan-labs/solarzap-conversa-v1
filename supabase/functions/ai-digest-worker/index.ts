@@ -12,7 +12,7 @@ if (!ALLOWED_ORIGIN && ALLOW_WILDCARD_CORS) {
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-api-key',
 }
 
 const DIGEST_SETTINGS_BASE_SELECT = [
@@ -49,6 +49,117 @@ type NotificationSettingsRow = {
   daily_digest_time: string
   weekly_digest_time: string
   timezone: string
+}
+
+type InvocationAuthResult =
+  | {
+    ok: true
+    mode: 'service_role' | 'internal_key'
+  }
+  | {
+    ok: false
+    status: 401 | 403
+    code: 'missing_auth' | 'forbidden' | 'internal_key_not_configured' | 'invalid_authorization'
+    reason: string
+    hasAuthorization: boolean
+    hasInternalHeader: boolean
+  }
+
+function extractBearerToken(authorizationHeader: string): string {
+  const trimmed = authorizationHeader.trim()
+  if (!trimmed) return ''
+  const match = trimmed.match(/^Bearer\s+(.+)$/i)
+  return match?.[1]?.trim() || ''
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.')
+    if (parts.length < 2) return null
+    const payload = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(Math.ceil(parts[1].length / 4) * 4, '=')
+    const decoded = atob(payload)
+    return JSON.parse(decoded) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function isServiceRoleBearerToken(token: string): boolean {
+  const payload = decodeJwtPayload(token)
+  const role = String(payload?.role || '')
+  return role === 'service_role'
+}
+
+function validateInvocationAuth(
+  req: Request,
+  serviceRoleKey: string,
+  internalApiKey: string,
+): InvocationAuthResult {
+  const authorizationHeader = req.headers.get('Authorization') || req.headers.get('authorization') || ''
+  const internalHeader = (req.headers.get('x-internal-api-key') || '').trim()
+  const bearerToken = extractBearerToken(authorizationHeader)
+  const hasAuthorization = authorizationHeader.trim().length > 0
+  const hasInternalHeader = internalHeader.length > 0
+
+  if (bearerToken) {
+    if (serviceRoleKey && bearerToken === serviceRoleKey) {
+      return { ok: true, mode: 'service_role' }
+    }
+    if (isServiceRoleBearerToken(bearerToken)) {
+      return { ok: true, mode: 'service_role' }
+    }
+  }
+
+  if (hasInternalHeader) {
+    if (!internalApiKey) {
+      return {
+        ok: false,
+        status: 403,
+        code: 'internal_key_not_configured',
+        reason: 'EDGE_INTERNAL_API_KEY is not configured',
+        hasAuthorization,
+        hasInternalHeader,
+      }
+    }
+
+    if (internalHeader === internalApiKey) {
+      return { ok: true, mode: 'internal_key' }
+    }
+  }
+
+  if (!hasAuthorization && !hasInternalHeader) {
+    return {
+      ok: false,
+      status: 401,
+      code: 'missing_auth',
+      reason: 'Missing Authorization or x-internal-api-key',
+      hasAuthorization,
+      hasInternalHeader,
+    }
+  }
+
+  if (hasAuthorization && !bearerToken) {
+    return {
+      ok: false,
+      status: 401,
+      code: 'invalid_authorization',
+      reason: 'Invalid Authorization header format',
+      hasAuthorization,
+      hasInternalHeader,
+    }
+  }
+
+  return {
+    ok: false,
+    status: 403,
+    code: 'forbidden',
+    reason: 'Provided credentials are not allowed for this endpoint',
+    hasAuthorization,
+    hasInternalHeader,
+  }
 }
 
 function isMissingColumnError(error: unknown): boolean {
@@ -184,18 +295,24 @@ function parseTimeToMinuteOfDay(raw: string | null | undefined, fallback: string
 async function sendWhatsAppViaProxy(
   supabaseUrl: string,
   serviceRoleKey: string,
+  internalApiKey: string,
   orgId: string,
   instanceName: string,
   number: string,
   text: string,
 ) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+  }
+  if (internalApiKey) {
+    headers['x-internal-api-key'] = internalApiKey
+  }
+
   const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/functions/v1/evolution-proxy`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
-    },
+    headers,
     body: JSON.stringify({
       action: 'send-text',
       payload: {
@@ -291,6 +408,7 @@ async function processDigestForOrg(
   supabase: ReturnType<typeof createClient>,
   supabaseUrl: string,
   serviceRoleKey: string,
+  internalApiKey: string,
   settings: NotificationSettingsRow,
   ctx: DigestContext,
 ) {
@@ -446,6 +564,7 @@ async function processDigestForOrg(
         await sendWhatsAppViaProxy(
           supabaseUrl,
           serviceRoleKey,
+          internalApiKey,
           ctx.orgId,
           settings.whatsapp_instance_name,
           targetNumber,
@@ -561,9 +680,31 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+    const internalApiKey = (Deno.env.get('EDGE_INTERNAL_API_KEY') || '').trim()
 
     if (!supabaseUrl || !serviceRoleKey) {
       throw new Error('missing_supabase_env')
+    }
+
+    const auth = validateInvocationAuth(req, serviceRoleKey, internalApiKey)
+    if (!auth.ok) {
+      console.warn('[ai-digest-worker][auth_rejected]', {
+        code: auth.code,
+        reason: auth.reason,
+        hasAuthorization: auth.hasAuthorization,
+        hasInternalHeader: auth.hasInternalHeader,
+      })
+      return new Response(
+        JSON.stringify({
+          success: false,
+          code: auth.code,
+          error: auth.status === 401 ? 'Unauthorized' : 'Forbidden',
+        }),
+        {
+          status: auth.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      )
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
@@ -579,7 +720,7 @@ Deno.serve(async (req) => {
       candidates += dueDigests.length
 
       for (const ctx of dueDigests) {
-        const result = await processDigestForOrg(supabase, supabaseUrl, serviceRoleKey, settings, ctx)
+        const result = await processDigestForOrg(supabase, supabaseUrl, serviceRoleKey, internalApiKey, settings, ctx)
         if (result.skipped) continue
         processed += 1
         if (result.failed) failed += 1

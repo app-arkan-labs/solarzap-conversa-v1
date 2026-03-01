@@ -91,7 +91,7 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
             <FileText className="h-5 w-5 text-green-500" />
-            Gerador de Proposta (Wizard)
+            Gerador de Proposta
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
             Fluxo guiado para gerar proposta personalizada para <strong>{contact.name}</strong>.

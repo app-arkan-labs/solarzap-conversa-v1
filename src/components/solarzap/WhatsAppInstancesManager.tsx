@@ -113,16 +113,20 @@ export function WhatsAppInstancesManager() {
   // Handle creating new instance
   const handleCreate = async () => {
     const result = await createInstance(newInstanceName || undefined);
-    setCreateModalOpen(false);
-    setNewInstanceName('');
-
     if (result?.qrCode && result?.instance) {
+      setCreateModalOpen(false);
+      setNewInstanceName('');
       setQrModal({
         isOpen: true,
         qrCode: result.qrCode,
         instance: result.instance,
         countdown: 60,
       });
+      return;
+    }
+
+    if (result?.instance && !result.qrCode) {
+      toast.error('InstÃ¢ncia criada, mas QR Code nÃ£o foi retornado. Tente reconectar para gerar um novo QR.');
     }
   };
 

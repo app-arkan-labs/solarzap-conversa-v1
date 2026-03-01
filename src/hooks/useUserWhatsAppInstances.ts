@@ -20,6 +20,60 @@ export interface UserWhatsAppInstance {
   ai_enabled?: boolean | null;
 }
 
+type InstanceConnectionStatus = UserWhatsAppInstance['status'];
+
+function extractQrCode(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const source = payload as Record<string, unknown>;
+
+  if (typeof source.base64 === 'string' && source.base64.trim().length > 0) {
+    return source.base64;
+  }
+
+  if (typeof source.code === 'string' && source.code.trim().length > 0) {
+    return source.code;
+  }
+
+  const qrcode = source.qrcode;
+  if (qrcode && typeof qrcode === 'object') {
+    const nested = qrcode as Record<string, unknown>;
+    if (typeof nested.base64 === 'string' && nested.base64.trim().length > 0) {
+      return nested.base64;
+    }
+    if (typeof nested.code === 'string' && nested.code.trim().length > 0) {
+      return nested.code;
+    }
+  }
+
+  return null;
+}
+
+function extractConnectionState(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const source = payload as Record<string, unknown>;
+
+  if (typeof source.state === 'string' && source.state.trim().length > 0) {
+    return source.state;
+  }
+
+  const instance = source.instance;
+  if (instance && typeof instance === 'object') {
+    const state = (instance as Record<string, unknown>).state;
+    if (typeof state === 'string' && state.trim().length > 0) {
+      return state;
+    }
+  }
+
+  return null;
+}
+
+function toInstanceStatus(state: string | null | undefined): InstanceConnectionStatus {
+  const normalized = String(state || '').trim().toLowerCase();
+  if (normalized === 'open' || normalized === 'connected') return 'connected';
+  if (normalized === 'connecting') return 'connecting';
+  return 'disconnected';
+}
+
 export function useUserWhatsAppInstances() {
   const { user, orgId } = useAuth();
   const [instances, setInstances] = useState<UserWhatsAppInstance[]>([]);
@@ -67,8 +121,7 @@ export function useUserWhatsAppInstances() {
                 return instance;
               }
 
-              const state = response.data.instance.state;
-              const newStatus: 'disconnected' | 'connecting' | 'connected' = state === 'open' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected';
+              const newStatus = toInstanceStatus(extractConnectionState(response.data));
 
               // Only update if changed
               if (newStatus !== instance.status) {
@@ -171,7 +224,7 @@ export function useUserWhatsAppInstances() {
   }, [user, orgId]);
 
   // Create new instance
-  const createInstance = useCallback(async (displayName: string): Promise<{ qrCode?: string; instance?: UserWhatsAppInstance } | null> => {
+  const createInstance = useCallback(async (displayName?: string): Promise<{ qrCode?: string; instance?: UserWhatsAppInstance } | null> => {
     if (!user) {
       toast.error('Voce precisa estar logado');
       return null;
@@ -179,16 +232,12 @@ export function useUserWhatsAppInstances() {
     if (!orgId) {
       toast.error('Organizacao nao vinculada ao usuario');
       return null;
-    }
-
-    if (!displayName.trim()) {
-      toast.error('Digite um nome para a instância');
-      return null;
-    }
+    }
 
     try {
       setCreating(true);
-      const sanitizedName = displayName.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normalizedDisplayName = displayName?.trim() || 'WhatsApp';
+      const sanitizedName = normalizedDisplayName.toLowerCase().replace(/[^a-z0-9]/g, '');
       const timestamp = Date.now().toString().slice(-6); // last 6 digits for brevity but uniqueness
       const instanceName = `solarzap-${sanitizedName}-${timestamp}`;
 
@@ -212,7 +261,13 @@ export function useUserWhatsAppInstances() {
       });
 
 
-      const qrCode = response.data.qrcode?.base64 || undefined;
+      let qrCode = extractQrCode(response.data);
+      if (!qrCode) {
+        const connectResponse = await evolutionApi.connectInstance(instanceName);
+        if (connectResponse.success && connectResponse.data) {
+          qrCode = extractQrCode(connectResponse.data);
+        }
+      }
 
       // 4. Save to Supabase with user_id
       const { data: newInstance, error } = await supabase
@@ -221,7 +276,7 @@ export function useUserWhatsAppInstances() {
           org_id: orgId,
           user_id: user.id,
           instance_name: instanceName,
-          display_name: displayName.trim(),
+          display_name: normalizedDisplayName,
           status: 'connecting',
           qr_code: qrCode,
           is_active: true,
@@ -233,7 +288,7 @@ export function useUserWhatsAppInstances() {
 
       setInstances(prev => [newInstance, ...prev]);
       toast.success('Instância criada! Escaneie o QR Code.');
-      return { qrCode, instance: newInstance };
+      return { qrCode: qrCode || undefined, instance: newInstance };
     } catch (error) {
       console.error('Error creating instance:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao criar instância');
@@ -254,7 +309,7 @@ export function useUserWhatsAppInstances() {
         throw new Error(response.error || 'Falha ao obter QR Code');
       }
 
-      const qrCode = response.data.base64 || response.data.code;
+      const qrCode = extractQrCode(response.data);
 
       if (qrCode) {
         // Update in database
@@ -264,7 +319,7 @@ export function useUserWhatsAppInstances() {
           .eq('instance_name', instanceName);
       }
 
-      return qrCode || null;
+      return qrCode;
     } catch (error) {
       console.error('Error refreshing QR:', error);
       toast.error('Erro ao atualizar QR Code');
@@ -302,8 +357,7 @@ export function useUserWhatsAppInstances() {
         throw new Error('Dados inválidos recebidos da API');
       }
 
-      const state = response.data.instance.state;
-      const newStatus = state === 'open' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected';
+      const newStatus = toInstanceStatus(extractConnectionState(response.data));
 
       // Update in database
       await supabase
@@ -621,5 +675,6 @@ export function useUserWhatsAppInstances() {
     }
   };
 }
+
 
 

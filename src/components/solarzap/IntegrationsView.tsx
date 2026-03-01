@@ -91,14 +91,20 @@ export function IntegrationsView() {
     if (result?.qrCode) {
       setCurrentQR({ instanceName: result.instance?.instance_name || '', qrCode: result.qrCode });
       setNewInstanceName('');
+      return;
     }
+
+    toast.error('InstÃ¢ncia criada, mas nenhum QR Code foi retornado. Tente atualizar o QR.');
   };
 
   const handleRefreshQR = async (instanceName: string) => {
     const qrCode = await refreshQrCode(instanceName);
     if (qrCode) {
       setCurrentQR({ instanceName, qrCode });
+      return;
     }
+
+    toast.error('NÃ£o foi possÃ­vel obter o QR Code desta instÃ¢ncia.');
   };
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

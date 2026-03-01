@@ -28,9 +28,10 @@ sudo ufw status
 ```
 
 ## 3) DNS
-Criar os dois registros `A` apontando para o mesmo `IP_PUBLICO_DA_VPS`:
+Criar os registros `A` apontando para o mesmo `IP_PUBLICO_DA_VPS`:
 - `solarzap.arkanlabs.com.br`
-- `solarzap.com.br`
+- `crm.solarzap.com.br`
+- `app.solarzap.com.br`
 
 Aguarde propagacao antes do SSL automatico do Caddy.
 
@@ -50,7 +51,7 @@ nano .env.production
 ```
 
 Preencher no minimo:
-- `SOLARZAP_DOMAINS=solarzap.arkanlabs.com.br, solarzap.com.br`
+- `SOLARZAP_DOMAINS=solarzap.arkanlabs.com.br, crm.solarzap.com.br, app.solarzap.com.br`
 - `CADDY_EMAIL=seu-email@dominio.com`
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
@@ -70,16 +71,18 @@ curl -I http://IP_PUBLICO_DA_VPS
 2. HTTPS por dominio:
 ```bash
 curl -I https://solarzap.arkanlabs.com.br
-curl -I https://solarzap.com.br
+curl -I https://crm.solarzap.com.br
+curl -I https://app.solarzap.com.br
 ```
 3. Login manual no app e carga de dashboard.
 
 ## 8) Pos-deploy Supabase Auth
 No Supabase Dashboard (`Authentication -> URL Configuration`):
 - `Site URL`: `https://solarzap.arkanlabs.com.br`
-- `Redirect URLs`: adicionar os dois dominios:
+- `Redirect URLs`: adicionar os dominios:
   - `https://solarzap.arkanlabs.com.br`
-  - `https://solarzap.com.br`
+  - `https://crm.solarzap.com.br`
+  - `https://app.solarzap.com.br`
 
 ## 9) Deploy com Portainer
 Se voce gerencia a VPS com Portainer, siga [DEPLOY_PORTAINER.md](./DEPLOY_PORTAINER.md).

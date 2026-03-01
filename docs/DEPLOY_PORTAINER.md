@@ -10,7 +10,8 @@ Data: 2026-02-28
 ## 2) DNS (obrigatorio antes do SSL)
 Crie os registros `A` apontando para o IP publico da VPS:
 - `solarzap.arkanlabs.com.br`
-- `solarzap.com.br`
+- `crm.solarzap.com.br`
+- `app.solarzap.com.br`
 
 ## 3) Criar stack no Portainer
 No Portainer:
@@ -22,7 +23,7 @@ No Portainer:
 
 ## 4) Variaveis de ambiente da stack
 No bloco `Environment variables` do Portainer, configure:
-- `SOLARZAP_DOMAINS=solarzap.arkanlabs.com.br, solarzap.com.br`
+- `SOLARZAP_DOMAINS=solarzap.arkanlabs.com.br, crm.solarzap.com.br, app.solarzap.com.br`
 - `CADDY_EMAIL=seu-email@dominio.com`
 - `VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co`
 - `VITE_SUPABASE_ANON_KEY=SEU_ANON_KEY`
@@ -35,13 +36,14 @@ Clique em `Deploy the stack`.
 O container vai:
 - buildar o app React (`npm run build`)
 - subir Caddy com TLS automatico (Let's Encrypt)
-- responder nos dois dominios
+- responder nos tres dominios
 
 ## 6) Validacao
 No terminal da VPS ou no proprio host:
 ```bash
 curl -I https://solarzap.arkanlabs.com.br
-curl -I https://solarzap.com.br
+curl -I https://crm.solarzap.com.br
+curl -I https://app.solarzap.com.br
 ```
 
 Esperado: status `200` (ou `301/308` seguido de `200`).
@@ -51,7 +53,8 @@ No Supabase Dashboard (`Authentication -> URL Configuration`):
 - `Site URL`: `https://solarzap.arkanlabs.com.br`
 - `Redirect URLs`:
   - `https://solarzap.arkanlabs.com.br`
-  - `https://solarzap.com.br`
+  - `https://crm.solarzap.com.br`
+  - `https://app.solarzap.com.br`
 
 ## 8) Operacao e troubleshooting
 - Ver logs: `Containers` -> `solarzap-web` -> `Logs`

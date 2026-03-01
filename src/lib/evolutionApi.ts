@@ -51,6 +51,46 @@ export interface SendMessageResponse {
   status: string;
 }
 
+type ProxyEnvelope<T> = {
+  success?: boolean;
+  data?: T;
+  error?: unknown;
+  message?: unknown;
+  details?: unknown;
+};
+
+function getErrorMessage(value: unknown): string {
+  if (typeof value === 'string' && value.trim().length > 0) return value;
+  if (value && typeof value === 'object') {
+    const candidate = value as Record<string, unknown>;
+    if (typeof candidate.error === 'string' && candidate.error.trim().length > 0) return candidate.error;
+    if (typeof candidate.message === 'string' && candidate.message.trim().length > 0) return candidate.message;
+    if (typeof candidate.details === 'string' && candidate.details.trim().length > 0) return candidate.details;
+  }
+  return 'Unknown proxy error';
+}
+
+function normalizeProxyResponse<T>(payload: unknown): EvolutionApiResponse<T> {
+  if (payload && typeof payload === 'object') {
+    const envelope = payload as ProxyEnvelope<T>;
+    if (typeof envelope.success === 'boolean') {
+      if (!envelope.success) {
+        return {
+          success: false,
+          error: getErrorMessage(envelope.error ?? envelope.message ?? envelope.details),
+        };
+      }
+      return {
+        success: true,
+        data: envelope.data as T,
+      };
+    }
+  }
+
+  // Legacy/raw compatibility: when proxy returns raw data directly.
+  return { success: true, data: payload as T };
+}
+
 // Helper function to call Evolution API via Supabase Edge Function (Proxy)
 // OR Direct Bypass if Proxy is down (Emergency Mode)
 // The client no longer communicates with Evolution directly.  
@@ -69,8 +109,8 @@ async function callEvolutionApi<T>(
       console.error('evolution-proxy error', error);
       return { success: false, error: error.message || 'Unknown proxy error' };
     }
-    // proxy returns raw evolution API result or DB rows depending on action
-    return { success: true, data: data as T };
+
+    return normalizeProxyResponse<T>(data);
   } catch (err) {
     let errorMessage = err instanceof Error ? err.message : String(err);
 

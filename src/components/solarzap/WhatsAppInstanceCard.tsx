@@ -42,7 +42,7 @@ interface WhatsAppInstanceCardProps {
   instance: WhatsAppInstance;
   isLoading: boolean;
   onReconnect: (instanceId: string) => void;
-  onDisconnect: (instanceId: string) => void;
+  onDisconnect: (instanceName: string) => void;
   onRequestDelete: (instance: WhatsAppInstance) => void;
   onRename: (instanceId: string, newName: string) => void;
   onToggleAiEnabled: (instanceName: string, enabled: boolean) => void;
@@ -187,7 +187,7 @@ export function WhatsAppInstanceCard({
 
                   {instance.status === 'connected' && (
                     <DropdownMenuItem
-                      onClick={() => onDisconnect(instance.id)}
+                      onClick={() => onDisconnect(instance.instance_name)}
                       className="text-yellow-600"
                     >
                       <Power className="w-4 h-4 mr-2" />
