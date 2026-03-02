@@ -1,5 +1,12 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { UseProposalFormReturn } from '@/hooks/useProposalForm';
 
@@ -38,11 +45,19 @@ export function StepEquipment({ form }: StepEquipmentProps) {
             </div>
             <div className="space-y-1.5">
               <Label>Tipo do modulo</Label>
-              <Input
-                value={form.formData.moduloTipo || ''}
-                onChange={(e) => form.handleChange('moduloTipo', e.target.value)}
-                placeholder="Ex: Monocristalino"
-              />
+              <Select
+                value={form.formData.moduloTipo || 'Monocristalino'}
+                onValueChange={(value) => form.handleChange('moduloTipo', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o tipo do modulo" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  {form.options.MODULE_TYPE_OPTIONS.map((moduleType) => (
+                    <SelectItem key={moduleType} value={moduleType}>{moduleType}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Potencia do modulo (W)</Label>

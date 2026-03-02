@@ -16,22 +16,34 @@ type LogoSyncDetail = {
 
 // ── Module-level cache for default SolarZap logo data URL ──
 let _defaultLogoDataUrl: string | null = null;
-function loadDefaultLogoDataUrl(): void {
-  if (_defaultLogoDataUrl) return;
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.onload = () => {
-    try {
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth; c.height = img.naturalHeight;
-      c.getContext('2d')!.drawImage(img, 0, 0);
-      _defaultLogoDataUrl = c.toDataURL('image/png');
-    } catch { /* keep null */ }
-  };
-  img.src = solarzapLogo;
+let _defaultLogoDataUrlPromise: Promise<string | null> | null = null;
+function loadDefaultLogoDataUrl(): Promise<string | null> {
+  if (_defaultLogoDataUrl) return Promise.resolve(_defaultLogoDataUrl);
+  if (_defaultLogoDataUrlPromise) return _defaultLogoDataUrlPromise;
+
+  _defaultLogoDataUrlPromise = new Promise<string | null>((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        c.getContext('2d')!.drawImage(img, 0, 0);
+        _defaultLogoDataUrl = c.toDataURL('image/png');
+        resolve(_defaultLogoDataUrl);
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = solarzapLogo;
+  });
+
+  return _defaultLogoDataUrlPromise;
 }
 // Start loading immediately at module init
-loadDefaultLogoDataUrl();
+void loadDefaultLogoDataUrl();
 
 function dispatchLogoSync(detail: LogoSyncDetail) {
   try {
@@ -54,7 +66,7 @@ export function useProposalLogo() {
   const { toast } = useToast();
 
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+  const [customLogoDataUrl, setCustomLogoDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -108,8 +120,6 @@ export function useProposalLogo() {
   // ── Fetch saved logo from company_profile ──
   useEffect(() => {
     if (!orgId) {
-      setLogoUrl(null);
-      setLogoDataUrl(null);
       setInitialized(true);
       return;
     }
@@ -127,12 +137,13 @@ export function useProposalLogo() {
         setLogoUrl(url);
         if (url) {
           const dataUrl = await toDataUrl(url);
-          if (!cancelled) setLogoDataUrl(dataUrl);
+          if (!cancelled) setCustomLogoDataUrl(dataUrl);
         } else {
-          setLogoDataUrl(null);
+          setCustomLogoDataUrl(null);
         }
-      } catch { /* keep null */ }
-      finally {
+      } catch {
+        if (!cancelled) setCustomLogoDataUrl(null);
+      } finally {
         if (!cancelled) setInitialized(true);
       }
     })();
@@ -147,20 +158,16 @@ export function useProposalLogo() {
       const detail = custom.detail;
       if (!detail || detail.orgId !== orgId) return;
 
-      const nextLogo = detail.logoUrl || null;
-      setLogoUrl(nextLogo);
-      setInitialized(true);
-
-      if (!nextLogo) {
-        setLogoDataUrl(null);
+      setLogoUrl(detail.logoUrl);
+      if (!detail.logoUrl) {
+        setCustomLogoDataUrl(null);
         return;
       }
 
-      toDataUrl(nextLogo).then((dataUrl) => {
-        setLogoDataUrl(dataUrl);
-      }).catch(() => {
-        // non-blocking
-      });
+      void (async () => {
+        const dataUrl = await toDataUrl(detail.logoUrl as string);
+        setCustomLogoDataUrl(dataUrl);
+      })();
     };
 
     window.addEventListener(LOGO_SYNC_EVENT, onLogoSync as EventListener);
@@ -208,11 +215,11 @@ export function useProposalLogo() {
       if (dbErr) throw dbErr;
 
       setLogoUrl(publicUrl);
-      dispatchLogoSync({ orgId: orgIdRef.current, logoUrl: publicUrl });
 
       // Convert to data-URL
       const dataUrl = await toDataUrl(publicUrl);
-      setLogoDataUrl(dataUrl);
+      setCustomLogoDataUrl(dataUrl);
+      dispatchLogoSync({ orgId: orgIdRef.current, logoUrl: publicUrl });
 
       toast({ title: 'Logo salva', description: 'A logo será usada nas próximas propostas.' });
     } catch (err) {
@@ -250,8 +257,8 @@ export function useProposalLogo() {
         );
 
       setLogoUrl(null);
-      setLogoDataUrl(null);
-      dispatchLogoSync({ orgId: orgIdRef.current, logoUrl: null });
+  setCustomLogoDataUrl(null);
+  dispatchLogoSync({ orgId: orgIdRef.current, logoUrl: null });
       toast({ title: 'Logo removida', description: 'As próximas propostas usarão a logo padrão SolarZap.' });
     } catch (err) {
       console.error('Failed to remove proposal logo:', err);
@@ -261,8 +268,32 @@ export function useProposalLogo() {
     }
   }, [toast]);
 
-  // Always return a valid data-URL: custom org logo → default SolarZap logo
-  const effectiveLogoDataUrl = logoDataUrl || _defaultLogoDataUrl;
+  const ensureLogoDataUrl = useCallback(async (): Promise<string | null> => {
+    if (customLogoDataUrl) return customLogoDataUrl;
+    if (logoUrl) {
+      const converted = await toDataUrl(logoUrl);
+      if (converted) {
+        setCustomLogoDataUrl(converted);
+        return converted;
+      }
+      return null;
+    }
 
-  return { logoUrl, logoDataUrl: effectiveLogoDataUrl, uploadLogo, removeLogo, loading, initialized };
+    return loadDefaultLogoDataUrl();
+  }, [customLogoDataUrl, logoUrl, toDataUrl]);
+
+  // Always return a valid data-URL for rendering when available:
+  // custom org logo → default SolarZap logo
+  const effectiveLogoDataUrl = customLogoDataUrl || _defaultLogoDataUrl;
+
+  return {
+    logoUrl,
+    logoDataUrl: effectiveLogoDataUrl,
+    customLogoDataUrl,
+    initialized,
+    ensureLogoDataUrl,
+    uploadLogo,
+    removeLogo,
+    loading,
+  };
 }

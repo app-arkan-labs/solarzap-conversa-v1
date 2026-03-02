@@ -14,11 +14,7 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
     .map((option) => option.label);
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
-    : form.formData.irradianceSource === 'open_meteo'
-      ? 'Open-Meteo por coordenada'
-    : form.formData.irradianceSource === 'cache'
-      ? 'cache solar'
-      : 'media por UF (fallback)';
+    : 'nao resolvida';
 
   return (
     <div className="space-y-4">
@@ -69,9 +65,13 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
           </div>
           <div>
             <p className="text-xs text-muted-foreground">
-              {form.isUsina ? 'Geracao estimada' : 'Consumo mensal'}
+              {form.isUsina ? 'Geracao estimada' : 'Conta de luz mensal'}
             </p>
-            <p className="font-medium">{form.formData.consumoMensal || 0} kWh/mes</p>
+            <p className="font-medium">
+              {form.isUsina
+                ? `${form.formData.consumoMensal || 0} kWh/mes`
+                : form.formatCurrency(form.formData.contaLuzMensal || 0)}
+            </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Potencia e paineis</p>

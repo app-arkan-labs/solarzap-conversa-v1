@@ -1,4 +1,5 @@
-import { LocateFixed, Loader2, Search } from 'lucide-react';
+import { LocateFixed, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,15 +18,40 @@ interface StepLocationProps {
 
 export function StepLocation({ form }: StepLocationProps) {
   const isUsina = form.formData.tipo_cliente === 'usina';
+  const cepAutofillRef = useRef<string>('');
   const hasCoordinates = Number.isFinite(Number(form.formData.latitude))
     && Number.isFinite(Number(form.formData.longitude));
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
-    : form.formData.irradianceSource === 'open_meteo'
-      ? 'Open-Meteo por coordenada'
-    : form.formData.irradianceSource === 'cache'
-      ? 'cache solar'
-      : 'media por UF (fallback)';
+    : 'nao resolvida';
+
+  const ufDistributorOptions = useMemo(() => {
+    return form.options.getEnergyDistributorOptionsByUf(form.formData.estado || null);
+  }, [form.formData.concessionaria, form.formData.estado, form.options]);
+
+  const selectedDistributor = useMemo(() => {
+    const current = String(form.formData.concessionaria || '').trim();
+    if (!current) return undefined;
+    return ufDistributorOptions.includes(current) ? current : undefined;
+  }, [form.formData.concessionaria, ufDistributorOptions]);
+
+  useEffect(() => {
+    const cepDigits = String(form.formData.cep || '').replace(/\D/g, '');
+    if (cepDigits.length !== 8) return;
+    if (cepAutofillRef.current === cepDigits) return;
+
+    const timer = window.setTimeout(() => {
+      cepAutofillRef.current = cepDigits;
+      void (async () => {
+        const cepData = await form.autofillAddressByCep(cepDigits);
+        if (cepData) {
+          await form.resolvePreciseLocation(cepData);
+        }
+      })();
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [form, form.formData.cep]);
 
   return (
     <div className="space-y-4">
@@ -34,31 +60,12 @@ export function StepLocation({ form }: StepLocationProps) {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="space-y-1.5">
           <Label>CEP</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              value={form.formData.cep || ''}
-              maxLength={9}
-              placeholder="00000-000"
-              onChange={(e) => form.handleChange('cep', e.target.value)}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1.5 px-2"
-              disabled={form.locationLoading}
-              onClick={() => {
-                void (async () => {
-                  const cepData = await form.autofillAddressByCep();
-                  if (cepData) await form.resolvePreciseLocation(cepData);
-                })();
-              }}
-              title="Preencher por CEP"
-            >
-              {form.locationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              <span className="hidden md:inline">CEP</span>
-            </Button>
-          </div>
+          <Input
+            value={form.formData.cep || ''}
+            maxLength={9}
+            placeholder="00000-000"
+            onChange={(e) => form.handleChange('cep', e.target.value)}
+          />
         </div>
         <div className="space-y-1.5 md:col-span-2">
           <Label>Cidade</Label>
@@ -87,14 +94,33 @@ export function StepLocation({ form }: StepLocationProps) {
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>{isUsina ? 'Geracao estimada (kWh/mes)' : 'Consumo mensal (kWh)'}</Label>
+          <Label>{isUsina ? 'Geracao estimada (kWh/mes)' : 'Conta de luz mensal (R$)'}</Label>
           <Input
             type="number"
             min={0}
-            value={form.formData.consumoMensal || ''}
+            step="0.01"
+            value={isUsina ? (form.formData.consumoMensal || '') : (form.formData.contaLuzMensal || '')}
             onChange={(e) => form.handleChange('consumoMensal', parseFloat(e.target.value) || 0)}
           />
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Concessionaria de energia</Label>
+        <Select
+          value={selectedDistributor}
+          onValueChange={(value) => form.handleChange('concessionaria', value)}
+          disabled={!form.formData.estado}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={form.formData.estado ? 'Selecione a concessionaria' : 'Preencha o CEP/UF primeiro'} />
+          </SelectTrigger>
+          <SelectContent className="max-h-64 bg-popover">
+            {ufDistributorOptions.map((option) => (
+              <SelectItem key={option} value={option}>{option}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-1.5">

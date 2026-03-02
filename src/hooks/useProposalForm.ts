@@ -13,6 +13,7 @@ import {
 } from '@/config/featureFlags';
 import {
   ENERGY_DISTRIBUTOR_OPTIONS,
+  getEnergyDistributorOptionsByUf,
   inferDistributor,
   inferUfFromCep,
   getDefaultTariffByDistributor,
@@ -47,6 +48,7 @@ import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancia
 import { FINANCIAL_MODEL_VERSION } from '@/types/proposalFinancial';
 import { calculateProposalFinancials, resolveTariffByPriority } from '@/utils/proposalFinancialModel';
 import type { SolarResourceResponse } from '@/types/solarResource';
+import { buildProposalFileName, triggerBlobDownload } from '@/utils/pdf/shared';
 
 export interface UseProposalFormOptions {
   isOpen: boolean;
@@ -58,6 +60,7 @@ export interface UseProposalFormOptions {
 export interface ProposalData {
   contactId: string;
   consumoMensal: number;
+  contaLuzMensal?: number;
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
@@ -152,6 +155,15 @@ export const CUSTO_DISPONIBILIDADE_POR_LIGACAO: Record<TipoLigacao, number> = {
 
 export const DEFAULT_PAYMENT_CONDITIONS: PaymentConditionOptionId[] = ['pix_avista', 'boleto_avista'];
 
+export const MODULE_TYPE_OPTIONS = [
+  'Monocristalino',
+  'Policristalino',
+  'Bifacial',
+  'PERC',
+  'TOPCon',
+  'N-Type',
+];
+
 export function createDefaultFinancingCondition(): FinancingCondition {
   return {
     id: crypto.randomUUID(),
@@ -173,10 +185,16 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   const { updateLead } = useLeads();
   const { toast } = useToast();
   const { themeId, theme, secondaryColorHex, hydrated: themeHydrated } = useProposalTheme();
-  const { logoUrl, logoDataUrl, initialized: logoInitialized } = useProposalLogo();
+  const {
+    logoUrl,
+    logoDataUrl,
+    initialized: logoInitialized,
+    ensureLogoDataUrl,
+  } = useProposalLogo();
 
   const [formData, setFormData] = useState({
     consumoMensal: contact?.consumption || 0,
+    contaLuzMensal: Math.max(0, (contact?.consumption || 0) * (contact?.energyTariffKwh || DEFAULT_TARIFF_FALLBACK)),
     potenciaSistema: 0,
     quantidadePaineis: 0,
     valorTotal: contact?.projectValue || 0,
@@ -283,6 +301,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     lon?: number;
   }): Promise<SolarResourceResponse | null> => {
     try {
+      const geocodingApiKey = String((import.meta as any)?.env?.VITE_GOOGLE_GEOCODING_API_KEY || '').trim() || undefined;
       const { data, error } = await supabase.functions.invoke('solar-resource', {
         body: {
           city: params.city || undefined,
@@ -291,6 +310,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           zip: params.zip || undefined,
           lat: params.lat,
           lon: params.lon,
+          strictPvgisOnly: true,
+          geocodingApiKey,
         },
       });
       if (error || !data) return null;
@@ -306,9 +327,10 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           .map((value) => Math.max(0, Number(value) || 0))
         : [];
       if (monthlyIrradiance.length !== 12) return null;
+      if (String((data as any).source || '').toLowerCase() !== 'pvgis') return null;
 
       return {
-        source: ((data as any).source || 'uf_fallback') as SolarResourceResponse['source'],
+        source: ((data as any).source || 'pvgis') as SolarResourceResponse['source'],
         lat: Number.isFinite(Number((data as any).lat)) ? Number((data as any).lat) : null,
         lon: Number.isFinite(Number((data as any).lon)) ? Number((data as any).lon) : null,
         annualIrradianceKwhM2Day: Math.max(0.01, Number((data as any).annualIrradianceKwhM2Day) || 4.5),
@@ -318,7 +340,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         cached: Boolean((data as any).cached),
       };
     } catch (err) {
-      console.warn('solar-resource fallback to UF irradiance:', err);
+      console.warn('solar-resource strict PVGIS request failed:', err);
       return null;
     }
   }, []);
@@ -411,6 +433,49 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
   const normalizeCep = (value: string) => value.replace(/\D/g, '').slice(0, 8);
 
+  const resolveBillTariff = (next: typeof formData) => {
+    const rawTariff = Number(next.rentabilityRatePerKwh ?? next.tarifaKwh ?? next.teRatePerKwh);
+    return Math.max(0.01, Number.isFinite(rawTariff) && rawTariff > 0 ? rawTariff : DEFAULT_TARIFF_FALLBACK);
+  };
+
+  const billToConsumptionKwh = (billValue: number, tariffKwh: number) => {
+    const bill = Math.max(0, Number(billValue) || 0);
+    return bill / Math.max(0.01, Number(tariffKwh) || DEFAULT_TARIFF_FALLBACK);
+  };
+
+  const buildConcessionariaPatch = (
+    prev: typeof formData,
+    location: { uf?: string; cidade?: string; cep?: string },
+  ): Partial<typeof formData> => {
+    const uf = normalizeUf(location.uf || prev.estado || contact?.state || '') || undefined;
+    const cidade = String(location.cidade || prev.cidade || contact?.city || '').trim() || undefined;
+    const cep = normalizeCep(String(location.cep || prev.cep || contact?.zip || '')) || undefined;
+
+    const inference = inferDistributor({
+      distributor: prev.concessionaria || contact?.energyDistributor || null,
+      uf: uf || null,
+      city: cidade || null,
+      cep: cep || null,
+    });
+
+    const patch: Partial<typeof formData> = {};
+    if (inference?.distributor) {
+      patch.concessionaria = inference.distributor;
+    }
+
+    const tariffFromInference = getDefaultTariffByDistributor(inference?.distributor || patch.concessionaria || prev.concessionaria || '');
+    if (!rentabilityManuallyEdited && tariffFromInference !== null) {
+      patch.tarifaKwh = tariffFromInference;
+      patch.rentabilityRatePerKwh = tariffFromInference;
+      patch.teRatePerKwh = tariffFromInference;
+      if (prev.tipo_cliente !== 'usina') {
+        patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, tariffFromInference);
+      }
+    }
+
+    return patch;
+  };
+
   const toFiniteOrUndefined = (value: unknown): number | undefined => {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : undefined;
@@ -466,7 +531,11 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       });
 
       if (!solarResource) {
-        console.warn('resolvePreciseLocation: no solar resource result');
+        toast({
+          title: 'PVGIS indisponivel',
+          description: 'Nao foi possivel obter irradiancia precisa via geocodificacao + PVGIS.',
+          variant: 'destructive',
+        });
         return null;
       }
       if (requestSeq !== resolveLocationRequestSeqRef.current) {
@@ -484,6 +553,11 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         latitude: solarResource.lat ?? latitude ?? prev.latitude,
         longitude: solarResource.lon ?? longitude ?? prev.longitude,
         irradianceRefAt: new Date().toISOString(),
+        ...buildConcessionariaPatch(prev, {
+          uf: uf || prev.estado,
+          cidade: cidade || prev.cidade,
+          cep: cep || prev.cep,
+        }),
       }, { preserveValorTotal: true }));
 
       return solarResource;
@@ -505,6 +579,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   }, [
     contact?.address,
     contact?.city,
+    contact?.energyDistributor,
     contact?.latitude,
     contact?.longitude,
     contact?.state,
@@ -516,6 +591,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     formData.latitude,
     formData.longitude,
     patchAndRecalculate,
+    rentabilityManuallyEdited,
     resolveSolarResource,
     toast,
   ]);
@@ -576,8 +652,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         estado: uf || formData.estado || undefined,
         cidade: cidade || formData.cidade || undefined,
         endereco: endereco || formData.endereco || undefined,
-        latitude,
-        longitude,
+        latitude: undefined,
+        longitude: undefined,
       };
 
       setFormData((prev) => patchAndRecalculate(prev, {
@@ -585,8 +661,15 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         estado: nextOverride.estado || prev.estado,
         cidade: nextOverride.cidade || prev.cidade,
         endereco: nextOverride.endereco || prev.endereco,
-        latitude: nextOverride.latitude ?? prev.latitude,
-        longitude: nextOverride.longitude ?? prev.longitude,
+        latitude: undefined,
+        longitude: undefined,
+        irradianceSource: undefined,
+        irradianceRefAt: undefined,
+        ...buildConcessionariaPatch(prev, {
+          uf: nextOverride.estado || prev.estado,
+          cidade: nextOverride.cidade || prev.cidade,
+          cep,
+        }),
       }, { preserveValorTotal: true }));
 
       return nextOverride;
@@ -601,18 +684,61 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     } finally {
       setLocationLoading(false);
     }
-  }, [formData.cep, formData.cidade, formData.endereco, formData.estado, patchAndRecalculate, toast]);
+  }, [
+    contact?.city,
+    contact?.energyDistributor,
+    contact?.state,
+    contact?.zip,
+    formData.cep,
+    formData.cidade,
+    formData.endereco,
+    formData.estado,
+    patchAndRecalculate,
+    rentabilityManuallyEdited,
+    toast,
+  ]);
 
   // ── Auto-calculate system for ALL types using Kit equipment data ──
 
 
-  const calculateSystem = useCallback((consumo: number) => {
-    setFormData(prev => patchAndRecalculate(prev, { consumoMensal: consumo }));
+  const calculateSystem = useCallback((consumoInput: number) => {
+    setFormData((prev) => {
+      if (prev.tipo_cliente === 'usina') {
+        return patchAndRecalculate(prev, {
+          consumoMensal: Math.max(0, Number(consumoInput) || 0),
+          contaLuzMensal: undefined,
+        });
+      }
+
+      const contaLuzMensal = Math.max(0, Number(consumoInput) || 0);
+      const consumoMensal = billToConsumptionKwh(contaLuzMensal, resolveBillTariff(prev));
+      return patchAndRecalculate(prev, {
+        contaLuzMensal,
+        consumoMensal,
+      });
+    });
   }, [patchAndRecalculate]);
 
   const handleChange = (field: keyof typeof formData, value: number | string | boolean) => {
     if (field === 'consumoMensal') {
       calculateSystem(value as number);
+      return;
+    }
+
+    if (field === 'tipo_cliente') {
+      const nextTipo = value as ClientType;
+      setFormData(prev => {
+        const patch: Partial<typeof formData> = {
+          tipo_cliente: nextTipo,
+        };
+        if (nextTipo === 'usina') {
+          patch.contaLuzMensal = undefined;
+        } else {
+          const tarifa = resolveBillTariff(prev);
+          patch.contaLuzMensal = Math.max(0, Number(prev.consumoMensal) || 0) * tarifa;
+        }
+        return patchAndRecalculate(prev, patch);
+      });
       return;
     }
 
@@ -622,7 +748,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       || field === 'custoDisponibilidadeKwh'
       || field === 'performanceRatio'
       || field === 'precoPorKwp'
-      || field === 'tipo_cliente'
       || field === 'annualEnergyIncreasePct'
       || field === 'moduleDegradationPct'
       || field === 'annualOmCostPct'
@@ -639,11 +764,17 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     if (field === 'rentabilityRatePerKwh') {
       const rate = Math.max(0, Number(value) || 0);
       setRentabilityManuallyEdited(true);
-      setFormData(prev => patchAndRecalculate(prev, {
-        rentabilityRatePerKwh: rate,
-        tarifaKwh: rate,
-        teRatePerKwh: isTusdTeSimplifiedEnabled() ? rate : prev.teRatePerKwh,
-      }));
+      setFormData(prev => {
+        const patch: Partial<typeof formData> = {
+          rentabilityRatePerKwh: rate,
+          tarifaKwh: rate,
+          teRatePerKwh: isTusdTeSimplifiedEnabled() ? rate : prev.teRatePerKwh,
+        };
+        if (prev.tipo_cliente !== 'usina') {
+          patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, Math.max(0.01, rate || DEFAULT_TARIFF_FALLBACK));
+        }
+        return patchAndRecalculate(prev, patch);
+      });
       return;
     }
 
@@ -660,25 +791,29 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     if (field === 'tarifaKwh') {
       const rate = Math.max(0, Number(value) || 0);
       setRentabilityManuallyEdited(true);
-      setFormData(prev => patchAndRecalculate(prev, {
-        tarifaKwh: rate,
-        rentabilityRatePerKwh: rate,
-        teRatePerKwh: isTusdTeSimplifiedEnabled() ? rate : prev.teRatePerKwh,
-      }));
+      setFormData(prev => {
+        const patch: Partial<typeof formData> = {
+          tarifaKwh: rate,
+          rentabilityRatePerKwh: rate,
+          teRatePerKwh: isTusdTeSimplifiedEnabled() ? rate : prev.teRatePerKwh,
+        };
+        if (prev.tipo_cliente !== 'usina') {
+          patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, Math.max(0.01, rate || DEFAULT_TARIFF_FALLBACK));
+        }
+        return patchAndRecalculate(prev, patch);
+      });
       return;
     }
 
     if (field === 'estado') {
       const uf = value as string;
-      const irrad = getIrradianceByUF(uf);
       const irradianceRefAt = new Date().toISOString();
       setFormData(prev => {
         const patch: Partial<typeof formData> = {
           estado: uf,
-          irradiancia: irrad,
-          irradianceSource: 'uf_fallback',
-          irradianceRefAt,
-          monthlyGenerationFactors: undefined,
+          irradiancia: prev.irradiancia,
+          irradianceSource: prev.irradianceSource,
+          irradianceRefAt: prev.irradianceRefAt || irradianceRefAt,
         };
         const inference = inferDistributor({
           uf,
@@ -693,30 +828,19 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           patch.tarifaKwh = tariffFromInference;
           patch.rentabilityRatePerKwh = tariffFromInference;
           patch.teRatePerKwh = tariffFromInference;
+          if (prev.tipo_cliente !== 'usina') {
+            patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, tariffFromInference);
+          }
         }
         return patchAndRecalculate(prev, patch);
       });
 
       void (async () => {
-        const solarResource = await resolveSolarResource({
-          city: formData.cidade || contact?.city || null,
-          uf,
-          addressLine: formData.endereco || contact?.address || null,
-          zip: formData.cep || contact?.zip || null,
-          lat: formData.latitude ?? contact?.latitude,
-          lon: formData.longitude ?? contact?.longitude,
-        });
-        if (!solarResource) return;
-        setFormData(prev => {
-          if (prev.estado !== uf) return prev;
-          return patchAndRecalculate(prev, {
-            irradiancia: solarResource.annualIrradianceKwhM2Day,
-            monthlyGenerationFactors: solarResource.monthlyGenerationFactors,
-            irradianceSource: solarResource.source,
-            latitude: solarResource.lat ?? undefined,
-            longitude: solarResource.lon ?? undefined,
-            irradianceRefAt: new Date().toISOString(),
-          });
+        await resolvePreciseLocation({
+          estado: uf,
+          cidade: formData.cidade || contact?.city || undefined,
+          endereco: formData.endereco || contact?.address || undefined,
+          cep: formData.cep || contact?.zip || undefined,
         });
       })();
       return;
@@ -731,6 +855,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           patch.tarifaKwh = inferredTariff;
           patch.rentabilityRatePerKwh = inferredTariff;
           patch.teRatePerKwh = inferredTariff;
+          if (prev.tipo_cliente !== 'usina') {
+            patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, inferredTariff);
+          }
         }
         return patchAndRecalculate(prev, patch);
       });
@@ -747,7 +874,14 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     }
 
     if (field === 'cep') {
-      setFormData((prev) => ({ ...prev, cep: normalizeCep(String(value || '')) }));
+      setFormData((prev) => ({
+        ...prev,
+        cep: normalizeCep(String(value || '')),
+        latitude: undefined,
+        longitude: undefined,
+        irradianceSource: undefined,
+        irradianceRefAt: undefined,
+      }));
       return;
     }
 
@@ -966,6 +1100,15 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     e.preventDefault();
     if (!contact) return;
 
+    if (formData.irradianceSource !== 'pvgis' || !Number.isFinite(Number(formData.latitude)) || !Number.isFinite(Number(formData.longitude))) {
+      toast({
+        title: 'Irradiancia obrigatoria via PVGIS',
+        description: 'Calcule o local exato ate obter fonte PVGIS antes de gerar a proposta.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     // Sprint 10: block generation when critical numeric values are zero/negative
     if (formData.consumoMensal <= 0 || formData.potenciaSistema <= 0 || formData.quantidadePaineis <= 0 || formData.valorTotal <= 0) {
       toast({ title: 'Dados incompletos', description: formData.tipo_cliente === 'usina' ? 'Geração estimada, potência, módulos e investimento total devem ser maiores que zero.' : 'Consumo, potência, painéis e valor total devem ser maiores que zero.', variant: 'destructive' });
@@ -1054,8 +1197,20 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     if (!themeHydrated || !logoInitialized) {
       toast({
         title: 'Branding ainda carregando',
-        description: 'Gerando proposta com os dados disponiveis no momento.',
+        description: 'Aguarde alguns segundos e tente novamente para aplicar tema e logo corretamente.',
+        variant: 'destructive',
       });
+      return;
+    }
+
+    const resolvedLogoDataUrl = await ensureLogoDataUrl();
+    if (logoUrl && !resolvedLogoDataUrl) {
+      toast({
+        title: 'Logo indisponível',
+        description: 'Não foi possível carregar a logo da empresa para o PDF. Reenvie a logo e tente novamente.',
+        variant: 'destructive',
+      });
+      return;
     }
 
     setIsLoading(true);
@@ -1146,11 +1301,11 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         secondaryColorHex: secondaryColorHex || undefined,
         validadeDias: formData.validadeDias, returnBlob: true,
         propNum,
-        logoDataUrl,
+        logoDataUrl: resolvedLogoDataUrl || logoDataUrl,
       }) as Blob;
 
       // 4) Upload + payload
-      const fileName = `Proposta_${formData.tipo_cliente === 'usina' ? 'Usina' : 'Energia'}_Solar_${contact.name.replace(/\s+/g, '_')}_${propNum}.pdf`;
+      const fileName = buildProposalFileName(contact.name, propNum, formData.tipo_cliente === 'usina');
       const storageResult = await uploadPdfToStorage(pdfBlob, contact.id, fileName);
       const brandingSnapshot = {
         proposalThemeId: themeId,
@@ -1172,6 +1327,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           cidade: formData.cidade,
           cep: formData.cep,
           estado: formData.estado,
+          contaLuzMensal: formData.contaLuzMensal,
           irradiancia: formData.irradiancia,
           concessionaria: formData.concessionaria,
           tipoLigacao: formData.tipoLigacao,
@@ -1278,14 +1434,11 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         brandingSnapshot,
         colorTheme: theme,
         logoUrl,
-        logoDataUrl,
+        logoDataUrl: resolvedLogoDataUrl || logoDataUrl,
       });
 
       // 6) Download to user
-      const url = URL.createObjectURL(pdfBlob);
-      const a = document.createElement('a'); a.href = url; a.download = fileName;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      triggerBlobDownload(pdfBlob, fileName);
 
       // 7) Share link + tracking (best-effort, background)
       const versionId = (saveResult as any)?.proposalVersionId;
@@ -1341,6 +1494,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         {
           ...prev,
           consumoMensal: contact.consumption || 500,
+          contaLuzMensal: Math.max(0, (contact.consumption || 500) * initialRentability),
           valorTotal: contact.projectValue || 0,
           tipo_cliente: (contact.clientType || 'residencial') as ClientType,
           observacoes: '',
@@ -1370,7 +1524,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           estado: uf,
           irradiancia: uf ? getIrradianceByUF(uf) : 4.5,
           monthlyGenerationFactors: undefined,
-          irradianceSource: contact.irradianceSource || 'uf_fallback',
+          irradianceSource: contact.irradianceSource === 'pvgis' ? 'pvgis' : undefined,
           latitude: contact.latitude,
           longitude: contact.longitude,
           irradianceRefAt: contact.irradianceRefAt || undefined,
@@ -1464,9 +1618,11 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     options: {
       BRAZIL_STATES,
       ENERGY_DISTRIBUTOR_OPTIONS,
+      getEnergyDistributorOptionsByUf,
       PAYMENT_CONDITION_OPTIONS,
       COMMON_FINANCING_INSTITUTIONS,
       INSTALLMENT_OPTIONS,
+      MODULE_TYPE_OPTIONS,
     },
   };
 }

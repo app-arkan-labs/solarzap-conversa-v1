@@ -41,10 +41,13 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
     if (currentStep === 2) {
       const hasCoordinates = Number.isFinite(Number(form.formData.latitude))
         && Number.isFinite(Number(form.formData.longitude));
+      const hasStrictPvgis = form.formData.irradianceSource === 'pvgis';
       return (
         Boolean(form.formData.estado)
         && Number(form.formData.consumoMensal) > 0
         && (Boolean(form.formData.cidade) || hasCoordinates)
+        && hasCoordinates
+        && hasStrictPvgis
       );
     }
     if (currentStep === 3) {
@@ -73,9 +76,6 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
   const goNext = async () => {
     if (currentStep >= 6) return;
     if (!canProceed) return;
-    if (currentStep === 2) {
-      await form.resolvePreciseLocation();
-    }
     setCurrentStep((prev) => Math.min(6, prev + 1));
   };
 

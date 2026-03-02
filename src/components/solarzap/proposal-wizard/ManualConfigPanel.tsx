@@ -19,11 +19,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
     && Number.isFinite(Number(form.formData.longitude));
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
-    : form.formData.irradianceSource === 'open_meteo'
-      ? 'Open-Meteo por coordenada'
-    : form.formData.irradianceSource === 'cache'
-      ? 'cache solar'
-      : 'media por UF (fallback)';
+    : 'nao resolvida';
 
   return (
     <div className="space-y-5 rounded-lg border bg-muted/20 p-4">
@@ -211,7 +207,14 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
           </div>
           <div className="space-y-1">
             <Label>Modulo tipo</Label>
-            <Input value={form.formData.moduloTipo} onChange={(e) => form.handleChange('moduloTipo', e.target.value)} />
+            <Select value={form.formData.moduloTipo || 'Monocristalino'} onValueChange={(value) => form.handleChange('moduloTipo', value)}>
+              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <SelectContent className="bg-popover">
+                {form.options.MODULE_TYPE_OPTIONS.map((moduleType) => (
+                  <SelectItem key={moduleType} value={moduleType}>{moduleType}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label>Modulo potencia (W)</Label>

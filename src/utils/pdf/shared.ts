@@ -62,3 +62,31 @@ export function buildSellerScriptFileName(customerName: string, proposalNumber: 
   const proposalToken = sanitizeFileToken(proposalNumber) || 'PROP-00000000';
   return `Roteiro_Vendedor_${customerToken}_${proposalToken}.pdf`;
 }
+
+export function normalizePdfFileName(value: string, fallback = 'Proposta_Energia_Solar.pdf'): string {
+  const normalized = String(value || '').trim().replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+  const collapsed = normalized.replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+  const base = collapsed || fallback;
+  return /\.pdf$/i.test(base) ? base : `${base}.pdf`;
+}
+
+export function triggerBlobDownload(blob: Blob, rawFileName: string): void {
+  const fileName = normalizePdfFileName(rawFileName);
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = objectUrl;
+  link.download = fileName;
+  link.rel = 'noopener';
+  link.style.display = 'none';
+
+  document.body.appendChild(link);
+  link.click();
+
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+    if (link.parentNode) {
+      link.parentNode.removeChild(link);
+    }
+  }, 1000);
+}

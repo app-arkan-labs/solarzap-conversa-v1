@@ -157,6 +157,59 @@ export const PRIMARY_DISTRIBUTOR_BY_UF: Record<UfCode, string> = {
   TO: 'ETO',
 };
 
+export const ENERGY_DISTRIBUTORS_BY_UF: Record<UfCode, readonly string[]> = {
+  AC: ['EAC'],
+  AL: ['EQUATORIAL AL'],
+  AP: ['CEA'],
+  AM: ['AME'],
+  BA: ['COELBA'],
+  CE: ['ENEL CE'],
+  DF: ['Neoenergia Brasilia'],
+  ES: ['EDP ES'],
+  GO: ['EQUATORIAL GO', 'ENEL GO'],
+  MA: ['EQUATORIAL MA'],
+  MT: ['EMT'],
+  MS: ['EMS'],
+  MG: ['CEMIG-D', 'DMED'],
+  PA: ['EQUATORIAL PA'],
+  PB: ['EPB'],
+  PR: ['COPEL-DIS', 'COCEL'],
+  PE: ['Neoenergia PE'],
+  PI: ['EQUATORIAL PI'],
+  RJ: ['ENEL RJ', 'LIGHT SESA'],
+  RN: ['COSERN'],
+  RS: ['RGE', 'RGE SUL', 'CEEE-D'],
+  RO: ['ERO'],
+  RR: ['BOA VISTA'],
+  SC: ['CELESC', 'EFLJC', 'EFLUL', 'COOPERALIANCA', 'COOPERCAL'],
+  SP: [
+    'CPFL-PAULISTA',
+    'CPFL-PIRATINING',
+    'CPFL SUL PAULIST',
+    'CPFL LESTE PAULI',
+    'CPFL MOCOCA',
+    'CPFL JAGUARI',
+    'ELEKTRO',
+    'ELETROPAULO',
+    'ENEL SP',
+    'EDP SP',
+  ],
+  SE: ['ESE'],
+  TO: ['ETO'],
+};
+
+export const getEnergyDistributorOptionsByUf = (uf?: string | null): string[] => {
+  const normalized = normalizeUf(uf);
+  if (!normalized) return [];
+
+  const seeded = ENERGY_DISTRIBUTORS_BY_UF[normalized] || [];
+  const unique = new Set<string>(seeded);
+  const primary = PRIMARY_DISTRIBUTOR_BY_UF[normalized];
+  if (primary) unique.add(primary);
+
+  return Array.from(unique);
+};
+
 // Source: ANEEL BDTarifas (B1 Convencional, Tarifa de Aplicação; dataset generation 2026-02-26).
 // Values converted from R$/MWh to R$/kWh.
 export const DEFAULT_TARIFF_BY_DISTRIBUTOR: Record<string, number> = {

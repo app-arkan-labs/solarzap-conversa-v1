@@ -63,6 +63,7 @@ import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancia
 import { FINANCIAL_MODEL_VERSION } from '@/types/proposalFinancial';
 import { calculateProposalFinancials, resolveTariffByPriority } from '@/utils/proposalFinancialModel';
 import type { SolarResourceResponse } from '@/types/solarResource';
+import { buildProposalFileName, triggerBlobDownload } from '@/utils/pdf/shared';
 
 interface ProposalModalProps {
   isOpen: boolean;
@@ -182,7 +183,12 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
   const { updateLead } = useLeads();
   const { toast } = useToast();
   const { theme, secondaryColorHex } = useProposalTheme();
-  const { logoDataUrl } = useProposalLogo();
+  const {
+    logoUrl,
+    logoDataUrl,
+    initialized: logoInitialized,
+    ensureLogoDataUrl,
+  } = useProposalLogo();
 
   const [formData, setFormData] = useState({
     consumoMensal: contact?.consumption || 0,
@@ -844,6 +850,25 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
       })()
       : null;
 
+    if (!logoInitialized) {
+      toast({
+        title: 'Logo ainda carregando',
+        description: 'Aguarde alguns segundos e tente novamente para aplicar a logo corretamente.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const resolvedLogoDataUrl = await ensureLogoDataUrl();
+    if (logoUrl && !resolvedLogoDataUrl) {
+      toast({
+        title: 'Logo indisponível',
+        description: 'Não foi possível carregar a logo da empresa para o PDF. Reenvie a logo e tente novamente.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -920,11 +945,11 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
         secondaryColorHex: secondaryColorHex || undefined,
         validadeDias: formData.validadeDias, returnBlob: true,
         propNum,
-        logoDataUrl,
+        logoDataUrl: resolvedLogoDataUrl || logoDataUrl,
       }) as Blob;
 
       // 4) Upload + payload
-      const fileName = `Proposta_${formData.tipo_cliente === 'usina' ? 'Usina' : 'Energia'}_Solar_${contact.name.replace(/\s+/g, '_')}_${propNum}.pdf`;
+      const fileName = buildProposalFileName(contact.name, propNum, formData.tipo_cliente === 'usina');
       const storageResult = await uploadPdfToStorage(pdfBlob, contact.id, fileName);
       const premiumPayload: Record<string, unknown> = {
         segment: premiumContent.segment, segmentLabel: premiumContent.segmentLabel,
@@ -1027,14 +1052,11 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
         premiumPayload,
         contextEngine: contextData || undefined,
         colorTheme: theme,
-        logoDataUrl,
+        logoDataUrl: resolvedLogoDataUrl || logoDataUrl,
       });
 
       // 6) Download to user
-      const url = URL.createObjectURL(pdfBlob);
-      const a = document.createElement('a'); a.href = url; a.download = fileName;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      triggerBlobDownload(pdfBlob, fileName);
 
       // 7) Share link + tracking (best-effort, background)
       const versionId = (saveResult as any)?.proposalVersionId;
