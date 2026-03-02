@@ -1053,11 +1053,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     if (!themeHydrated || !logoInitialized) {
       toast({
-        title: 'Aguarde o branding carregar',
-        description: 'Carregando tema e logo da empresa. Tente novamente em alguns segundos.',
-        variant: 'destructive',
+        title: 'Branding ainda carregando',
+        description: 'Gerando proposta com os dados disponiveis no momento.',
       });
-      return;
     }
 
     setIsLoading(true);

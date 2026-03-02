@@ -97,6 +97,11 @@ function resolvePdfFromPayload(
   ]);
   if (directPdf) return normalizePdfUrl(directPdf);
 
+  // In production the proposals bucket is private, so share URL is the safest
+  // fallback for "Ver PDF" when direct public/client URLs are not available.
+  const shareFallback = resolveShareFromPayload(payload);
+  if (shareFallback) return normalizePdfUrl(shareFallback);
+
   const storageUrl = buildPublicStorageUrl(supabaseUrl, payload);
   return storageUrl ? normalizePdfUrl(storageUrl) : null;
 }

@@ -58,6 +58,24 @@ describe('resolveProposalLinks', () => {
     expect(links.shareUrl).toBeNull();
   });
 
+  it('uses share url as PDF fallback when direct pdf url is missing', () => {
+    const links = resolveProposalLinks({
+      premiumPayload: {
+        storage: {
+          bucket: 'proposals',
+          path: 'org/file.pdf',
+        },
+        share: {
+          url: 'https://project.supabase.co/functions/v1/proposal-share?token=abc',
+        },
+      },
+      supabaseUrl: 'https://project.supabase.co',
+    });
+
+    expect(links.pdfUrl).toBe('https://project.supabase.co/functions/v1/proposal-share?token=abc');
+    expect(links.shareUrl).toBe('https://project.supabase.co/functions/v1/proposal-share?token=abc');
+  });
+
   it('adds download filename fallback for storage URLs without .pdf extension', () => {
     const links = resolveProposalLinks({
       premiumPayload: {
