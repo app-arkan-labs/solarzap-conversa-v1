@@ -228,15 +228,15 @@ export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCom
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="w-[95vw] max-w-2xl h-[85vh] max-h-[85vh] p-0 gap-0 overflow-hidden flex flex-col">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
           <DialogTitle className="flex items-center gap-2 text-lg">
             <MessageSquare className="w-5 h-5 text-primary" />
             Comentários - {leadName}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 flex flex-col min-h-0 gap-4">
+        <div className="flex-1 flex flex-col min-h-0 gap-4 px-6 pt-4 pb-6 overflow-hidden">
           {/* Add comment form */}
           <div className="flex gap-2">
             <Textarea
@@ -303,7 +303,7 @@ export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCom
           )}
 
           {/* Comments list */}
-          <ScrollArea className="flex-1 min-h-[200px] max-h-[350px]">
+          <ScrollArea className="flex-1 min-h-0" data-testid="lead-comments-scroll">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -317,7 +317,7 @@ export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCom
                 </p>
               </div>
             ) : (
-              <div className="space-y-3 pr-4">
+              <div className="space-y-3 pr-4 pb-1">
                 {filteredComments.map((comment) => (
                   <div
                     key={comment.id}

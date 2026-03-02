@@ -27,6 +27,7 @@ import { PageHeader } from './PageHeader'; // New Import
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { resolveProposalLinks } from '@/utils/proposalLinks';
 
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
 import { ExportContactsModal } from './ExportContactsModal';
@@ -124,19 +125,10 @@ const getProposalStatusBadgeClass = (status: string | null | undefined) => {
 };
 
 const extractProposalLinks = (payload: Record<string, unknown> | null) => {
-  if (!payload || typeof payload !== 'object') {
-    return { pdfUrl: null, shareUrl: null };
-  }
-
-  const getString = (key: string) => {
-    const value = payload[key];
-    return typeof value === 'string' && value.trim().length > 0 ? value : null;
-  };
-
-  const pdfUrl = getString('public_pdf_url') || getString('client_pdf_url') || getString('pdf_url');
-  const shareUrl = getString('share_url');
-
-  return { pdfUrl, shareUrl };
+  return resolveProposalLinks({
+    premiumPayload: payload,
+    supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+  });
 };
 
 export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDeleteLead, onToggleLeadAi }: ContactsViewProps) {

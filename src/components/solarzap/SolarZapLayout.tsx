@@ -529,21 +529,28 @@ export function SolarZapLayout() {
 
       onCallCompleted(contact);
 
-      if (feedback) {
-        import.meta.env.DEV && console.log('Call feedback:', { contactId: contact.id, feedback });
+      const normalizedFeedback = String(feedback || '').trim();
+      if (normalizedFeedback) {
+        import.meta.env.DEV && console.log('Call feedback:', { contactId: contact.id, feedback: normalizedFeedback });
 
         if (contact.id && orgId) {
-          import('@/lib/supabase').then(async (m) => {
-            const { error: commentError } = await m.supabase
-              .from('comentarios_leads')
-              .insert([{
-                org_id: orgId,
-                lead_id: parseInt(contact.id),
-                texto: `[Feedback Ligacao]: ${feedback}`,
-                autor: 'Vendedor'
-              }]);
-            if (commentError) console.error("Error saving call comment:", commentError);
-          });
+          void (async () => {
+            try {
+              const { error: commentError } = await supabase
+                .from('comentarios_leads')
+                .insert([{
+                  org_id: orgId,
+                  lead_id: parseInt(contact.id, 10),
+                  texto: `[Feedback Ligacao]: ${normalizedFeedback}`,
+                  autor: 'Vendedor',
+                }]);
+              if (commentError) {
+                console.error('Error saving call comment:', commentError);
+              }
+            } catch (commentError) {
+              console.error('Unexpected error saving call comment:', commentError);
+            }
+          })();
         }
 
         toast({

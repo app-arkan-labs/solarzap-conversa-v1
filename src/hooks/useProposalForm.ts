@@ -106,8 +106,11 @@ export interface ProposalData {
   premiumPayload?: Record<string, unknown>;
   contextEngine?: unknown;
   // Sprint 3: Pass theme/logo for seller script
+  proposalThemeId?: string;
   colorTheme?: import('@/utils/proposalColorThemes').ProposalColorTheme;
   logoDataUrl?: string | null;
+  logoUrl?: string | null;
+  brandingSnapshot?: Record<string, unknown>;
   moduloGarantia?: number;
   signatureCompanyName?: string;
   signatureCompanyCnpj?: string;
@@ -169,8 +172,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   const [rentabilityManuallyEdited, setRentabilityManuallyEdited] = useState(false);
   const { updateLead } = useLeads();
   const { toast } = useToast();
-  const { theme, secondaryColorHex } = useProposalTheme();
-  const { logoDataUrl } = useProposalLogo();
+  const { themeId, theme, secondaryColorHex, hydrated: themeHydrated } = useProposalTheme();
+  const { logoUrl, logoDataUrl, initialized: logoInitialized } = useProposalLogo();
 
   const [formData, setFormData] = useState({
     consumoMensal: contact?.consumption || 0,
@@ -1048,6 +1051,15 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       })()
       : null;
 
+    if (!themeHydrated || !logoInitialized) {
+      toast({
+        title: 'Aguarde o branding carregar',
+        description: 'Carregando tema e logo da empresa. Tente novamente em alguns segundos.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -1142,6 +1154,14 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       // 4) Upload + payload
       const fileName = `Proposta_${formData.tipo_cliente === 'usina' ? 'Usina' : 'Energia'}_Solar_${contact.name.replace(/\s+/g, '_')}_${propNum}.pdf`;
       const storageResult = await uploadPdfToStorage(pdfBlob, contact.id, fileName);
+      const brandingSnapshot = {
+        proposalThemeId: themeId,
+        proposalThemeLabel: theme.label,
+        proposalThemeSwatch: theme.swatch,
+        secondaryColorHex: secondaryColorHex || null,
+        logoUrl: logoUrl || null,
+        capturedAt: new Date().toISOString(),
+      };
       const premiumPayload: Record<string, unknown> = {
         segment: premiumContent.segment, segmentLabel: premiumContent.segmentLabel,
         headline: premiumContent.headline, executiveSummary: premiumContent.executiveSummary,
@@ -1218,6 +1238,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         irradianceRefAt: formData.irradianceRefAt,
         rentabilityRatePerKwh: effectiveRentabilityRate,
         secondaryColorHex: secondaryColorHex || null,
+        branding: brandingSnapshot,
         propNum,
         shadowComparison,
       };
@@ -1253,9 +1274,12 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         longitude: formData.longitude,
         irradianceRefAt: formData.irradianceRefAt,
         secondaryColorHex: secondaryColorHex || null,
+        proposalThemeId: themeId,
         premiumPayload,
         contextEngine: contextData || undefined,
+        brandingSnapshot,
         colorTheme: theme,
+        logoUrl,
         logoDataUrl,
       });
 

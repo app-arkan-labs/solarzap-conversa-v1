@@ -7,6 +7,12 @@ import solarzapLogo from '@/assets/solarzap-logo.png';
 const BUCKET = 'proposal-assets';
 const MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+const LOGO_SYNC_EVENT = 'proposal-logo-sync';
+
+type LogoSyncDetail = {
+  orgId: string;
+  logoUrl: string | null;
+};
 
 // ── Module-level cache for default SolarZap logo data URL ──
 let _defaultLogoDataUrl: string | null = null;
@@ -27,6 +33,14 @@ function loadDefaultLogoDataUrl(): void {
 // Start loading immediately at module init
 loadDefaultLogoDataUrl();
 
+function dispatchLogoSync(detail: LogoSyncDetail) {
+  try {
+    window.dispatchEvent(new CustomEvent<LogoSyncDetail>(LOGO_SYNC_EVENT, { detail }));
+  } catch {
+    // non-blocking
+  }
+}
+
 /**
  * Manages the per-org logo used in generated proposal PDFs.
  *
@@ -42,6 +56,7 @@ export function useProposalLogo() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
   // Avoid stale closures on orgId
   const orgIdRef = useRef(orgId);
@@ -92,8 +107,14 @@ export function useProposalLogo() {
 
   // ── Fetch saved logo from company_profile ──
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) {
+      setLogoUrl(null);
+      setLogoDataUrl(null);
+      setInitialized(true);
+      return;
+    }
     let cancelled = false;
+    setInitialized(false);
     (async () => {
       try {
         const { data, error } = await supabase
@@ -107,10 +128,45 @@ export function useProposalLogo() {
         if (url) {
           const dataUrl = await toDataUrl(url);
           if (!cancelled) setLogoDataUrl(dataUrl);
+        } else {
+          setLogoDataUrl(null);
         }
       } catch { /* keep null */ }
+      finally {
+        if (!cancelled) setInitialized(true);
+      }
     })();
     return () => { cancelled = true; };
+  }, [orgId, toDataUrl]);
+
+  useEffect(() => {
+    if (!orgId) return;
+
+    const onLogoSync = (event: Event) => {
+      const custom = event as CustomEvent<LogoSyncDetail>;
+      const detail = custom.detail;
+      if (!detail || detail.orgId !== orgId) return;
+
+      const nextLogo = detail.logoUrl || null;
+      setLogoUrl(nextLogo);
+      setInitialized(true);
+
+      if (!nextLogo) {
+        setLogoDataUrl(null);
+        return;
+      }
+
+      toDataUrl(nextLogo).then((dataUrl) => {
+        setLogoDataUrl(dataUrl);
+      }).catch(() => {
+        // non-blocking
+      });
+    };
+
+    window.addEventListener(LOGO_SYNC_EVENT, onLogoSync as EventListener);
+    return () => {
+      window.removeEventListener(LOGO_SYNC_EVENT, onLogoSync as EventListener);
+    };
   }, [orgId, toDataUrl]);
 
   // ── Upload logo file ──
@@ -152,6 +208,7 @@ export function useProposalLogo() {
       if (dbErr) throw dbErr;
 
       setLogoUrl(publicUrl);
+      dispatchLogoSync({ orgId: orgIdRef.current, logoUrl: publicUrl });
 
       // Convert to data-URL
       const dataUrl = await toDataUrl(publicUrl);
@@ -194,6 +251,7 @@ export function useProposalLogo() {
 
       setLogoUrl(null);
       setLogoDataUrl(null);
+      dispatchLogoSync({ orgId: orgIdRef.current, logoUrl: null });
       toast({ title: 'Logo removida', description: 'As próximas propostas usarão a logo padrão SolarZap.' });
     } catch (err) {
       console.error('Failed to remove proposal logo:', err);
@@ -206,5 +264,5 @@ export function useProposalLogo() {
   // Always return a valid data-URL: custom org logo → default SolarZap logo
   const effectiveLogoDataUrl = logoDataUrl || _defaultLogoDataUrl;
 
-  return { logoUrl, logoDataUrl: effectiveLogoDataUrl, uploadLogo, removeLogo, loading };
+  return { logoUrl, logoDataUrl: effectiveLogoDataUrl, uploadLogo, removeLogo, loading, initialized };
 }

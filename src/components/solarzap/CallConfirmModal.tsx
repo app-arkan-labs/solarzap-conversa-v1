@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { ArrowRight, Check, Copy, MessageCircle, Phone, QrCode, X, Loader2, Smartphone } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { useToast } from '@/hooks/use-toast';
@@ -14,7 +15,7 @@ interface CallConfirmModalProps {
   contactPhone?: string;
 }
 
-type Step = 'method' | 'qr' | 'confirm';
+type Step = 'method' | 'qr' | 'confirm' | 'feedback';
 type CallMethod = 'tel' | 'whatsapp';
 
 function normalizeBrazilPhoneDigits(raw: string | undefined | null) {
@@ -29,6 +30,7 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
   const [step, setStep] = useState<Step>('method');
   const [method, setMethod] = useState<CallMethod | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState('');
 
   const phoneDigits = useMemo(() => normalizeBrazilPhoneDigits(contactPhone), [contactPhone]);
   const phoneDisplay = useMemo(() => formatPhoneForDisplay(phoneDigits), [phoneDigits]);
@@ -43,6 +45,7 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
     setStep('method');
     setMethod(null);
     setIsSubmitting(false);
+    setFeedback('');
   };
 
   useEffect(() => {
@@ -94,8 +97,15 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
   };
 
   const handleCompleted = () => {
+    setStep('feedback');
+  };
+
+  const handleSubmitCompleted = () => {
+    const normalizedFeedback = feedback.trim();
+    if (!normalizedFeedback || isSubmitting) return;
+
     setIsSubmitting(true);
-    Promise.resolve(onConfirm(true)).finally(() => {
+    Promise.resolve(onConfirm(true, normalizedFeedback)).finally(() => {
       setIsSubmitting(false);
       resetState();
     });
@@ -233,7 +243,7 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
               </Button>
             </DialogFooter>
           </>
-        ) : (
+        ) : step === 'confirm' ? (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-lg">
@@ -257,6 +267,42 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 Sim, Realizei
                 {!isSubmitting && <ArrowRight className="w-4 h-4" />}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-lg">
+                <Phone className="w-5 h-5 text-primary" />
+                Como foi a ligacao?
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="py-4 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Descreva rapidamente o resultado da ligacao para registrar no historico do lead.
+              </p>
+              <Textarea
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="Ex: Cliente confirmou interesse, pediu proposta para esta semana."
+                rows={4}
+                className="resize-none"
+              />
+            </div>
+
+            <DialogFooter className="flex gap-2 sm:gap-2">
+              <Button variant="outline" onClick={() => setStep('confirm')} className="flex-1" disabled={isSubmitting}>
+                Voltar
+              </Button>
+              <Button
+                onClick={handleSubmitCompleted}
+                disabled={isSubmitting || feedback.trim().length === 0}
+                className="flex-1 gap-2"
+              >
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Salvar e continuar
               </Button>
             </DialogFooter>
           </>

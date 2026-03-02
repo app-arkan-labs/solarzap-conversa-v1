@@ -45,6 +45,7 @@ export function useProposalTheme() {
   const [themeId, setThemeId] = useState<ProposalThemeValue>('verde');
   const [secondaryColorHex, setSecondaryColorHex] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   const getSecondaryStorageKey = useCallback(
     () => (orgId ? `proposal_secondary_color:${orgId}` : null),
@@ -74,8 +75,12 @@ export function useProposalTheme() {
 
   // Fetch current theme from company_profile
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) {
+      setHydrated(true);
+      return;
+    }
     let cancelled = false;
+    setHydrated(false);
     (async () => {
       try {
         const { data, error } = await supabase
@@ -96,6 +101,7 @@ export function useProposalTheme() {
           }
           if (!cancelled) {
             setSecondaryColorHex(getSecondaryFromLocal());
+            setHydrated(true);
           }
           return;
         }
@@ -107,9 +113,13 @@ export function useProposalTheme() {
           const dbSecondary = normalizeThemeHex(data?.proposal_secondary_color || '') || null;
           const localSecondary = getSecondaryFromLocal();
           setSecondaryColorHex(dbSecondary || localSecondary);
+          setHydrated(true);
         }
       } catch {
-        if (!cancelled) setSecondaryColorHex(getSecondaryFromLocal());
+        if (!cancelled) {
+          setSecondaryColorHex(getSecondaryFromLocal());
+          setHydrated(true);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -212,5 +222,5 @@ export function useProposalTheme() {
     }
   }, [orgId, toast, saveSecondaryInLocal]);
 
-  return { themeId, theme, secondaryColorHex, updateTheme, updateSecondaryColor, loading };
+  return { themeId, theme, secondaryColorHex, updateTheme, updateSecondaryColor, loading, hydrated };
 }

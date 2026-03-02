@@ -17,6 +17,7 @@ import {
 import { UpdateLeadData } from './EditLeadModal';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { resolveProposalLinks } from '@/utils/proposalLinks';
 
 type LeadProposalItem = {
   proposal_version_id: string;
@@ -146,33 +147,62 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
 
           if (fallbackError) throw fallbackError;
 
-          const fallbackRows = (fallbackData || []).map((row: any) => ({
-            proposal_version_id: String(row.id || ''),
-            status: row.status ? String(row.status) : null,
-            created_at: String(row.created_at || ''),
-            version_no: row.version_no ? Number(row.version_no) : null,
-            pdf_url:
-              row.premium_payload?.public_pdf_url ||
-              row.premium_payload?.client_pdf_url ||
-              row.premium_payload?.pdf_url ||
-              null,
-            share_url: row.premium_payload?.share_url || null,
-          }));
+          const fallbackRows = (fallbackData || []).map((row: any) => {
+            const links = resolveProposalLinks({
+              premiumPayload: row.premium_payload || null,
+              supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+            });
+
+            return {
+              proposal_version_id: String(row.id || ''),
+              status: row.status ? String(row.status) : null,
+              created_at: String(row.created_at || ''),
+              version_no: row.version_no ? Number(row.version_no) : null,
+              pdf_url: links.pdfUrl,
+              share_url: links.shareUrl,
+            };
+          });
 
           setLeadProposals(fallbackRows);
           return;
         }
 
-        const rows = ((data || []) as any[])
-          .slice(0, 5)
-          .map((row) => ({
-            proposal_version_id: String(row.proposal_version_id || row.id || ''),
-            status: row.status ? String(row.status) : null,
-            created_at: String(row.created_at || ''),
-            version_no: row.version_no ? Number(row.version_no) : null,
-            pdf_url: row.pdf_url ? String(row.pdf_url) : null,
-            share_url: row.share_url ? String(row.share_url) : null,
-          }));
+        const rawRows = ((data || []) as any[]).slice(0, 5);
+        const versionIds = rawRows
+          .map((row) => String(row.proposal_version_id || row.id || ''))
+          .filter(Boolean);
+
+        const versionPayloadMap = new Map<string, Record<string, unknown> | null>();
+        if (versionIds.length > 0) {
+          const { data: versionRows } = await supabase
+            .from('proposal_versions')
+            .select('id, premium_payload')
+            .in('id', versionIds);
+
+          (versionRows || []).forEach((row: any) => {
+            versionPayloadMap.set(String(row.id), (row.premium_payload as Record<string, unknown>) || null);
+          });
+        }
+
+        const rows = rawRows.map((row) => {
+            const versionId = String(row.proposal_version_id || row.id || '');
+            const payloadFromVersion = versionPayloadMap.get(versionId) || null;
+            const links = resolveProposalLinks({
+              premiumPayload: payloadFromVersion || row.premium_payload || null,
+              pdfUrl: row.pdf_url ? String(row.pdf_url) : null,
+              shareUrl: row.share_url ? String(row.share_url) : null,
+              supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+            });
+
+            return {
+              proposal_version_id: versionId,
+              status: row.status ? String(row.status) : null,
+              created_at: String(row.created_at || ''),
+              version_no: row.version_no ? Number(row.version_no) : null,
+              pdf_url: links.pdfUrl,
+              share_url: links.shareUrl,
+            };
+          });
 
         setLeadProposals(rows);
       } catch (error) {
@@ -329,6 +359,7 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
                 key={action.id}
                 variant="secondary"
                 size="sm"
+                data-testid={`quick-action-${action.id}`}
                 className={`${action.color} text-white justify-start gap-2 h-10`}
                 onClick={() => handleQuickAction(action.id)}
               >
@@ -539,7 +570,7 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
               )}
 
               {!isLoadingProposals && leadProposals.length > 0 && (
-                <div className="space-y-2">
+                <div className="max-h-72 overflow-y-auto pr-1 space-y-2" data-testid="lead-proposals-scroll">
                   {leadProposals.map((proposal) => (
                     <div key={proposal.proposal_version_id} className="rounded-md border border-border p-2 space-y-2">
                       <div className="flex items-center justify-between gap-2">

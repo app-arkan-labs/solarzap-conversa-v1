@@ -152,6 +152,9 @@ test('P0 call flow: Sim, Realizei move stage immediately and chains to proposal 
   await page.getByRole('button', { name: 'Telefone' }).click();
   await page.getByRole('button', { name: /Ja abri no celular/i }).click();
   await page.getByRole('button', { name: /Sim, Realizei/i }).click();
+  await expect(page.getByText(/Como foi a ligacao\?/i)).toBeVisible({ timeout: 20_000 });
+  await page.getByPlaceholder(/Ex: Cliente confirmou interesse/i).fill('Ligacao realizada, cliente confirmou interesse na proposta.');
+  await page.getByRole('button', { name: /Salvar e continuar/i }).click();
 
   await expect
     .poll(

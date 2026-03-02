@@ -950,6 +950,7 @@ export function ChatArea({
       <div className="h-16 px-4 flex items-center justify-between border-b border-border bg-card">
         <button
           onClick={onOpenDetails}
+          data-testid="chat-open-details"
           className="flex items-center gap-3 min-w-0 flex-1 text-left hover:bg-muted/50 -ml-2 pl-2 py-2 rounded-lg transition-colors cursor-pointer"
         >
           <div className="w-10 h-10 rounded-full bg-muted flex-shrink-0 flex items-center justify-center text-xl">

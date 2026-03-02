@@ -29,6 +29,7 @@ import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
 import { PROPOSAL_THEMES, THEME_IDS, getThemeById, isValidThemeHex, normalizeThemeHex, toCustomThemeValue } from '@/utils/proposalColorThemes';
 import { generateProposalPDF, generateSellerScriptPDF } from '@/utils/generateProposalPDF';
+import { resolveProposalLinks } from '@/utils/proposalLinks';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
 import { Badge } from '@/components/ui/badge';
@@ -195,14 +196,16 @@ export function ProposalsView() {
         payback_anos: proposta?.payback_anos ?? null,
         tipo_cliente: lead?.tipo_cliente ?? null,
         premium_payload: row.premium_payload || null,
-        pdf_url:
-          row.premium_payload?.public_pdf_url ||
-          row.premium_payload?.client_pdf_url ||
-          row.premium_payload?.pdf_url ||
-          (row.premium_payload?.storage
-            ? `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/${(row.premium_payload.storage as any).bucket}/${(row.premium_payload.storage as any).path}`
-            : null),
-        share_url: row.premium_payload?.share_url || null,
+        ...(() => {
+          const links = resolveProposalLinks({
+            premiumPayload: row.premium_payload || null,
+            supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+          });
+          return {
+            pdf_url: links.pdfUrl,
+            share_url: links.shareUrl,
+          };
+        })(),
       };
     });
 
@@ -328,8 +331,18 @@ export function ProposalsView() {
           payback_anos: proposta?.payback_anos ?? null,
           tipo_cliente: lead?.tipo_cliente ?? null,
           premium_payload: payload,
-          pdf_url: row.pdf_url || (payload?.public_pdf_url as string) || (payload?.client_pdf_url as string) || (payload?.pdf_url as string) || null,
-          share_url: row.share_url || (payload?.share_url as string) || null,
+          ...(() => {
+            const links = resolveProposalLinks({
+              premiumPayload: payload,
+              pdfUrl: row.pdf_url,
+              shareUrl: row.share_url,
+              supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+            });
+            return {
+              pdf_url: links.pdfUrl,
+              share_url: links.shareUrl,
+            };
+          })(),
         };
       });
 
@@ -410,6 +423,25 @@ export function ProposalsView() {
 
   const canGenerateFromRow = (row: ProposalRow) => Number(row.valor_projeto || 0) > 0;
 
+  const resolveBrandingForRow = (payload: Record<string, unknown>) => {
+    const branding = (payload.branding && typeof payload.branding === 'object')
+      ? (payload.branding as Record<string, unknown>)
+      : null;
+    const rowThemeId = typeof branding?.proposalThemeId === 'string'
+      ? branding.proposalThemeId
+      : (typeof payload.proposalThemeId === 'string' ? payload.proposalThemeId : themeId);
+    const rowSecondary = normalizeThemeHex(
+      (typeof branding?.secondaryColorHex === 'string'
+        ? branding.secondaryColorHex
+        : (typeof payload.secondaryColorHex === 'string' ? payload.secondaryColorHex : secondaryColorHex || '')) || '',
+    );
+
+    return {
+      colorTheme: getThemeById(rowThemeId),
+      secondaryColorHex: rowSecondary || undefined,
+    };
+  };
+
   const handleDownloadProposal = (row: ProposalRow) => {
     if (row.pdf_url) {
       window.open(row.pdf_url, '_blank');
@@ -437,6 +469,8 @@ export function ProposalsView() {
       contractorName?: string;
       contractorCnpj?: string;
     };
+
+    const branding = resolveBrandingForRow(payload);
 
     generateProposalPDF({
       contact: buildContactFromRow(row),
@@ -470,8 +504,8 @@ export function ProposalsView() {
       financialOutputs: payload.financialOutputs || undefined,
       financialModelVersion: payload.financialModelVersion || undefined,
       propNum: `V${row.version_no || 1}`,
-      colorTheme: getThemeById(themeId),
-      secondaryColorHex: secondaryColorHex || undefined,
+      colorTheme: branding.colorTheme,
+      secondaryColorHex: branding.secondaryColorHex,
       signatureCompanyName: signature.companyName,
       signatureCompanyCnpj: signature.companyCnpj,
       signatureContractorName: signature.contractorName,
@@ -495,6 +529,8 @@ export function ProposalsView() {
       ?? payload?.tarifaKwh
       ?? 0,
     ) || undefined;
+    const branding = resolveBrandingForRow(payload);
+
     generateSellerScriptPDF({
       contact: buildContactFromRow(row),
       consumoMensal: Number(row.consumo_kwh || 0),
@@ -527,8 +563,8 @@ export function ProposalsView() {
       financialOutputs: payload.financialOutputs || undefined,
       financialModelVersion: payload.financialModelVersion || undefined,
       propNum: `V${row.version_no || 1}`,
-      colorTheme: getThemeById(themeId),
-      secondaryColorHex: secondaryColorHex || undefined,
+      colorTheme: branding.colorTheme,
+      secondaryColorHex: branding.secondaryColorHex,
     });
   };
 
@@ -846,7 +882,7 @@ export function ProposalsView() {
             <CardHeader>
               <CardTitle>Resultados ({rows.length})</CardTitle>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
+            <CardContent className="max-h-[560px] overflow-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">

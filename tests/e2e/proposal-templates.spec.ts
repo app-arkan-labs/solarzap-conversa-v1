@@ -103,14 +103,27 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
 
       await page.getByTestId(`lead-actions-${String(leadId)}`).click();
       await page.getByTestId(`lead-action-proposal-${String(leadId)}`).click();
-      await expect(page.getByText('Gerar Proposta em PDF')).toBeVisible();
+      await expect(page.getByText(/Gerador de Proposta|Gerar Proposta em PDF/i)).toBeVisible();
+      const wizardDialog = page.getByRole('dialog').filter({ hasText: /Gerador de Proposta|Gerar Proposta em PDF/i }).last();
 
-      // Select client type (this drives the segment template).
-      await page.getByTestId('proposal-client-type-trigger').click();
-      await page.locator('[role="listbox"]').getByText(c.optionLabel).click();
+      // Step 1: select client/project type (auto-advances to step 2).
+      await wizardDialog.getByRole('button', { name: new RegExp(c.optionLabel, 'i') }).first().click();
+
+      // Step 2 requires city + UF
+      await wizardDialog.getByPlaceholder('Cidade').fill('Sao Paulo');
+      await wizardDialog.locator('button[role="combobox"]').first().click();
+      await page.getByRole('option', { name: /SP -/i }).click();
+      await wizardDialog.getByRole('button', { name: /Proximo/i }).last().click();
+      // Steps 3, 4, 5 -> review
+      for (let step = 0; step < 3; step += 1) {
+        const nextButton = wizardDialog.getByRole('button', { name: /Proximo/i }).last();
+        await expect(nextButton).toBeEnabled({ timeout: 30_000 });
+        await nextButton.click();
+      }
+      await expect(wizardDialog.getByTestId('proposal-generate-pdf')).toBeVisible({ timeout: 30_000 });
 
       const downloadPromise = page.waitForEvent('download', { timeout: 60_000 });
-      await page.getByTestId('proposal-generate-pdf').click();
+      await wizardDialog.getByTestId('proposal-generate-pdf').click();
 
       const download = await downloadPromise;
       const suggested = download.suggestedFilename().toLowerCase();
