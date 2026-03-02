@@ -422,7 +422,10 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     longitude?: number;
   };
 
+  const resolveLocationRequestSeqRef = React.useRef(0);
+
   const resolvePreciseLocation = useCallback(async (override?: LocationOverride) => {
+    const requestSeq = ++resolveLocationRequestSeqRef.current;
     const uf = String(
       override?.estado
       || formData.estado
@@ -433,11 +436,20 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const cidade = String(override?.cidade || formData.cidade || contact?.city || '').trim();
     const endereco = String(override?.endereco || formData.endereco || contact?.address || '').trim();
     const cep = normalizeCep(String(override?.cep || formData.cep || contact?.zip || ''));
+    const hasTextualLocation = Boolean(cidade || endereco || cep);
+    const overrideLatitude = toFiniteOrUndefined(override?.latitude);
+    const overrideLongitude = toFiniteOrUndefined(override?.longitude);
+    const hasOverrideCoordinates = overrideLatitude !== undefined && overrideLongitude !== undefined;
+    const currentLatitude = toFiniteOrUndefined(formData.latitude ?? contact?.latitude);
+    const currentLongitude = toFiniteOrUndefined(formData.longitude ?? contact?.longitude);
 
-    const latitudeValue = Number(override?.latitude ?? formData.latitude ?? contact?.latitude);
-    const longitudeValue = Number(override?.longitude ?? formData.longitude ?? contact?.longitude);
-    const latitude = Number.isFinite(latitudeValue) ? latitudeValue : undefined;
-    const longitude = Number.isFinite(longitudeValue) ? longitudeValue : undefined;
+    // Force fresh geocoding from textual location when available.
+    const latitude = hasOverrideCoordinates
+      ? overrideLatitude
+      : (!hasTextualLocation ? currentLatitude : undefined);
+    const longitude = hasOverrideCoordinates
+      ? overrideLongitude
+      : (!hasTextualLocation ? currentLongitude : undefined);
 
     setLocationLoading(true);
     try {
@@ -454,6 +466,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         console.warn('resolvePreciseLocation: no solar resource result');
         return null;
       }
+      if (requestSeq !== resolveLocationRequestSeqRef.current) {
+        return null;
+      }
 
       setFormData((prev) => patchAndRecalculate(prev, {
         estado: uf || prev.estado,
@@ -463,22 +478,26 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         irradiancia: solarResource.annualIrradianceKwhM2Day,
         monthlyGenerationFactors: solarResource.monthlyGenerationFactors,
         irradianceSource: solarResource.source,
-        latitude: solarResource.lat ?? latitude,
-        longitude: solarResource.lon ?? longitude,
+        latitude: solarResource.lat ?? latitude ?? prev.latitude,
+        longitude: solarResource.lon ?? longitude ?? prev.longitude,
         irradianceRefAt: new Date().toISOString(),
       }, { preserveValorTotal: true }));
 
       return solarResource;
     } catch (error) {
       console.error('resolvePreciseLocation error:', error);
-      toast({
-        title: 'Falha ao buscar dados solares',
-        description: 'Tente novamente em alguns segundos.',
-        variant: 'destructive',
-      });
+      if (requestSeq === resolveLocationRequestSeqRef.current) {
+        toast({
+          title: 'Falha ao buscar dados solares',
+          description: 'Tente novamente em alguns segundos.',
+          variant: 'destructive',
+        });
+      }
       return null;
     } finally {
-      setLocationLoading(false);
+      if (requestSeq === resolveLocationRequestSeqRef.current) {
+        setLocationLoading(false);
+      }
     }
   }, [
     contact?.address,
