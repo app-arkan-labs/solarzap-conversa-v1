@@ -57,5 +57,19 @@ describe('resolveProposalLinks', () => {
     expect(links.pdfUrl).toBe('https://project.supabase.co/storage/v1/object/public/proposal-assets/org/file.pdf');
     expect(links.shareUrl).toBeNull();
   });
-});
 
+  it('adds download filename fallback for storage URLs without .pdf extension', () => {
+    const links = resolveProposalLinks({
+      premiumPayload: {
+        storage: {
+          bucket: 'proposals',
+          path: 'org/2ffe58a7-9cb2-4bbf-9695-6d2b868a8fca',
+        },
+      },
+      supabaseUrl: 'https://project.supabase.co',
+    });
+
+    expect(links.pdfUrl).toContain('/storage/v1/object/public/proposals/org/2ffe58a7-9cb2-4bbf-9695-6d2b868a8fca');
+    expect(links.pdfUrl).toContain('download=2ffe58a7-9cb2-4bbf-9695-6d2b868a8fca.pdf');
+  });
+});

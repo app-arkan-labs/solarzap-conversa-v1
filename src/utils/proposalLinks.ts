@@ -35,6 +35,42 @@ function normalizeBaseUrl(url: string | null | undefined): string | null {
   return value.replace(/\/+$/, '');
 }
 
+function sanitizeDownloadFileName(fileName: string): string {
+  const normalized = fileName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120);
+
+  const withBase = normalized || 'Proposta_Energia_Solar';
+  return /\.pdf$/i.test(withBase) ? withBase : `${withBase}.pdf`;
+}
+
+function normalizePdfUrl(url: string): string {
+  const normalized = asNonEmptyString(url);
+  if (!normalized) return url;
+
+  try {
+    const parsed = new URL(normalized);
+    const pathSegments = parsed.pathname.split('/').filter(Boolean);
+    const tail = pathSegments[pathSegments.length - 1] || '';
+    const pathHasPdfExtension = /\.pdf$/i.test(decodeURIComponent(tail));
+
+    // Hotfix: legacy storage URLs sometimes resolve to UUID-like names without extension.
+    // Add explicit download name to guarantee a valid .pdf filename in browser downloads.
+    const isSupabaseStoragePath = parsed.pathname.includes('/storage/v1/object/');
+    if (isSupabaseStoragePath && !pathHasPdfExtension && !parsed.searchParams.has('download')) {
+      parsed.searchParams.set('download', sanitizeDownloadFileName(tail || 'Proposta_Energia_Solar.pdf'));
+      return parsed.toString();
+    }
+
+    return normalized;
+  } catch {
+    return normalized;
+  }
+}
+
 function buildPublicStorageUrl(
   supabaseUrl: string | null | undefined,
   payload: Record<string, unknown> | null | undefined,
@@ -59,8 +95,10 @@ function resolvePdfFromPayload(
     payload?.clientPdfUrl,
     payload?.pdfUrl,
   ]);
-  if (directPdf) return directPdf;
-  return buildPublicStorageUrl(supabaseUrl, payload);
+  if (directPdf) return normalizePdfUrl(directPdf);
+
+  const storageUrl = buildPublicStorageUrl(supabaseUrl, payload);
+  return storageUrl ? normalizePdfUrl(storageUrl) : null;
 }
 
 function resolveShareFromPayload(payload: Record<string, unknown> | null | undefined): string | null {
@@ -78,8 +116,7 @@ export function resolveProposalLinks(input: ProposalLinkResolutionInput): Resolv
   const directShare = asNonEmptyString(input.shareUrl);
 
   return {
-    pdfUrl: directPdf || resolvePdfFromPayload(payload, input.supabaseUrl || null),
+    pdfUrl: directPdf ? normalizePdfUrl(directPdf) : resolvePdfFromPayload(payload, input.supabaseUrl || null),
     shareUrl: directShare || resolveShareFromPayload(payload),
   };
 }
-
