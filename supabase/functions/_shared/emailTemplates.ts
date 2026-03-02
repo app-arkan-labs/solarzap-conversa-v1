@@ -445,9 +445,9 @@ export interface DigestLeadSummary {
   leadName: string
   leadPhone: string
   stage: string
-  lastText: string
-  pending: string
-  nextStep: string
+  summary: string
+  currentSituation: string
+  recommendedActions: string
 }
 
 export function digestEmail(opts: {
@@ -481,13 +481,13 @@ export function digestEmail(opts: {
       </table>
       <div style="margin-top:10px;padding-left:2px;">
         <p style="margin:0 0 4px;font-size:12px;color:#71717a;">
-          <strong style="color:#3f3f46;">O que aconteceu:</strong> ${esc(s.lastText)}
+          <strong style="color:#3f3f46;">Resumo:</strong> ${esc(s.summary)}
         </p>
         <p style="margin:0 0 4px;font-size:12px;color:#71717a;">
-          <strong style="color:#3f3f46;">Pendência:</strong> ${esc(s.pending)}
+          <strong style="color:#3f3f46;">Situação atual:</strong> ${esc(s.currentSituation)}
         </p>
         <p style="margin:0;font-size:12px;color:#71717a;">
-          <strong style="color:#3f3f46;">Próximo passo:</strong> ${esc(s.nextStep)}
+          <strong style="color:#3f3f46;">Ações recomendadas:</strong> ${esc(s.recommendedActions)}
         </p>
       </div>
     </div>`
@@ -513,7 +513,7 @@ export function digestEmail(opts: {
     `Leads com atividade: ${opts.leads.length}`,
     '',
     ...opts.leads.map((s, idx) =>
-      `${idx + 1}. ${s.leadName} [${s.stage}]\n- O que aconteceu: ${s.lastText}\n- Pendência: ${s.pending}\n- Próximo passo sugerido: ${s.nextStep}`
+      `${idx + 1}. ${s.leadName} [${s.stage}]\n- Resumo: ${s.summary}\n- Situação atual: ${s.currentSituation}\n- Ações recomendadas: ${s.recommendedActions}`
     ),
   ]
 

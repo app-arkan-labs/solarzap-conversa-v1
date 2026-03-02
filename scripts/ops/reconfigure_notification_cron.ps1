@@ -44,8 +44,11 @@ if ($DryRun) {
   Write-Host '[DRY-RUN] Query preview (first 1200 chars):'
   $preview = if ($query.Length -gt 1200) { $query.Substring(0, 1200) + '...' } else { $query }
   Write-Host $preview
+  Write-Host '[DRY-RUN] Includes cleanup for legacy ai-reporter cron jobs.'
   exit 0
 }
+
+Write-Host 'Applying cron reconfiguration (notification-worker + ai-digest-worker) and removing legacy ai-reporter jobs...'
 
 $apiUrl = "https://api.supabase.com/v1/projects/$ProjectRef/database/query"
 $payload = @{ query = $query } | ConvertTo-Json -Depth 5

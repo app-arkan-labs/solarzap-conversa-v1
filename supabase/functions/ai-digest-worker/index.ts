@@ -1,5 +1,11 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
 import { digestEmail, type DigestLeadSummary } from '../_shared/emailTemplates.ts'
+import {
+  buildFallbackDigestSections,
+  normalizeDigestSections,
+  renderDigestSectionsTextLines,
+  type DigestSections,
+} from '../_shared/digestContract.ts'
 
 const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim()
 const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true'
@@ -34,6 +40,15 @@ const DIGEST_SETTINGS_FULL_SELECT = [
   'email_sender_name',
   'email_reply_to',
 ].join(', ')
+
+const DIGEST_OPENAI_MODEL = (Deno.env.get('DIGEST_OPENAI_MODEL') || '').trim() || 'gpt-4o-mini'
+const DIGEST_OPENAI_TIMEOUT_MS = (() => {
+  const parsed = Number(Deno.env.get('DIGEST_OPENAI_TIMEOUT_MS') || 3500)
+  return Number.isFinite(parsed) && parsed >= 500 ? parsed : 3500
+})()
+const DIGEST_AI_MAX_MESSAGES = 12
+const DIGEST_AI_MAX_MESSAGE_CHARS = 220
+const DIGEST_LEAD_CONCURRENCY = 4
 
 type NotificationSettingsRow = {
   org_id: string
@@ -292,6 +307,251 @@ function parseTimeToMinuteOfDay(raw: string | null | undefined, fallback: string
   return hh * 60 + mm
 }
 
+type LeadMessageRow = {
+  mensagem: string | null
+  wa_from_me: boolean | null
+  created_at: string
+}
+
+function compactText(value: unknown, maxLen = 240): string {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  if (!text) return ''
+  if (text.length <= maxLen) return text
+  return `${text.slice(0, Math.max(0, maxLen - 3)).trim()}...`
+}
+
+function isMissingAiSettingsScopeError(error: unknown): boolean {
+  const code = typeof error === 'object' && error !== null ? String((error as any).code || '') : ''
+  const message = typeof error === 'object' && error !== null ? String((error as any).message || '') : String(error || '')
+  return (
+    code === '42703' ||
+    code === 'PGRST204' ||
+    code === '42P01' ||
+    (/column/i.test(message) && /ai_settings/i.test(message)) ||
+    (/relation/i.test(message) && /ai_settings/i.test(message))
+  )
+}
+
+async function resolveOpenAiApiKeyForOrg(
+  supabase: ReturnType<typeof createClient>,
+  orgId: string,
+): Promise<string> {
+  const envKey = (Deno.env.get('OPENAI_API_KEY') || '').trim()
+
+  const scopedResult = await supabase
+    .from('ai_settings')
+    .select('openai_api_key')
+    .eq('org_id', orgId)
+    .order('id', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (!scopedResult.error) {
+    const scopedKey = compactText((scopedResult.data as any)?.openai_api_key || '', 10000).trim()
+    return scopedKey || envKey
+  }
+
+  if (!isMissingAiSettingsScopeError(scopedResult.error)) {
+    console.warn('[ai-digest-worker][openai_key_lookup_failed]', {
+      orgId,
+      code: String((scopedResult.error as any)?.code || ''),
+      message: String((scopedResult.error as any)?.message || ''),
+    })
+    return envKey
+  }
+
+  const fallbackResult = await supabase
+    .from('ai_settings')
+    .select('openai_api_key')
+    .order('id', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (fallbackResult.error) {
+    console.warn('[ai-digest-worker][openai_key_lookup_compat_failed]', {
+      orgId,
+      code: String((fallbackResult.error as any)?.code || ''),
+      message: String((fallbackResult.error as any)?.message || ''),
+    })
+    return envKey
+  }
+
+  const fallbackKey = compactText((fallbackResult.data as any)?.openai_api_key || '', 10000).trim()
+  return fallbackKey || envKey
+}
+
+function buildDigestAiPrompt(
+  digestType: 'daily' | 'weekly',
+  stage: string,
+  messages: LeadMessageRow[],
+): string {
+  const sorted = [...messages].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  const recent = sorted.slice(-DIGEST_AI_MAX_MESSAGES)
+  const transcript = recent
+    .map((row) => {
+      const role = row.wa_from_me === true ? 'Vendedor' : 'Lead'
+      const text = compactText(row.mensagem, DIGEST_AI_MAX_MESSAGE_CHARS)
+      return `${role}: ${text || '[sem texto]'}`
+    })
+    .join('\n')
+
+  return [
+    `Tipo de resumo: ${digestType === 'weekly' ? 'semanal' : 'diário'}.`,
+    `Etapa atual do lead: ${stage || 'sem_etapa'}.`,
+    'Transcrição recente:',
+    transcript || '[sem mensagens no período]',
+    '',
+    'Produza JSON estrito com as chaves: summary, currentSituation, recommendedActions.',
+    'Regras:',
+    '- Escreva em português do Brasil.',
+    '- Não use markdown, listas com bullets ou títulos no valor das chaves.',
+    '- Cada campo deve ser curto, direto e acionável.',
+  ].join('\n')
+}
+
+async function requestDigestSectionsWithAi(opts: {
+  apiKey: string
+  model: string
+  digestType: 'daily' | 'weekly'
+  stage: string
+  messages: LeadMessageRow[]
+  timeoutMs: number
+}): Promise<DigestSections> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort('digest_ai_timeout'), opts.timeoutMs)
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${opts.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: opts.model,
+        temperature: 0.2,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'digest_sections',
+            strict: true,
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['summary', 'currentSituation', 'recommendedActions'],
+              properties: {
+                summary: { type: 'string' },
+                currentSituation: { type: 'string' },
+                recommendedActions: { type: 'string' },
+              },
+            },
+          },
+        },
+        messages: [
+          {
+            role: 'system',
+            content: 'Você resume conversas comerciais em formato operacional para CRM.',
+          },
+          {
+            role: 'user',
+            content: buildDigestAiPrompt(opts.digestType, opts.stage, opts.messages),
+          },
+        ],
+      }),
+    })
+
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const code = response.status
+      const errorMsg = compactText((payload as any)?.error?.message || '')
+      throw new Error(`openai_http_${code}${errorMsg ? `:${errorMsg}` : ''}`)
+    }
+
+    const content = (payload as any)?.choices?.[0]?.message?.content
+    let textOutput = ''
+    if (typeof content === 'string') {
+      textOutput = content
+    } else if (Array.isArray(content)) {
+      textOutput = content
+        .map((part: any) => (typeof part?.text === 'string' ? part.text : ''))
+        .join('')
+    }
+
+    if (!textOutput) {
+      throw new Error('openai_empty_output')
+    }
+
+    const parsed = JSON.parse(textOutput) as Partial<DigestSections>
+    return normalizeDigestSections(parsed)
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+async function generateLeadSections(opts: {
+  apiKey: string
+  model: string
+  digestType: 'daily' | 'weekly'
+  stage: string
+  messages: LeadMessageRow[]
+}): Promise<{ sections: DigestSections; source: 'ai' | 'fallback'; reason?: string }> {
+  const fallback = buildFallbackDigestSections(opts.messages, { stage: opts.stage })
+  if (!opts.apiKey) {
+    return {
+      sections: fallback,
+      source: 'fallback',
+      reason: 'missing_openai_api_key',
+    }
+  }
+
+  try {
+    const aiSections = await requestDigestSectionsWithAi({
+      apiKey: opts.apiKey,
+      model: opts.model,
+      digestType: opts.digestType,
+      stage: opts.stage,
+      messages: opts.messages,
+      timeoutMs: DIGEST_OPENAI_TIMEOUT_MS,
+    })
+
+    return {
+      sections: normalizeDigestSections(aiSections, fallback),
+      source: 'ai',
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? compactText(error.message, 120) : compactText(String(error), 120)
+    return {
+      sections: fallback,
+      source: 'fallback',
+      reason: reason || 'ai_generation_failed',
+    }
+  }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  mapper: (item: T, index: number) => Promise<R>,
+  concurrency = DIGEST_LEAD_CONCURRENCY,
+): Promise<R[]> {
+  if (items.length === 0) return []
+  const limit = Math.max(1, concurrency)
+  const results = new Array<R>(items.length)
+  let cursor = 0
+
+  const worker = async () => {
+    while (true) {
+      const index = cursor
+      cursor += 1
+      if (index >= items.length) return
+      results[index] = await mapper(items[index], index)
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  return results
+}
+
 async function sendWhatsAppViaProxy(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -388,22 +648,6 @@ async function sendEmailViaResend(
   return raw ? JSON.parse(raw) : null
 }
 
-function summarizeLeadMessages(messages: Array<{ mensagem: string | null; wa_from_me: boolean | null; created_at: string }>) {
-  const sorted = [...messages].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-  const last = sorted[sorted.length - 1]
-  const lastText = String(last?.mensagem || '').replace(/\s+/g, ' ').trim().slice(0, 140)
-  const lastFromClient = last ? last.wa_from_me !== true : false
-
-  const pending = lastFromClient ? 'Cliente aguardando retorno.' : 'Sem pendência imediata.'
-  const nextStep = lastFromClient ? 'Responder com próximo passo comercial.' : 'Manter follow-up e confirmar etapa.'
-
-  return {
-    lastText: lastText || 'Sem conteúdo textual recente.',
-    pending,
-    nextStep,
-  }
-}
-
 async function processDigestForOrg(
   supabase: ReturnType<typeof createClient>,
   supabaseUrl: string,
@@ -456,7 +700,7 @@ async function processDigestForOrg(
   }
 
   const rows = Array.isArray(interactions) ? interactions : []
-  const grouped = new Map<number, Array<{ mensagem: string | null; wa_from_me: boolean | null; created_at: string }>>()
+  const grouped = new Map<number, LeadMessageRow[]>()
 
   for (const row of rows) {
     const leadId = Number((row as any).lead_id)
@@ -488,15 +732,40 @@ async function processDigestForOrg(
     })
   }
 
-  const leadSummaries = leadIds.slice(0, 30).map((leadId) => {
+  const digestLeadIds = leadIds.slice(0, 30)
+  const openAiApiKey = await resolveOpenAiApiKeyForOrg(supabase, ctx.orgId)
+  const generationMetrics = {
+    ai_count: 0,
+    fallback_count: 0,
+    fallback_reasons: {} as Record<string, number>,
+  }
+
+  const leadSummaries = await mapWithConcurrency(digestLeadIds, async (leadId) => {
     const lead = leadById.get(leadId)
-    const summary = summarizeLeadMessages(grouped.get(leadId) || [])
+    const stage = lead?.status_pipeline || 'sem_etapa'
+    const messages = grouped.get(leadId) || []
+    const generated = await generateLeadSections({
+      apiKey: openAiApiKey,
+      model: DIGEST_OPENAI_MODEL,
+      digestType: ctx.digestType,
+      stage,
+      messages,
+    })
+
+    if (generated.source === 'ai') {
+      generationMetrics.ai_count += 1
+    } else {
+      generationMetrics.fallback_count += 1
+      const reason = generated.reason || 'fallback_unknown'
+      generationMetrics.fallback_reasons[reason] = (generationMetrics.fallback_reasons[reason] || 0) + 1
+    }
+
     return {
       leadId,
       leadName: lead?.nome || `Lead ${leadId}`,
       leadPhone: lead?.telefone || '',
-      stage: lead?.status_pipeline || 'sem_etapa',
-      ...summary,
+      stage,
+      sections: generated.sections,
     }
   })
 
@@ -505,13 +774,17 @@ async function processDigestForOrg(
     `${digestTitle} (${ctx.dateBucket})`,
     `Leads com atividade: ${leadSummaries.length}`,
     '',
-    ...leadSummaries.map((s, idx) => `${idx + 1}. ${s.leadName} [${s.stage}]\n- O que aconteceu: ${s.lastText}\n- Pendência: ${s.pending}\n- Próximo passo sugerido: ${s.nextStep}`),
+    ...leadSummaries.map((s, idx) => [
+      `${idx + 1}. ${s.leadName} [${s.stage}]`,
+      ...renderDigestSectionsTextLines(s.sections),
+    ].join('\n')),
   ].join('\n')
 
   const channelResults: Record<string, unknown> = {
     whatsapp: { sent: 0, failed: 0 },
     email: { sent: 0, failed: 0 },
     lead_summaries: leadSummaries.length,
+    section_generation: generationMetrics,
   }
 
   if (ctx.digestType === 'daily' && leadSummaries.length > 0) {
@@ -532,9 +805,7 @@ async function processDigestForOrg(
       user_id: actorUserId,
       texto: [
         `Resumo do dia (${ctx.dateBucket})`,
-        `- O que aconteceu: ${s.lastText}`,
-        `- Pendências: ${s.pending}`,
-        `- Próximo passo: ${s.nextStep}`,
+        ...renderDigestSectionsTextLines(s.sections),
       ].join('\n'),
       autor: 'AI Digest',
       comment_type: 'ai_daily_summary',
@@ -591,9 +862,9 @@ async function processDigestForOrg(
           leadName: s.leadName,
           leadPhone: s.leadPhone,
           stage: s.stage,
-          lastText: s.lastText,
-          pending: s.pending,
-          nextStep: s.nextStep,
+          summary: s.sections.summary,
+          currentSituation: s.sections.currentSituation,
+          recommendedActions: s.sections.recommendedActions,
         }))
         const digestHtml = digestEmail({
           digestType: ctx.digestType,

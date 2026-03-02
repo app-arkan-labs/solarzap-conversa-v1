@@ -33,8 +33,10 @@ BEGIN
     FROM cron.job
     WHERE jobname IN (
       'invoke-notification-worker',
-      'invoke-ai-digest-worker'
+      'invoke-ai-digest-worker',
+      'invoke-ai-reporter'
     )
+      OR command ILIKE '%/functions/v1/ai-reporter%'
   LOOP
     PERFORM cron.unschedule(v_job.jobid);
   END LOOP;
@@ -98,5 +100,6 @@ SELECT
   j.active,
   j.command
 FROM cron.job j
-WHERE j.jobname IN ('invoke-notification-worker', 'invoke-ai-digest-worker')
+WHERE j.jobname IN ('invoke-notification-worker', 'invoke-ai-digest-worker', 'invoke-ai-reporter')
+   OR j.command ILIKE '%/functions/v1/ai-reporter%'
 ORDER BY j.jobname;
