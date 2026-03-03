@@ -160,6 +160,7 @@ export interface SystemAccessTemplateContext {
   orgName?: string | null
   role?: 'owner' | 'admin' | 'user' | 'consultant' | string
   inviteLink?: string
+  resetLink?: string
   loginUrl?: string
   tempPassword?: string
   recipientEmail?: string
@@ -534,16 +535,19 @@ export function digestEmail(opts: {
 /* ── SYSTEM AUTH: CONVITE DE ACESSO ── */
 
 export function systemInviteEmail(ctx: SystemAccessTemplateContext): { subject: string; html: string; text: string } {
-  const subject = '🔐 Convite de acesso — SolarZap'
+  const subject = '\uD83D\uDD10 Convite de acesso \u2014 SolarZap'
   const org = ctx.orgName || 'Sua organização'
   const role = roleLabel(ctx.role)
+  const accessLink = ctx.inviteLink || ctx.resetLink || ctx.loginUrl || ''
 
-  const ctaHtml = ctx.inviteLink
+  const ctaHtml = accessLink
     ? `
     <div style="margin-top:20px;text-align:center;">
-      <a href="${esc(ctx.inviteLink)}" style="display:inline-block;padding:11px 18px;border-radius:10px;background-color:#16a34a;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">Aceitar convite</a>
+      <a href="${esc(accessLink)}" style="display:inline-block;padding:11px 18px;border-radius:10px;background-color:#16a34a;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">Acessar SolarZap</a>
     </div>`
     : ''
+
+  const fallbackTitle = 'Se o botão não funcionar, copie e cole o link abaixo no navegador:'
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
@@ -555,9 +559,12 @@ export function systemInviteEmail(ctx: SystemAccessTemplateContext): { subject: 
       infoRow('E-mail', ctx.recipientEmail || 'Não informado')
     )}
     ${ctaHtml}
+    <p style="margin:14px 0 0;font-size:12px;color:#71717a;line-height:1.5;">
+      Ao clicar em <strong>Acessar SolarZap</strong>, você irá definir ou redefinir sua senha para concluir o acesso.
+    </p>
     <p style="margin:18px 0 0;font-size:12px;color:#71717a;line-height:1.5;">
-      Se o botão não funcionar, copie e cole o link abaixo no navegador:<br>
-      <span style="word-break:break-all;color:#3f3f46;">${esc(ctx.inviteLink || '')}</span>
+      ${fallbackTitle}<br>
+      <span style="word-break:break-all;color:#3f3f46;">${esc(accessLink)}</span>
     </p>`
 
   const textLines = [
@@ -566,14 +573,14 @@ export function systemInviteEmail(ctx: SystemAccessTemplateContext): { subject: 
     `Perfil: ${role}`,
     `E-mail: ${ctx.recipientEmail || 'Não informado'}`,
     '',
-    'Acesse seu convite:',
-    ctx.inviteLink || '(link não informado)',
+    'Use o link abaixo para definir/redefinir sua senha e concluir o acesso:',
+    accessLink || '(link não informado)',
   ]
 
   return {
     subject,
     html: baseLayout({
-      iconEmoji: '🔐',
+      iconEmoji: '\uD83D\uDD10',
       iconBg: '#dcfce7',
       title: 'Convite de Acesso',
       subtitle: `${org} • ${role}`,
@@ -584,12 +591,11 @@ export function systemInviteEmail(ctx: SystemAccessTemplateContext): { subject: 
   }
 }
 
-/* ── SYSTEM AUTH: CONTA CRIADA ── */
-
 export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { subject: string; html: string; text: string } {
-  const subject = '✅ Conta criada — acesso ao SolarZap'
+  const subject = '\u2705 Conta criada \u2014 acesso ao SolarZap'
   const org = ctx.orgName || 'Sua organização'
   const role = roleLabel(ctx.role)
+  const actionUrl = ctx.resetLink || ctx.loginUrl || ''
 
   const passwordHtml = ctx.tempPassword
     ? `
@@ -599,10 +605,19 @@ export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { s
     </div>`
     : ''
 
-  const loginCtaHtml = ctx.loginUrl
+  const resetHintHtml = !ctx.tempPassword && ctx.resetLink
+    ? `
+    <div style="margin-top:16px;padding:12px 14px;border-radius:10px;background-color:#eff6ff;border:1px solid #bfdbfe;">
+      <p style="margin:0;font-size:13px;color:#1d4ed8;line-height:1.5;">
+        Sua conta já existia. Use o botão abaixo para definir/redefinir sua senha antes do primeiro acesso nesta organização.
+      </p>
+    </div>`
+    : ''
+
+  const actionCtaHtml = actionUrl
     ? `
     <div style="margin-top:20px;text-align:center;">
-      <a href="${esc(ctx.loginUrl)}" style="display:inline-block;padding:11px 18px;border-radius:10px;background-color:#16a34a;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">Acessar SolarZap</a>
+      <a href="${esc(actionUrl)}" style="display:inline-block;padding:11px 18px;border-radius:10px;background-color:#16a34a;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;">${ctx.resetLink ? 'Definir/Redefinir senha' : 'Acessar SolarZap'}</a>
     </div>`
     : ''
 
@@ -616,15 +631,16 @@ export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { s
       infoRow('E-mail', ctx.recipientEmail || 'Não informado')
     )}
     ${passwordHtml}
-    ${loginCtaHtml}
+    ${resetHintHtml}
+    ${actionCtaHtml}
     <div style="margin-top:16px;padding:14px 16px;border-radius:10px;background-color:#fef2f2;border:1px solid #fecaca;">
       <p style="margin:0;font-size:13px;color:#991b1b;line-height:1.5;">
-        <strong>⚠️ Segurança:</strong> altere sua senha imediatamente após o primeiro acesso.
+        <strong>Segurança:</strong> altere sua senha imediatamente após o primeiro acesso.
       </p>
     </div>
     <p style="margin:14px 0 0;font-size:12px;color:#71717a;line-height:1.5;">
       Se o botão não funcionar, use este link:<br>
-      <span style="word-break:break-all;color:#3f3f46;">${esc(ctx.loginUrl || '')}</span>
+      <span style="word-break:break-all;color:#3f3f46;">${esc(actionUrl)}</span>
     </p>`
 
   const textLines = [
@@ -633,9 +649,10 @@ export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { s
     `Perfil: ${role}`,
     `E-mail: ${ctx.recipientEmail || 'Não informado'}`,
     ...(ctx.tempPassword ? [`Senha temporária: ${ctx.tempPassword}`] : []),
+    ...(!ctx.tempPassword && ctx.resetLink ? ['Defina/redefina sua senha pelo link enviado abaixo.'] : []),
     '',
-    'Acesse o sistema:',
-    ctx.loginUrl || '(link não informado)',
+    ctx.resetLink ? 'Defina/redefina sua senha:' : 'Acesse o sistema:',
+    actionUrl || '(link não informado)',
     '',
     'Segurança: altere sua senha imediatamente após o primeiro acesso.',
   ]
@@ -643,7 +660,7 @@ export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { s
   return {
     subject,
     html: baseLayout({
-      iconEmoji: '✅',
+      iconEmoji: '\u2705',
       iconBg: '#dcfce7',
       title: 'Conta Criada',
       subtitle: `${org} • ${role}`,
@@ -653,8 +670,6 @@ export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { s
     text: textLines.join('\n'),
   }
 }
-
-/* ── DEFAULT / FALLBACK ── */
 
 export function defaultEventEmail(ctx: TemplateContext & { eventType: string }): { subject: string; html: string; text: string } {
   const subject = `🔔 Notificação: ${ctx.leadName}`

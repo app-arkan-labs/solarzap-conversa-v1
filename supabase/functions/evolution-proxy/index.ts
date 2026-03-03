@@ -271,7 +271,8 @@ async function resolveContext(
     throw new Error('Invalid user token')
   }
 
-  const membershipCacheKey = user.id
+  const requestedOrgId = typeof payload.orgId === 'string' ? String(payload.orgId).trim() : ''
+  const membershipCacheKey = `${user.id}:${requestedOrgId || 'primary'}`
   const cachedMembership = getCache(membershipCache, membershipCacheKey)
   if (cachedMembership) {
     console.log('[EVOLUTION_PROXY] membership_cache_hit', {
@@ -283,12 +284,14 @@ async function resolveContext(
   }
   console.log('[EVOLUTION_PROXY] membership_cache_miss', { userId: user.id })
 
-  // for normal user tokens we ignore any orgId sent in the POST body; 
-  // organization is derived solely from the authenticated user membership.
-  const memberQuery = supabaseAdmin
+  let memberQuery = supabaseAdmin
     .from('organization_members')
     .select('org_id, role, created_at')
     .eq('user_id', user.id)
+
+  if (requestedOrgId) {
+    memberQuery = memberQuery.eq('org_id', requestedOrgId)
+  }
 
   const { data: member, error: memberError } = await memberQuery
     .order('created_at', { ascending: true })
@@ -297,6 +300,9 @@ async function resolveContext(
     .maybeSingle()
 
   if (memberError || !member?.org_id) {
+    if (requestedOrgId) {
+      throw new Error('Organization membership not found for requested orgId')
+    }
     throw new Error('Organization membership not found')
   }
 

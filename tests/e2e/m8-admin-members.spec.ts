@@ -121,7 +121,7 @@ test.afterAll(async () => {
   }
 });
 
-test('M8 admin members: list, invite(create), update, remove', async ({ page }) => {
+test('M8 admin members: list, invite(default), update, remove', async ({ page }) => {
   await login(page, state.ownerEmail, state.ownerPassword);
 
   await page.goto('/admin/members');
@@ -132,7 +132,6 @@ test('M8 admin members: list, invite(create), update, remove', async ({ page }) 
 
   await page.getByTestId('invite-email-input').fill(state.invitedEmail);
   await page.getByTestId('invite-role-select').selectOption('user');
-  await page.getByTestId('invite-mode-select').selectOption('create');
 
   const canViewToggle = page.getByTestId('invite-can-view-toggle');
   if (await canViewToggle.isChecked()) {
@@ -140,6 +139,7 @@ test('M8 admin members: list, invite(create), update, remove', async ({ page }) 
   }
 
   await page.getByTestId('invite-submit').click();
+  await expect(page.getByTestId('invite-temp-password')).toHaveCount(0);
 
   await expect
     .poll(

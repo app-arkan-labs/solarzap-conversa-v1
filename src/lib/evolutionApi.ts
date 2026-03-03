@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getActiveOrgId } from './activeOrgContext';
 
 // Evolution API credentials have been removed from frontend.  
 // All calls now go through the `evolution-proxy` edge function.
@@ -102,8 +103,13 @@ async function callEvolutionApi<T>(
   params: Record<string, any> = {}
 ): Promise<EvolutionApiResponse<T>> {
   try {
+    const activeOrgId = typeof params.orgId === 'string' && params.orgId.trim().length > 0
+      ? params.orgId
+      : getActiveOrgId();
+    const payload = activeOrgId ? { ...params, orgId: activeOrgId } : params;
+
     const { data, error } = await supabase.functions.invoke('evolution-proxy', {
-      body: JSON.stringify({ action, payload: params }),
+      body: JSON.stringify({ action, payload }),
     });
     if (error) {
       console.error('evolution-proxy error', error);
@@ -198,7 +204,7 @@ export async function sendMessage(
   phone: string,
   message: string,
   quoted?: any,
-  options?: { clientTraceId?: string }
+  options?: { clientTraceId?: string; orgId?: string }
 ): Promise<EvolutionApiResponse<SendMessageResponse>> {
   return callEvolutionApi<SendMessageResponse>('sendMessage', {
     instanceName,
@@ -208,6 +214,7 @@ export async function sendMessage(
     message,
     quoted,
     clientTraceId: options?.clientTraceId,
+    orgId: options?.orgId,
   });
 }
 
@@ -227,7 +234,8 @@ export async function sendMedia(
   mediaType: 'image' | 'audio' | 'video' | 'document',
   caption?: string,
   fileName?: string,
-  mimetype?: string
+  mimetype?: string,
+  options?: { orgId?: string }
 ): Promise<EvolutionApiResponse<SendMessageResponse>> {
   return callEvolutionApi<SendMessageResponse>('sendMedia', {
     instanceName,
@@ -237,7 +245,8 @@ export async function sendMedia(
     mediaType,
     caption,
     fileName,
-    mimetype
+    mimetype,
+    orgId: options?.orgId,
   });
 }
 
@@ -250,7 +259,8 @@ export async function sendMedia(
 export async function sendAudio(
   instanceName: string,
   phone: string,
-  audioUrl: string
+  audioUrl: string,
+  options?: { orgId?: string }
 ): Promise<EvolutionApiResponse<SendMessageResponse>> {
   return callEvolutionApi<SendMessageResponse>('sendMedia', {
     instanceName,
@@ -259,6 +269,7 @@ export async function sendAudio(
     mediaType: 'audio',
     mediaUrl: audioUrl,
     audioUrl,
+    orgId: options?.orgId,
   });
 }
 

@@ -617,7 +617,7 @@ export function useChat(contacts: Contact[] = []) {
                     formattedPhone,
                     sanitizedContent,
                     quotedPayload,
-                    { clientTraceId: traceId }
+                    { clientTraceId: traceId, orgId: orgId || undefined }
                 );
                 perf.evolutionProxy = Math.round(toPerfNow() - evoStart);
                 import.meta.env.DEV && console.log('[CHAT_LATENCY] evolution_proxy_ms', { traceId, ms: perf.evolutionProxy });
@@ -873,7 +873,8 @@ export function useChat(contacts: Contact[] = []) {
                         sizeBytes: file.size,
                         mimeType: file.type,
                         kind: fileType, // 'video', 'image', 'document'
-                        leadId: conversationId
+                        leadId: conversationId,
+                        orgId,
                     }
                 });
 
@@ -976,7 +977,8 @@ export function useChat(contacts: Contact[] = []) {
                     currentSendMode,
                     captionToSend,
                     file.name,
-                    mimeType
+                    mimeType,
+                    { orgId: orgId || undefined }
                 );
 
                 if (!response.success) throw new Error(response.error || 'Evolution API returned false');
@@ -998,7 +1000,8 @@ export function useChat(contacts: Contact[] = []) {
                             'document',
                             captionToSend,
                             file.name,
-                            file.type || 'video/mp4'
+                            file.type || 'video/mp4',
+                            { orgId: orgId || undefined }
                         );
                         if (!response.success) throw new Error(response.error);
                     } catch (fallbackErr: any) {
@@ -1171,7 +1174,8 @@ export function useChat(contacts: Contact[] = []) {
             const response = await evolutionApi.sendAudio(
                 instance.instance_name,
                 formattedPhone,
-                sendUrl // Use Signed URL
+                sendUrl, // Use Signed URL
+                { orgId: orgId || undefined }
             );
 
             if (!response.success) {
@@ -1333,6 +1337,7 @@ export function useChat(contacts: Contact[] = []) {
             const { data: funcData, error: funcError } = await supabase.functions.invoke('whatsapp-connect', {
                 body: {
                     action: 'sendReaction',
+                    orgId,
                     instanceName,
                     key: {
                         remoteJid,

@@ -96,7 +96,8 @@ export function ChatArea({
   onVideoCallAction,
   isDetailsOpen
 }: ChatAreaProps) {
-  const { orgId } = useAuth();
+  const { orgId, role } = useAuth();
+  const isOrgManager = role === 'owner' || role === 'admin';
   // Instance Selection
   const { instances, updateColor } = useUserWhatsAppInstances();
 
@@ -1017,12 +1018,25 @@ export function ChatArea({
           )}
 
           <div className="mr-2">
-            <InstanceSelector
-              instances={instances}
-              selectedInstanceId={selectedInstanceId}
-              onSelect={handleInstanceSelect}
-              onUpdateColor={updateColor}
-            />
+            {isOrgManager ? (
+              <InstanceSelector
+                instances={instances}
+                selectedInstanceId={selectedInstanceId}
+                onSelect={handleInstanceSelect}
+                onUpdateColor={updateColor}
+              />
+            ) : (
+              <Badge
+                data-testid="user-assigned-instance-badge"
+                variant="secondary"
+                className="h-8 px-2 text-xs max-w-[220px] truncate"
+                title={instances.find(i => i.id === selectedInstanceId)?.display_name || undefined}
+              >
+                {instances.find(i => i.id === selectedInstanceId)?.display_name ||
+                  instances.find(i => i.id === selectedInstanceId)?.instance_name ||
+                  'Instancia atribuida'}
+              </Badge>
+            )}
           </div>
           <button
             onClick={handleCall}

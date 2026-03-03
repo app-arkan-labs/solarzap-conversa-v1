@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
+import { getActiveOrgId } from '@/lib/activeOrgContext';
 
 export type OrgRole = 'owner' | 'admin' | 'user' | 'consultant';
 
@@ -12,11 +13,25 @@ export interface MemberDto {
   joined_at: string;
 }
 
+export type InviteCredentialMode = 'temp_password' | 'reset_link' | 'invite_link' | 'login_only';
+
+export interface UserOrganizationOption {
+  org_id: string;
+  role: OrgRole;
+  can_view_team_leads: boolean;
+  joined_at: string;
+  company_name: string | null;
+  organization_name: string | null;
+  display_name: string;
+}
+
 type OrgAdminRequest =
   | { action: 'bootstrap_self' }
-  | { action: 'list_members' }
+  | { action: 'list_user_orgs' }
+  | { action: 'list_members'; org_id?: string }
   | {
     action: 'invite_member';
+    org_id?: string;
     email: string;
     role: OrgRole;
     can_view_team_leads?: boolean;
@@ -24,11 +39,12 @@ type OrgAdminRequest =
   }
   | {
     action: 'update_member';
+    org_id?: string;
     user_id: string;
     role: OrgRole;
     can_view_team_leads: boolean;
   }
-  | { action: 'remove_member'; user_id: string };
+  | { action: 'remove_member'; org_id?: string; user_id: string };
 
 type OrgAdminSuccessResponse =
   | {
@@ -40,6 +56,11 @@ type OrgAdminSuccessResponse =
   }
   | {
     ok: true;
+    action: 'list_user_orgs';
+    orgs: UserOrganizationOption[];
+  }
+  | {
+    ok: true;
     action: 'list_members';
     members: MemberDto[];
   }
@@ -48,7 +69,12 @@ type OrgAdminSuccessResponse =
     action: 'invite_member';
     user_id: string;
     email: string;
+    org_id: string;
+    assigned_role: OrgRole;
     mode: 'create' | 'invite';
+    system_email_sent: boolean;
+    credential_mode: InviteCredentialMode;
+    account_already_existed: boolean;
     temp_password?: string;
     invite_link?: string;
   }
@@ -96,6 +122,18 @@ export class OrgAdminInvokeError extends Error {
 export function isOrgAdminInvokeError(error: unknown): error is OrgAdminInvokeError {
   return error instanceof OrgAdminInvokeError;
 }
+
+const withOrgId = <T extends Record<string, unknown>>(payload: T, orgId?: string): T & { org_id?: string } => {
+  const resolvedOrgId = orgId || getActiveOrgId();
+  if (!resolvedOrgId) {
+    return payload;
+  }
+
+  return {
+    ...payload,
+    org_id: resolvedOrgId,
+  };
+};
 
 const getRequestId = (response: Response | unknown): string | null => {
   try {
@@ -211,9 +249,15 @@ export async function bootstrapSelf() {
   });
 }
 
-export async function listMembers() {
+export async function listUserOrgs() {
+  return invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'list_user_orgs' }>>({
+    action: 'list_user_orgs',
+  });
+}
+
+export async function listMembers(orgId?: string) {
   const response = await invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'list_members' }>>({
-    action: 'list_members',
+    ...withOrgId({ action: 'list_members' }, orgId),
   });
 
   // Guard: getUser can throw raw TypeError from auth-js internals (same parseResponseAPIVersion issue)
@@ -247,36 +291,38 @@ export async function listMembers() {
 }
 
 export async function inviteMember(input: {
+  org_id?: string;
   email: string;
   role: OrgRole;
   can_view_team_leads?: boolean;
   mode?: 'create' | 'invite';
 }) {
   return invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'invite_member' }>>({
-    action: 'invite_member',
+    ...withOrgId({ action: 'invite_member' }, input.org_id),
     email: input.email,
     role: input.role,
     can_view_team_leads: input.can_view_team_leads ?? false,
-    mode: input.mode ?? 'create',
+    mode: input.mode ?? 'invite',
   });
 }
 
 export async function updateMember(input: {
+  org_id?: string;
   user_id: string;
   role: OrgRole;
   can_view_team_leads: boolean;
 }) {
   return invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'update_member' }>>({
-    action: 'update_member',
+    ...withOrgId({ action: 'update_member' }, input.org_id),
     user_id: input.user_id,
     role: input.role,
     can_view_team_leads: input.can_view_team_leads,
   });
 }
 
-export async function removeMember(userId: string) {
+export async function removeMember(userId: string, orgId?: string) {
   return invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'remove_member' }>>({
-    action: 'remove_member',
+    ...withOrgId({ action: 'remove_member' }, orgId),
     user_id: userId,
   });
 }

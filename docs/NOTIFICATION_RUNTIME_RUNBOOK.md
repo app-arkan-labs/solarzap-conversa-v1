@@ -21,6 +21,10 @@ Todos os canais do digest (WhatsApp, e-mail HTML/texto e comentario diario) deve
 - `Situacao atual`
 - `Acoes recomendadas`
 
+Para comentarios diarios gravados no CRM:
+- `autor` deve ser `Resumo da IA`
+- `comment_type` deve ser `ai_daily_summary`
+
 Query rapida para validar conteudo recente salvo no run:
 ```sql
 select id, digest_type, date_bucket, status, summary_text
@@ -33,6 +37,18 @@ Nao deve aparecer no novo conteudo:
 - `O que aconteceu`
 - `Pendencia`
 - `Proximo passo`
+
+Query rapida para validar schema minimo de comentarios:
+```sql
+select column_name
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'comentarios_leads'
+  and column_name in ('comment_type', 'date_bucket')
+order by column_name;
+```
+
+Esperado: 2 linhas (`comment_type`, `date_bucket`).
 
 ## 2. Validacao rapida de cron
 ```sql
@@ -97,6 +113,7 @@ Tipos importantes:
 - `pending_backlog`
 - `digest_cron_missing`
 - `deprecated_digest_engine_active`
+- `digest_schema_incomplete`
 
 Historico:
 ```sql
@@ -135,8 +152,9 @@ Invoke-WebRequest -Method POST `
 ```
 
 ### 6.3 Falha de IA no digest
-- O worker faz fallback automatico e mantem o envio no mesmo contrato de 3 secoes.
-- Nao pausar cron por indisponibilidade temporaria do provedor de IA.
+- O worker e **IA-only**: se a IA falhar (chave ausente, timeout ou erro de geracao), o run deve falhar com erro explicito.
+- Nao enviar resumo heuristico/fallback para usuario final.
+- Validar erro em `public.ai_digest_runs.error` com codigo (`missing_openai_api_key`, `ai_timeout`, `ai_generation_failed`).
 
 ## 7. Criterios de normalizacao
 - sem novos `401 Missing authorization header` em `net._http_response`
@@ -144,12 +162,16 @@ Invoke-WebRequest -Method POST `
 - `notification_runtime_health_latest.open_count = 0` apos estabilizacao
 - sem job ativo apontando para `ai-reporter`
 - `notification_dispatch_logs` voltando com `success` em e-mail/WhatsApp
+- `public.ai_digest_runs.channel_results.section_generation.fallback_count = 0`
+- comentarios diarios voltando em `public.comentarios_leads` com `autor = 'Resumo da IA'`
 
 ## 8. Rollout pos-correcao
 1. Deploy de `notification-worker`, `ai-digest-worker` e `ai-reporter`.
 2. Aplicar migrations:
    - `20260301193000_notification_runtime_alerts.sql`
    - `20260302100000_digest_engine_guardrail.sql`
+   - `20260303153000_digest_comments_schema_repair.sql`
+   - `20260303160000_digest_guardrail_schema_check.sql`
 3. Reconfigurar cron com `scripts/ops/reconfigure_notification_cron.ps1`.
 4. Rodar smoke operacional.
 5. Monitorar `public.notification_runtime_health_latest` por 24h.

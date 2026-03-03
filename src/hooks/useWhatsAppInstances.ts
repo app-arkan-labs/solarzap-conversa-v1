@@ -75,6 +75,7 @@ const createMockQrCode = () => {
 const generateMockId = () => `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 export function useWhatsAppInstances() {
+  const { orgId } = useAuth();
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -123,6 +124,12 @@ export function useWhatsAppInstances() {
       }
 
       // Always require real auth
+      if (!orgId) {
+        setInstances([]);
+        setLoading(false);
+        return;
+      }
+
       const headers = await getAuthHeaders();
       if (headers === null) {
         setInstances([]);
@@ -133,7 +140,7 @@ export function useWhatsAppInstances() {
       import.meta.env.DEV && console.log('[useWhatsAppInstances] Fetching instances...');
 
       const { data, error } = await supabase.functions.invoke('whatsapp-connect', {
-        body: { action: 'list' },
+        body: { action: 'list', orgId },
         headers
       });
 
@@ -183,14 +190,12 @@ export function useWhatsAppInstances() {
     } finally {
       setLoading(false);
     }
-  }, [loadMockInstances, useFallback]);
+  }, [loadMockInstances, useFallback, orgId]);
 
   // Initial fetch
   useEffect(() => {
     fetchInstances();
   }, [fetchInstances]);
-
-  const { orgId } = useAuth(); // Assume useAuth is available or needs to be imported
 
   useEffect(() => {
     if (USE_MOCK_DATA || !orgId) return;
@@ -265,13 +270,18 @@ export function useWhatsAppInstances() {
       }
 
       // Always require real auth
+      if (!orgId) {
+        toast.error('Organizacao nao selecionada');
+        return null;
+      }
+
       const headers = await getAuthHeaders();
       if (headers === null) return null;
 
       import.meta.env.DEV && console.log('[useWhatsAppInstances] Creating instance with name:', displayName);
 
       const { data, error } = await supabase.functions.invoke('whatsapp-connect', {
-        body: { action: 'create', displayName },
+        body: { action: 'create', displayName, orgId },
         headers
       });
 
@@ -314,7 +324,7 @@ export function useWhatsAppInstances() {
     } finally {
       setCreating(false);
     }
-  }, [instances, saveMockInstances]);
+  }, [instances, saveMockInstances, orgId]);
 
   // Refresh QR Code for an instance
   const refreshQrCode = useCallback(async (instanceId: string): Promise<string | null> => {
@@ -332,11 +342,16 @@ export function useWhatsAppInstances() {
         return newQr;
       }
 
+      if (!orgId) {
+        toast.error('Organizacao nao selecionada');
+        return null;
+      }
+
       const headers = await getAuthHeaders();
       if (headers === null) return null;
 
       const { data, error } = await supabase.functions.invoke('whatsapp-connect', {
-        body: { action: 'refresh_qr', instanceId },
+        body: { action: 'refresh_qr', instanceId, orgId },
         headers
       });
 
@@ -349,7 +364,7 @@ export function useWhatsAppInstances() {
     } finally {
       setActionLoading(null);
     }
-  }, [instances, saveMockInstances]);
+  }, [instances, saveMockInstances, orgId]);
 
   // Simulate connection (only works with USE_MOCK_DATA)
   const simulateConnection = useCallback(async (instanceId: string, phoneNumber?: string): Promise<boolean> => {
@@ -405,11 +420,16 @@ export function useWhatsAppInstances() {
         return true;
       }
 
+      if (!orgId) {
+        toast.error('Organizacao nao selecionada');
+        return false;
+      }
+
       const headers = await getAuthHeaders();
       if (headers === null) return false;
 
       const { error } = await supabase.functions.invoke('whatsapp-connect', {
-        body: { action: 'disconnect', instanceId },
+        body: { action: 'disconnect', instanceId, orgId },
         headers
       });
 
@@ -423,7 +443,7 @@ export function useWhatsAppInstances() {
     } finally {
       setActionLoading(null);
     }
-  }, [instances, saveMockInstances]);
+  }, [instances, saveMockInstances, orgId]);
 
   // Delete instance (soft delete)
   const deleteInstance = useCallback(async (instanceId: string): Promise<boolean> => {
@@ -438,11 +458,16 @@ export function useWhatsAppInstances() {
         return true;
       }
 
+      if (!orgId) {
+        toast.error('Organizacao nao selecionada');
+        return false;
+      }
+
       const headers = await getAuthHeaders();
       if (headers === null) return false;
 
       const { error } = await supabase.functions.invoke('whatsapp-connect', {
-        body: { action: 'delete', instanceId },
+        body: { action: 'delete', instanceId, orgId },
         headers
       });
 
@@ -456,7 +481,7 @@ export function useWhatsAppInstances() {
     } finally {
       setActionLoading(null);
     }
-  }, [instances, saveMockInstances]);
+  }, [instances, saveMockInstances, orgId]);
 
   // Rename instance
   const renameInstance = useCallback(async (instanceId: string, newName: string): Promise<boolean> => {
@@ -475,11 +500,16 @@ export function useWhatsAppInstances() {
         return true;
       }
 
+      if (!orgId) {
+        toast.error('Organizacao nao selecionada');
+        return false;
+      }
+
       const headers = await getAuthHeaders();
       if (headers === null) return false;
 
       const { error } = await supabase.functions.invoke('whatsapp-connect', {
-        body: { action: 'rename', instanceId, newName },
+        body: { action: 'rename', instanceId, newName, orgId },
         headers
       });
 
@@ -493,7 +523,7 @@ export function useWhatsAppInstances() {
     } finally {
       setActionLoading(null);
     }
-  }, [instances, saveMockInstances]);
+  }, [instances, saveMockInstances, orgId]);
 
   // Get connected instances count
   const connectedCount = instances.filter(i => i.status === 'connected').length;

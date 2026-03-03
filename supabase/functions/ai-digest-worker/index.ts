@@ -1,11 +1,15 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
 import { digestEmail, type DigestLeadSummary } from '../_shared/emailTemplates.ts'
 import {
-  buildFallbackDigestSections,
+  assertStrictAiCoverage,
+  classifyDigestAiErrorMessage,
+} from '../_shared/digestAiPolicy.ts'
+import {
   normalizeDigestSections,
   renderDigestSectionsTextLines,
   type DigestSections,
 } from '../_shared/digestContract.ts'
+import { resolveNotificationRouting, toDigits } from '../_shared/notificationRecipients.ts'
 
 const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim()
 const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true'
@@ -37,14 +41,15 @@ const DIGEST_SETTINGS_BASE_SELECT = [
 
 const DIGEST_SETTINGS_FULL_SELECT = [
   DIGEST_SETTINGS_BASE_SELECT,
+  'whatsapp_recipients',
   'email_sender_name',
   'email_reply_to',
 ].join(', ')
 
 const DIGEST_OPENAI_MODEL = (Deno.env.get('DIGEST_OPENAI_MODEL') || '').trim() || 'gpt-4o-mini'
 const DIGEST_OPENAI_TIMEOUT_MS = (() => {
-  const parsed = Number(Deno.env.get('DIGEST_OPENAI_TIMEOUT_MS') || 3500)
-  return Number.isFinite(parsed) && parsed >= 500 ? parsed : 3500
+  const parsed = Number(Deno.env.get('DIGEST_OPENAI_TIMEOUT_MS') || 12000)
+  return Number.isFinite(parsed) && parsed >= 1000 ? parsed : 12000
 })()
 const DIGEST_AI_MAX_MESSAGES = 12
 const DIGEST_AI_MAX_MESSAGE_CHARS = 220
@@ -56,6 +61,7 @@ type NotificationSettingsRow = {
   enabled_whatsapp: boolean
   enabled_email: boolean
   whatsapp_instance_name: string | null
+  whatsapp_recipients: string[]
   email_recipients: string[]
   email_sender_name: string | null
   email_reply_to: string | null
@@ -215,6 +221,7 @@ function normalizeDigestSettingsRow(row: Record<string, unknown>): NotificationS
     enabled_whatsapp: toBoolean(row.enabled_whatsapp, false),
     enabled_email: toBoolean(row.enabled_email, false),
     whatsapp_instance_name: toStringOrNull(row.whatsapp_instance_name),
+    whatsapp_recipients: toStringArray(row.whatsapp_recipients),
     email_recipients: toStringArray(row.email_recipients),
     email_sender_name: toStringOrNull(row.email_sender_name),
     email_reply_to: toStringOrNull(row.email_reply_to),
@@ -265,11 +272,19 @@ type DigestContext = {
   digestType: 'daily' | 'weekly'
   dateBucket: string
   timezone: string
+  periodStartIso: string
+  periodEndIso: string
 }
 
-function toDigits(value: unknown): string {
-  return String(value || '').replace(/\D/g, '')
-}
+type DigestWorkerErrorCode =
+  | 'missing_openai_api_key'
+  | 'ai_timeout'
+  | 'ai_generation_failed'
+  | 'comments_write_failed'
+  | 'routing_invalid'
+  | 'run_acquire_failed'
+  | 'interactions_fetch_failed'
+  | 'delivery_failed'
 
 function getLocalParts(timezone: string) {
   const fmt = new Intl.DateTimeFormat('en-US', {
@@ -307,10 +322,113 @@ function parseTimeToMinuteOfDay(raw: string | null | undefined, fallback: string
   return hh * 60 + mm
 }
 
+function parseIsoDateParts(raw: string): { year: number; month: number; day: number } {
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) {
+    throw new Error(`invalid_date:${raw}`)
+  }
+  return {
+    year: Number(m[1]),
+    month: Number(m[2]),
+    day: Number(m[3]),
+  }
+}
+
+function parseIsoTimeParts(raw: string): { hour: number; minute: number; second: number } {
+  const m = raw.match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/)
+  if (!m) {
+    throw new Error(`invalid_time:${raw}`)
+  }
+  return {
+    hour: Number(m[1]),
+    minute: Number(m[2]),
+    second: Number(m[3] || '0'),
+  }
+}
+
+function getTimezoneDateTimeParts(date: Date, timezone: string) {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+  const out = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value])) as Record<string, string>
+  return {
+    year: Number(out.year || '0'),
+    month: Number(out.month || '1'),
+    day: Number(out.day || '1'),
+    hour: Number(out.hour || '0'),
+    minute: Number(out.minute || '0'),
+    second: Number(out.second || '0'),
+  }
+}
+
+function zonedDateTimeToUtcIso(dateRaw: string, timeRaw: string, timezone: string): string {
+  const date = parseIsoDateParts(dateRaw)
+  const time = parseIsoTimeParts(timeRaw)
+  const targetMs = Date.UTC(date.year, date.month - 1, date.day, time.hour, time.minute, time.second)
+
+  let guessMs = targetMs
+  for (let i = 0; i < 4; i++) {
+    const inZone = getTimezoneDateTimeParts(new Date(guessMs), timezone)
+    const zonedMs = Date.UTC(
+      inZone.year,
+      inZone.month - 1,
+      inZone.day,
+      inZone.hour,
+      inZone.minute,
+      inZone.second,
+    )
+    const diff = targetMs - zonedMs
+    if (diff === 0) break
+    guessMs += diff
+  }
+
+  return new Date(guessMs).toISOString()
+}
+
+function resolveDigestPeriodBounds(digestType: 'daily' | 'weekly', timezone: string, localDate: string) {
+  const periodEndIso = new Date().toISOString()
+
+  if (digestType === 'weekly') {
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
+    return {
+      periodStartIso: new Date(Date.now() - sevenDaysMs).toISOString(),
+      periodEndIso,
+    }
+  }
+
+  try {
+    return {
+      periodStartIso: zonedDateTimeToUtcIso(localDate, '00:00:00', timezone),
+      periodEndIso,
+    }
+  } catch {
+    const oneDayMs = 24 * 60 * 60 * 1000
+    return {
+      periodStartIso: new Date(Date.now() - oneDayMs).toISOString(),
+      periodEndIso,
+    }
+  }
+}
+
 type LeadMessageRow = {
   mensagem: string | null
   wa_from_me: boolean | null
   created_at: string
+}
+
+type GeneratedLeadSummary = {
+  leadId: number
+  leadName: string
+  leadPhone: string
+  stage: string
+  sections: DigestSections
 }
 
 function compactText(value: unknown, maxLen = 240): string {
@@ -318,6 +436,31 @@ function compactText(value: unknown, maxLen = 240): string {
   if (!text) return ''
   if (text.length <= maxLen) return text
   return `${text.slice(0, Math.max(0, maxLen - 3)).trim()}...`
+}
+
+function normalizeDigestWorkerError(code: DigestWorkerErrorCode, message: string): string {
+  const safeMessage = compactText(message, 400) || 'unknown_error'
+  return `${code}:${safeMessage}`
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  const code = typeof error === 'object' && error !== null ? String((error as any).code || '') : ''
+  const message = typeof error === 'object' && error !== null ? String((error as any).message || '') : String(error || '')
+  return (
+    code === '23505' ||
+    /duplicate key value/i.test(message) ||
+    /idx_ai_digest_runs_org_type_bucket/i.test(message)
+  )
+}
+
+function isMissingCommentUserIdColumnError(error: unknown): boolean {
+  const code = typeof error === 'object' && error !== null ? String((error as any).code || '') : ''
+  const message = typeof error === 'object' && error !== null ? String((error as any).message || '') : String(error || '')
+  return (
+    code === 'PGRST204' ||
+    code === '42703' ||
+    (/column/i.test(message) && /user_id/i.test(message) && /comentarios_leads/i.test(message))
+  )
 }
 
 function isMissingAiSettingsScopeError(error: unknown): boolean {
@@ -495,37 +638,23 @@ async function generateLeadSections(opts: {
   digestType: 'daily' | 'weekly'
   stage: string
   messages: LeadMessageRow[]
-}): Promise<{ sections: DigestSections; source: 'ai' | 'fallback'; reason?: string }> {
-  const fallback = buildFallbackDigestSections(opts.messages, { stage: opts.stage })
+}): Promise<{ sections: DigestSections; source: 'ai' }> {
   if (!opts.apiKey) {
-    return {
-      sections: fallback,
-      source: 'fallback',
-      reason: 'missing_openai_api_key',
-    }
+    throw new Error('missing_openai_api_key')
   }
 
-  try {
-    const aiSections = await requestDigestSectionsWithAi({
-      apiKey: opts.apiKey,
-      model: opts.model,
-      digestType: opts.digestType,
-      stage: opts.stage,
-      messages: opts.messages,
-      timeoutMs: DIGEST_OPENAI_TIMEOUT_MS,
-    })
+  const aiSections = await requestDigestSectionsWithAi({
+    apiKey: opts.apiKey,
+    model: opts.model,
+    digestType: opts.digestType,
+    stage: opts.stage,
+    messages: opts.messages,
+    timeoutMs: DIGEST_OPENAI_TIMEOUT_MS,
+  })
 
-    return {
-      sections: normalizeDigestSections(aiSections, fallback),
-      source: 'ai',
-    }
-  } catch (error) {
-    const reason = error instanceof Error ? compactText(error.message, 120) : compactText(String(error), 120)
-    return {
-      sections: fallback,
-      source: 'fallback',
-      reason: reason || 'ai_generation_failed',
-    }
+  return {
+    sections: normalizeDigestSections(aiSections),
+    source: 'ai',
   }
 }
 
@@ -648,6 +777,137 @@ async function sendEmailViaResend(
   return raw ? JSON.parse(raw) : null
 }
 
+async function acquireDigestRun(
+  supabase: ReturnType<typeof createClient>,
+  ctx: DigestContext,
+): Promise<{ runId: string } | { skipped: true; reason: string }> {
+  const nowIso = new Date().toISOString()
+
+  const insertResult = await supabase
+    .from('ai_digest_runs')
+    .insert({
+      org_id: ctx.orgId,
+      digest_type: ctx.digestType,
+      date_bucket: ctx.dateBucket,
+      timezone: ctx.timezone,
+      status: 'running',
+      started_at: nowIso,
+      finished_at: null,
+      error: null,
+      summary_text: null,
+      channel_results: {},
+    })
+    .select('id')
+    .single()
+
+  if (!insertResult.error && insertResult.data?.id) {
+    return { runId: insertResult.data.id }
+  }
+
+  if (!isUniqueViolation(insertResult.error)) {
+    return {
+      skipped: true,
+      reason: normalizeDigestWorkerError('run_acquire_failed', insertResult.error?.message || 'insert_failed'),
+    }
+  }
+
+  const existingResult = await supabase
+    .from('ai_digest_runs')
+    .select('id, status')
+    .eq('org_id', ctx.orgId)
+    .eq('digest_type', ctx.digestType)
+    .eq('date_bucket', ctx.dateBucket)
+    .maybeSingle()
+
+  if (existingResult.error || !existingResult.data?.id) {
+    return {
+      skipped: true,
+      reason: normalizeDigestWorkerError('run_acquire_failed', existingResult.error?.message || 'existing_run_not_found'),
+    }
+  }
+
+  const currentStatus = String((existingResult.data as any)?.status || '')
+  if (currentStatus === 'sent' || currentStatus === 'running') {
+    return { skipped: true, reason: `run_already_${currentStatus}` }
+  }
+
+  const retryUpdate = await supabase
+    .from('ai_digest_runs')
+    .update({
+      status: 'running',
+      started_at: nowIso,
+      finished_at: null,
+      error: null,
+      summary_text: null,
+      channel_results: {},
+      timezone: ctx.timezone,
+    })
+    .eq('id', existingResult.data.id)
+    .in('status', ['failed', 'skipped'])
+    .select('id')
+    .single()
+
+  if (retryUpdate.error || !retryUpdate.data?.id) {
+    return {
+      skipped: true,
+      reason: normalizeDigestWorkerError('run_acquire_failed', retryUpdate.error?.message || 'retry_update_failed'),
+    }
+  }
+
+  return { runId: retryUpdate.data.id }
+}
+
+async function failDigestRun(
+  supabase: ReturnType<typeof createClient>,
+  runId: string,
+  code: DigestWorkerErrorCode,
+  message: string,
+  channelResults?: Record<string, unknown>,
+) {
+  await supabase
+    .from('ai_digest_runs')
+    .update({
+      status: 'failed',
+      error: normalizeDigestWorkerError(code, message),
+      channel_results: channelResults || {},
+      finished_at: new Date().toISOString(),
+    })
+    .eq('id', runId)
+}
+
+async function resolveWhatsappRecipientsWithFallback(
+  supabase: ReturnType<typeof createClient>,
+  orgId: string,
+  instanceName: string | null,
+  explicitRecipients: string[],
+): Promise<{ recipients: string[]; source: 'settings' | 'instance_fallback' | 'none'; error?: string }> {
+  if (explicitRecipients.length > 0) {
+    return { recipients: explicitRecipients, source: 'settings' }
+  }
+
+  if (!instanceName) {
+    return { recipients: [], source: 'none', error: 'missing_whatsapp_instance' }
+  }
+
+  const lookup = await supabase
+    .from('whatsapp_instances')
+    .select('phone_number')
+    .eq('org_id', orgId)
+    .eq('instance_name', instanceName)
+    .maybeSingle()
+
+  if (lookup.error) {
+    return { recipients: [], source: 'none', error: `instance_lookup_failed:${lookup.error.message}` }
+  }
+
+  const fallbackTarget = toDigits((lookup.data as any)?.phone_number || '')
+  if (!fallbackTarget) {
+    return { recipients: [], source: 'none', error: 'missing_target_number' }
+  }
+
+  return { recipients: [fallbackTarget], source: 'instance_fallback' }
+}
+
 async function processDigestForOrg(
   supabase: ReturnType<typeof createClient>,
   supabaseUrl: string,
@@ -656,47 +916,102 @@ async function processDigestForOrg(
   settings: NotificationSettingsRow,
   ctx: DigestContext,
 ) {
-  const runInsert = await supabase
-    .from('ai_digest_runs')
-    .insert({
-      org_id: ctx.orgId,
-      digest_type: ctx.digestType,
-      date_bucket: ctx.dateBucket,
-      timezone: ctx.timezone,
-      status: 'running',
-      started_at: new Date().toISOString(),
-    })
-    .select('id')
-    .single()
+  const routing = resolveNotificationRouting({
+    enabledNotifications: settings.enabled_notifications,
+    enabledWhatsapp: settings.enabled_whatsapp,
+    enabledEmail: settings.enabled_email,
+    whatsappRecipients: settings.whatsapp_recipients,
+    emailRecipients: settings.email_recipients,
+  })
 
-  if (runInsert.error || !runInsert.data?.id) {
-    // Unique conflict means already processed for the bucket.
-    return { skipped: true, reason: runInsert.error?.message || 'run_insert_failed' }
+  if (!routing.notificationsEnabled) {
+    return { skipped: true, reason: 'notifications_disabled' }
   }
 
-  const runId = runInsert.data.id
-  const lookbackHours = ctx.digestType === 'weekly' ? 24 * 7 : 24
-  const sinceIso = new Date(Date.now() - lookbackHours * 60 * 60 * 1000).toISOString()
+  if (!routing.hasEnabledChannel) {
+    return { skipped: true, reason: 'no_channel_enabled' }
+  }
+
+  const whatsappResolution = routing.whatsappEnabled
+    ? await resolveWhatsappRecipientsWithFallback(
+      supabase,
+      ctx.orgId,
+      settings.whatsapp_instance_name,
+      routing.whatsappRecipients,
+    )
+    : { recipients: [] as string[], source: 'none' as const }
+
+  const channelResults: Record<string, unknown> = {
+    summary_engine: `openai:${DIGEST_OPENAI_MODEL}`,
+    section_generation: {
+      ai_count: 0,
+      fallback_count: 0,
+    },
+    comments: {
+      attempted: 0,
+      sent: 0,
+      failed: 0,
+    },
+    period: {
+      start_at: ctx.periodStartIso,
+      end_at: ctx.periodEndIso,
+      timezone: ctx.timezone,
+    },
+    whatsapp: {
+      sent: 0,
+      failed: 0,
+      recipient_source: whatsappResolution.source,
+    },
+    email: {
+      sent: 0,
+      failed: 0,
+    },
+    lead_summaries: 0,
+  }
+
+  if (whatsappResolution.error) {
+    ;(channelResults.whatsapp as any).error = whatsappResolution.error
+  }
+
+  const run = await acquireDigestRun(supabase, ctx)
+  if ('skipped' in run) {
+    return { skipped: true, reason: run.reason }
+  }
+  const runId = run.runId
+
+  const effectiveWhatsappRecipients = routing.whatsappEnabled ? whatsappResolution.recipients : []
+  const effectiveEmailRecipients = routing.emailEnabled ? routing.emailRecipients : []
+  const hasAnyRecipient = effectiveWhatsappRecipients.length > 0 || effectiveEmailRecipients.length > 0
+  if (!hasAnyRecipient) {
+    await failDigestRun(
+      supabase,
+      runId,
+      'routing_invalid',
+      'no_recipients_after_resolution',
+      channelResults,
+    )
+    return { skipped: false, failed: true, reason: 'routing_invalid' }
+  }
 
   const { data: interactions, error: interactionsError } = await supabase
     .from('interacoes')
     .select('lead_id, mensagem, created_at, wa_from_me')
     .eq('org_id', ctx.orgId)
-    .gte('created_at', sinceIso)
+    .gte('created_at', ctx.periodStartIso)
+    .lte('created_at', ctx.periodEndIso)
     .not('lead_id', 'is', null)
     .order('created_at', { ascending: false })
     .limit(4000)
 
   if (interactionsError) {
-    await supabase
-      .from('ai_digest_runs')
-      .update({
-        status: 'failed',
-        error: interactionsError.message,
-        finished_at: new Date().toISOString(),
-      })
-      .eq('id', runId)
-    return { skipped: false, failed: true, reason: interactionsError.message }
+    await failDigestRun(
+      supabase,
+      runId,
+      'interactions_fetch_failed',
+      interactionsError.message,
+      channelResults,
+    )
+    return { skipped: false, failed: true, reason: 'interactions_fetch_failed' }
   }
 
   const rows = Array.isArray(interactions) ? interactions : []
@@ -734,40 +1049,78 @@ async function processDigestForOrg(
 
   const digestLeadIds = leadIds.slice(0, 30)
   const openAiApiKey = await resolveOpenAiApiKeyForOrg(supabase, ctx.orgId)
-  const generationMetrics = {
-    ai_count: 0,
-    fallback_count: 0,
-    fallback_reasons: {} as Record<string, number>,
+
+  if (digestLeadIds.length > 0 && !openAiApiKey) {
+    await failDigestRun(
+      supabase,
+      runId,
+      'missing_openai_api_key',
+      'OpenAI key not configured for digest generation',
+      channelResults,
+    )
+    return { skipped: false, failed: true, reason: 'missing_openai_api_key' }
   }
 
-  const leadSummaries = await mapWithConcurrency(digestLeadIds, async (leadId) => {
+  const generationFailures: Array<{ leadId: number; code: DigestWorkerErrorCode; message: string }> = []
+
+  const leadSummariesRaw = await mapWithConcurrency(digestLeadIds, async (leadId): Promise<GeneratedLeadSummary | null> => {
     const lead = leadById.get(leadId)
     const stage = lead?.status_pipeline || 'sem_etapa'
     const messages = grouped.get(leadId) || []
-    const generated = await generateLeadSections({
-      apiKey: openAiApiKey,
-      model: DIGEST_OPENAI_MODEL,
-      digestType: ctx.digestType,
-      stage,
-      messages,
-    })
+    try {
+      const generated = await generateLeadSections({
+        apiKey: openAiApiKey,
+        model: DIGEST_OPENAI_MODEL,
+        digestType: ctx.digestType,
+        stage,
+        messages,
+      })
 
-    if (generated.source === 'ai') {
-      generationMetrics.ai_count += 1
-    } else {
-      generationMetrics.fallback_count += 1
-      const reason = generated.reason || 'fallback_unknown'
-      generationMetrics.fallback_reasons[reason] = (generationMetrics.fallback_reasons[reason] || 0) + 1
-    }
-
-    return {
-      leadId,
-      leadName: lead?.nome || `Lead ${leadId}`,
-      leadPhone: lead?.telefone || '',
-      stage,
-      sections: generated.sections,
+      return {
+        leadId,
+        leadName: lead?.nome || `Lead ${leadId}`,
+        leadPhone: lead?.telefone || '',
+        stage,
+        sections: generated.sections,
+      }
+    } catch (error) {
+      generationFailures.push({
+        leadId,
+        code: classifyDigestAiErrorMessage(error instanceof Error ? error.message : String(error)),
+        message: error instanceof Error ? error.message : String(error),
+      })
+      return null
     }
   })
+
+  const leadSummaries = leadSummariesRaw.filter((item): item is GeneratedLeadSummary => item !== null)
+
+  ;(channelResults.section_generation as any).ai_count = leadSummaries.length
+  ;(channelResults.section_generation as any).fallback_count = 0
+  channelResults.lead_summaries = leadSummaries.length
+
+  const strictCoverage = assertStrictAiCoverage({
+    leadCount: digestLeadIds.length,
+    aiCount: leadSummaries.length,
+  })
+
+  if (generationFailures.length > 0 || !strictCoverage.ok) {
+    const firstFailure = generationFailures[0]
+    await failDigestRun(
+      supabase,
+      runId,
+      firstFailure?.code || strictCoverage.code || 'ai_generation_failed',
+      firstFailure?.message || strictCoverage.reason || 'partial_ai_generation_failure',
+      {
+        ...channelResults,
+        section_generation: {
+          ...(channelResults.section_generation as any),
+          failed_leads: generationFailures.map((f) => ({ lead_id: f.leadId, code: f.code })),
+        },
+      },
+    )
+    return { skipped: false, failed: true, reason: 'ai_generation_failed' }
+  }
 
   const digestTitle = ctx.digestType === 'weekly' ? 'Resumo semanal' : 'Resumo diário'
   const digestText = [
@@ -779,13 +1132,6 @@ async function processDigestForOrg(
       ...renderDigestSectionsTextLines(s.sections),
     ].join('\n')),
   ].join('\n')
-
-  const channelResults: Record<string, unknown> = {
-    whatsapp: { sent: 0, failed: 0 },
-    email: { sent: 0, failed: 0 },
-    lead_summaries: leadSummaries.length,
-    section_generation: generationMetrics,
-  }
 
   if (ctx.digestType === 'daily' && leadSummaries.length > 0) {
     const { data: ownerMember } = await supabase
@@ -807,83 +1153,106 @@ async function processDigestForOrg(
         `Resumo do dia (${ctx.dateBucket})`,
         ...renderDigestSectionsTextLines(s.sections),
       ].join('\n'),
-      autor: 'AI Digest',
+      autor: 'Resumo da IA',
       comment_type: 'ai_daily_summary',
       date_bucket: ctx.dateBucket,
     }))
 
-    await supabase
+    ;(channelResults.comments as any).attempted = commentRows.length
+
+    let commentsUpsert = await supabase
       .from('comentarios_leads')
       .upsert(commentRows, {
         onConflict: 'org_id,lead_id,comment_type,date_bucket',
         ignoreDuplicates: true,
       })
+
+    if (commentsUpsert.error && isMissingCommentUserIdColumnError(commentsUpsert.error)) {
+      const compatRows = commentRows.map(({ user_id: _ignore, ...rest }) => rest)
+      commentsUpsert = await supabase
+        .from('comentarios_leads')
+        .upsert(compatRows, {
+          onConflict: 'org_id,lead_id,comment_type,date_bucket',
+          ignoreDuplicates: true,
+        })
+    }
+
+    if (commentsUpsert.error) {
+      ;(channelResults.comments as any).failed = commentRows.length
+      await failDigestRun(
+        supabase,
+        runId,
+        'comments_write_failed',
+        commentsUpsert.error.message,
+        channelResults,
+      )
+      return { skipped: false, failed: true, reason: 'comments_write_failed' }
+    }
+
+    ;(channelResults.comments as any).sent = commentRows.length
   }
 
-  if (settings.enabled_whatsapp && settings.whatsapp_instance_name) {
-    const { data: instanceRow } = await supabase
-      .from('whatsapp_instances')
-      .select('phone_number')
-      .eq('org_id', ctx.orgId)
-      .eq('instance_name', settings.whatsapp_instance_name)
-      .maybeSingle()
-
-    const targetNumber = toDigits(instanceRow?.phone_number || '')
-
-    if (targetNumber) {
-      try {
-        await sendWhatsAppViaProxy(
-          supabaseUrl,
-          serviceRoleKey,
-          internalApiKey,
-          ctx.orgId,
-          settings.whatsapp_instance_name,
-          targetNumber,
-          digestText,
-        )
-        ;(channelResults.whatsapp as any).sent += 1
-      } catch (error) {
-        ;(channelResults.whatsapp as any).failed += 1
-        ;(channelResults.whatsapp as any).error = error instanceof Error ? error.message : String(error)
-      }
-    } else {
+  if (routing.whatsappEnabled) {
+    if (!settings.whatsapp_instance_name) {
       ;(channelResults.whatsapp as any).failed += 1
-      ;(channelResults.whatsapp as any).error = 'missing_target_number'
+      ;(channelResults.whatsapp as any).error = 'missing_whatsapp_instance'
+    } else if (effectiveWhatsappRecipients.length === 0) {
+      ;(channelResults.whatsapp as any).skipped = 'no_recipients'
+    } else {
+      for (const targetNumber of effectiveWhatsappRecipients) {
+        try {
+          await sendWhatsAppViaProxy(
+            supabaseUrl,
+            serviceRoleKey,
+            internalApiKey,
+            ctx.orgId,
+            settings.whatsapp_instance_name,
+            targetNumber,
+            digestText,
+          )
+          ;(channelResults.whatsapp as any).sent += 1
+        } catch (error) {
+          ;(channelResults.whatsapp as any).failed += 1
+          ;(channelResults.whatsapp as any).error = error instanceof Error ? error.message : String(error)
+        }
+      }
     }
   }
 
-  if (settings.enabled_email && Array.isArray(settings.email_recipients)) {
-    for (const rawRecipient of settings.email_recipients) {
-      const recipient = String(rawRecipient || '').trim()
-      if (!recipient) continue
-      try {
-        // Build HTML digest email
-        const digestLeads: DigestLeadSummary[] = leadSummaries.map((s) => ({
-          leadName: s.leadName,
-          leadPhone: s.leadPhone,
-          stage: s.stage,
-          summary: s.sections.summary,
-          currentSituation: s.sections.currentSituation,
-          recommendedActions: s.sections.recommendedActions,
-        }))
-        const digestHtml = digestEmail({
-          digestType: ctx.digestType,
-          dateBucket: ctx.dateBucket,
-          leads: digestLeads,
-          senderName: settings.email_sender_name,
-        })
-        await sendEmailViaResend(
-          recipient,
-          digestHtml.subject,
-          digestHtml.text,
-          settings.email_sender_name,
-          settings.email_reply_to,
-          digestHtml.html,
-        )
-        ;(channelResults.email as any).sent += 1
-      } catch (error) {
-        ;(channelResults.email as any).failed += 1
-        ;(channelResults.email as any).error = error instanceof Error ? error.message : String(error)
+  if (routing.emailEnabled) {
+    if (effectiveEmailRecipients.length === 0) {
+      ;(channelResults.email as any).skipped = 'no_recipients'
+    } else {
+      const digestLeads: DigestLeadSummary[] = leadSummaries.map((s) => ({
+        leadName: s.leadName,
+        leadPhone: s.leadPhone,
+        stage: s.stage,
+        summary: s.sections.summary,
+        currentSituation: s.sections.currentSituation,
+        recommendedActions: s.sections.recommendedActions,
+      }))
+      const digestHtml = digestEmail({
+        digestType: ctx.digestType,
+        dateBucket: ctx.dateBucket,
+        leads: digestLeads,
+        senderName: settings.email_sender_name,
+      })
+
+      for (const recipient of effectiveEmailRecipients) {
+        try {
+          await sendEmailViaResend(
+            recipient,
+            digestHtml.subject,
+            digestHtml.text,
+            settings.email_sender_name,
+            settings.email_reply_to,
+            digestHtml.html,
+          )
+          ;(channelResults.email as any).sent += 1
+        } catch (error) {
+          ;(channelResults.email as any).failed += 1
+          ;(channelResults.email as any).error = error instanceof Error ? error.message : String(error)
+        }
       }
     }
   }
@@ -892,12 +1261,21 @@ async function processDigestForOrg(
     Number((channelResults.whatsapp as any).failed || 0) > 0 ||
     Number((channelResults.email as any).failed || 0) > 0
 
+  const totalSent =
+    Number((channelResults.whatsapp as any).sent || 0) +
+    Number((channelResults.email as any).sent || 0)
+
+  const runStatus = hadFailure
+    ? 'failed'
+    : (totalSent > 0 ? 'sent' : 'skipped')
+
   await supabase
     .from('ai_digest_runs')
     .update({
-      status: hadFailure ? 'failed' : 'sent',
+      status: runStatus,
       summary_text: digestText,
       channel_results: channelResults,
+      error: hadFailure ? normalizeDigestWorkerError('delivery_failed', 'notification_delivery_failed') : null,
       finished_at: new Date().toISOString(),
     })
     .eq('id', runId)
@@ -910,6 +1288,18 @@ async function processDigestForOrg(
 }
 
 function resolveDueDigest(settings: NotificationSettingsRow): DigestContext[] {
+  const routing = resolveNotificationRouting({
+    enabledNotifications: settings.enabled_notifications,
+    enabledWhatsapp: settings.enabled_whatsapp,
+    enabledEmail: settings.enabled_email,
+    whatsappRecipients: settings.whatsapp_recipients,
+    emailRecipients: settings.email_recipients,
+  })
+
+  if (!routing.notificationsEnabled || !routing.hasEnabledChannel) {
+    return []
+  }
+
   const timezone = settings.timezone || 'America/Sao_Paulo'
   const local = getLocalParts(timezone)
 
@@ -918,11 +1308,14 @@ function resolveDueDigest(settings: NotificationSettingsRow): DigestContext[] {
   if (settings.daily_digest_enabled) {
     const targetMinute = parseTimeToMinuteOfDay(settings.daily_digest_time, '19:00')
     if (local.minuteOfDay >= targetMinute) {
+      const period = resolveDigestPeriodBounds('daily', timezone, local.date)
       due.push({
         orgId: settings.org_id,
         digestType: 'daily',
         dateBucket: local.date,
         timezone,
+        periodStartIso: period.periodStartIso,
+        periodEndIso: period.periodEndIso,
       })
     }
   }
@@ -931,11 +1324,14 @@ function resolveDueDigest(settings: NotificationSettingsRow): DigestContext[] {
     const targetMinute = parseTimeToMinuteOfDay(settings.weekly_digest_time, '18:00')
     const isFriday = local.weekday === 'fri'
     if (isFriday && local.minuteOfDay >= targetMinute) {
+      const period = resolveDigestPeriodBounds('weekly', timezone, local.date)
       due.push({
         orgId: settings.org_id,
         digestType: 'weekly',
         dateBucket: local.date,
         timezone,
+        periodStartIso: period.periodStartIso,
+        periodEndIso: period.periodEndIso,
       })
     }
   }

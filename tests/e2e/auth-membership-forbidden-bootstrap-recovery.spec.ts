@@ -96,23 +96,27 @@ test.afterAll(async () => {
   }
 });
 
-test('auth membership forbidden recovery: organization_members returns 403, bootstrap_self recovers and app loads', async ({
+test('auth membership forbidden recovery: first organization_members read returns 403, app recovers without bootstrap_self', async ({
   page,
 }) => {
   let sawBootstrapSelf = false;
+  let membershipGetCount = 0;
 
   await page.route('**/rest/v1/organization_members*', async (route) => {
     const request = route.request();
     if (request.method() === 'GET') {
-      await route.fulfill({
-        status: 403,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          code: '42501',
-          message: 'permission denied for table organization_members (e2e)',
-        }),
-      });
-      return;
+      membershipGetCount += 1;
+      if (membershipGetCount === 1) {
+        await route.fulfill({
+          status: 403,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            code: '42501',
+            message: 'permission denied for table organization_members (e2e)',
+          }),
+        });
+        return;
+      }
     }
 
     await route.continue();
@@ -136,7 +140,9 @@ test('auth membership forbidden recovery: organization_members returns 403, boot
 
   await login(page, state.ownerEmail, state.ownerPassword);
 
-  await expect.poll(() => sawBootstrapSelf, { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => membershipGetCount, { timeout: 15_000 }).toBeGreaterThan(0);
+  await page.waitForTimeout(2000);
+  expect(sawBootstrapSelf).toBe(false);
 
   await page.getByPlaceholder(/Pesquisar/i).fill(state.leadName);
 

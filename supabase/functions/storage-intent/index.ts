@@ -37,7 +37,8 @@ Deno.serve(async (req) => {
         }
 
         // 3. Parse Metadata
-        const { fileName, sizeBytes, mimeType, leadId, kind } = await req.json()
+        const { fileName, sizeBytes, mimeType, leadId, kind, orgId: rawOrgId } = await req.json()
+        const requestedOrgId = typeof rawOrgId === 'string' ? rawOrgId.trim() : ''
         if (!fileName || !sizeBytes) {
             throw new Error('Missing fileName or sizeBytes')
         }
@@ -48,17 +49,26 @@ Deno.serve(async (req) => {
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
 
-        const { data: membership } = await supabaseAdmin
+        let membershipQuery = supabaseAdmin
             .from('organization_members')
             .select('org_id, created_at')
             .eq('user_id', user.id)
+
+        if (requestedOrgId) {
+            membershipQuery = membershipQuery.eq('org_id', requestedOrgId)
+        }
+
+        const { data: membership } = await membershipQuery
             .order('created_at', { ascending: true })
             .order('org_id', { ascending: true })
             .limit(1)
             .maybeSingle()
 
-        const orgId = membership?.org_id || (user.user_metadata as any)?.org_id
+        const orgId = membership?.org_id || null
         if (!orgId) {
+            if (requestedOrgId) {
+                throw new Error('User is not linked to the requested organization')
+            }
             throw new Error('User is not linked to an organization')
         }
 

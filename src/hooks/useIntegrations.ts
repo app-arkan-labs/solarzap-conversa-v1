@@ -230,6 +230,10 @@ export function useIntegrations() {
   const connectWhatsApp = useCallback(async () => {
     try {
       setConnecting('whatsapp');
+      if (!orgId) {
+        toast.error('Organizacao nao selecionada');
+        return null;
+      }
       const headers = await getAuthHeaders();
       if (!headers) {
         toast.error('Você precisa estar logado para conectar integrações');
@@ -237,7 +241,7 @@ export function useIntegrations() {
       }
 
       const { data, error } = await supabase.functions.invoke('whatsapp-connect', {
-        body: { action: 'create' },
+        body: { action: 'create', orgId },
         headers
       });
 
@@ -258,16 +262,17 @@ export function useIntegrations() {
       setConnecting(null);
     }
     return null;
-  }, []);
+  }, [orgId]);
 
   // Get WhatsApp status
   const getWhatsAppStatus = useCallback(async () => {
     try {
+      if (!orgId) return null;
       const headers = await getAuthHeaders();
       if (!headers) return null;
 
       const { data, error } = await supabase.functions.invoke('whatsapp-connect', {
-        body: { action: 'status' },
+        body: { action: 'status', orgId },
         headers
       });
 
@@ -277,7 +282,7 @@ export function useIntegrations() {
       console.error('Error getting WhatsApp status:', error);
       return null;
     }
-  }, []);
+  }, [orgId]);
 
   // Disconnect an integration
   const disconnect = useCallback(async (provider: string) => {
@@ -290,8 +295,12 @@ export function useIntegrations() {
       }
 
       if (provider === 'whatsapp') {
+        if (!orgId) {
+          toast.error('Organizacao nao selecionada');
+          return;
+        }
         const { error } = await supabase.functions.invoke('whatsapp-connect', {
-          body: { action: 'disconnect' },
+          body: { action: 'disconnect', orgId },
           headers
         });
         if (error) throw error;
@@ -312,7 +321,7 @@ export function useIntegrations() {
     } finally {
       setConnecting(null);
     }
-  }, []);
+  }, [orgId]);
 
   // Helper to check if a provider is connected
   const isConnected = useCallback((provider: string): boolean => {

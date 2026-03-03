@@ -231,13 +231,20 @@ export interface LeadPatch {
 }
 
 export function useLeads() {
-    const { user, orgId, canViewTeamLeads } = useAuth();
+    const { user, orgId, canViewTeamLeads, role } = useAuth();
     const queryClient = useQueryClient();
     const [showTeamLeads, setShowTeamLeads] = useState(false);
     const canViewTeam = canViewTeamLeads;
+    const isOrgManager = role === 'owner' || role === 'admin';
+    const [allowedInstanceNames, setAllowedInstanceNames] = useState<string[]>([]);
+    const allowedInstanceSet = useMemo(() => new Set(allowedInstanceNames), [allowedInstanceNames]);
+    const allowedInstanceKey = useMemo(
+        () => [...allowedInstanceNames].sort((a, b) => a.localeCompare(b)).join('|'),
+        [allowedInstanceNames],
+    );
     const leadsQueryKey = useMemo(
-        () => ['leads', orgId, user?.id, showTeamLeads, canViewTeam] as const,
-        [orgId, user?.id, showTeamLeads, canViewTeam]
+        () => ['leads', orgId, user?.id, showTeamLeads, canViewTeam, isOrgManager ? 'manager' : allowedInstanceKey] as const,
+        [orgId, user?.id, showTeamLeads, canViewTeam, isOrgManager, allowedInstanceKey]
     );
 
     useEffect(() => {
@@ -245,6 +252,45 @@ export function useLeads() {
             setShowTeamLeads(false);
         }
     }, [canViewTeam]);
+
+    useEffect(() => {
+        let alive = true;
+
+        const loadAllowedInstances = async () => {
+            if (!user || !orgId || isOrgManager) {
+                if (alive) {
+                    setAllowedInstanceNames([]);
+                }
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('whatsapp_instances')
+                .select('instance_name')
+                .eq('org_id', orgId)
+                .eq('user_id', user.id)
+                .eq('is_active', true);
+
+            if (!alive) return;
+            if (error) {
+                console.error('Error loading user allowed instances:', error);
+                setAllowedInstanceNames([]);
+                return;
+            }
+
+            const instanceNames = (data ?? [])
+                .map((row) => (typeof row.instance_name === 'string' ? row.instance_name.trim() : ''))
+                .filter((name) => name.length > 0);
+
+            setAllowedInstanceNames(instanceNames);
+        };
+
+        void loadAllowedInstances();
+
+        return () => {
+            alive = false;
+        };
+    }, [isOrgManager, orgId, user]);
 
     // Real-time subscription for leads
     useEffect(() => {
@@ -267,6 +313,15 @@ export function useLeads() {
                         if (!showTeamLeads && newLead.assigned_to_user_id && newLead.assigned_to_user_id !== user.id) {
                             return;
                         }
+                        if (!isOrgManager && !showTeamLeads) {
+                            const instanceName = typeof newLead.instance_name === 'string' ? newLead.instance_name : null;
+                            if (allowedInstanceNames.length === 0 && instanceName) {
+                                return;
+                            }
+                            if (instanceName && !allowedInstanceSet.has(instanceName)) {
+                                return;
+                            }
+                        }
                         const newContact = leadToContact(newLead);
                         toast.success(`Novo Lead recebido: ${newContact.name}`);
                         queryClient.setQueryData(leadsQueryKey, (oldData: Contact[] | undefined) => {
@@ -286,6 +341,19 @@ export function useLeads() {
                         const updated = payload.new;
                         if (updated) {
                             const updatedContact = leadToContact(updated);
+                            if (!showTeamLeads && !isOrgManager) {
+                                const isMine = (updatedContact.assignedToUserId || '') === user.id;
+                                const hasAllowedInstance =
+                                    !updatedContact.instanceName ||
+                                    (allowedInstanceNames.length > 0 && allowedInstanceSet.has(updatedContact.instanceName));
+                                if (!isMine || !hasAllowedInstance) {
+                                    queryClient.setQueryData(leadsQueryKey, (oldData: Contact[] | undefined) => {
+                                        if (!Array.isArray(oldData)) return oldData;
+                                        return oldData.filter(c => c.id !== updatedContact.id);
+                                    });
+                                    return;
+                                }
+                            }
                             queryClient.setQueryData(leadsQueryKey, (oldData: Contact[] | undefined) => {
                                 if (!Array.isArray(oldData)) return oldData;
                                 return oldData.map(c => c.id === updatedContact.id ? { ...c, ...updatedContact } : c);
@@ -300,7 +368,7 @@ export function useLeads() {
         return () => {
             subscription.unsubscribe();
         };
-    }, [user, orgId, queryClient, leadsQueryKey]);
+    }, [user, orgId, queryClient, leadsQueryKey, showTeamLeads, isOrgManager, allowedInstanceNames, allowedInstanceSet]);
 
     const leadsQuery = useQuery({
         queryKey: leadsQueryKey,
@@ -331,7 +399,16 @@ export function useLeads() {
             if (showTeamLeads && canViewTeam) {
                 return contacts;
             }
-            return contacts.filter((c) => (c.assignedToUserId || '') === user.id);
+            const myContacts = contacts.filter((c) => (c.assignedToUserId || '') === user.id);
+            if (isOrgManager) {
+                return myContacts;
+            }
+
+            if (allowedInstanceNames.length === 0) {
+                return myContacts.filter((c) => !c.instanceName);
+            }
+
+            return myContacts.filter((c) => !c.instanceName || allowedInstanceSet.has(c.instanceName));
         },
         enabled: !!user && !!orgId,
         refetchInterval: 5000,

@@ -34,7 +34,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useIntegrationsContext } from '@/contexts/IntegrationsContext';
 import { useUserWhatsAppInstances, UserWhatsAppInstance } from '@/hooks/useUserWhatsAppInstances';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -55,6 +55,8 @@ import { PageHeader } from './PageHeader';
 
 export function IntegrationsView() {
   const { settings: aiSettings } = useAISettings(); // Get Global Settings
+  const { role } = useAuth();
+  const isOrgManager = role === 'owner' || role === 'admin';
   const [newInstanceName, setNewInstanceName] = useState('');
   const [currentQR, setCurrentQR] = useState<{ instanceName: string; qrCode: string } | null>(null);
   const [updatingColor, setUpdatingColor] = useState<string | null>(null);
@@ -82,6 +84,7 @@ export function IntegrationsView() {
     disconnectInstance,
     connectedCount: whatsappConnectedCount,
     setInstanceAiEnabled,
+    updateColor,
   } = useUserWhatsAppInstances();
 
   const handleCreateInstance = async () => {
@@ -131,16 +134,11 @@ export function IntegrationsView() {
   const handleUpdateColor = async (instance: UserWhatsAppInstance, color: string) => {
     try {
       setUpdatingColor(instance.instance_name);
-      // Optimistic update locally would depend on state management, but let's refresh
-      const { error } = await supabase
-        .from('whatsapp_instances')
-        .update({ color })
-        .eq('id', instance.id);
-
-      if (error) throw error;
+      const ok = await updateColor(instance.id, color);
+      if (!ok) return;
 
       toast.success(`Cor da instância atualizada!`);
-      fetchInstances(); // Refresh list to show new color
+      fetchInstances();
     } catch (error) {
       console.error('Error updating color:', error);
       toast.error('Erro ao atualizar cor');
@@ -464,7 +462,7 @@ export function IntegrationsView() {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold text-foreground flex items-center gap-2">
                     <Smartphone className="w-4 h-4" />
-                    Minhas Instâncias ({whatsappInstances.length})
+                    {isOrgManager ? 'Instâncias da Empresa' : 'Minhas Instâncias'} ({whatsappInstances.length})
                   </h3>
                 </div>
 
@@ -479,7 +477,9 @@ export function IntegrationsView() {
                     </div>
                     <h4 className="font-medium text-foreground mb-1">Nenhuma instância</h4>
                     <p className="text-sm text-muted-foreground">
-                      Crie sua primeira instância para começar a receber mensagens
+                      {isOrgManager
+                        ? 'Crie a primeira instância da empresa para começar a receber mensagens'
+                        : 'Crie sua primeira instância para começar a receber mensagens'}
                     </p>
                   </div>
                 ) : (

@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 export interface UserWhatsAppInstance {
+  org_id?: string | null;
   id: string;
   user_id: string;
   instance_name: string;
@@ -75,13 +76,14 @@ function toInstanceStatus(state: string | null | undefined): InstanceConnectionS
 }
 
 export function useUserWhatsAppInstances() {
-  const { user, orgId } = useAuth();
+  const { user, orgId, role } = useAuth();
   const [instances, setInstances] = useState<UserWhatsAppInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const isOrgManager = role === 'owner' || role === 'admin';
 
-  // Fetch instances from Supabase filtered by user_id
+  // Fetch instances from Supabase in active organization scope.
   const fetchInstances = useCallback(async () => {
     if (!user || !orgId) {
       setInstances([]);
@@ -91,12 +93,18 @@ export function useUserWhatsAppInstances() {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      let query = supabase
         .from('whatsapp_instances')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('org_id', orgId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
+
+      if (!isOrgManager) {
+        query = query.eq('user_id', user.id);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -142,10 +150,17 @@ export function useUserWhatsAppInstances() {
                 }
 
                 // Update in database if status changed (background)
-                await supabase
+                let statusQuery = supabase
                   .from('whatsapp_instances')
                   .update({ status: newStatus, updated_at: new Date().toISOString() })
-                  .eq('id', instance.id);
+                  .eq('id', instance.id)
+                  .eq('org_id', orgId);
+
+                if (!isOrgManager) {
+                  statusQuery = statusQuery.eq('user_id', user.id);
+                }
+
+                await statusQuery;
 
                 return { ...instance, status: newStatus };
               }
@@ -174,7 +189,7 @@ export function useUserWhatsAppInstances() {
       toast.error('Erro ao carregar instâncias');
       setLoading(false);
     }
-  }, [user, orgId]);
+  }, [isOrgManager, orgId, user]);
 
   // Initial fetch
   useEffect(() => {
@@ -198,11 +213,13 @@ export function useUserWhatsAppInstances() {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             const newInstance = payload.new as UserWhatsAppInstance;
+            if (!isOrgManager && newInstance.user_id !== user.id) return;
             if (newInstance.is_active) {
               setInstances(prev => [newInstance, ...prev]);
             }
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as UserWhatsAppInstance;
+            if (!isOrgManager && updated.user_id !== user.id) return;
             if (updated.is_active) {
               setInstances(prev => prev.map(inst =>
                 inst.id === updated.id ? updated : inst
@@ -211,7 +228,9 @@ export function useUserWhatsAppInstances() {
               setInstances(prev => prev.filter(inst => inst.id !== updated.id));
             }
           } else if (payload.eventType === 'DELETE') {
-            const deletedId = (payload.old as { id: string }).id;
+            const deleted = payload.old as { id: string; user_id?: string };
+            if (!isOrgManager && deleted.user_id && deleted.user_id !== user.id) return;
+            const deletedId = deleted.id;
             setInstances(prev => prev.filter(inst => inst.id !== deletedId));
           }
         }
@@ -221,7 +240,7 @@ export function useUserWhatsAppInstances() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, orgId]);
+  }, [isOrgManager, orgId, user]);
 
   // Create new instance
   const createInstance = useCallback(async (displayName?: string): Promise<{ qrCode?: string; instance?: UserWhatsAppInstance } | null> => {
@@ -301,6 +320,15 @@ export function useUserWhatsAppInstances() {
   // Refresh QR Code
   const refreshQrCode = useCallback(async (instanceName: string): Promise<string | null> => {
     try {
+      if (!orgId) {
+        toast.error('Organizacao nao vinculada ao usuario');
+        return null;
+      }
+      if (!isOrgManager && !user?.id) {
+        toast.error('Voce precisa estar logado');
+        return null;
+      }
+
       setActionLoading(instanceName);
       // evolutionApi.connectInstance gets the QR code
       const response = await evolutionApi.connectInstance(instanceName);
@@ -313,10 +341,17 @@ export function useUserWhatsAppInstances() {
 
       if (qrCode) {
         // Update in database
-        await supabase
+        let refreshQuery = supabase
           .from('whatsapp_instances')
           .update({ qr_code: qrCode, status: 'connecting', updated_at: new Date().toISOString() })
-          .eq('instance_name', instanceName);
+          .eq('instance_name', instanceName)
+          .eq('org_id', orgId);
+
+        if (!isOrgManager) {
+          refreshQuery = refreshQuery.eq('user_id', user?.id);
+        }
+
+        await refreshQuery;
       }
 
       return qrCode;
@@ -327,11 +362,14 @@ export function useUserWhatsAppInstances() {
     } finally {
       setActionLoading(null);
     }
-  }, []);
+  }, [isOrgManager, orgId, user]);
 
   // Check instance status
   const checkStatus = useCallback(async (instanceName: string): Promise<void> => {
     try {
+      if (!orgId) return;
+      if (!isOrgManager && !user?.id) return;
+
       setActionLoading(instanceName);
       const response = await evolutionApi.getInstanceStatus(instanceName);
 
@@ -340,10 +378,17 @@ export function useUserWhatsAppInstances() {
         // If error suggests instance not found, mark as disconnected
         if (response.error?.includes('404') || response.error?.includes('not found') || response.error?.includes('instance does not exist')) {
           import.meta.env.DEV && console.log(`Instance ${instanceName} not found on server. Marking as disconnected.`);
-          await supabase
+          let notFoundQuery = supabase
             .from('whatsapp_instances')
             .update({ status: 'disconnected', updated_at: new Date().toISOString() })
-            .eq('instance_name', instanceName);
+            .eq('instance_name', instanceName)
+            .eq('org_id', orgId);
+
+          if (!isOrgManager) {
+            notFoundQuery = notFoundQuery.eq('user_id', user?.id);
+          }
+
+          await notFoundQuery;
 
           setInstances(prev => prev.map(inst =>
             inst.instance_name === instanceName ? { ...inst, status: 'disconnected' } : inst
@@ -360,7 +405,7 @@ export function useUserWhatsAppInstances() {
       const newStatus = toInstanceStatus(extractConnectionState(response.data));
 
       // Update in database
-      await supabase
+      let statusUpdateQuery = supabase
         .from('whatsapp_instances')
         .update({
           status: newStatus,
@@ -368,7 +413,14 @@ export function useUserWhatsAppInstances() {
           connected_at: newStatus === 'connected' ? new Date().toISOString() : undefined,
           updated_at: new Date().toISOString()
         })
-        .eq('instance_name', instanceName);
+        .eq('instance_name', instanceName)
+        .eq('org_id', orgId);
+
+      if (!isOrgManager) {
+        statusUpdateQuery = statusUpdateQuery.eq('user_id', user?.id);
+      }
+
+      await statusUpdateQuery;
 
       // Force Webhook Registration if Connected
       if (newStatus === 'connected') {
@@ -395,10 +447,17 @@ export function useUserWhatsAppInstances() {
       // If network error, we don't change status to avoid flapping
       // But if it's a 404 from the request method itself (if library throws)
       if (error instanceof Error && (error.message.includes('404') || error.message.includes('not found'))) {
-        await supabase
+        let disconnectQuery = supabase
           .from('whatsapp_instances')
           .update({ status: 'disconnected', updated_at: new Date().toISOString() })
-          .eq('instance_name', instanceName);
+          .eq('instance_name', instanceName)
+          .eq('org_id', orgId);
+
+        if (!isOrgManager) {
+          disconnectQuery = disconnectQuery.eq('user_id', user?.id);
+        }
+
+        await disconnectQuery;
 
         setInstances(prev => prev.map(inst =>
           inst.instance_name === instanceName ? { ...inst, status: 'disconnected' } : inst
@@ -407,11 +466,19 @@ export function useUserWhatsAppInstances() {
     } finally {
       setActionLoading(null);
     }
-  }, []);
+  }, [isOrgManager, orgId, user]);
 
   // Delete instance
   const deleteInstance = useCallback(async (instance: UserWhatsAppInstance, force: boolean = false): Promise<boolean> => {
     try {
+      if (!orgId) {
+        toast.error('Organizacao nao vinculada ao usuario');
+        return false;
+      }
+      if (!isOrgManager && !user?.id) {
+        toast.error('Voce precisa estar logado');
+        return false;
+      }
       setActionLoading(instance.id);
 
       // 1. Logout and Delete from Evolution API
@@ -428,10 +495,17 @@ export function useUserWhatsAppInstances() {
       }
 
       // 2. Soft delete from Supabase (set is_active = false)
-      const { error } = await supabase
+      let deleteQuery = supabase
         .from('whatsapp_instances')
         .update({ is_active: false, updated_at: new Date().toISOString() })
-        .eq('id', instance.id);
+        .eq('id', instance.id)
+        .eq('org_id', orgId);
+
+      if (!isOrgManager) {
+        deleteQuery = deleteQuery.eq('user_id', user?.id);
+      }
+
+      const { error } = await deleteQuery;
 
       if (error) throw error;
 
@@ -445,16 +519,25 @@ export function useUserWhatsAppInstances() {
     } finally {
       setActionLoading(null);
     }
-  }, []);
+  }, [isOrgManager, orgId, user]);
 
   // Disconnect instance (logout but keep)
   const disconnectInstance = useCallback(async (instanceName: string): Promise<boolean> => {
     try {
+      if (!orgId) {
+        toast.error('Organizacao nao vinculada ao usuario');
+        return false;
+      }
+      if (!isOrgManager && !user?.id) {
+        toast.error('Voce precisa estar logado');
+        return false;
+      }
+
       setActionLoading(instanceName);
 
       await evolutionApi.logoutInstance(instanceName);
 
-      await supabase
+      let disconnectQuery = supabase
         .from('whatsapp_instances')
         .update({
           status: 'disconnected',
@@ -462,7 +545,14 @@ export function useUserWhatsAppInstances() {
           connected_at: null,
           updated_at: new Date().toISOString()
         })
-        .eq('instance_name', instanceName);
+        .eq('instance_name', instanceName)
+        .eq('org_id', orgId);
+
+      if (!isOrgManager) {
+        disconnectQuery = disconnectQuery.eq('user_id', user?.id);
+      }
+
+      await disconnectQuery;
 
       toast.success('Instância desconectada');
 
@@ -480,16 +570,31 @@ export function useUserWhatsAppInstances() {
     } finally {
       setActionLoading(null);
     }
-  }, []);
+  }, [isOrgManager, orgId, user]);
 
   // Rename instance
   const renameInstance = useCallback(async (instanceId: string, newName: string): Promise<boolean> => {
     try {
+      if (!orgId) {
+        toast.error('Organizacao nao vinculada ao usuario');
+        return false;
+      }
+      if (!isOrgManager && !user?.id) {
+        toast.error('Voce precisa estar logado');
+        return false;
+      }
       setActionLoading(instanceId);
-      const { error } = await supabase
+      let renameQuery = supabase
         .from('whatsapp_instances')
         .update({ display_name: newName, updated_at: new Date().toISOString() })
-        .eq('id', instanceId);
+        .eq('id', instanceId)
+        .eq('org_id', orgId);
+
+      if (!isOrgManager) {
+        renameQuery = renameQuery.eq('user_id', user?.id);
+      }
+
+      const { error } = await renameQuery;
 
       if (error) throw error;
 
@@ -505,19 +610,28 @@ export function useUserWhatsAppInstances() {
     } finally {
       setActionLoading(null);
     }
-  }, []);
+  }, [isOrgManager, orgId, user]);
 
   // Simulate connection (for dev/demo)
   const simulateConnection = useCallback(async (instanceId: string): Promise<boolean> => {
     // Mock implementation for dev mode
     try {
+      if (!orgId) return false;
+      if (!isOrgManager && !user?.id) return false;
       setActionLoading(instanceId);
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      const { error } = await supabase
+      let simulateQuery = supabase
         .from('whatsapp_instances')
         .update({ status: 'connected', connected_at: new Date().toISOString() })
-        .eq('id', instanceId);
+        .eq('id', instanceId)
+        .eq('org_id', orgId);
+
+      if (!isOrgManager) {
+        simulateQuery = simulateQuery.eq('user_id', user?.id);
+      }
+
+      const { error } = await simulateQuery;
 
       if (error) throw error;
 
@@ -530,7 +644,7 @@ export function useUserWhatsAppInstances() {
     } finally {
       setActionLoading(null);
     }
-  }, []);
+  }, [isOrgManager, orgId, user]);
 
   const connectedCount = instances.filter(i => i.status === 'connected').length;
   const hasConnectedInstance = connectedCount > 0;
@@ -556,10 +670,26 @@ export function useUserWhatsAppInstances() {
     isFallbackMode,
     updateColor: async (instanceId: string, color: string) => {
       try {
-        const { error } = await supabase
+        if (!orgId) {
+          toast.error('Organizacao nao vinculada ao usuario');
+          return false;
+        }
+        if (!isOrgManager && !user?.id) {
+          toast.error('Voce precisa estar logado');
+          return false;
+        }
+
+        let updateColorQuery = supabase
           .from('whatsapp_instances')
           .update({ color, updated_at: new Date().toISOString() })
-          .eq('id', instanceId);
+          .eq('id', instanceId)
+          .eq('org_id', orgId);
+
+        if (!isOrgManager) {
+          updateColorQuery = updateColorQuery.eq('user_id', user?.id);
+        }
+
+        const { error } = await updateColorQuery;
 
         if (error) throw error;
 
@@ -575,17 +705,29 @@ export function useUserWhatsAppInstances() {
     },
     setInstanceAiEnabled: async (instanceName: string, enabled: boolean): Promise<boolean> => {
       try {
+        if (!orgId) {
+          toast.error('Organizacao nao vinculada ao usuario');
+          return false;
+        }
+
         // Find ID for local update (optimistic)
         const targetInstance = instances.find(i => i.instance_name === instanceName);
         const targetId = targetInstance?.id;
 
         if (targetId) setActionLoading(targetId);
 
-        const { data, error } = await supabase
+        let setAiQuery = supabase
           .from('whatsapp_instances')
           .update({ ai_enabled: enabled, updated_at: new Date().toISOString() })
           .eq('instance_name', instanceName)
+          .eq('org_id', orgId)
           .select();
+
+        if (!isOrgManager) {
+          setAiQuery = setAiQuery.eq('user_id', user?.id);
+        }
+
+        const { data, error } = await setAiQuery;
 
         if (error) throw error;
         if (!data || data.length === 0) {
@@ -613,12 +755,23 @@ export function useUserWhatsAppInstances() {
     },
     toggleAllInstances: async (enabled: boolean): Promise<boolean> => {
       try {
+        if (!orgId) {
+          toast.error('Organizacao nao vinculada ao usuario');
+          return false;
+        }
+
         setLoading(true);
-        const { error } = await supabase
+        let toggleAllQuery = supabase
           .from('whatsapp_instances')
           .update({ ai_enabled: enabled, updated_at: new Date().toISOString() })
-          .eq('user_id', user?.id) // Safe update for all user instances
-          .neq('status', 'disconnected'); // Optional: only update active/connected ones? User said "Reset ALL status", usually implies all valid ones.
+          .eq('org_id', orgId)
+          .neq('status', 'disconnected');
+
+        if (!isOrgManager) {
+          toggleAllQuery = toggleAllQuery.eq('user_id', user?.id);
+        }
+
+        const { error } = await toggleAllQuery;
 
         if (error) throw error;
 
@@ -638,13 +791,25 @@ export function useUserWhatsAppInstances() {
     },
     activateAiForAllLeads: async (instanceName: string): Promise<number | null> => {
       try {
+        if (!orgId) {
+          toast.error('Organizacao nao vinculada ao usuario');
+          return null;
+        }
+
         setActionLoading(instanceName);
 
         // 1. Ensure instance itself is enabled
-        await supabase
+        let enableInstanceAiQuery = supabase
           .from('whatsapp_instances')
           .update({ ai_enabled: true, updated_at: new Date().toISOString() })
-          .eq('instance_name', instanceName);
+          .eq('instance_name', instanceName)
+          .eq('org_id', orgId);
+
+        if (!isOrgManager) {
+          enableInstanceAiQuery = enableInstanceAiQuery.eq('user_id', user?.id);
+        }
+
+        await enableInstanceAiQuery;
 
         // Optimistic update instance
         setInstances(prev => prev.map(inst =>
@@ -660,7 +825,7 @@ export function useUserWhatsAppInstances() {
             ai_paused_at: null
           })
           .eq('instance_name', instanceName)
-          .eq('org_id', orgId!)
+          .eq('org_id', orgId)
           .select('id');
 
         if (error) throw error;

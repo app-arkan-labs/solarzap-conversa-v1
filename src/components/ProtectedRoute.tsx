@@ -74,6 +74,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
     return <Navigate to="/login" replace />;
   }
 
+  if (orgResolutionStatus === 'selection_required') {
+    return <Navigate to="/select-organization" replace />;
+  }
+
   if (!orgId) {
     if (orgResolutionStatus !== 'error') {
       return (

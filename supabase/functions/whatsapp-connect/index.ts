@@ -57,23 +57,35 @@ Deno.serve(async (req) => {
             throw new Error('Invalid User Token')
         }
 
-        const { data: member, error: memberError } = await supabaseClient
+        const payload = await req.json()
+        const requestedOrgId = typeof payload.orgId === 'string' ? payload.orgId.trim() : ''
+
+        let memberQuery = supabaseClient
             .from('organization_members')
             .select('org_id, role, created_at')
             .eq('user_id', user.id)
+
+        if (requestedOrgId) {
+            memberQuery = memberQuery.eq('org_id', requestedOrgId)
+        }
+
+        const { data: member, error: memberError } = await memberQuery
             .order('created_at', { ascending: true })
             .order('org_id', { ascending: true })
             .limit(1)
             .maybeSingle()
 
         if (memberError || !member?.org_id) {
+            if (requestedOrgId) {
+                throw new Error('Organization membership not found for requested organization')
+            }
             throw new Error('Organization membership not found for authenticated user')
         }
         const orgId = member.org_id
         const role = String(member.role || 'user').toLowerCase()
         const isOrgManager = role === 'owner' || role === 'admin'
 
-        const { action, instanceId, newName, displayName, instanceName, key, reaction } = await req.json()
+        const { action, instanceId, newName, displayName, instanceName, key, reaction } = payload
 
         // Base Response if config is missing (for 'list' or others)
         if (!config) {

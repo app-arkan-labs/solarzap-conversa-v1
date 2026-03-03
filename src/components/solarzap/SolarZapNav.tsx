@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { ActiveTab } from '@/types/solarzap';
-import { MessageCircle, Kanban, Calendar, Users, FileText, BarChart3, Bell, Settings, Plug, Zap, Brain, Bot, UserCog, User } from 'lucide-react';
+import { MessageCircle, Kanban, Calendar, Users, FileText, BarChart3, Bell, Settings, Plug, Zap, Brain, Bot, UserCog, User, Building2 } from 'lucide-react';
 import { GoogleAccountButton } from './GoogleAccountButton';
 import {
   Popover,
@@ -15,6 +15,9 @@ interface SolarZapNavProps {
   onNotificationsClick?: () => void;
   isAdminUser?: boolean;
   onAdminMembersClick?: () => void;
+  hasMultipleOrganizations?: boolean;
+  onSwitchOrganization?: () => void;
+  activeOrganizationName?: string;
   tabPermissions?: {
     ia_agentes: boolean;
     automacoes: boolean;
@@ -40,6 +43,9 @@ export function SolarZapNav({
   onNotificationsClick,
   isAdminUser = false,
   onAdminMembersClick,
+  hasMultipleOrganizations = false,
+  onSwitchOrganization,
+  activeOrganizationName,
   tabPermissions,
 }: SolarZapNavProps) {
   const tp = tabPermissions ?? { ia_agentes: true, automacoes: true, integracoes: true, banco_ia: true, minha_conta: true };
@@ -114,6 +120,15 @@ export function SolarZapNav({
           </PopoverTrigger>
           <PopoverContent side="right" align="end" className="w-64 p-3">
             <div className="space-y-2">
+              {activeOrganizationName ? (
+                <div
+                  data-testid="active-org-name"
+                  className="rounded-lg border border-green-200 bg-green-50 px-2.5 py-2 text-xs text-green-800"
+                >
+                  Empresa ativa: <span className="font-semibold">{activeOrganizationName}</span>
+                </div>
+              ) : null}
+
               {isAdminUser && (
                 <button
                   data-testid="nav-admin-members"
@@ -188,6 +203,19 @@ export function SolarZapNav({
                     <User className="w-4 h-4 text-primary" />
                   </div>
                   Minha Conta
+                </button>
+              ) : null}
+
+              {hasMultipleOrganizations ? (
+                <button
+                  data-testid="nav-switch-org"
+                  onClick={onSwitchOrganization}
+                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Building2 className="w-4 h-4 text-primary" />
+                  </div>
+                  Trocar Empresa
                 </button>
               ) : null}
             </div>

@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSellerPermissions, type SellerPermissions } from '@/hooks/useSellerPermissions';
 import {
   inviteMember,
+  isOrgAdminInvokeError,
   listMembers,
   removeMember,
   updateMember,
@@ -20,7 +21,6 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/solarzap/PageHeader';
 
-type InviteMode = 'create' | 'invite';
 type AdminMembersPageProps = {
   embedded?: boolean;
 };
@@ -57,7 +57,7 @@ function fallbackMemberLabel(member: MemberDto) {
 }
 
 export default function AdminMembersPage({ embedded = false }: AdminMembersPageProps) {
-  const { loading: authLoading, role } = useAuth();
+  const { loading: authLoading, role, orgId } = useAuth();
   const { toast } = useToast();
 
   const [loadingMembers, setLoadingMembers] = useState(true);
@@ -71,9 +71,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<OrgRole>('user');
   const [inviteCanViewTeamLeads, setInviteCanViewTeamLeads] = useState(false);
-  const [inviteMode, setInviteMode] = useState<InviteMode>('create');
   const [inviteLoading, setInviteLoading] = useState(false);
-  const [lastTempPassword, setLastTempPassword] = useState<string | null>(null);
 
   const canAccessAdmin = role === 'owner' || role === 'admin';
 
@@ -113,7 +111,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
         setLoadingMembers(true);
       }
 
-      const response = await listMembers();
+      const response = await listMembers(orgId ?? undefined);
       const orderedMembers = [...response.members].sort((a, b) => {
         const joinedA = new Date(a.joined_at).getTime();
         const joinedB = new Date(b.joined_at).getTime();
@@ -143,7 +141,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
       return;
     }
     void loadMembers();
-  }, [authLoading, canAccessAdmin]);
+  }, [authLoading, canAccessAdmin, orgId]);
 
   const handleInviteSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -157,30 +155,44 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
     }
 
     setInviteLoading(true);
-    setLastTempPassword(null);
     try {
       const response = await inviteMember({
+        org_id: orgId ?? undefined,
         email: inviteEmail.trim(),
         role: inviteRole,
         can_view_team_leads: inviteCanViewTeamLeads,
-        mode: inviteMode,
       });
+
+      const assignedRoleLabel = ROLE_LABELS[response.assigned_role] || ROLE_LABELS[inviteRole];
+      let successDescription = 'Convite enviado com link para definir senha.';
+      if (response.credential_mode === 'reset_link') {
+        successDescription = 'Conta existente vinculada; link de redefinicao enviado por e-mail.';
+      } else if (response.credential_mode === 'invite_link') {
+        successDescription = 'Convite enviado com link para definir senha.';
+      }
+      successDescription = `${successDescription} Cargo aplicado: ${assignedRoleLabel}.`;
 
       toast({
         title: 'Convite registrado',
-        description:
-          response.mode === 'create'
-            ? 'Usuario criado e vinculado a organizacao.'
-            : 'Convite enviado e membership atualizado.',
+        description: successDescription,
       });
 
       setInviteEmail('');
       setInviteRole('user');
       setInviteCanViewTeamLeads(false);
-      setInviteMode('create');
-      setLastTempPassword(response.temp_password ?? null);
       await loadMembers(true);
     } catch (error) {
+      if (isOrgAdminInvokeError(error) && error.code === 'system_email_send_failed') {
+        toast({
+          title: 'Falha no envio de e-mail',
+          description:
+            'O membro foi vinculado, mas o e-mail de acesso nao foi entregue. Verifique a configuracao do envio e tente novamente.',
+          variant: 'destructive',
+        });
+        await loadMembers(true);
+        return;
+      }
+
       const message = error instanceof Error ? error.message : 'Falha ao convidar membro.';
       toast({
         title: 'Erro no convite',
@@ -217,6 +229,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
     setSubmittingByUserId((current) => ({ ...current, [member.user_id]: true }));
     try {
       await updateMember({
+        org_id: orgId ?? undefined,
         user_id: member.user_id,
         role: draft.role,
         can_view_team_leads: draft.can_view_team_leads,
@@ -249,7 +262,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
     setMemberToRemove(null);
     setRemovingByUserId((current) => ({ ...current, [member.user_id]: true }));
     try {
-      await removeMember(member.user_id);
+      await removeMember(member.user_id, orgId ?? undefined);
       toast({
         title: 'Membro removido',
         description: `${fallbackMemberLabel(member)} removido da organizacao.`,
@@ -331,12 +344,12 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                 Adicionar Membro
               </CardTitle>
               <CardDescription>
-                Crie com senha temporária ou envie um convite por e-mail.
+                Envie convite por e-mail com link para definir senha.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form className="grid gap-4 md:grid-cols-12" onSubmit={handleInviteSubmit}>
-                <div className="md:col-span-5">
+                <div className="md:col-span-6">
                   <label className="text-sm font-medium">Email</label>
                   <Input
                     data-testid="invite-email-input"
@@ -362,18 +375,6 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                     ))}
                   </select>
                 </div>
-                <div className="md:col-span-2">
-                  <label className="text-sm font-medium">Modo</label>
-                  <select
-                    data-testid="invite-mode-select"
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={inviteMode}
-                    onChange={(event) => setInviteMode(event.target.value as InviteMode)}
-                  >
-                    <option value="create">Criar com senha</option>
-                    <option value="invite">Enviar convite</option>
-                  </select>
-                </div>
                 <div className="md:col-span-2 flex items-end">
                   <label className="inline-flex items-center gap-2 text-sm">
                     <Switch
@@ -385,23 +386,12 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                     <span className="text-xs">Ver leads da equipe</span>
                   </label>
                 </div>
-                <div className="md:col-span-1 flex items-end">
+                <div className="md:col-span-2 flex items-end">
                   <Button data-testid="invite-submit" type="submit" disabled={inviteLoading} className="w-full">
                     {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Convidar'}
                   </Button>
                 </div>
               </form>
-
-              {lastTempPassword && (
-                <div
-                  data-testid="invite-temp-password"
-                  className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm"
-                >
-                  <span className="font-medium text-amber-800">Senha temporária:</span>{' '}
-                  <code className="font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded">{lastTempPassword}</code>
-                  <p className="text-xs text-amber-600 mt-1">Compartilhe essa senha com o novo membro. Ele poderá alterá-la depois.</p>
-                </div>
-              )}
             </CardContent>
           </Card>
 

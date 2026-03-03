@@ -155,7 +155,7 @@ export function NotificationSettingsCard() {
                             <Bell className="w-6 h-6 text-white" />
                         </div>
                         <div>
-                            <CardTitle className="text-xl">Notificações e Digest</CardTitle>
+                            <CardTitle className="text-xl">Notificações e Resumo da IA</CardTitle>
                             <CardDescription className="mt-1">
                                 Configurações globais de notificação e resumos
                             </CardDescription>
@@ -221,10 +221,14 @@ export function NotificationSettingsCard() {
                             placeholder="gestor@empresa.com, vendas@empresa.com"
                             onChange={(e) => setEmailRecipientsInput(e.target.value)}
                             onBlur={() => {
-                                const recipients = emailRecipientsInput
-                                    .split(',')
-                                    .map((item) => item.trim())
-                                    .filter(Boolean);
+                                const recipients = Array.from(
+                                    new Set(
+                                        emailRecipientsInput
+                                            .split(/[,\n;]+/)
+                                            .map((item) => item.trim().toLowerCase())
+                                            .filter(Boolean)
+                                    )
+                                );
                                 saveNotificationPatch({ email_recipients: recipients });
                             }}
                         />
@@ -242,7 +246,7 @@ export function NotificationSettingsCard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl border bg-background/50">
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <Label>Digest diário</Label>
+                            <Label>Resumo da IA diário</Label>
                             <Switch
                                 checked={!!notificationSettings?.daily_digest_enabled}
                                 onCheckedChange={(checked) => saveNotificationPatch({ daily_digest_enabled: checked })}
@@ -257,7 +261,7 @@ export function NotificationSettingsCard() {
 
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <Label>Digest semanal (sexta)</Label>
+                            <Label>Resumo da IA semanal (sexta)</Label>
                             <Switch
                                 checked={!!notificationSettings?.weekly_digest_enabled}
                                 onCheckedChange={(checked) => saveNotificationPatch({ weekly_digest_enabled: checked })}

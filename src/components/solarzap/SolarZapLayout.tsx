@@ -85,10 +85,15 @@ const CONVERSAS_SIDEBAR_DEFAULT_WIDTH = 320;
 const CONVERSAS_SIDEBAR_STORAGE_KEY = 'solarzap_conversas_sidebar_width';
 
 export function SolarZapLayout() {
-  const { orgId, role } = useAuth();
+  const { orgId, role, hasMultipleOrganizations, organizations } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const canAccessAdmin = role === 'owner' || role === 'admin';
+  const activeOrganizationName = useMemo(() => {
+    if (!orgId) return null;
+    const current = organizations.find((organization) => organization.org_id === orgId);
+    return current?.display_name || null;
+  }, [orgId, organizations]);
   const { permissions: sellerPerms } = useSellerPermissions();
   // Domain Hooks
   const {
@@ -916,6 +921,9 @@ export function SolarZapLayout() {
         onNotificationsClick={() => setIsNotificationsPanelOpen(true)}
         isAdminUser={canAccessAdmin}
         onAdminMembersClick={() => navigate('/admin/members')}
+        hasMultipleOrganizations={hasMultipleOrganizations}
+        onSwitchOrganization={() => navigate('/select-organization?source=menu')}
+        activeOrganizationName={activeOrganizationName ?? undefined}
         tabPermissions={{
           ia_agentes: sellerPerms.tab_ia_agentes,
           automacoes: sellerPerms.tab_automacoes,

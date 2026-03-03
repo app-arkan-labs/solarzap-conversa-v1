@@ -111,6 +111,16 @@ export function NotificationConfigPanel({ onClose }: Props) {
     }
   };
 
+  const parseRecipientsList = (raw: string) =>
+    Array.from(
+      new Set(
+        raw
+          .split(/[,\n;]+/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    );
+
   const on = !!settings?.enabled_notifications;
 
   return (
@@ -228,15 +238,15 @@ export function NotificationConfigPanel({ onClose }: Props) {
                         placeholder="5511999999999, 5511888888888"
                         onChange={(e) => setWhatsappRecipientsInput(e.target.value)}
                         onBlur={() => {
-                          const list = whatsappRecipientsInput
-                            .split(',')
-                            .map((s) => s.trim())
-                            .filter(Boolean);
+                          const list = parseRecipientsList(whatsappRecipientsInput);
                           save({ whatsapp_recipients: list });
                         }}
                       />
                       <p className="text-[10px] text-muted-foreground/70 mt-1">
                         Informe números separados por vírgula (somente equipe interna)
+                      </p>
+                      <p className="text-[10px] text-muted-foreground/70 mt-1">
+                        Envio somente para os números listados acima (sem destinatário padrão oculto).
                       </p>
                     </div>
 
@@ -318,13 +328,13 @@ export function NotificationConfigPanel({ onClose }: Props) {
                         placeholder="gestor@empresa.com"
                         onChange={(e) => setEmailInput(e.target.value)}
                         onBlur={() => {
-                          const list = emailInput
-                            .split(',')
-                            .map((s) => s.trim())
-                            .filter(Boolean);
+                          const list = parseRecipientsList(emailInput).map((email) => email.toLowerCase());
                           save({ email_recipients: list });
                         }}
                       />
+                      <p className="text-[10px] text-muted-foreground/70 mt-1">
+                        Envio somente para os e-mails listados acima.
+                      </p>
                     </div>
 
                     {/* Info box */}

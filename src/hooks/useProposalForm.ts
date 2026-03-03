@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { Contact, ClientType } from '@/types/solarzap';
 import { generateProposalPDF } from '@/utils/generateProposalPDF';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { useLeads } from '@/hooks/domain/useLeads';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
@@ -17,14 +18,7 @@ import {
   isFinancialShadowModeEnabled,
   isTusdTeSimplifiedEnabled,
 } from '@/config/featureFlags';
-import {
-  ENERGY_DISTRIBUTOR_OPTIONS,
-  getEnergyDistributorOptionsByUf,
-  inferDistributor,
-  inferUfFromCep,
-  getDefaultTariffByDistributor,
-  normalizeUf,
-} from '@/constants/energyDistributors';
+import * as energyDistributors from '@/constants/energyDistributors';
 import {
   DEFAULT_ANALYSIS_YEARS,
   DEFAULT_ANNUAL_INCREASE_PCT,
@@ -54,7 +48,55 @@ import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancia
 import { FINANCIAL_MODEL_VERSION } from '@/types/proposalFinancial';
 import { calculateProposalFinancials, resolveTariffByPriority } from '@/utils/proposalFinancialModel';
 import type { SolarResourceResponse } from '@/types/solarResource';
-import { buildProposalFileName, triggerBlobDownload } from '@/utils/pdf/shared';
+import * as pdfShared from '@/utils/pdf/shared';
+
+const ENERGY_DISTRIBUTOR_OPTIONS = energyDistributors.ENERGY_DISTRIBUTOR_OPTIONS;
+const inferDistributor = energyDistributors.inferDistributor;
+const inferUfFromCep = energyDistributors.inferUfFromCep;
+const getDefaultTariffByDistributor = energyDistributors.getDefaultTariffByDistributor;
+const normalizeUf = energyDistributors.normalizeUf;
+const getEnergyDistributorOptionsByUfSafe =
+  energyDistributors.getEnergyDistributorOptionsByUf ??
+  ((_uf?: string | null): string[] => []);
+const fallbackSanitizeFileToken = (value: string): string => {
+  const normalized = String(value || '').trim().replace(/\s+/g, '_');
+  return normalized.replace(/[^a-zA-Z0-9_.-]/g, '');
+};
+const fallbackBuildProposalFileName = (
+  customerName: string,
+  proposalNumber: string,
+  isUsina: boolean,
+): string => {
+  const customerToken = fallbackSanitizeFileToken(customerName) || 'cliente';
+  const proposalToken = fallbackSanitizeFileToken(proposalNumber) || 'PROP-00000000';
+  return `Proposta_${isUsina ? 'Usina' : 'Energia'}_Solar_${customerToken}_${proposalToken}.pdf`;
+};
+const fallbackNormalizePdfFileName = (value: string, fallback = 'Proposta_Energia_Solar.pdf'): string => {
+  const normalized = String(value || '').trim().replace(/[<>:"/\\|?*]/g, '_');
+  const withoutControls = Array.from(normalized, (char) => (char.charCodeAt(0) < 32 ? '_' : char)).join('');
+  const collapsed = withoutControls.replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+  const base = collapsed || fallback;
+  return /\.pdf$/i.test(base) ? base : `${base}.pdf`;
+};
+const fallbackTriggerBlobDownload = (blob: Blob, rawFileName: string): void => {
+  const fileName = fallbackNormalizePdfFileName(rawFileName);
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = fileName;
+  link.rel = 'noopener';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+    if (link.parentNode) {
+      link.parentNode.removeChild(link);
+    }
+  }, 1000);
+};
+const buildProposalFileNameSafe = pdfShared.buildProposalFileName ?? fallbackBuildProposalFileName;
+const triggerBlobDownloadSafe = pdfShared.triggerBlobDownload ?? fallbackTriggerBlobDownload;
 
 export interface UseProposalFormOptions {
   isOpen: boolean;
@@ -189,6 +231,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   const [aiHeadline, setAiHeadline] = useState('');
   const [rentabilityManuallyEdited, setRentabilityManuallyEdited] = useState(false);
   const { updateLead } = useLeads();
+  const { orgId } = useAuth();
   const { toast } = useToast();
   const { themeId, theme, secondaryColorHex, hydrated: themeHydrated } = useProposalTheme();
   const {
@@ -268,7 +311,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   const uploadPdfToStorage = async (blob: Blob, leadId: string, fileName: string): Promise<{ bucket: string; path: string } | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('proposal-storage-intent', {
-        body: { leadId: Number(leadId), fileName, sizeBytes: blob.size, mimeType: 'application/pdf' },
+        body: { leadId: Number(leadId), fileName, sizeBytes: blob.size, mimeType: 'application/pdf', orgId },
       });
       if (error || !data?.uploadUrl) return null;
       const resp = await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: blob });
@@ -1000,7 +1043,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     if (!contact) return null;
     try {
       const { data, error } = await supabase.functions.invoke('proposal-context-engine', {
-        body: { leadId: Number(contact.id), limitInteractions: 18, limitComments: 8, limitDocuments: 4 },
+        body: { leadId: Number(contact.id), limitInteractions: 18, limitComments: 8, limitDocuments: 4, orgId },
       });
       if (!error && data) return data;
     } catch { /* fallback */ }
@@ -1323,7 +1366,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       }) as Blob;
 
       // 4) Upload + payload
-      const fileName = buildProposalFileName(contact.name, propNum, formData.tipo_cliente === 'usina');
+      const fileName = buildProposalFileNameSafe(contact.name, propNum, formData.tipo_cliente === 'usina');
       const storageResult = await uploadPdfToStorage(pdfBlob, contact.id, fileName);
       const brandingSnapshot = {
         proposalThemeId: themeId,
@@ -1456,7 +1499,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       });
 
       // 6) Download to user
-      triggerBlobDownload(pdfBlob, fileName);
+      triggerBlobDownloadSafe(pdfBlob, fileName);
 
       // 7) Share link + tracking (best-effort, background)
       const versionId = (saveResult as any)?.proposalVersionId;
@@ -1636,7 +1679,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     options: {
       BRAZIL_STATES,
       ENERGY_DISTRIBUTOR_OPTIONS,
-      getEnergyDistributorOptionsByUf,
+      getEnergyDistributorOptionsByUf: getEnergyDistributorOptionsByUfSafe,
       PAYMENT_CONDITION_OPTIONS,
       COMMON_FINANCING_INSTITUTIONS,
       INSTALLMENT_OPTIONS,

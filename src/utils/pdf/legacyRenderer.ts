@@ -46,7 +46,28 @@ import {
   DEFAULT_MODULE_DEGRADATION_PCT,
   DEFAULT_RENTABILITY_RATE_PER_KWH,
 } from '@/constants/financialDefaults';
-import { buildProposalFileName, buildSellerScriptFileName } from '@/utils/pdf/shared';
+import * as pdfShared from '@/utils/pdf/shared';
+
+const fallbackSanitizeFileToken = (value: string): string => {
+  const normalized = String(value || '').trim().replace(/\s+/g, '_');
+  return normalized.replace(/[^a-zA-Z0-9_.-]/g, '');
+};
+const fallbackBuildProposalFileName = (
+  customerName: string,
+  proposalNumber: string,
+  isUsina: boolean,
+): string => {
+  const customerToken = fallbackSanitizeFileToken(customerName) || 'cliente';
+  const proposalToken = fallbackSanitizeFileToken(proposalNumber) || 'PROP-00000000';
+  return `Proposta_${isUsina ? 'Usina' : 'Energia'}_Solar_${customerToken}_${proposalToken}.pdf`;
+};
+const fallbackBuildSellerScriptFileName = (customerName: string, proposalNumber: string): string => {
+  const customerToken = fallbackSanitizeFileToken(customerName) || 'cliente';
+  const proposalToken = fallbackSanitizeFileToken(proposalNumber) || 'PROP-00000000';
+  return `Roteiro_Vendedor_${customerToken}_${proposalToken}.pdf`;
+};
+const buildProposalFileName = pdfShared.buildProposalFileName ?? fallbackBuildProposalFileName;
+const buildSellerScriptFileName = pdfShared.buildSellerScriptFileName ?? fallbackBuildSellerScriptFileName;
 
 // ---
 // INTERFACES
@@ -491,7 +512,12 @@ function sanitizeForPDF(text: string): string {
     .replace(/\u2026/g, '...')         // ellipsis
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')   // remove diacritics
-    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, ''); // keep printable ASCII + tab/new lines
+    .split('')
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return code === 9 || code === 10 || code === 13 || (code >= 32 && code <= 126);
+    })
+    .join(''); // keep printable ASCII + tab/new lines
 }
 
 function sanitizePdfTextInput(input: unknown): unknown {

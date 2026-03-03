@@ -1,5 +1,6 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
 import { buildEmailContent, type TemplateContext } from '../_shared/emailTemplates.ts'
+import { resolveNotificationRouting } from '../_shared/notificationRecipients.ts'
 
 const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim()
 const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true'
@@ -267,10 +268,6 @@ async function fetchNotificationSettings(
   return baseResult.data ? normalizeNotificationSettingsRow(baseResult.data as Record<string, unknown>) : null
 }
 
-function toDigits(value: unknown): string {
-  return String(value || '').replace(/\D/g, '')
-}
-
 function formatDateTime(value: unknown): string {
   if (!value) return ''
   const date = new Date(String(value))
@@ -485,7 +482,7 @@ async function resolveLead(
 
   const { data } = await supabase
     .from('leads')
-    .select('id, nome, telefone, phone_e164, assigned_to_user_id, user_id')
+    .select('id, nome, telefone, phone_e164')
     .eq('org_id', orgId)
     .eq('id', Number(leadId))
     .maybeSingle()
@@ -495,37 +492,7 @@ async function resolveLead(
   return {
     nome: data.nome,
     telefone: (data.phone_e164 || data.telefone || null) as string | null,
-    ownerUserId: (data.assigned_to_user_id || data.user_id || null) as string | null,
   }
-}
-
-async function resolveOwnerNotificationNumber(
-  supabase: ReturnType<typeof createClient>,
-  orgId: string,
-  ownerUserId: string,
-): Promise<string> {
-  const { data } = await supabase
-    .from('whatsapp_instances')
-    .select('phone_number, status, is_active, updated_at')
-    .eq('org_id', orgId)
-    .eq('user_id', ownerUserId)
-    .order('updated_at', { ascending: false })
-    .limit(20)
-
-  const rows = Array.isArray(data) ? data : []
-  if (rows.length === 0) return ''
-
-  const connected = rows.find((row) => String((row as any).status || '').toLowerCase() === 'connected')
-  if (connected?.phone_number) {
-    return toDigits(connected.phone_number)
-  }
-
-  const active = rows.find((row) => (row as any).is_active === true)
-  if (active?.phone_number) {
-    return toDigits(active.phone_number)
-  }
-
-  return toDigits(rows[0]?.phone_number || '')
 }
 
 async function processEvent(
@@ -536,16 +503,17 @@ async function processEvent(
   event: NotificationEventRow,
 ) {
   const settings = await fetchNotificationSettings(supabase, event.org_id)
+  const routing = settings
+    ? resolveNotificationRouting({
+      enabledNotifications: settings.enabled_notifications,
+      enabledWhatsapp: settings.enabled_whatsapp,
+      enabledEmail: settings.enabled_email,
+      whatsappRecipients: settings.whatsapp_recipients,
+      emailRecipients: settings.email_recipients,
+    })
+    : null
 
-  const notificationsActive = Boolean(
-    settings && (
-      settings.enabled_notifications === true ||
-      settings.enabled_whatsapp === true ||
-      settings.enabled_email === true
-    )
-  )
-
-  if (!settings || !notificationsActive) {
+  if (!settings || !routing?.notificationsEnabled) {
     await supabase
       .from('notification_events')
       .update({
@@ -553,6 +521,19 @@ async function processEvent(
         locked_at: null,
         processed_at: new Date().toISOString(),
         last_error: 'notifications_disabled',
+      })
+      .eq('id', event.id)
+    return
+  }
+
+  if (!routing.hasEnabledChannel) {
+    await supabase
+      .from('notification_events')
+      .update({
+        status: 'canceled',
+        locked_at: null,
+        processed_at: new Date().toISOString(),
+        last_error: 'no_channel_enabled',
       })
       .eq('id', event.id)
     return
@@ -589,42 +570,17 @@ async function processEvent(
   const emailContent = buildEmailContent(event.event_type, emailCtx)
 
   const failures: string[] = []
+  const skippedChannels: string[] = []
   let sentCount = 0
 
-  if (settings.enabled_whatsapp && settings.whatsapp_instance_name) {
-    const normalizedConfiguredRecipients = Array.isArray(settings.whatsapp_recipients)
-      ? settings.whatsapp_recipients
-          .map((value) => toDigits(value))
-          .filter(Boolean)
-      : []
-
-    let ownerNumber = ''
-    if (lead?.ownerUserId) {
-      ownerNumber = await resolveOwnerNotificationNumber(supabase, event.org_id, lead.ownerUserId)
-    }
-
-    const recipients = Array.from(new Set([...normalizedConfiguredRecipients, ownerNumber].filter(Boolean)))
-
-    let fallbackInstanceNumber = ''
-    if (recipients.length === 0) {
-      const { data: instanceRow } = await supabase
-        .from('whatsapp_instances')
-        .select('phone_number')
-        .eq('org_id', event.org_id)
-        .eq('instance_name', settings.whatsapp_instance_name)
-        .maybeSingle()
-      fallbackInstanceNumber = toDigits(instanceRow?.phone_number || '')
-    }
-
-    const finalRecipients = recipients.length > 0
-      ? recipients
-      : (fallbackInstanceNumber ? [fallbackInstanceNumber] : [])
-
-    if (finalRecipients.length === 0) {
-      failures.push('whatsapp_missing_target_number')
-      await logDispatch(supabase, event, 'whatsapp', '', 'failed', null, 'whatsapp_missing_target_number')
+  if (routing.whatsappEnabled) {
+    if (!settings.whatsapp_instance_name) {
+      failures.push('whatsapp_missing_instance')
+      await logDispatch(supabase, event, 'whatsapp', '', 'failed', null, 'whatsapp_missing_instance')
+    } else if (routing.whatsappRecipients.length === 0) {
+      skippedChannels.push('whatsapp')
     } else {
-      for (const targetNumber of finalRecipients) {
+      for (const targetNumber of routing.whatsappRecipients) {
         try {
           const responsePayload = await sendWhatsAppViaProxy(
             supabaseUrl,
@@ -646,11 +602,11 @@ async function processEvent(
     }
   }
 
-  if (settings.enabled_email && Array.isArray(settings.email_recipients) && settings.email_recipients.length > 0) {
-    for (const rawRecipient of settings.email_recipients) {
-      const recipient = String(rawRecipient || '').trim()
-      if (!recipient) continue
-
+  if (routing.emailEnabled) {
+    if (routing.emailRecipients.length === 0) {
+      skippedChannels.push('email')
+    }
+    for (const recipient of routing.emailRecipients) {
       try {
         const responsePayload = await sendEmailViaResend(
           recipient,
@@ -670,14 +626,18 @@ async function processEvent(
     }
   }
 
-  if (!settings.enabled_whatsapp && !settings.enabled_email) {
+  if (sentCount === 0 && failures.length === 0) {
+    const canceledReason = skippedChannels.length > 0
+      ? `no_channel_recipients:${skippedChannels.join(',')}`
+      : 'no_dispatch_target'
+
     await supabase
       .from('notification_events')
       .update({
         status: 'canceled',
         locked_at: null,
         processed_at: new Date().toISOString(),
-        last_error: 'no_channel_enabled',
+        last_error: canceledReason,
       })
       .eq('id', event.id)
     return

@@ -122,18 +122,40 @@ Deno.serve(async (req) => {
     const limitComments = clampInt(body?.limitComments, 8, 1, 20);
     const limitDocuments = clampInt(body?.limitDocuments, 4, 0, 12);
     const debug = Boolean(body?.debug);
-
-    const orgId = (user.user_metadata as any)?.org_id || user.id;
+    const requestedOrgId = asString(body?.orgId, 80);
 
     const serviceClient = createClient(supabaseUrl, supabaseServiceRole);
+    let membershipQuery = serviceClient
+      .from('organization_members')
+      .select('org_id, created_at')
+      .eq('user_id', user.id);
+
+    if (requestedOrgId) {
+      membershipQuery = membershipQuery.eq('org_id', requestedOrgId);
+    }
+
+    const { data: membership, error: membershipError } = await membershipQuery
+      .order('created_at', { ascending: true })
+      .order('org_id', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (membershipError || !membership?.org_id) {
+      return new Response(JSON.stringify({ error: "organization_membership_not_found" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const orgId = membership.org_id;
 
     // Validate ownership before returning sensitive conversation context.
     const { data: leadRow, error: leadErr } = await serviceClient
       .from("leads")
-      .select("id, nome, telefone, user_id, observacoes, canal, status_pipeline, created_at")
+      .select("id, nome, telefone, user_id, org_id, observacoes, canal, status_pipeline, created_at")
       .eq("id", leadId)
       .maybeSingle();
-    if (leadErr || !leadRow || leadRow.user_id !== user.id) {
+    if (leadErr || !leadRow || leadRow.user_id !== user.id || leadRow.org_id !== orgId) {
       return new Response(JSON.stringify({ error: "lead_not_found_or_forbidden" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

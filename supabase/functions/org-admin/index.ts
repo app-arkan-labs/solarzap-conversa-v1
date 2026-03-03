@@ -22,6 +22,13 @@ type CallerMembership = {
   created_at: string | null;
 };
 
+type UserOrganizationRow = {
+  org_id: string;
+  role: OrgRole;
+  can_view_team_leads: boolean;
+  created_at: string | null;
+};
+
 function jsonResponse(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     status,
@@ -200,6 +207,121 @@ async function resolvePrimaryMembership(
   };
 }
 
+async function resolveMembershipByOrg(
+  adminClient: ReturnType<typeof createClient>,
+  userId: string,
+  orgId: string,
+): Promise<CallerMembership | null> {
+  const { data, error } = await adminClient
+    .from('organization_members')
+    .select('org_id, role, can_view_team_leads, created_at')
+    .eq('user_id', userId)
+    .eq('org_id', orgId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data?.org_id || typeof data.role !== 'string' || !isValidRole(data.role)) {
+    return null;
+  }
+
+  return {
+    org_id: data.org_id,
+    role: data.role,
+    can_view_team_leads: data.can_view_team_leads === true,
+    created_at: data.created_at ?? null,
+  };
+}
+
+async function listUserOrganizations(
+  adminClient: ReturnType<typeof createClient>,
+  userId: string,
+) {
+  const { data: memberships, error: membershipsError } = await adminClient
+    .from('organization_members')
+    .select('org_id, role, can_view_team_leads, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+    .order('org_id', { ascending: true });
+
+  if (membershipsError) {
+    throw membershipsError;
+  }
+
+  const rows = (memberships ?? []).filter(
+    (row): row is UserOrganizationRow =>
+      typeof row.org_id === 'string' &&
+      typeof row.role === 'string' &&
+      isValidRole(row.role),
+  );
+
+  if (rows.length === 0) {
+    return {
+      ok: true,
+      action: 'list_user_orgs',
+      orgs: [],
+    };
+  }
+
+  const orgIds = rows.map((row) => row.org_id);
+
+  const [{ data: organizations, error: organizationsError }, { data: companyProfiles, error: companyProfilesError }] =
+    await Promise.all([
+      adminClient.from('organizations').select('id, name').in('id', orgIds),
+      adminClient.from('company_profile').select('org_id, company_name').in('org_id', orgIds),
+    ]);
+
+  if (organizationsError) {
+    throw organizationsError;
+  }
+
+  if (companyProfilesError) {
+    throw companyProfilesError;
+  }
+
+  const organizationNameById: Record<string, string | null> = {};
+  for (const organization of organizations ?? []) {
+    if (typeof organization.id !== 'string') continue;
+    organizationNameById[organization.id] = nonEmptyString((organization as { name?: unknown }).name);
+  }
+
+  const companyNameByOrgId: Record<string, string | null> = {};
+  for (const profile of companyProfiles ?? []) {
+    if (typeof profile.org_id !== 'string') continue;
+    companyNameByOrgId[profile.org_id] = nonEmptyString((profile as { company_name?: unknown }).company_name);
+  }
+
+  const orgs = rows
+    .map((row) => {
+      const companyName = companyNameByOrgId[row.org_id] ?? null;
+      const organizationName = organizationNameById[row.org_id] ?? null;
+      const displayName = companyName || organizationName || `Organizacao ${row.org_id.slice(0, 8)}`;
+
+      return {
+        org_id: row.org_id,
+        role: row.role,
+        can_view_team_leads: row.can_view_team_leads === true,
+        joined_at: row.created_at ?? new Date(0).toISOString(),
+        company_name: companyName,
+        organization_name: organizationName,
+        display_name: displayName,
+      };
+    })
+    .sort((a, b) => {
+      const byName = a.display_name.localeCompare(b.display_name, 'pt-BR');
+      if (byName !== 0) return byName;
+      return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+    });
+
+  return {
+    ok: true,
+    action: 'list_user_orgs',
+    orgs,
+  };
+}
+
 async function countOwners(
   adminClient: ReturnType<typeof createClient>,
   orgId: string,
@@ -349,7 +471,7 @@ async function inviteMember(
   const rawRole = typeof payload.role === 'string' ? payload.role : '';
   const role = rawRole.trim();
   const canViewTeamLeads = payload.can_view_team_leads === true;
-  const mode = payload.mode === 'invite' ? 'invite' : 'create';
+  const mode: 'create' | 'invite' = payload.mode === 'create' ? 'create' : 'invite';
 
   if (!isValidEmail(email)) {
     return jsonResponse(400, { ok: false, code: 'invalid_email', error: 'Email invalido para convite.' });
@@ -370,70 +492,76 @@ async function inviteMember(
   }
 
   const orgName = nonEmptyString(orgData?.name) ?? null;
+  const appUrl = resolveAppUrl();
+  const loginUrl = `${appUrl}/login`;
+  const updatePasswordUrl = `${appUrl}/update-password?org_hint=${encodeURIComponent(callerMembership.org_id)}`;
 
   let user = await findUserByEmail(adminClient, email);
+  let accountAlreadyExisted = Boolean(user);
   let tempPassword: string | undefined;
   let inviteLink: string | undefined;
+  let resetLink: string | undefined;
+  let credentialMode: 'temp_password' | 'reset_link' | 'invite_link' | 'login_only' = 'login_only';
+  const accessLinkErrors: string[] = [];
+
+  const tryGenerateInviteLink = async (targetEmail: string): Promise<string | undefined> => {
+    const { data, error } = await adminClient.auth.admin.generateLink({
+      type: 'invite',
+      email: targetEmail,
+      options: { redirectTo: updatePasswordUrl },
+    });
+
+    if (error) {
+      accessLinkErrors.push(`invite_link_error:${error.message}`);
+      return undefined;
+    }
+
+    const actionLink = data?.properties?.action_link;
+    if (!actionLink) {
+      accessLinkErrors.push('invite_link_not_generated');
+      return undefined;
+    }
+
+    return actionLink;
+  };
+
+  const tryGenerateRecoveryLink = async (targetEmail: string): Promise<string | undefined> => {
+    const { data, error } = await adminClient.auth.admin.generateLink({
+      type: 'recovery',
+      email: targetEmail,
+      options: { redirectTo: updatePasswordUrl },
+    });
+
+    if (error) {
+      accessLinkErrors.push(`recovery_link_error:${error.message}`);
+      return undefined;
+    }
+
+    const actionLink = data?.properties?.action_link;
+    if (!actionLink) {
+      accessLinkErrors.push('recovery_link_not_generated');
+      return undefined;
+    }
+
+    return actionLink;
+  };
 
   if (!user) {
     if (mode === 'invite') {
-      const { data: primaryLinkData, error: primaryLinkError } = await adminClient.auth.admin.generateLink({
-        type: 'invite',
-        email,
+      const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
+        redirectTo: updatePasswordUrl,
       });
 
-      if (!primaryLinkError && primaryLinkData?.properties?.action_link) {
-        inviteLink = primaryLinkData.properties.action_link;
-      }
-
-      if (primaryLinkError) {
-        const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email);
-        if (error) {
-          const fallbackUser = await findUserByEmail(adminClient, email);
-          if (!fallbackUser) {
-            throw error;
-          }
-          user = fallbackUser;
-        } else {
-          user = data.user ?? (await findUserByEmail(adminClient, email));
+      if (error) {
+        const fallbackUser = await findUserByEmail(adminClient, email);
+        if (!fallbackUser) {
+          throw error;
         }
-
-        if (!inviteLink && user?.email) {
-          const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-            type: 'invite',
-            email: user.email,
-          });
-          if (!linkError && linkData?.properties?.action_link) {
-            inviteLink = linkData.properties.action_link;
-          }
-        }
-      }
-
-      if (!user) {
-        user = await findUserByEmail(adminClient, email);
-      }
-
-      if (!user) {
-        const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email);
-        if (error) {
-          const fallbackUser = await findUserByEmail(adminClient, email);
-          if (!fallbackUser) {
-            throw error;
-          }
-          user = fallbackUser;
-        } else {
-          user = data.user ?? (await findUserByEmail(adminClient, email));
-        }
-
-        if (!inviteLink && user?.email) {
-          const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-            type: 'invite',
-            email: user.email,
-          });
-          if (!linkError && linkData?.properties?.action_link) {
-            inviteLink = linkData.properties.action_link;
-          }
-        }
+        user = fallbackUser;
+        accountAlreadyExisted = true;
+      } else {
+        user = data.user ?? (await findUserByEmail(adminClient, email));
+        accountAlreadyExisted = false;
       }
     } else {
       tempPassword = generateTempPassword();
@@ -449,9 +577,11 @@ async function inviteMember(
           throw error;
         }
         user = fallbackUser;
+        accountAlreadyExisted = true;
         tempPassword = undefined;
       } else {
         user = data.user ?? null;
+        accountAlreadyExisted = false;
       }
     }
   }
@@ -464,28 +594,41 @@ async function inviteMember(
     });
   }
 
-  const { data: existingMemberships, error: existingMembershipsError } = await adminClient
-    .from('organization_members')
-    .select('org_id, role, created_at')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: true })
-    .order('org_id', { ascending: true });
+  if (mode === 'create') {
+    if (tempPassword) {
+      credentialMode = 'temp_password';
+    } else {
+      const { data: recoveryLinkData, error: recoveryLinkError } = await adminClient.auth.admin.generateLink({
+        type: 'recovery',
+        email: user.email || email,
+        options: { redirectTo: updatePasswordUrl },
+      });
 
-  if (existingMembershipsError) {
-    throw existingMembershipsError;
-  }
+      if (recoveryLinkError) {
+        throw recoveryLinkError;
+      }
 
-  const sameOrgMembership = (existingMemberships ?? []).find(
-    (membership) => membership.org_id === callerMembership.org_id,
-  );
+      if (!recoveryLinkData?.properties?.action_link) {
+        throw new Error('recovery_link_not_generated');
+      }
 
-  const firstMembership = (existingMemberships ?? [])[0];
-  if (firstMembership && !sameOrgMembership && firstMembership.org_id !== callerMembership.org_id) {
-    return jsonResponse(409, {
-      ok: false,
-      code: 'user_belongs_to_other_org',
-      error: 'Usuario ja pertence a outra organizacao.',
-    });
+      resetLink = recoveryLinkData.properties.action_link;
+      credentialMode = 'reset_link';
+    }
+  } else {
+    const linkEmail = user.email || email;
+    if (accountAlreadyExisted) {
+      resetLink = await tryGenerateRecoveryLink(linkEmail);
+      credentialMode = resetLink ? 'reset_link' : 'login_only';
+    } else {
+      inviteLink = await tryGenerateInviteLink(linkEmail);
+      if (inviteLink) {
+        credentialMode = 'invite_link';
+      } else {
+        resetLink = await tryGenerateRecoveryLink(linkEmail);
+        credentialMode = resetLink ? 'reset_link' : 'login_only';
+      }
+    }
   }
 
   const { error: upsertError } = await adminClient
@@ -506,11 +649,17 @@ async function inviteMember(
 
   const senderName = nonEmptyString(Deno.env.get('RESEND_SYSTEM_SENDER_NAME')) ?? 'SolarZap';
   const replyTo = nonEmptyString(Deno.env.get('RESEND_SYSTEM_REPLY_TO'));
-  const loginUrl = `${resolveAppUrl()}/login`;
   const recipientEmail = user.email || email;
 
-  let systemEmailSent = false;
-  let systemEmailError: string | undefined;
+  if (mode === 'invite' && !inviteLink && !resetLink) {
+    return jsonResponse(502, {
+      ok: false,
+      code: 'system_email_send_failed',
+      error:
+        'Falha ao gerar link para definir/redefinir senha no convite. O membro foi vinculado, mas o e-mail nao foi entregue.',
+      ...(accessLinkErrors.length > 0 ? { details: accessLinkErrors.join('; ') } : {}),
+    });
+  }
 
   try {
     const content = mode === 'invite'
@@ -519,6 +668,7 @@ async function inviteMember(
         orgName,
         role,
         inviteLink,
+        resetLink,
         loginUrl,
         recipientEmail,
       })
@@ -527,14 +677,20 @@ async function inviteMember(
         orgName,
         role,
         tempPassword,
+        resetLink,
         loginUrl,
         recipientEmail,
       });
 
     await sendEmailViaResend(recipientEmail, content, senderName, replyTo ?? null);
-    systemEmailSent = true;
   } catch (error) {
-    systemEmailError = error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse(502, {
+      ok: false,
+      code: 'system_email_send_failed',
+      error: 'Falha ao enviar e-mail de acesso. O membro foi vinculado, mas o e-mail nao foi entregue.',
+      details: message,
+    });
   }
 
   return jsonResponse(200, {
@@ -542,9 +698,12 @@ async function inviteMember(
     action: 'invite_member',
     user_id: user.id,
     email,
+    org_id: callerMembership.org_id,
+    assigned_role: role,
     mode,
-    system_email_sent: systemEmailSent,
-    ...(systemEmailError ? { system_email_error: systemEmailError } : {}),
+    system_email_sent: true,
+    credential_mode: credentialMode,
+    account_already_existed: accountAlreadyExisted,
     ...(tempPassword ? { temp_password: tempPassword } : {}),
     ...(inviteLink ? { invite_link: inviteLink } : {}),
   });
@@ -722,8 +881,25 @@ Deno.serve(async (req) => {
       return jsonResponse(200, result);
     }
 
-    const callerMembership = await resolvePrimaryMembership(adminClient, user.id);
+    if (action === 'list_user_orgs') {
+      const result = await listUserOrganizations(adminClient, user.id);
+      return jsonResponse(200, result);
+    }
+
+    const requestedOrgId = typeof payload.org_id === 'string' ? payload.org_id.trim() : '';
+    const callerMembership = requestedOrgId
+      ? await resolveMembershipByOrg(adminClient, user.id, requestedOrgId)
+      : await resolvePrimaryMembership(adminClient, user.id);
+
     if (!callerMembership) {
+      if (requestedOrgId) {
+        return jsonResponse(403, {
+          ok: false,
+          code: 'forbidden_org_context',
+          error: 'Usuario nao possui membership na organizacao informada.',
+        });
+      }
+
       return jsonResponse(403, {
         ok: false,
         code: 'no_membership',

@@ -98,6 +98,7 @@ test.afterAll(async () => {
 
 test('auth membership flap recovery: first organization_members read fails, UI recovers and keeps leads visible', async ({ page }) => {
   let failedFirstMembershipRead = false;
+  let sawBootstrapSelf = false;
 
   await page.route('**/rest/v1/organization_members*', async (route) => {
     const request = route.request();
@@ -114,11 +115,27 @@ test('auth membership flap recovery: first organization_members read fails, UI r
     await route.continue();
   });
 
+  await page.route('**/functions/v1/org-admin', async (route) => {
+    const request = route.request();
+    if (request.method() === 'POST') {
+      try {
+        const payload = request.postDataJSON() as { action?: string };
+        if (payload?.action === 'bootstrap_self') {
+          sawBootstrapSelf = true;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    await route.continue();
+  });
+
   await login(page, state.ownerEmail, state.ownerPassword);
 
   await expect
     .poll(() => failedFirstMembershipRead, { timeout: 10_000 })
     .toBe(true);
+  expect(sawBootstrapSelf).toBe(false);
 
   await page.getByPlaceholder(/Pesquisar/i).fill(state.leadName);
 
