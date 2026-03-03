@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Conversation } from '@/types/solarzap';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ForwardMessageModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ export function ForwardMessageModal({
   onForwardToContacts,
   onForwardInternally,
 }: ForwardMessageModalProps) {
+  const { orgId } = useAuth();
   const [mode, setMode] = useState<ForwardMode>('select');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
@@ -64,7 +66,7 @@ export function ForwardMessageModal({
       setTeamLoadError(null);
 
       try {
-        const response = await listMembers();
+        const response = await listMembers(orgId ?? undefined);
         if (!active) return;
         setTeamMembers(response.members);
       } catch (error) {
@@ -85,7 +87,7 @@ export function ForwardMessageModal({
     return () => {
       active = false;
     };
-  }, [isOpen, mode]);
+  }, [isOpen, mode, orgId]);
 
   const filteredConversations = useMemo(() => {
     if (!searchQuery.trim()) return conversations;

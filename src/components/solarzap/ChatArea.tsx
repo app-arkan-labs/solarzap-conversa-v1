@@ -790,7 +790,7 @@ export function ChatArea({
     const memberLabelById: Record<string, string> = {};
 
     try {
-      const response = await listMembers();
+      const response = await listMembers(orgId ?? undefined);
       for (const member of response.members) {
         const label = member.email || `user-${member.user_id.slice(0, 8)}`;
         memberLabelById[member.user_id] = label;

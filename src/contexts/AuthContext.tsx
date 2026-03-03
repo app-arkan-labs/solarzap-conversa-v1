@@ -199,6 +199,38 @@ const sortOrgOptions = (orgs: UserOrganizationOption[]) =>
 
 const AUTH_ENTRY_EVENTS_REQUIRING_SELECTION = new Set(['SIGNED_IN', 'PASSWORD_RECOVERY']);
 
+const shouldForceOrgSelectionForEntryEvent = (source: string): boolean => {
+  if (source === 'PASSWORD_RECOVERY') {
+    return true;
+  }
+
+  if (source !== 'SIGNED_IN') {
+    return false;
+  }
+
+  if (typeof window === 'undefined') {
+    return true;
+  }
+
+  const pathname = window.location.pathname || '';
+  if (pathname === '/login') {
+    return true;
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const hash = window.location.hash || '';
+  const hashQueryStart = hash.indexOf('?');
+  const hashQuery = hashQueryStart >= 0 ? hash.slice(hashQueryStart + 1) : hash.replace(/^#/, '');
+  const hashParams = new URLSearchParams(hashQuery);
+
+  const authMarkerKeys = ['access_token', 'refresh_token', 'type', 'expires_in', 'token_type'];
+  const hasAuthCallbackMarkers = authMarkerKeys.some(
+    (key) => searchParams.has(key) || hashParams.has(key),
+  );
+
+  return hasAuthCallbackMarkers;
+};
+
 const getOrgHintFromLocation = (): string | null => {
   if (typeof window === 'undefined') return null;
 
@@ -465,17 +497,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return toMembershipState(memberships[0]);
     }
 
-    if (AUTH_ENTRY_EVENTS_REQUIRING_SELECTION.has(source)) {
-      return null;
-    }
-
     const activeOrgId = getActiveOrgId();
-    if (!activeOrgId) {
+    const selected = activeOrgId
+      ? memberships.find((membership) => membership.org_id === activeOrgId)
+      : null;
+
+    // If the current active org is still valid, keep it stable across auth events.
+    if (selected) {
+      return toMembershipState(selected);
+    }
+
+    if (AUTH_ENTRY_EVENTS_REQUIRING_SELECTION.has(source) && shouldForceOrgSelectionForEntryEvent(source)) {
       return null;
     }
 
-    const selected = memberships.find((membership) => membership.org_id === activeOrgId);
-    return selected ? toMembershipState(selected) : null;
+    return null;
   };
 
   useEffect(() => {
@@ -744,6 +780,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (email: string, password: string): Promise<AuthError | null> => {
     try {
+      // Explicit login must not inherit organization from a previous user/session.
+      clearActiveOrgId();
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,

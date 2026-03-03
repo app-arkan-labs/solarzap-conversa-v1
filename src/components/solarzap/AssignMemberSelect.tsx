@@ -16,24 +16,33 @@ interface AssignMemberSelectProps {
     triggerClassName?: string;
 }
 
-let membersCache: MemberDto[] | null = null;
-let membersCachePromise: Promise<MemberDto[]> | null = null;
+const membersCacheByOrg = new Map<string, MemberDto[]>();
+const membersCachePromiseByOrg = new Map<string, Promise<MemberDto[]>>();
 
-const loadMembersCached = async (): Promise<MemberDto[]> => {
-    if (membersCache) return membersCache;
-    if (membersCachePromise) return membersCachePromise;
+const toOrgCacheKey = (orgId?: string | null): string => (orgId && orgId.trim().length > 0 ? orgId : '__active__');
 
-    membersCachePromise = (async () => {
-        const res = await listMembers();
+const loadMembersCached = async (orgId?: string | null): Promise<MemberDto[]> => {
+    const cacheKey = toOrgCacheKey(orgId);
+
+    const cached = membersCacheByOrg.get(cacheKey);
+    if (cached) return cached;
+
+    const inFlight = membersCachePromiseByOrg.get(cacheKey);
+    if (inFlight) return inFlight;
+
+    const pending = (async () => {
+        const res = await listMembers(orgId ?? undefined);
         const loadedMembers = res.ok && res.members ? res.members : [];
-        membersCache = loadedMembers;
+        membersCacheByOrg.set(cacheKey, loadedMembers);
         return loadedMembers;
     })();
 
+    membersCachePromiseByOrg.set(cacheKey, pending);
+
     try {
-        return await membersCachePromise;
+        return await pending;
     } finally {
-        membersCachePromise = null;
+        membersCachePromiseByOrg.delete(cacheKey);
     }
 };
 
@@ -53,7 +62,7 @@ export function AssignMemberSelect({ contactId, currentAssigneeId, className, tr
 
         setIsLoadingMembers(true);
         try {
-            const loadedMembers = await loadMembersCached();
+            const loadedMembers = await loadMembersCached(orgId);
             if (!mountedRef.current) return;
 
             setMembers(loadedMembers);
@@ -64,7 +73,7 @@ export function AssignMemberSelect({ contactId, currentAssigneeId, className, tr
                 setIsLoadingMembers(false);
             }
         }
-    }, []);
+    }, [orgId]);
 
     useEffect(() => {
         mountedRef.current = true;

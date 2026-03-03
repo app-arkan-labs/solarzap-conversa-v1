@@ -228,7 +228,7 @@ export function ProposalsView() {
     if (!orgId) return;
 
     try {
-      const response = await listMembers();
+      const response = await listMembers(orgId ?? undefined);
       setOwners(response.members || []);
     } catch (error) {
       console.error('Failed to fetch owners:', error);
