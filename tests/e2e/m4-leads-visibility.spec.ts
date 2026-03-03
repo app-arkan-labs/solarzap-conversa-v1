@@ -146,6 +146,15 @@ test('salesperson sees only own assigned leads', async ({ page }) => {
   const rows = page.locator('[data-testid="conversation-row"]').filter({ hasText: state.leadPrefix });
   await expect(rows).toHaveCount(2, { timeout: 30_000 });
   await expect(page.getByTestId('toggle-team-leads')).toHaveCount(0);
+
+  await page.locator('button[title="Dashboard"]').click();
+  await expect(page.getByTestId('dashboard-owner-scope-trigger')).toHaveCount(0);
+
+  await page.locator('button[title="Pipelines"]').click();
+  await expect(page.getByTestId('pipeline-owner-scope-trigger')).toHaveCount(0);
+
+  await page.locator('button[title="Contatos"]').click();
+  await expect(page.getByTestId('contacts-owner-scope-trigger')).toHaveCount(0);
 });
 
 test('owner sees toggle and can switch from own to org leads', async ({ page }) => {
@@ -160,4 +169,13 @@ test('owner sees toggle and can switch from own to org leads', async ({ page }) 
   await toggle.click();
 
   await expect(rows).toHaveCount(4, { timeout: 30_000 });
+
+  await page.locator('button[title="Dashboard"]').click();
+  await expect(page.getByTestId('dashboard-owner-scope-trigger')).toBeVisible({ timeout: 30_000 });
+
+  await page.locator('button[title="Pipelines"]').click();
+  await expect(page.getByTestId('pipeline-owner-scope-trigger')).toBeVisible({ timeout: 30_000 });
+
+  await page.locator('button[title="Contatos"]').click();
+  await expect(page.getByTestId('contacts-owner-scope-trigger')).toBeVisible({ timeout: 30_000 });
 });

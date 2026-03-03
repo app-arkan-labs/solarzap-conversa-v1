@@ -187,33 +187,48 @@ export function ConfiguracoesContaView() {
                         </CardHeader>
                         <CardContent>
                             <form id="profile-form" onSubmit={handleUpdateProfile} className="space-y-6">
-                                <div className="space-y-4">
-                                    <div className="w-20 h-20 rounded-full overflow-hidden bg-muted border-2 border-border">
-                                        {avatarUrl ? (
-                                            <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-2xl font-semibold text-muted-foreground">
-                                                {profileName?.charAt(0)?.toUpperCase() || '?'}
-                                            </div>
-                                        )}
+                                <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                        <button
+                                            type="button"
+                                            data-testid="profile-avatar-trigger"
+                                            onClick={() => avatarInputRef.current?.click()}
+                                            disabled={isLoading}
+                                            className="group relative h-24 w-24 overflow-hidden rounded-full border-2 border-border bg-muted transition hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                            aria-label="Alterar foto de perfil"
+                                        >
+                                            {avatarUrl ? (
+                                                <img
+                                                    src={avatarUrl}
+                                                    alt="Foto de perfil"
+                                                    data-testid="profile-avatar-image"
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-muted-foreground">
+                                                    {profileName?.charAt(0)?.toUpperCase() || '?'}
+                                                </div>
+                                            )}
+                                            <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                                                <Camera className="h-5 w-5 text-white" />
+                                            </span>
+                                        </button>
+                                        <div className="space-y-1">
+                                            <p className="text-sm font-medium text-foreground">Foto de perfil</p>
+                                            <p className="text-xs text-muted-foreground">Clique na foto para alterar.</p>
+                                            <p className="text-xs text-muted-foreground">PNG, JPG ou WebP ate 2 MB.</p>
+                                        </div>
                                     </div>
                                     <input
                                         ref={avatarInputRef}
+                                        data-testid="profile-avatar-input"
                                         type="file"
                                         accept="image/png,image/jpeg,image/webp"
                                         className="hidden"
                                         onChange={handleAvatarUpload}
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={() => avatarInputRef.current?.click()}
-                                        disabled={isLoading}
-                                        className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center shadow-md hover:bg-primary/90 disabled:opacity-50"
-                                    >
-                                        <Camera className="w-3.5 h-3.5" />
-                                    </button>
                                 </div>
-                                <p className="text-xs text-muted-foreground">Clique no ícone para alterar a foto</p>
+                                <p className="text-xs text-muted-foreground">Clique na foto para alterar seu avatar.</p>
                                 <div className="space-y-2">
                                     <Label htmlFor="name">Nome Completo</Label>
                                     <Input

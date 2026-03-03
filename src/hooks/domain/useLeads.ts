@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Contact, Channel, PipelineStage, ClientType } from '@/types/solarzap';
 import type { LeadStageData } from '@/types/ai';
+import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 
 // Module-level cache for DB schema capabilities (to avoid repeated failed requests)
 let dbSupportsExtendedColumns: boolean | null = null;
@@ -230,12 +231,28 @@ export interface LeadPatch {
     assigned_to_user_id?: string | null;
 }
 
+export type LeadScopeFilter = 'mine' | 'org_all' | `user:${string}`;
+
 export function useLeads() {
     const { user, orgId, canViewTeamLeads, role } = useAuth();
     const queryClient = useQueryClient();
-    const [showTeamLeads, setShowTeamLeads] = useState(false);
+    const [leadScope, setLeadScope] = useState<LeadScopeFilter>('mine');
+    const [leadScopeMembers, setLeadScopeMembers] = useState<MemberDto[]>([]);
+    const [isLoadingLeadScopeMembers, setIsLoadingLeadScopeMembers] = useState(false);
     const canViewTeam = canViewTeamLeads;
     const isOrgManager = role === 'owner' || role === 'admin';
+    const effectiveLeadScope: LeadScopeFilter = canViewTeam ? leadScope : 'mine';
+    const scopedOwnerUserId = useMemo(() => {
+        if (!user) return null;
+        if (effectiveLeadScope === 'mine') return user.id;
+        if (effectiveLeadScope === 'org_all') return null;
+        if (effectiveLeadScope.startsWith('user:')) {
+            const candidate = effectiveLeadScope.slice(5).trim();
+            return candidate.length > 0 ? candidate : user.id;
+        }
+        return user.id;
+    }, [effectiveLeadScope, user]);
+    const showTeamLeads = canViewTeam && effectiveLeadScope !== 'mine';
     const [allowedInstanceNames, setAllowedInstanceNames] = useState<string[]>([]);
     const allowedInstanceSet = useMemo(() => new Set(allowedInstanceNames), [allowedInstanceNames]);
     const allowedInstanceKey = useMemo(
@@ -243,15 +260,76 @@ export function useLeads() {
         [allowedInstanceNames],
     );
     const leadsQueryKey = useMemo(
-        () => ['leads', orgId, user?.id, showTeamLeads, canViewTeam, isOrgManager ? 'manager' : allowedInstanceKey] as const,
-        [orgId, user?.id, showTeamLeads, canViewTeam, isOrgManager, allowedInstanceKey]
+        () => ['leads', orgId, user?.id, effectiveLeadScope, scopedOwnerUserId, canViewTeam, isOrgManager ? 'manager' : allowedInstanceKey] as const,
+        [orgId, user?.id, effectiveLeadScope, scopedOwnerUserId, canViewTeam, isOrgManager, allowedInstanceKey]
     );
 
     useEffect(() => {
+        setLeadScope('mine');
+    }, [orgId]);
+
+    useEffect(() => {
         if (!canViewTeam) {
-            setShowTeamLeads(false);
+            setLeadScope('mine');
         }
     }, [canViewTeam]);
+
+    const setShowTeamLeads = useCallback((show: boolean) => {
+        if (!canViewTeam) {
+            setLeadScope('mine');
+            return;
+        }
+        setLeadScope(show ? 'org_all' : 'mine');
+    }, [canViewTeam]);
+
+    useEffect(() => {
+        let active = true;
+
+        const loadScopeMembers = async () => {
+            if (!canViewTeam || !orgId) {
+                if (active) {
+                    setLeadScopeMembers([]);
+                    setIsLoadingLeadScopeMembers(false);
+                }
+                return;
+            }
+
+            setIsLoadingLeadScopeMembers(true);
+            try {
+                const response = await listMembers(orgId);
+                if (!active) return;
+
+                const seen = new Set<string>();
+                const members = (response.members || []).filter((member) => {
+                    if (!member.user_id) return false;
+                    if (seen.has(member.user_id)) return false;
+                    seen.add(member.user_id);
+                    return true;
+                });
+
+                setLeadScopeMembers(members);
+                setLeadScope((currentScope) => {
+                    if (!currentScope.startsWith('user:')) return currentScope;
+                    const scopedUserId = currentScope.slice(5).trim();
+                    if (!scopedUserId) return 'mine';
+                    const isKnownMember = members.some((member) => member.user_id === scopedUserId);
+                    return isKnownMember ? currentScope : 'mine';
+                });
+            } catch (error) {
+                if (!active) return;
+                console.warn('Failed to load members for lead scope filter:', error);
+                setLeadScopeMembers([]);
+                setLeadScope((currentScope) => (currentScope.startsWith('user:') ? 'mine' : currentScope));
+            } finally {
+                if (active) setIsLoadingLeadScopeMembers(false);
+            }
+        };
+
+        void loadScopeMembers();
+        return () => {
+            active = false;
+        };
+    }, [canViewTeam, orgId]);
 
     useEffect(() => {
         let alive = true;
@@ -307,13 +385,13 @@ export function useLeads() {
                     filter: `org_id=eq.${orgId}`,
                 },
                 (payload) => {
+                    const isMineScope = scopedOwnerUserId === user.id;
                     if (payload.eventType === 'INSERT') {
                         const newLead = payload.new;
-                        // Guard: if not showing team leads, only add leads assigned to this user
-                        if (!showTeamLeads && newLead.assigned_to_user_id && newLead.assigned_to_user_id !== user.id) {
+                        if (scopedOwnerUserId && newLead.assigned_to_user_id !== scopedOwnerUserId) {
                             return;
                         }
-                        if (!isOrgManager && !showTeamLeads) {
+                        if (!isOrgManager && isMineScope) {
                             const instanceName = typeof newLead.instance_name === 'string' ? newLead.instance_name : null;
                             if (allowedInstanceNames.length === 0 && instanceName) {
                                 return;
@@ -341,8 +419,8 @@ export function useLeads() {
                         const updated = payload.new;
                         if (updated) {
                             const updatedContact = leadToContact(updated);
-                            if (!showTeamLeads && !isOrgManager) {
-                                const isMine = (updatedContact.assignedToUserId || '') === user.id;
+                            if (!isOrgManager && isMineScope) {
+                                const isMine = (updatedContact.assignedToUserId || '') === scopedOwnerUserId;
                                 const hasAllowedInstance =
                                     !updatedContact.instanceName ||
                                     (allowedInstanceNames.length > 0 && allowedInstanceSet.has(updatedContact.instanceName));
@@ -353,6 +431,13 @@ export function useLeads() {
                                     });
                                     return;
                                 }
+                            }
+                            if (scopedOwnerUserId && (updatedContact.assignedToUserId || '') !== scopedOwnerUserId) {
+                                queryClient.setQueryData(leadsQueryKey, (oldData: Contact[] | undefined) => {
+                                    if (!Array.isArray(oldData)) return oldData;
+                                    return oldData.filter(c => c.id !== updatedContact.id);
+                                });
+                                return;
                             }
                             queryClient.setQueryData(leadsQueryKey, (oldData: Contact[] | undefined) => {
                                 if (!Array.isArray(oldData)) return oldData;
@@ -368,47 +453,50 @@ export function useLeads() {
         return () => {
             subscription.unsubscribe();
         };
-    }, [user, orgId, queryClient, leadsQueryKey, showTeamLeads, isOrgManager, allowedInstanceNames, allowedInstanceSet]);
+    }, [user, orgId, queryClient, leadsQueryKey, isOrgManager, allowedInstanceNames, allowedInstanceSet, scopedOwnerUserId]);
 
     const leadsQuery = useQuery({
         queryKey: leadsQueryKey,
         queryFn: async () => {
             if (!user || !orgId) return [];
-            const query = supabase
+            let query = supabase
                 .from('leads')
                 .select('*')
                 .eq('org_id', orgId)
                 .order('created_at', { ascending: false });
 
+            if (scopedOwnerUserId) {
+                query = query.eq('assigned_to_user_id', scopedOwnerUserId);
+            }
+
             let { data, error } = await query;
             if (error && (error.code === '42703' || error.code === 'PGRST204')) {
                 // Defensive fallback in case schema cache lags behind migration.
                 // Still scope by org_id for data isolation.
-                const fallback = await supabase
+                let fallbackQuery = supabase
                     .from('leads')
                     .select('*')
                     .eq('org_id', orgId)
-                    .eq('user_id', user.id)
                     .order('created_at', { ascending: false });
+                if (scopedOwnerUserId) {
+                    fallbackQuery = fallbackQuery.eq('user_id', scopedOwnerUserId);
+                }
+                const fallback = await fallbackQuery;
                 data = fallback.data;
                 error = fallback.error;
             }
 
             if (error) throw error;
             const contacts = (data || []).map(leadToContact);
-            if (showTeamLeads && canViewTeam) {
+            if (isOrgManager || !scopedOwnerUserId || scopedOwnerUserId !== user.id) {
                 return contacts;
-            }
-            const myContacts = contacts.filter((c) => (c.assignedToUserId || '') === user.id);
-            if (isOrgManager) {
-                return myContacts;
             }
 
             if (allowedInstanceNames.length === 0) {
-                return myContacts.filter((c) => !c.instanceName);
+                return contacts.filter((c) => !c.instanceName);
             }
 
-            return myContacts.filter((c) => !c.instanceName || allowedInstanceSet.has(c.instanceName));
+            return contacts.filter((c) => !c.instanceName || allowedInstanceSet.has(c.instanceName));
         },
         enabled: !!user && !!orgId,
         refetchInterval: 5000,
@@ -719,6 +807,10 @@ export function useLeads() {
         contacts: leadsQuery.data || [],
         isLoading: leadsQuery.isLoading && !!user,
         isError: leadsQuery.isError,
+        leadScope: effectiveLeadScope,
+        setLeadScope,
+        leadScopeMembers,
+        isLoadingLeadScopeMembers,
         showTeamLeads,
         setShowTeamLeads,
         canViewTeam,

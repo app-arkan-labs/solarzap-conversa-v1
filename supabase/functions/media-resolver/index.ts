@@ -300,6 +300,7 @@ Deno.serve(async (req) => {
         const simplifiedType = resolvedMediaType.replace('Message', '').replace('extended', '').toLowerCase()
         let finalAttachmentType = 'document'
         if (simplifiedType.includes('image')) finalAttachmentType = 'image'
+        else if (simplifiedType.includes('sticker')) finalAttachmentType = 'image'
         else if (simplifiedType.includes('video')) finalAttachmentType = 'video'
         else if (simplifiedType.includes('audio')) finalAttachmentType = 'audio'
         if (ext === 'mp4' || ext === 'mov') finalAttachmentType = 'video'

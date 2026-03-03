@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { listMembers, type MemberDto } from "@/lib/orgAdminClient";
 import { useAuth } from "@/contexts/AuthContext";
@@ -6,7 +7,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { Loader2, User } from "lucide-react";
 import { getMemberDisplayName } from "@/lib/memberDisplayName";
 import { useSellerPermissions } from "@/hooks/useSellerPermissions";
-import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase";
 
 interface AssignMemberSelectProps {
@@ -16,36 +16,6 @@ interface AssignMemberSelectProps {
     triggerClassName?: string;
 }
 
-const membersCacheByOrg = new Map<string, MemberDto[]>();
-const membersCachePromiseByOrg = new Map<string, Promise<MemberDto[]>>();
-
-const toOrgCacheKey = (orgId?: string | null): string => (orgId && orgId.trim().length > 0 ? orgId : '__active__');
-
-const loadMembersCached = async (orgId?: string | null): Promise<MemberDto[]> => {
-    const cacheKey = toOrgCacheKey(orgId);
-
-    const cached = membersCacheByOrg.get(cacheKey);
-    if (cached) return cached;
-
-    const inFlight = membersCachePromiseByOrg.get(cacheKey);
-    if (inFlight) return inFlight;
-
-    const pending = (async () => {
-        const res = await listMembers(orgId ?? undefined);
-        const loadedMembers = res.ok && res.members ? res.members : [];
-        membersCacheByOrg.set(cacheKey, loadedMembers);
-        return loadedMembers;
-    })();
-
-    membersCachePromiseByOrg.set(cacheKey, pending);
-
-    try {
-        return await pending;
-    } finally {
-        membersCachePromiseByOrg.delete(cacheKey);
-    }
-};
-
 export function AssignMemberSelect({ contactId, currentAssigneeId, className, triggerClassName }: AssignMemberSelectProps) {
     const [members, setMembers] = useState<MemberDto[]>([]);
     const [isLoadingMembers, setIsLoadingMembers] = useState(false);
@@ -53,16 +23,19 @@ export function AssignMemberSelect({ contactId, currentAssigneeId, className, tr
     const [isUpdating, setIsUpdating] = useState(false);
     const { role, orgId } = useAuth();
     const { permissions } = useSellerPermissions();
+    const queryClient = useQueryClient();
     const mountedRef = useRef(true);
 
     const canAssign = role === "owner" || role === "admin" || permissions.can_assign_leads;
 
-    const loadMembers = useCallback(async () => {
+    const loadMembers = useCallback(async (forceRefresh = false) => {
         if (!mountedRef.current) return;
+        if (!forceRefresh && members.length > 0) return;
 
         setIsLoadingMembers(true);
         try {
-            const loadedMembers = await loadMembersCached(orgId);
+            const res = await listMembers(orgId ?? undefined, { forceRefresh });
+            const loadedMembers = res.ok && res.members ? res.members : [];
             if (!mountedRef.current) return;
 
             setMembers(loadedMembers);
@@ -73,26 +46,41 @@ export function AssignMemberSelect({ contactId, currentAssigneeId, className, tr
                 setIsLoadingMembers(false);
             }
         }
-    }, [orgId]);
+    }, [members.length, orgId]);
 
     useEffect(() => {
         mountedRef.current = true;
-        void loadMembers();
-
         return () => {
             mountedRef.current = false;
         };
-    }, [loadMembers]);
+    }, []);
+
+    useEffect(() => {
+        setMembers([]);
+    }, [orgId]);
 
     const handleAssign = async (userId: string) => {
         if (userId === currentAssigneeId) return;
         if (!orgId) return;
+        if (!canAssign) return;
 
         setIsUpdating(true);
+        const nextAssigneeId = userId === "unassigned" ? null : userId;
+        const snapshot = queryClient.getQueriesData({ queryKey: ["leads", orgId] });
+
+        queryClient.setQueriesData({ queryKey: ["leads", orgId] }, (oldData: unknown) => {
+            if (!Array.isArray(oldData)) return oldData;
+            return oldData.map((item: any) =>
+                String(item?.id) === String(contactId)
+                    ? { ...item, assignedToUserId: nextAssigneeId, assigned_to_user_id: nextAssigneeId }
+                    : item
+            );
+        });
+
         try {
             const { error } = await supabase
                 .from("leads")
-                .update({ assigned_to_user_id: userId === "unassigned" ? null : userId })
+                .update({ assigned_to_user_id: nextAssigneeId })
                 .eq("id", Number(contactId))
                 .eq("org_id", orgId);
 
@@ -102,7 +90,11 @@ export function AssignMemberSelect({ contactId, currentAssigneeId, className, tr
                 title: "Atribuicao atualizada",
                 description: "O contato foi reatribuido com sucesso.",
             });
+            queryClient.invalidateQueries({ queryKey: ["leads", orgId] });
         } catch (err: any) {
+            snapshot.forEach(([key, data]) => {
+                queryClient.setQueryData(key, data);
+            });
             toast({
                 variant: "destructive",
                 title: "Erro ao atribuir",
@@ -113,23 +105,8 @@ export function AssignMemberSelect({ contactId, currentAssigneeId, className, tr
         }
     };
 
-    const assigneeMember = currentAssigneeId
-        ? members.find((member) => member.user_id === currentAssigneeId)
-        : undefined;
-
-    const assigneeName = currentAssigneeId
-        ? (assigneeMember ? getMemberDisplayName(assigneeMember) : "Responsavel")
-        : "Nao atribuido";
-
     if (!canAssign) {
-        return (
-            <div className={`flex items-center gap-2 ${className || ""}`}>
-                <Badge variant="outline" className="h-7 text-[11px] font-normal max-w-full overflow-hidden">
-                    <User className="w-3 h-3 mr-1 flex-shrink-0" />
-                    <span className="truncate">{assigneeName}</span>
-                </Badge>
-            </div>
-        );
+        return null;
     }
 
     return (

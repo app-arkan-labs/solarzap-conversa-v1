@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { format, subDays, startOfMonth, endOfMonth, startOfYear } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Download, FileText, Share2, Eye, DownloadCloud } from "lucide-react";
@@ -23,14 +23,28 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/solarzap/PageHeader";
+import { LeadScopeSelect, type LeadScopeValue } from "@/components/solarzap/LeadScopeSelect";
+import type { MemberDto } from "@/lib/orgAdminClient";
 
 interface DashboardViewProps {
   onNavigate?: (tab: string) => void;
+  canViewTeam?: boolean;
+  leadScope?: LeadScopeValue;
+  onLeadScopeChange?: (scope: LeadScopeValue) => void;
+  leadScopeMembers?: MemberDto[];
+  isLoadingLeadScopeMembers?: boolean;
 }
 
-export function DashboardView({ onNavigate }: DashboardViewProps) {
+export function DashboardView({
+  onNavigate,
+  canViewTeam = false,
+  leadScope = 'mine',
+  onLeadScopeChange,
+  leadScopeMembers = [],
+  isLoadingLeadScopeMembers = false,
+}: DashboardViewProps) {
   const { toast } = useToast();
-  const { orgId } = useAuth();
+  const { orgId, user } = useAuth();
 
 
   // State for Filters
@@ -41,6 +55,14 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
   const [periodLabel, setPeriodLabel] = useState("this_month");
 
   const [calendarFilter, setCalendarFilter] = useState<'next_7_days' | 'last_7_days'>('next_7_days');
+  const resolvedOwnerUserId = useMemo(() => {
+    if (!user) return null;
+    if (!canViewTeam) return user.id;
+    if (leadScope === 'org_all') return null;
+    if (leadScope === 'mine') return user.id;
+    const scopedUserId = leadScope.slice(5).trim();
+    return scopedUserId || user.id;
+  }, [canViewTeam, leadScope, user]);
 
   // Fetch Data
   const { data, isLoading, error } = useDashboardReport({
@@ -48,7 +70,10 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
     end: dateRange.to,
     compare: true,
     orgId,
-    filters: { calendarFilter }
+    filters: {
+      calendarFilter,
+      owner_user_id: resolvedOwnerUserId,
+    }
   });
 
   // Proposal Metrics
@@ -100,6 +125,17 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
         icon={CalendarIcon}
         actionContent={
           <>
+            {canViewTeam && onLeadScopeChange ? (
+              <LeadScopeSelect
+                value={leadScope}
+                onChange={onLeadScopeChange}
+                members={leadScopeMembers}
+                loading={isLoadingLeadScopeMembers}
+                currentUserId={user?.id ?? null}
+                testId="dashboard-owner-scope-trigger"
+              />
+            ) : null}
+
             {/* Period Selector */}
             <Select value={periodLabel} onValueChange={handlePeriodChange}>
               <SelectTrigger className="w-[160px] bg-background border-border/50 shadow-sm glass">

@@ -141,9 +141,15 @@ test('M13 org selection: requires selection on login and allows switching organi
   await page.getByTestId('nav-settings-trigger').click();
   await page.getByTestId('nav-switch-org').click();
 
-  await page.waitForURL('**/select-organization?source=menu', { timeout: 30_000 });
+  await expect(page.getByTestId('org-selector-modal-panel')).toBeVisible({ timeout: 30_000 });
   await page.getByTestId(`org-select-button-${state.orgBId}`).click();
-  await page.waitForURL('**/', { timeout: 30_000 });
+  await expect
+    .poll(
+      () => page.evaluate(() => localStorage.getItem('solarzap_active_org_id')),
+      { timeout: 30_000 },
+    )
+    .toBe(state.orgBId);
+  await expect(page.getByTestId('nav-settings-trigger')).toBeVisible({ timeout: 30_000 });
 
   const activeOrgAfterSwitch = await page.evaluate(() => localStorage.getItem('solarzap_active_org_id'));
   expect(activeOrgAfterSwitch).toBe(state.orgBId);

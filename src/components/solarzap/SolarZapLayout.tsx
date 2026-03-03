@@ -35,12 +35,15 @@ import { Loader2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Contact, PipelineStage, ChannelFilter, ActiveTab, Conversation } from '@/types/solarzap';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppointments } from '@/hooks/useAppointments';
 import { useSellerPermissions } from '@/hooks/useSellerPermissions';
 import { supabase } from '@/lib/supabase';
+import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
+import { OrganizationSelectorPanel } from '@/components/organization/OrganizationSelectorPanel';
 import AdminMembersPage from '@/pages/AdminMembersPage';
 
 type AppointmentModalErrorBoundaryProps = {
@@ -85,7 +88,7 @@ const CONVERSAS_SIDEBAR_DEFAULT_WIDTH = 320;
 const CONVERSAS_SIDEBAR_STORAGE_KEY = 'solarzap_conversas_sidebar_width';
 
 export function SolarZapLayout() {
-  const { orgId, role, hasMultipleOrganizations, organizations } = useAuth();
+  const { user, orgId, role, hasMultipleOrganizations, organizations, selectOrganization, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const canAccessAdmin = role === 'owner' || role === 'admin';
@@ -94,11 +97,26 @@ export function SolarZapLayout() {
     const current = organizations.find((organization) => organization.org_id === orgId);
     return current?.display_name || null;
   }, [orgId, organizations]);
+  const userAvatarUrl = useMemo(() => {
+    const metadata = user?.user_metadata;
+    if (!metadata || typeof metadata !== 'object') return null;
+
+    const candidate = (metadata as Record<string, unknown>).avatar_url;
+    if (typeof candidate !== 'string') return null;
+
+    const normalized = candidate.trim();
+    return normalized.length > 0 ? normalized : null;
+  }, [user]);
+  const userDisplayName = useMemo(() => (user ? getAuthUserDisplayName(user) : ''), [user]);
   const { permissions: sellerPerms } = useSellerPermissions();
   // Domain Hooks
   const {
     contacts,
     isLoading: isLoadingLeads,
+    leadScope,
+    setLeadScope,
+    leadScopeMembers,
+    isLoadingLeadScopeMembers,
     showTeamLeads,
     setShowTeamLeads,
     canViewTeam,
@@ -302,12 +320,30 @@ export function SolarZapLayout() {
   // Comments modal
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
   const [commentsContact, setCommentsContact] = useState<Contact | null>(null);
+  const [isOrganizationSwitcherOpen, setIsOrganizationSwitcherOpen] = useState(false);
+  const [switchingOrganizationId, setSwitchingOrganizationId] = useState<string | null>(null);
   const [visitOutcomeModalOpen, setVisitOutcomeModalOpen] = useState(false);
   const [visitOutcomeSubmitting, setVisitOutcomeSubmitting] = useState(false);
   const [pendingVisitOutcome, setPendingVisitOutcome] = useState<VisitOutcomeItem | null>(null);
   const [dismissedVisitOutcomeIds, setDismissedVisitOutcomeIds] = useState<Set<string>>(new Set());
 
   const { toast } = useToast();
+
+  const handleSelectOrganizationFromModal = useCallback(async (nextOrgId: string) => {
+    try {
+      setSwitchingOrganizationId(nextOrgId);
+      await selectOrganization(nextOrgId, { reload: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha ao selecionar organizacao.';
+      toast({
+        title: 'Erro ao trocar empresa',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setSwitchingOrganizationId(null);
+    }
+  }, [selectOrganization, toast]);
 
   const tryOpenNextVisitOutcome = useCallback(() => {
     if (!activeSettings.visitOutcomeModalEnabled) return;
@@ -922,8 +958,10 @@ export function SolarZapLayout() {
         isAdminUser={canAccessAdmin}
         onAdminMembersClick={() => navigate('/admin/members')}
         hasMultipleOrganizations={hasMultipleOrganizations}
-        onSwitchOrganization={() => navigate('/select-organization?source=menu')}
+        onSwitchOrganization={() => setIsOrganizationSwitcherOpen(true)}
         activeOrganizationName={activeOrganizationName ?? undefined}
+        userAvatarUrl={userAvatarUrl}
+        userDisplayName={userDisplayName}
         tabPermissions={{
           ia_agentes: sellerPerms.tab_ia_agentes,
           automacoes: sellerPerms.tab_automacoes,
@@ -932,6 +970,50 @@ export function SolarZapLayout() {
           minha_conta: sellerPerms.tab_minha_conta,
         }}
       />
+
+      <Dialog
+        open={isOrganizationSwitcherOpen}
+        onOpenChange={(nextOpen) => {
+          if (switchingOrganizationId) return;
+          setIsOrganizationSwitcherOpen(nextOpen);
+        }}
+      >
+        <DialogContent className="max-w-3xl p-6">
+          <OrganizationSelectorPanel
+            rootTestId="org-selector-modal-panel"
+            organizations={organizations}
+            submittingOrgId={switchingOrganizationId}
+            onSelectOrganization={(nextOrgId) => {
+              void handleSelectOrganizationFromModal(nextOrgId);
+            }}
+            showSignOut={false}
+            title="Trocar empresa"
+            description="Selecione a empresa que deseja abrir. O app sera recarregado ao confirmar."
+            connectLabel="Abrir empresa"
+          />
+
+          <div className="flex items-center justify-between pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!!switchingOrganizationId}
+              onClick={() => setIsOrganizationSwitcherOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!!switchingOrganizationId}
+              onClick={() => {
+                void signOut();
+              }}
+            >
+              Sair
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <NotificationsPanel
         notifications={notifications}
@@ -1124,6 +1206,12 @@ export function SolarZapLayout() {
             onMoveToPipeline={handlePipelineStageChange}
             onUpdateLead={async (contactId, data) => { await updateLead({ contactId, data }); }}
             onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
+            canViewTeam={canViewTeam}
+            leadScope={leadScope}
+            onLeadScopeChange={setLeadScope}
+            leadScopeMembers={leadScopeMembers}
+            leadScopeLoading={isLoadingLeadScopeMembers}
+            currentUserId={user?.id ?? null}
             onGoToConversation={goToConversation}
             onCallAction={(contact) => {
               setPendingCallContact(contact);
@@ -1161,6 +1249,12 @@ export function SolarZapLayout() {
             onImportContacts={importContacts}
             onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
             onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
+            canViewTeam={canViewTeam}
+            leadScope={leadScope}
+            onLeadScopeChange={setLeadScope}
+            leadScopeMembers={leadScopeMembers}
+            leadScopeLoading={isLoadingLeadScopeMembers}
+            currentUserId={user?.id ?? null}
           />
           <Button
             onClick={() => setIsCreateLeadOpen(true)}
@@ -1174,7 +1268,14 @@ export function SolarZapLayout() {
       )}
 
       {activeTab === 'dashboard' && (
-        <DashboardView onNavigate={(tab) => handleTabChange(tab as any)} />
+        <DashboardView
+          onNavigate={(tab) => handleTabChange(tab as any)}
+          canViewTeam={canViewTeam}
+          leadScope={leadScope}
+          onLeadScopeChange={setLeadScope}
+          leadScopeMembers={leadScopeMembers}
+          isLoadingLeadScopeMembers={isLoadingLeadScopeMembers}
+        />
       )}
 
       {activeTab === 'propostas' && (

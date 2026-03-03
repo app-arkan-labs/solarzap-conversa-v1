@@ -28,6 +28,8 @@ import { useAISettings } from '@/hooks/useAISettings'; // New Import
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { resolveProposalLinks } from '@/utils/proposalLinks';
+import { LeadScopeSelect, type LeadScopeValue } from './LeadScopeSelect';
+import type { MemberDto } from '@/lib/orgAdminClient';
 
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
 import { ExportContactsModal } from './ExportContactsModal';
@@ -46,6 +48,12 @@ interface ContactsViewProps {
   onImportContacts?: (contacts: ImportedContact[]) => Promise<unknown>;
   onDeleteLead?: (contactId: string) => Promise<void>;
   onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
+  canViewTeam?: boolean;
+  leadScope?: LeadScopeValue;
+  onLeadScopeChange?: (scope: LeadScopeValue) => void;
+  leadScopeMembers?: MemberDto[];
+  leadScopeLoading?: boolean;
+  currentUserId?: string | null;
 }
 
 const STAGE_COLORS: Record<string, string> = {
@@ -131,7 +139,19 @@ const extractProposalLinks = (payload: Record<string, unknown> | null) => {
   });
 };
 
-export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDeleteLead, onToggleLeadAi }: ContactsViewProps) {
+export function ContactsView({
+  contacts,
+  onUpdateLead,
+  onImportContacts,
+  onDeleteLead,
+  onToggleLeadAi,
+  canViewTeam = false,
+  leadScope = 'mine',
+  onLeadScopeChange,
+  leadScopeMembers = [],
+  leadScopeLoading = false,
+  currentUserId = null,
+}: ContactsViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(contacts[0] || null);
   const [isSaving, setIsSaving] = useState(false);
@@ -503,6 +523,20 @@ export function ContactsView({ contacts, onUpdateLead, onImportContacts, onDelet
             </div>
           }
         />
+
+        {canViewTeam && onLeadScopeChange ? (
+          <div className="px-3 py-2 border-b border-border bg-card">
+            <LeadScopeSelect
+              value={leadScope}
+              onChange={onLeadScopeChange}
+              members={leadScopeMembers}
+              loading={leadScopeLoading}
+              currentUserId={currentUserId}
+              testId="contacts-owner-scope-trigger"
+              triggerClassName="w-full h-9 bg-background border-border/50 shadow-sm glass"
+            />
+          </div>
+        ) : null}
 
         {/* Search */}
         <div className="p-3 border-b border-border">

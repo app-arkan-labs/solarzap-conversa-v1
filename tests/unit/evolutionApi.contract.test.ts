@@ -12,7 +12,7 @@ vi.mock('@/lib/supabase', () => ({
   },
 }));
 
-import { connectInstance, createInstance, sendMessage } from '@/lib/evolutionApi';
+import { connectInstance, createInstance, sendMessage, sendSticker } from '@/lib/evolutionApi';
 
 describe('evolutionApi contract normalization', () => {
   beforeEach(() => {
@@ -90,5 +90,35 @@ describe('evolutionApi contract normalization', () => {
 
     expect(response.success).toBe(true);
     expect(response.data?.key?.id).toBe('msg-123');
+  });
+
+  it('routes sendSticker through evolution-proxy with sticker payload', async () => {
+    const stickerUrl = 'https://cdn.example.com/funny.gif';
+    invokeMock.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          key: {
+            id: 'stk-123',
+            remoteJid: '5511999999999@s.whatsapp.net',
+            fromMe: true,
+          },
+          status: 'PENDING',
+        },
+      },
+      error: null,
+    });
+
+    const response = await sendSticker('instance-test', '5511999999999', stickerUrl);
+
+    expect(response.success).toBe(true);
+    expect(response.data?.key?.id).toBe('stk-123');
+
+    const invokeCall = invokeMock.mock.calls.at(-1);
+    expect(invokeCall?.[0]).toBe('evolution-proxy');
+    const payload = JSON.parse(String(invokeCall?.[1]?.body || '{}'));
+    expect(payload.action).toBe('sendSticker');
+    expect(payload.payload.sticker).toBe(stickerUrl);
+    expect(payload.payload.number).toBe('5511999999999');
   });
 });

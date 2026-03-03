@@ -24,6 +24,8 @@ export const useDashboardReport = (params: DashboardFilters) => {
 
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error("User not authenticated");
+            const hasOwnerFilter = !!filters && Object.prototype.hasOwnProperty.call(filters, 'owner_user_id');
+            const ownerUserId = hasOwnerFilter ? (filters?.owner_user_id ?? null) : user.id;
 
             // --- 0. Date Calculations ---
             const periodDuration = end.getTime() - start.getTime();
@@ -38,51 +40,90 @@ export const useDashboardReport = (params: DashboardFilters) => {
             // --- 1-4. Parallel fetch: LEADS, PREV LEADS, DEALS, PREV DEALS, OPEN DEALS, STALE LEADS ---
             let leadsQ = supabase
                 .from("leads")
-                .select("id, created_at, canal, status_pipeline, stage_changed_at, nome, user_id")
+                .select("id, created_at, canal, status_pipeline, stage_changed_at, nome, user_id, assigned_to_user_id")
                 .gte("created_at", startIso)
-                .lte("created_at", endIso)
-                .eq("user_id", user.id);
+                .lte("created_at", endIso);
+            if (ownerUserId) leadsQ = leadsQ.eq("assigned_to_user_id", ownerUserId);
             if (orgId) leadsQ = leadsQ.eq('org_id', orgId);
 
             let prevLeadsQ = supabase
                 .from("leads")
                 .select("id", { count: "exact", head: true })
                 .gte("created_at", prevStartIso)
-                .lte("created_at", prevEndIso)
-                .eq("user_id", user.id);
+                .lte("created_at", prevEndIso);
+            if (ownerUserId) prevLeadsQ = prevLeadsQ.eq("assigned_to_user_id", ownerUserId);
             if (orgId) prevLeadsQ = prevLeadsQ.eq('org_id', orgId);
+
+            let ownerLeadIds: number[] | null = null;
+            if (ownerUserId) {
+                let ownerLeadsQ = supabase
+                    .from("leads")
+                    .select("id")
+                    .eq("assigned_to_user_id", ownerUserId);
+                if (orgId) ownerLeadsQ = ownerLeadsQ.eq("org_id", orgId);
+
+                const { data: ownerLeadsData, error: ownerLeadsError } = await ownerLeadsQ;
+                if (ownerLeadsError) throw ownerLeadsError;
+
+                ownerLeadIds = (ownerLeadsData || [])
+                    .map((row: any) => Number(row.id))
+                    .filter((id: number) => Number.isFinite(id));
+            }
+
+            const MAX_DEAL_SCOPE_LEADS = 500;
+            const shouldFallbackToDealOwnerFilter =
+                !!ownerUserId && !!ownerLeadIds && ownerLeadIds.length > MAX_DEAL_SCOPE_LEADS;
+            const shouldForceDealsEmpty = !!ownerUserId && !!ownerLeadIds && ownerLeadIds.length === 0;
 
             let wonDealsQ = supabase
                 .from("deals")
                 .select("id, amount, closed_at, lead_id, created_at")
                 .eq("status", "won")
                 .gte("closed_at", startIso)
-                .lte("closed_at", endIso)
-                .eq("user_id", user.id);
+                .lte("closed_at", endIso);
+            if (shouldForceDealsEmpty) wonDealsQ = wonDealsQ.in("lead_id", [-1]);
+            if (ownerUserId && ownerLeadIds && ownerLeadIds.length > 0 && !shouldFallbackToDealOwnerFilter) {
+                wonDealsQ = wonDealsQ.in("lead_id", ownerLeadIds);
+            }
+            if (ownerUserId && shouldFallbackToDealOwnerFilter) {
+                wonDealsQ = wonDealsQ.eq("user_id", ownerUserId);
+            }
             if (orgId) wonDealsQ = wonDealsQ.eq('org_id', orgId);
 
             let prevWonDealsQ = supabase
                 .from("deals")
-                .select("amount")
+                .select("amount, lead_id")
                 .eq("status", "won")
                 .gte("closed_at", prevStartIso)
-                .lte("closed_at", prevEndIso)
-                .eq("user_id", user.id);
+                .lte("closed_at", prevEndIso);
+            if (shouldForceDealsEmpty) prevWonDealsQ = prevWonDealsQ.in("lead_id", [-1]);
+            if (ownerUserId && ownerLeadIds && ownerLeadIds.length > 0 && !shouldFallbackToDealOwnerFilter) {
+                prevWonDealsQ = prevWonDealsQ.in("lead_id", ownerLeadIds);
+            }
+            if (ownerUserId && shouldFallbackToDealOwnerFilter) {
+                prevWonDealsQ = prevWonDealsQ.eq("user_id", ownerUserId);
+            }
             if (orgId) prevWonDealsQ = prevWonDealsQ.eq('org_id', orgId);
 
             // Forecast scoped to dashboard date range
             let openDealsQ = supabase
                 .from("deals")
-                .select("amount")
+                .select("amount, lead_id")
                 .neq("status", "won")
                 .neq("status", "lost")
                 .neq("status", "perdido")
                 .gte("created_at", startIso)
-                .lte("created_at", endIso)
-                .eq("user_id", user.id);
+                .lte("created_at", endIso);
+            if (shouldForceDealsEmpty) openDealsQ = openDealsQ.in("lead_id", [-1]);
+            if (ownerUserId && ownerLeadIds && ownerLeadIds.length > 0 && !shouldFallbackToDealOwnerFilter) {
+                openDealsQ = openDealsQ.in("lead_id", ownerLeadIds);
+            }
+            if (ownerUserId && shouldFallbackToDealOwnerFilter) {
+                openDealsQ = openDealsQ.eq("user_id", ownerUserId);
+            }
             if (orgId) openDealsQ = openDealsQ.eq('org_id', orgId);
 
-            // Stale leads — exclude terminal stages
+            // Stale leads â€” exclude terminal stages
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
             let staleLeadsQ = supabase
@@ -90,9 +131,9 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 .select("id, nome, status_pipeline, stage_changed_at")
                 .lt("stage_changed_at", sevenDaysAgo.toISOString())
                 .not("status_pipeline", "in", "(perdido,projeto_instalado)")
-                .eq("user_id", user.id)
                 .order("stage_changed_at", { ascending: true })
                 .limit(20);
+            if (ownerUserId) staleLeadsQ = staleLeadsQ.eq("assigned_to_user_id", ownerUserId);
             if (orgId) staleLeadsQ = staleLeadsQ.eq('org_id', orgId);
 
             const [
@@ -151,17 +192,17 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 .select("id, title, start_at, type, status, leads(nome)")
                 .gte("start_at", calStart)
                 .lte("start_at", calEnd)
-                .eq("user_id", user.id)
                 .order("start_at", { ascending: true })
                 .limit(10);
+            if (ownerUserId) apptsQuery = apptsQuery.eq("user_id", ownerUserId);
             if (orgId) apptsQuery = apptsQuery.eq('org_id', orgId);
 
             let totalApptsQuery = supabase
                 .from("appointments")
                 .select("id", { count: 'exact', head: true })
                 .gte("start_at", calStart)
-                .lte("start_at", calEnd)
-                .eq("user_id", user.id);
+                .lte("start_at", calEnd);
+            if (ownerUserId) totalApptsQuery = totalApptsQuery.eq("user_id", ownerUserId);
             if (orgId) totalApptsQuery = totalApptsQuery.eq('org_id', orgId);
 
             const [{ data: appointments }, { count: totalAppts }] = await Promise.all([apptsQuery, totalApptsQuery]);
@@ -272,6 +313,9 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 ...m,
                 conversion_rate: m.leads > 0 ? ((m.sales / m.leads) * 100) : 0
             }));
+            const ownerPerformanceLabel = ownerUserId
+                ? (ownerUserId === user.id ? "Voce" : "Usuario selecionado")
+                : "Geral (Organizacao)";
 
 
             // Format Objects for Component
@@ -298,7 +342,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
                         // last_interaction: l.last_message_at // Removed as column doesn't exist
                     })) || [],
                     owner_performance: [{
-                        name: "Você",
+                        name: ownerPerformanceLabel,
                         leads: leadsCount,
                         won: wonCount,
                         revenue,
@@ -323,3 +367,4 @@ export const useDashboardReport = (params: DashboardFilters) => {
         enabled: !!params.orgId,
     });
 };
+

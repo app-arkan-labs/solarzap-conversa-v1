@@ -14,7 +14,7 @@ interface MessageContentProps {
 }
 
 // Parse message content to extract media type and URL
-const parseMessageContent = (
+export const parseMessageContent = (
   content: string,
   attachmentUrl?: string,
   attachmentType?: string,
@@ -69,6 +69,7 @@ const parseMessageContent = (
   const imageRegex = /^(?:🖼️|🖼|📷)\s*/u;
   const videoRegex = /^(?:🎬|📹)\s*/u;
   const docRegex = /^(?:📎|🖇️|🖇|📄)\s*/u;
+  const legacyStickerImageUrlRegex = /^https?:\/\/\S+\.(?:webp|gif|png|jpe?g)(?:[?#]\S*)?$/i;
 
   // Check for audio message
   if (audioRegex.test(firstLine)) {
@@ -154,6 +155,16 @@ const parseMessageContent = (
       text: fileName,
       url: hasUrl ? urlCandidate : undefined,
       fileName,
+    };
+  }
+
+  // Legacy fallback: old sticker placeholder persisted as plain text + URL
+  if (firstLine.trim().toLowerCase() === 'sticker recebido' && hasUrl && legacyStickerImageUrlRegex.test(urlCandidate || '')) {
+    return {
+      type: 'image',
+      text: 'Sticker recebido',
+      url: urlCandidate,
+      fileName: 'Sticker recebido',
     };
   }
 

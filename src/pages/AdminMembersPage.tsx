@@ -111,7 +111,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
         setLoadingMembers(true);
       }
 
-      const response = await listMembers(orgId ?? undefined);
+      const response = await listMembers(orgId ?? undefined, { forceRefresh: isRefresh });
       const orderedMembers = [...response.members].sort((a, b) => {
         const joinedA = new Date(a.joined_at).getTime();
         const joinedB = new Date(b.joined_at).getTime();

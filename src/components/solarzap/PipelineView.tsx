@@ -9,6 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useAutomationSettings } from '@/hooks/useAutomationSettings';
 import { EditLeadModal, UpdateLeadData } from './EditLeadModal';
 import { StageBadges } from './StageBadges';
+import { LeadScopeSelect, type LeadScopeValue } from './LeadScopeSelect';
+import type { MemberDto } from '@/lib/orgAdminClient';
 
 import { ProposalModal, ProposalData } from './ProposalModal';
 import { ProposalReadyModal } from './ProposalReadyModal';
@@ -48,6 +50,12 @@ interface PipelineViewProps {
   onDeleteLead?: (contactId: string) => Promise<void>;
   onSchedule?: (contact: Contact, type: 'reuniao' | 'visita') => void;
   onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
+  canViewTeam?: boolean;
+  leadScope?: LeadScopeValue;
+  onLeadScopeChange?: (scope: LeadScopeValue) => void;
+  leadScopeMembers?: MemberDto[];
+  leadScopeLoading?: boolean;
+  currentUserId?: string | null;
 }
 
 // Custom colors for each pipeline stage header
@@ -73,7 +81,25 @@ const STAGE_COLORS: Record<PipelineStage, string> = {
   perdido: '#424242',
 };
 
-export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead, onGoToConversation, onCallAction, onGenerateProposal, onImportContacts, onDeleteLead, onSchedule, onToggleLeadAi }: PipelineViewProps) {
+export function PipelineView({
+  contacts,
+  events,
+  onMoveToPipeline,
+  onUpdateLead,
+  onGoToConversation,
+  onCallAction,
+  onGenerateProposal,
+  onImportContacts,
+  onDeleteLead,
+  onSchedule,
+  onToggleLeadAi,
+  canViewTeam = false,
+  leadScope = 'mine',
+  onLeadScopeChange,
+  leadScopeMembers = [],
+  leadScopeLoading = false,
+  currentUserId = null,
+}: PipelineViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [draggedContact, setDraggedContact] = useState<Contact | null>(null);
   const [dragOverStage, setDragOverStage] = useState<PipelineStage | null>(null);
@@ -532,6 +558,17 @@ export function PipelineView({ contacts, events, onMoveToPipeline, onUpdateLead,
         icon={Kanban}
         actionContent={
           <>
+            {canViewTeam && onLeadScopeChange ? (
+              <LeadScopeSelect
+                value={leadScope}
+                onChange={onLeadScopeChange}
+                members={leadScopeMembers}
+                loading={leadScopeLoading}
+                currentUserId={currentUserId}
+                testId="pipeline-owner-scope-trigger"
+              />
+            ) : null}
+
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input

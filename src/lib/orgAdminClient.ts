@@ -94,6 +94,31 @@ type OrgAdminErrorResponse = {
 };
 
 type OrgAdminAction = OrgAdminRequest['action'];
+type ListMembersResponse = Extract<OrgAdminSuccessResponse, { action: 'list_members' }>;
+
+type ListMembersOptions = {
+  forceRefresh?: boolean;
+};
+
+const MEMBERS_CACHE_TTL_MS = 15_000;
+const membersCacheByOrg = new Map<string, { fetchedAt: number; data: ListMembersResponse }>();
+const membersInFlightByOrg = new Map<string, Promise<ListMembersResponse>>();
+
+const toMembersCacheKey = (orgId?: string) => {
+  const resolvedOrgId = (orgId || getActiveOrgId() || '').trim();
+  return resolvedOrgId.length > 0 ? resolvedOrgId : '__active__';
+};
+
+export const invalidateMembersCache = (orgId?: string) => {
+  if (typeof orgId === 'string' && orgId.trim().length > 0) {
+    membersCacheByOrg.delete(toMembersCacheKey(orgId));
+    membersInFlightByOrg.delete(toMembersCacheKey(orgId));
+    return;
+  }
+
+  membersCacheByOrg.clear();
+  membersInFlightByOrg.clear();
+};
 
 export class OrgAdminInvokeError extends Error {
   readonly action: OrgAdminAction;
@@ -255,8 +280,8 @@ export async function listUserOrgs() {
   });
 }
 
-export async function listMembers(orgId?: string) {
-  const response = await invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'list_members' }>>({
+const fetchMembers = async (orgId?: string): Promise<ListMembersResponse> => {
+  const response = await invokeOrgAdmin<ListMembersResponse>({
     ...withOrgId({ action: 'list_members' }, orgId),
   });
 
@@ -288,6 +313,38 @@ export async function listMembers(orgId?: string) {
         }
         : member),
   };
+};
+
+export async function listMembers(orgId?: string, opts?: ListMembersOptions) {
+  const cacheKey = toMembersCacheKey(orgId);
+  const now = Date.now();
+
+  if (!opts?.forceRefresh) {
+    const cached = membersCacheByOrg.get(cacheKey);
+    if (cached && now - cached.fetchedAt < MEMBERS_CACHE_TTL_MS) {
+      return cached.data;
+    }
+
+    const inFlight = membersInFlightByOrg.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+  }
+
+  const pending = fetchMembers(orgId)
+    .then((result) => {
+      membersCacheByOrg.set(cacheKey, {
+        fetchedAt: Date.now(),
+        data: result,
+      });
+      return result;
+    })
+    .finally(() => {
+      membersInFlightByOrg.delete(cacheKey);
+    });
+
+  membersInFlightByOrg.set(cacheKey, pending);
+  return pending;
 }
 
 export async function inviteMember(input: {
@@ -297,13 +354,16 @@ export async function inviteMember(input: {
   can_view_team_leads?: boolean;
   mode?: 'create' | 'invite';
 }) {
-  return invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'invite_member' }>>({
+  const response = await invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'invite_member' }>>({
     ...withOrgId({ action: 'invite_member' }, input.org_id),
     email: input.email,
     role: input.role,
     can_view_team_leads: input.can_view_team_leads ?? false,
     mode: input.mode ?? 'invite',
   });
+
+  invalidateMembersCache(input.org_id);
+  return response;
 }
 
 export async function updateMember(input: {
@@ -312,17 +372,23 @@ export async function updateMember(input: {
   role: OrgRole;
   can_view_team_leads: boolean;
 }) {
-  return invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'update_member' }>>({
+  const response = await invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'update_member' }>>({
     ...withOrgId({ action: 'update_member' }, input.org_id),
     user_id: input.user_id,
     role: input.role,
     can_view_team_leads: input.can_view_team_leads,
   });
+
+  invalidateMembersCache(input.org_id);
+  return response;
 }
 
 export async function removeMember(userId: string, orgId?: string) {
-  return invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'remove_member' }>>({
+  const response = await invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'remove_member' }>>({
     ...withOrgId({ action: 'remove_member' }, orgId),
     user_id: userId,
   });
+
+  invalidateMembersCache(orgId);
+  return response;
 }

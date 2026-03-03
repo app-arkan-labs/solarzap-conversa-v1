@@ -251,6 +251,27 @@ export async function sendMedia(
 }
 
 /**
+ * Send a sticker message (supports animated GIF when supported by provider)
+ * @param instanceName - Name of the instance
+ * @param phone - Phone number (with country code)
+ * @param stickerUrl - URL of the sticker/GIF file
+ */
+export async function sendSticker(
+  instanceName: string,
+  phone: string,
+  stickerUrl: string,
+  options?: { orgId?: string }
+): Promise<EvolutionApiResponse<SendMessageResponse>> {
+  return callEvolutionApi<SendMessageResponse>('sendSticker', {
+    instanceName,
+    number: phone,
+    phone,
+    sticker: stickerUrl,
+    orgId: options?.orgId,
+  });
+}
+
+/**
  * Send an audio message (voice note)
  * @param instanceName - Name of the instance
  * @param phone - Phone number (with country code)
@@ -325,6 +346,7 @@ export const evolutionApi = {
   fetchInstances,
   sendMessage,
   sendMedia,
+  sendSticker,
   sendAudio,
   logoutInstance,
   deleteInstance,

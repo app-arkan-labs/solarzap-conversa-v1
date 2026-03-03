@@ -117,6 +117,8 @@ function normalizeAction(raw: unknown): string {
     sendmedia: 'send-media',
     'send-audio': 'send-media',
     sendaudio: 'send-media',
+    'send-sticker': 'send-sticker',
+    sendsticker: 'send-sticker',
 
     'set-webhook': 'set-webhook',
     setwebhook: 'set-webhook',
@@ -412,6 +414,7 @@ Deno.serve(async (req) => {
     const actionsWithInstance = new Set([
       'send-text',
       'send-media',
+      'send-sticker',
       'set-webhook',
       'instance-connect',
       'instance-status',
@@ -566,6 +569,22 @@ Deno.serve(async (req) => {
             caption: payload.caption || undefined,
             fileName: payload.fileName || undefined,
             mimetype: payload.mimetype || undefined,
+          }),
+        })
+        break
+      }
+
+      case 'send-sticker': {
+        const number = normalizePhone(payload.number)
+        const sticker = requireString(payload, 'sticker')
+
+        if (!number) throw new Error('Invalid number')
+
+        data = await evolutionRequestTimed(`/message/sendSticker/${instanceName}`, {
+          method: 'POST',
+          body: JSON.stringify({
+            number,
+            sticker,
           }),
         })
         break

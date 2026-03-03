@@ -46,6 +46,7 @@ type SendMessageMutationContext = {
 
 const INTERACOES_SELECT_COLUMNS =
     'id,lead_id,user_id,mensagem,tipo,created_at,read_at,instance_name,phone_e164,remote_jid,wa_message_id,reply_to_interacao_id,reply_preview,reply_type,reactions,attachment_url,attachment_type,attachment_ready,attachment_mimetype,attachment_name';
+const MAX_SCOPED_LEAD_IDS = 400;
 
 const toPerfNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
@@ -108,10 +109,35 @@ const interacaoToMessage = (interacao: InteracaoDB): Message => {
 export function useChat(contacts: Contact[] = []) {
     const { user, orgId } = useAuth();
     const queryClient = useQueryClient();
-    const interactionsQueryKey = useMemo(
-        () => ['interactions', orgId, user?.id] as const,
-        [orgId, user?.id]
+    const scopedLeadIdNumbers = useMemo(() => {
+        const ids = new Set<number>();
+        for (const contact of contacts) {
+            const parsed = Number(contact.id);
+            if (!Number.isFinite(parsed) || parsed <= 0) continue;
+            ids.add(parsed);
+        }
+        return Array.from(ids).sort((a, b) => a - b);
+    }, [contacts]);
+    const scopedLeadIdSet = useMemo(
+        () => new Set(scopedLeadIdNumbers.map((id) => String(id))),
+        [scopedLeadIdNumbers],
     );
+    const canScopeInteractionsByLead =
+        scopedLeadIdNumbers.length > 0 && scopedLeadIdNumbers.length <= MAX_SCOPED_LEAD_IDS;
+    const leadScopeKey = useMemo(
+        () => (canScopeInteractionsByLead ? scopedLeadIdNumbers.join(',') : `all:${scopedLeadIdNumbers.length}`),
+        [canScopeInteractionsByLead, scopedLeadIdNumbers],
+    );
+    const interactionsQueryKey = useMemo(
+        () => ['interactions', orgId, user?.id, leadScopeKey] as const,
+        [orgId, user?.id, leadScopeKey]
+    );
+    const isLeadIdInScope = useCallback((leadId: unknown) => {
+        const parsed = Number(leadId);
+        if (!Number.isFinite(parsed) || parsed <= 0) return false;
+        if (!canScopeInteractionsByLead) return true;
+        return scopedLeadIdSet.has(String(parsed));
+    }, [canScopeInteractionsByLead, scopedLeadIdSet]);
 
     // Persistent map: conversationId → timestamp when markAsRead was called.
     // Used to override isRead in the conversations memo so unread badges
@@ -123,6 +149,10 @@ export function useChat(contacts: Contact[] = []) {
     const lastLightReconcileAtRef = useRef(0);
     const lastFullRefetchAtRef = useRef(0);
     const incrementalSyncInFlightRef = useRef(false);
+
+    useEffect(() => {
+        maxSeenInteractionIdRef.current = 0;
+    }, [leadScopeKey, orgId, user?.id]);
 
     const updateMaxSeenFromMessages = useCallback((messages: Message[] | undefined) => {
         if (!Array.isArray(messages) || messages.length === 0) return;
@@ -160,13 +190,20 @@ export function useChat(contacts: Contact[] = []) {
 
     const fetchInteractionsFull = useCallback(async (): Promise<Message[]> => {
         if (!user || !orgId) return [];
+        if (scopedLeadIdNumbers.length === 0) return [];
         const t0 = toPerfNow();
         import.meta.env.DEV && console.log('[CHAT_LATENCY] full_fetch_start', { orgId, userId: user.id });
 
-        const { data, error } = await supabase
+        let query = supabase
             .from('interacoes')
             .select(INTERACOES_SELECT_COLUMNS)
-            .eq('org_id', orgId)
+            .eq('org_id', orgId);
+
+        if (canScopeInteractionsByLead) {
+            query = query.in('lead_id', scopedLeadIdNumbers);
+        }
+
+        const { data, error } = await query
             .order('created_at', { ascending: false })
             .limit(1000);
 
@@ -180,10 +217,11 @@ export function useChat(contacts: Contact[] = []) {
             maxSeenId: maxSeenInteractionIdRef.current,
         });
         return messages;
-    }, [orgId, queryClient, updateMaxSeenFromMessages, user]);
+    }, [canScopeInteractionsByLead, orgId, scopedLeadIdNumbers, updateMaxSeenFromMessages, user]);
 
     const runIncrementalSync = useCallback(async (reason: 'degraded' | 'light_reconcile') => {
         if (!user || !orgId) return;
+        if (scopedLeadIdNumbers.length === 0) return;
 
         const now = Date.now();
         const maxSeenId = maxSeenInteractionIdRef.current;
@@ -197,11 +235,17 @@ export function useChat(contacts: Contact[] = []) {
         }
 
         const t0 = toPerfNow();
-        const { data, error } = await supabase
+        let query = supabase
             .from('interacoes')
             .select(INTERACOES_SELECT_COLUMNS)
             .eq('org_id', orgId)
-            .gt('id', maxSeenId)
+            .gt('id', maxSeenId);
+
+        if (canScopeInteractionsByLead) {
+            query = query.in('lead_id', scopedLeadIdNumbers);
+        }
+
+        const { data, error } = await query
             .order('id', { ascending: true })
             .limit(500);
 
@@ -222,7 +266,7 @@ export function useChat(contacts: Contact[] = []) {
             elapsed_ms: Math.round(toPerfNow() - t0),
             maxSeenIdAfter: maxSeenInteractionIdRef.current,
         });
-    }, [appendMessagesToCache, interactionsQueryKey, orgId, queryClient, user]);
+    }, [appendMessagesToCache, canScopeInteractionsByLead, interactionsQueryKey, orgId, queryClient, scopedLeadIdNumbers, user]);
 
     /**
      * Shared human-takeover handler.
@@ -317,13 +361,13 @@ export function useChat(contacts: Contact[] = []) {
     const messagesQuery = useQuery({
         queryKey: interactionsQueryKey,
         queryFn: fetchInteractionsFull,
-        enabled: !!user && !!orgId,
+        enabled: !!user && !!orgId && scopedLeadIdNumbers.length > 0,
         staleTime: 5000,
     });
 
     // --- REALTIME + INCREMENTAL FALLBACK ---
     useEffect(() => {
-        if (!user || !orgId) return;
+        if (!user || !orgId || scopedLeadIdNumbers.length === 0) return;
 
         realtimeHealthRef.current = 'connecting';
         lastRealtimeStatusAtRef.current = Date.now();
@@ -344,6 +388,7 @@ export function useChat(contacts: Contact[] = []) {
                     import.meta.env.DEV && console.log('🔴 [RT INSERT]', payload.new.id);
                     realtimeHealthRef.current = 'subscribed';
                     lastRealtimeStatusAtRef.current = Date.now();
+                    if (!isLeadIdInScope((payload.new as Record<string, unknown>)?.lead_id)) return;
                     const newMessage = interacaoToMessage(payload.new as InteracaoDB);
                     appendMessagesToCache([newMessage]);
                 }
@@ -360,6 +405,7 @@ export function useChat(contacts: Contact[] = []) {
                     import.meta.env.DEV && console.log('🟡 [RT UPDATE]', payload.new.id, payload.new.attachment_ready);
                     realtimeHealthRef.current = 'subscribed';
                     lastRealtimeStatusAtRef.current = Date.now();
+                    if (!isLeadIdInScope((payload.new as Record<string, unknown>)?.lead_id)) return;
                     const updatedMessage = interacaoToMessage(payload.new as InteracaoDB);
                     appendMessagesToCache([updatedMessage]);
                 }
@@ -384,7 +430,7 @@ export function useChat(contacts: Contact[] = []) {
             if (document.visibilityState === 'visible') {
                 import.meta.env.DEV && console.log('[RT] Tab active, reconciling...');
                 lastFullRefetchAtRef.current = Date.now();
-                queryClient.invalidateQueries({ queryKey: ['interactions', orgId] });
+                queryClient.invalidateQueries({ queryKey: interactionsQueryKey });
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -396,10 +442,10 @@ export function useChat(contacts: Contact[] = []) {
             supabase.removeChannel(subscription);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [appendMessagesToCache, orgId, queryClient, user]);
+    }, [appendMessagesToCache, interactionsQueryKey, isLeadIdInScope, orgId, queryClient, scopedLeadIdNumbers.length, user]);
 
     useEffect(() => {
-        if (!user || !orgId) return;
+        if (!user || !orgId || scopedLeadIdNumbers.length === 0) return;
 
         const interval = window.setInterval(() => {
             if (incrementalSyncInFlightRef.current) return;
@@ -435,7 +481,7 @@ export function useChat(contacts: Contact[] = []) {
         return () => {
             window.clearInterval(interval);
         };
-    }, [orgId, runIncrementalSync, user]);
+    }, [orgId, runIncrementalSync, scopedLeadIdNumbers.length, user]);
 
     const sendMessageMutation = useMutation<Message, Error, SendMessageInput, SendMessageMutationContext>({
         mutationFn: async ({
@@ -962,34 +1008,69 @@ export function useChat(contacts: Contact[] = []) {
             const finalPhoneE164 = (lead as any).phone_e164 || formattedPhone;
             const fallbackRemoteJid = `${formattedPhone}@s.whatsapp.net`;
             let response;
-            let fallbackOccurred = false;
             let currentSendMode = sendMode;
             const captionToSend = trimmedCaption.length > 0 ? trimmedCaption : undefined;
-
-            try {
-                // Strict Media Message
-                const mimeType = file.type || (fileType === 'video' ? 'video/mp4' : undefined);
-
-                response = await evolutionApi.sendMedia(
-                    instance.instance_name,
-                    formattedPhone,
-                    publicUrl,
-                    currentSendMode,
-                    captionToSend,
-                    file.name,
-                    mimeType,
-                    { orgId: orgId || undefined }
+            const isGifUpload = currentSendMode === 'image'
+                && (
+                    String(file.type || '').toLowerCase() === 'image/gif'
+                    || file.name.toLowerCase().endsWith('.gif')
                 );
 
-                if (!response.success) throw new Error(response.error || 'Evolution API returned false');
+            try {
+                if (isGifUpload) {
+                    response = await evolutionApi.sendSticker(
+                        instance.instance_name,
+                        formattedPhone,
+                        publicUrl,
+                        { orgId: orgId || undefined }
+                    );
+
+                    if (!response.success) throw new Error(response.error || 'Evolution API returned false');
+                    currentSendMode = 'image';
+                } else {
+                    // Strict Media Message
+                    const mimeType = file.type || (fileType === 'video' ? 'video/mp4' : undefined);
+
+                    response = await evolutionApi.sendMedia(
+                        instance.instance_name,
+                        formattedPhone,
+                        publicUrl,
+                        currentSendMode,
+                        captionToSend,
+                        file.name,
+                        mimeType,
+                        { orgId: orgId || undefined }
+                    );
+
+                    if (!response.success) throw new Error(response.error || 'Evolution API returned false');
+                }
 
             } catch (err: any) {
                 console.error(`Primary send failed (${currentSendMode}):`, err);
 
-                // Fallback: If Video failed with new logic, try as Document
-                if (currentSendMode === 'video') {
+                // Fallback: GIF route failed, retry via regular image send.
+                if (isGifUpload) {
+                    console.warn("Attempting Fallback: GIF Sticker -> Image");
+                    currentSendMode = 'image';
+
+                    try {
+                        response = await evolutionApi.sendMedia(
+                            instance.instance_name,
+                            formattedPhone,
+                            publicUrl,
+                            'image',
+                            captionToSend,
+                            file.name,
+                            file.type || 'image/gif',
+                            { orgId: orgId || undefined }
+                        );
+                        if (!response.success) throw new Error(response.error);
+                    } catch (fallbackErr: any) {
+                        throw new Error(`Falha no envio (Fallback): ${fallbackErr.message}`);
+                    }
+                } else if (currentSendMode === 'video') {
+                    // Fallback: If Video failed with new logic, try as Document
                     console.warn("Attempting Fallback: Video -> Document");
-                    fallbackOccurred = true;
                     currentSendMode = 'document';
 
                     try {
@@ -1248,44 +1329,78 @@ export function useChat(contacts: Contact[] = []) {
     // Derived state: Conversations (wrapped in useMemo for proper reactivity)
     const allMessages = messagesQuery.data || [];
 
-    const normalizePhoneDigits = (value: string | undefined | null): string => {
+    const normalizePhoneDigits = useCallback((value: string | undefined | null): string => {
         if (!value) return '';
         return String(value).replace(/\D/g, '');
-    };
+    }, []);
 
-    const phonesEquivalent = (a: string | undefined | null, b: string | undefined | null): boolean => {
-        const da = normalizePhoneDigits(a);
-        const db = normalizePhoneDigits(b);
-        if (!da || !db) return false;
-        if (da === db) return true;
-        if (`55${da}` === db) return true;
-        if (da === `55${db}`) return true;
-        if (da.length > 11 && db.length > 11) {
-            return da.slice(-11) === db.slice(-11);
+    const buildPhoneScopeKeys = useCallback((value: string | undefined | null): string[] => {
+        const digits = normalizePhoneDigits(value);
+        if (!digits) return [];
+
+        const keys = new Set<string>([digits]);
+        if (digits.startsWith('55')) {
+            const withoutCountry = digits.slice(2);
+            if (withoutCountry) keys.add(withoutCountry);
+        } else {
+            keys.add(`55${digits}`);
         }
-        return false;
-    };
+
+        if (digits.length > 11) {
+            keys.add(digits.slice(-11));
+        }
+        if (digits.length > 13) {
+            keys.add(digits.slice(-13));
+        }
+
+        return Array.from(keys).filter(Boolean);
+    }, [normalizePhoneDigits]);
 
     const conversations = useMemo(() => {
         import.meta.env.DEV && console.log('🔄 [DERIVE] Recalculating conversations, messages:', allMessages.length, 'contacts:', contacts.length);
         const conversationsMap = new Map<string, Conversation>();
+        const messagesByLeadId = new Map<string, Message[]>();
+        const messagesByPhoneKey = new Map<string, Message[]>();
+
+        const addIndexedMessage = (map: Map<string, Message[]>, key: string, message: Message) => {
+            if (!key) return;
+            const current = map.get(key);
+            if (current) {
+                current.push(message);
+                return;
+            }
+            map.set(key, [message]);
+        };
+
+        for (const message of allMessages) {
+            addIndexedMessage(messagesByLeadId, message.contactId, message);
+            for (const phoneKey of buildPhoneScopeKeys(message.phoneE164)) {
+                addIndexedMessage(messagesByPhoneKey, phoneKey, message);
+            }
+        }
 
         contacts.forEach(contact => {
-            const contactMessages = allMessages.filter(m => {
-                // 1. Primary: Match by lead_id (most reliable, always populated)
-                if (m.contactId === contact.id) {
-                    return true;
+            const byMessageId = new Map<string, Message>();
+            const directMessages = messagesByLeadId.get(contact.id) || [];
+            for (const message of directMessages) {
+                byMessageId.set(message.id, message);
+            }
+
+            const phoneKeys = new Set<string>([
+                ...buildPhoneScopeKeys(contact.phoneE164 || null),
+                ...buildPhoneScopeKeys(contact.phone || null),
+            ]);
+
+            for (const key of phoneKeys) {
+                const phoneMessages = messagesByPhoneKey.get(key);
+                if (!phoneMessages) continue;
+                for (const message of phoneMessages) {
+                    byMessageId.set(message.id, message);
                 }
-                // 2. Secondary: Match by phoneE164 (for messages with different lead_id but same phone)
-                if (contact.phoneE164 && m.phoneE164) {
-                    return contact.phoneE164 === m.phoneE164;
-                }
-                // 3. Fallback: normalized phone match (handles missing phone_e164 / null lead_id)
-                if (phonesEquivalent(contact.phoneE164 || contact.phone, m.phoneE164)) {
-                    return true;
-                }
-                return false;
-            });
+            }
+
+            const contactMessages = Array.from(byMessageId.values())
+                .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
             const readOverrideTs = readAtOverrides.current.get(contact.id);
             const unreadCount = contactMessages.filter(m => {
                 if (!m.isFromClient || m.isRead) return false;
@@ -1317,7 +1432,7 @@ export function useChat(contacts: Contact[] = []) {
                 const bTime = b.lastMessage?.timestamp?.getTime() || 0;
                 return bTime - aTime;
             });
-    }, [allMessages, contacts]);
+    }, [allMessages, buildPhoneScopeKeys, contacts]);
 
     // --- SEND REACTION MUTATION ---
     const sendReactionMutation = useMutation({

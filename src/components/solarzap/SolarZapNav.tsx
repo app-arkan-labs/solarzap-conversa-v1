@@ -18,6 +18,8 @@ interface SolarZapNavProps {
   hasMultipleOrganizations?: boolean;
   onSwitchOrganization?: () => void;
   activeOrganizationName?: string;
+  userAvatarUrl?: string | null;
+  userDisplayName?: string;
   tabPermissions?: {
     ia_agentes: boolean;
     automacoes: boolean;
@@ -46,9 +48,15 @@ export function SolarZapNav({
   hasMultipleOrganizations = false,
   onSwitchOrganization,
   activeOrganizationName,
+  userAvatarUrl,
+  userDisplayName,
   tabPermissions,
 }: SolarZapNavProps) {
   const tp = tabPermissions ?? { ia_agentes: true, automacoes: true, integracoes: true, banco_ia: true, minha_conta: true };
+  const normalizedAvatarUrl = typeof userAvatarUrl === 'string' && userAvatarUrl.trim().length > 0
+    ? userAvatarUrl.trim()
+    : null;
+  const userInitial = userDisplayName?.trim().charAt(0).toUpperCase() || '';
   return (
     <nav className="w-[60px] h-full bg-secondary flex flex-col items-center py-4">
       {/* Logo */}
@@ -196,6 +204,7 @@ export function SolarZapNav({
 
               {tp.minha_conta ? (
                 <button
+                  data-testid="nav-menu-minha-conta"
                   onClick={() => onTabChange('minha_conta')}
                   className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
                 >
@@ -227,11 +236,23 @@ export function SolarZapNav({
       {tp.minha_conta && (
         <div className="pb-4">
           <button
+            data-testid="nav-account-trigger"
             onClick={() => onTabChange('minha_conta')}
-            className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer"
+            className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center overflow-hidden hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer"
             title="Minha Conta"
           >
-            <User className="w-4 h-4 text-sidebar-foreground" />
+            {normalizedAvatarUrl ? (
+              <img
+                src={normalizedAvatarUrl}
+                alt="Avatar do usuario"
+                data-testid="nav-account-avatar-image"
+                className="h-full w-full object-cover"
+              />
+            ) : userInitial ? (
+              <span className="text-xs font-semibold text-sidebar-foreground">{userInitial}</span>
+            ) : (
+              <User className="w-4 h-4 text-sidebar-foreground" />
+            )}
           </button>
         </div>
       )}

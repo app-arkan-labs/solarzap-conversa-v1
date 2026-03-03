@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
+import { join } from 'path';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -12,6 +13,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const AVATAR_FIXTURE_PATH = join(process.cwd(), 'public', 'logo.png');
 
 type SetupState = {
   orgId: string;
@@ -45,7 +47,7 @@ async function login(page: Page, email: string, password: string) {
 
 async function openMinhaConta(page: Page) {
   await page.getByTestId('nav-settings-trigger').click();
-  await page.getByRole('button', { name: /Minha Conta/i }).click();
+  await page.getByTestId('nav-menu-minha-conta').click();
   await expect(page.getByRole('heading', { name: /Minha Conta/i })).toBeVisible();
 }
 
@@ -115,6 +117,24 @@ test('M9 smoke: Minha Conta updates profile/password and syncs assignment dropdo
 
   await openMinhaConta(page);
 
+  await page.getByTestId('profile-avatar-input').setInputFiles(AVATAR_FIXTURE_PATH);
+  await expect(page.getByTestId('profile-avatar-image')).toBeVisible();
+  await expect(page.getByTestId('nav-account-avatar-image')).toBeVisible();
+  await expect
+    .poll(
+      async () => {
+        const { data, error } = await admin.auth.admin.getUserById(state.userId);
+        if (error) {
+          return `ERROR:${error.message}`;
+        }
+
+        const metadata = (data.user?.user_metadata || {}) as Record<string, unknown>;
+        return String(metadata.avatar_url || '');
+      },
+      { timeout: 30_000 },
+    )
+    .toContain('/storage/v1/object/public/avatars/');
+
   await page.locator('#name').fill(state.nextDisplayName);
   await page.getByRole('button', { name: /Salvar Altera/i }).click();
 
@@ -133,9 +153,11 @@ test('M9 smoke: Minha Conta updates profile/password and syncs assignment dropdo
     )
     .toBe(state.nextDisplayName);
 
+  await page.locator('#currentPassword').fill(state.password);
   await page.locator('#newPassword').fill(state.nextPassword);
   await page.locator('#confirmPassword').fill(state.nextPassword);
   await page.getByRole('button', { name: /Atualizar Senha/i }).click();
+  await expect(page.getByText('Senha atualizada', { exact: true }).first()).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole('button', { name: /Sair da Conta/i }).click();
   await page.waitForURL('**/login', { timeout: 30_000 });
