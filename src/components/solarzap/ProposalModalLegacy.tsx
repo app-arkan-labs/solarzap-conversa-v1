@@ -16,6 +16,7 @@ import {
   Sparkles, Calendar, CreditCard,
 } from 'lucide-react';
 import { generateProposalPDF } from '@/utils/generateProposalPDF';
+import { prefetchCoverImage, prefetchCoverImages } from '@/hooks/useProposalCoverImage';
 import { useToast } from '@/hooks/use-toast';
 import { useLeads } from '@/hooks/domain/useLeads';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
@@ -860,6 +861,9 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
     }
 
     const resolvedLogoDataUrl = await ensureLogoDataUrl();
+    // Fetch cover image gallery for segment
+    const resolvedCoverImages = await prefetchCoverImages(formData.tipo_cliente || 'residencial', 3).catch(() => [] as string[]);
+    const resolvedCoverImage = resolvedCoverImages[0] || await prefetchCoverImage(formData.tipo_cliente || 'residencial').catch(() => null);
     if (logoUrl && !resolvedLogoDataUrl) {
       toast({
         title: 'Logo indisponível',
@@ -946,6 +950,8 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
         validadeDias: formData.validadeDias, returnBlob: true,
         propNum,
         logoDataUrl: resolvedLogoDataUrl || logoDataUrl,
+        coverImageDataUrl: resolvedCoverImage || null,
+        coverImageDataUrls: resolvedCoverImages,
       }) as Blob;
 
       // 4) Upload + payload

@@ -52,6 +52,38 @@ export function useProposalTheme() {
     [orgId],
   );
 
+  const getThemeStorageKey = useCallback(
+    () => (orgId ? `proposal_theme:${orgId}` : null),
+    [orgId],
+  );
+
+  const normalizeThemeValue = useCallback((value: string | null | undefined): ProposalThemeValue | null => {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    return getThemeById(raw).id;
+  }, []);
+
+  const saveThemeInLocal = useCallback((value: ProposalThemeValue | null) => {
+    const key = getThemeStorageKey();
+    if (!key) return;
+    try {
+      if (value) localStorage.setItem(key, value);
+      else localStorage.removeItem(key);
+    } catch {
+      // non-blocking
+    }
+  }, [getThemeStorageKey]);
+
+  const getThemeFromLocal = useCallback((): ProposalThemeValue | null => {
+    const key = getThemeStorageKey();
+    if (!key) return null;
+    try {
+      return normalizeThemeValue(localStorage.getItem(key));
+    } catch {
+      return null;
+    }
+  }, [getThemeStorageKey, normalizeThemeValue]);
+
   const saveSecondaryInLocal = useCallback((value: string | null) => {
     const key = getSecondaryStorageKey();
     if (!key) return;
@@ -96,8 +128,11 @@ export function useProposalTheme() {
             .eq('org_id', orgId)
             .maybeSingle();
 
-          if (!cancelled && !fallback.error && fallback.data?.proposal_theme) {
-            setThemeId(fallback.data.proposal_theme as ProposalThemeValue);
+          if (!cancelled) {
+            const dbTheme = normalizeThemeValue(fallback.data?.proposal_theme);
+            const localTheme = getThemeFromLocal();
+            if (dbTheme) setThemeId(dbTheme);
+            else if (localTheme) setThemeId(localTheme);
           }
           if (!cancelled) {
             setSecondaryColorHex(getSecondaryFromLocal());
@@ -106,8 +141,11 @@ export function useProposalTheme() {
           return;
         }
 
-        if (!cancelled && !error && data?.proposal_theme) {
-          setThemeId(data.proposal_theme as ProposalThemeValue);
+        if (!cancelled) {
+          const dbTheme = !error ? normalizeThemeValue(data?.proposal_theme) : null;
+          const localTheme = getThemeFromLocal();
+          const resolvedTheme = dbTheme || localTheme;
+          if (resolvedTheme) setThemeId(resolvedTheme);
         }
         if (!cancelled) {
           const dbSecondary = normalizeThemeHex(data?.proposal_secondary_color || '') || null;
@@ -117,18 +155,21 @@ export function useProposalTheme() {
         }
       } catch {
         if (!cancelled) {
+          const localTheme = getThemeFromLocal();
+          if (localTheme) setThemeId(localTheme);
           setSecondaryColorHex(getSecondaryFromLocal());
           setHydrated(true);
         }
       }
     })();
     return () => { cancelled = true; };
-  }, [orgId, getSecondaryFromLocal]);
+  }, [orgId, getSecondaryFromLocal, getThemeFromLocal, normalizeThemeValue]);
 
   // Keep multiple hook instances in sync across screens (ProposalsView/ProposalModal/etc)
   useEffect(() => {
     if (!orgId) return;
     const localSecondaryKey = getSecondaryStorageKey();
+    const localThemeKey = getThemeStorageKey();
 
     const onThemeSync = (event: Event) => {
       const custom = event as CustomEvent<ThemeSyncDetail>;
@@ -141,8 +182,14 @@ export function useProposalTheme() {
     };
 
     const onStorage = (event: StorageEvent) => {
-      if (!localSecondaryKey || event.key !== localSecondaryKey) return;
-      setSecondaryColorHex(normalizeThemeHex(event.newValue || '') || null);
+      if (localSecondaryKey && event.key === localSecondaryKey) {
+        setSecondaryColorHex(normalizeThemeHex(event.newValue || '') || null);
+        return;
+      }
+      if (localThemeKey && event.key === localThemeKey) {
+        const nextTheme = normalizeThemeValue(event.newValue || '');
+        if (nextTheme) setThemeId(nextTheme);
+      }
     };
 
     window.addEventListener(THEME_SYNC_EVENT, onThemeSync as EventListener);
@@ -151,31 +198,39 @@ export function useProposalTheme() {
       window.removeEventListener(THEME_SYNC_EVENT, onThemeSync as EventListener);
       window.removeEventListener('storage', onStorage);
     };
-  }, [orgId, getSecondaryStorageKey]);
+  }, [orgId, getSecondaryStorageKey, getThemeStorageKey, normalizeThemeValue]);
 
   const theme: ProposalColorTheme = getThemeById(themeId);
 
   const updateTheme = useCallback(async (newId: ProposalThemeValue) => {
     if (!orgId) return;
-    setThemeId(newId);
-    dispatchThemeSync({ orgId, themeId: newId });
+    const normalized = normalizeThemeValue(newId) || getThemeById(newId).id;
+    setThemeId(normalized);
+    saveThemeInLocal(normalized);
+    dispatchThemeSync({ orgId, themeId: normalized });
     setLoading(true);
     try {
       const { error } = await supabase
         .from('company_profile')
         .upsert(
-          { org_id: orgId, proposal_theme: newId, updated_at: new Date().toISOString() },
+          { org_id: orgId, proposal_theme: normalized, updated_at: new Date().toISOString() },
           { onConflict: 'org_id' },
         );
       if (error) throw error;
-      toast({ title: 'Tema salvo', description: `Tema "${getThemeById(newId).label}" aplicado as proximas propostas.` });
+      toast({
+        title: 'Tema salvo',
+        description: `Cor primaria ${getThemeById(normalized).swatch.toUpperCase()} aplicada as proximas propostas.`,
+      });
     } catch (err) {
       console.error('Failed to save proposal theme:', err);
-      toast({ title: 'Erro ao salvar tema', variant: 'destructive' });
+      toast({
+        title: 'Tema salvo',
+        description: `Cor primaria ${getThemeById(normalized).swatch.toUpperCase()} aplicada as proximas propostas (modo local).`,
+      });
     } finally {
       setLoading(false);
     }
-  }, [orgId, toast]);
+  }, [orgId, toast, normalizeThemeValue, saveThemeInLocal]);
 
   const updateSecondaryColor = useCallback(async (hexOrNull: string | null) => {
     if (!orgId) return;
@@ -202,8 +257,8 @@ export function useProposalTheme() {
           toast({
             title: 'Cor secundaria salva',
             description: normalized
-              ? `Cor ${normalized.toUpperCase()} aplicada (modo local).`
-              : 'Modo automatico reativado.',
+              ? `Cor ${normalized.toUpperCase()} aplicada as proximas propostas (modo local).`
+              : 'Modo automatico reativado (modo local).',
           });
           return;
         }

@@ -29,6 +29,7 @@ import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
 import { PROPOSAL_THEMES, THEME_IDS, getThemeById, isValidThemeHex, normalizeThemeHex, toCustomThemeValue } from '@/utils/proposalColorThemes';
 import { generateProposalPDF, generateSellerScriptPDF } from '@/utils/generateProposalPDF';
+import { prefetchCoverImage, prefetchCoverImages } from '@/hooks/useProposalCoverImage';
 import { resolveProposalLinks } from '@/utils/proposalLinks';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
@@ -442,7 +443,7 @@ export function ProposalsView() {
     };
   };
 
-  const handleDownloadProposal = (row: ProposalRow) => {
+  const handleDownloadProposal = async (row: ProposalRow) => {
     if (row.pdf_url) {
       window.open(row.pdf_url, '_blank');
       return;
@@ -454,6 +455,10 @@ export function ProposalsView() {
     }
 
     const payload = (row.premium_payload as any) || {};
+    // Pre-fetch cover image for the segment (best-effort)
+    const tipoClienteCover = row.tipo_cliente || payload?.segment || 'residencial';
+    const coverImageDataUrls = await prefetchCoverImages(tipoClienteCover, 3).catch(() => [] as string[]);
+    const coverImageDataUrl = coverImageDataUrls[0] || await prefetchCoverImage(tipoClienteCover).catch(() => null);
     const payloadRentabilityRate = Number(
       payload?.financialInputs?.rentabilityRatePerKwh
       ?? payload?.rentabilityRatePerKwh
@@ -510,6 +515,8 @@ export function ProposalsView() {
       signatureCompanyCnpj: signature.companyCnpj,
       signatureContractorName: signature.contractorName,
       signatureContractorCnpj: signature.contractorCnpj,
+      coverImageDataUrl: coverImageDataUrl || null,
+      coverImageDataUrls,
     });
   };
 
@@ -596,9 +603,8 @@ export function ProposalsView() {
   };
 
   useEffect(() => {
-    if (themeId.startsWith('custom:')) {
-      setCustomThemeHex(themeId.replace('custom:', '').toUpperCase());
-    }
+    const themeHex = getThemeById(themeId).swatch;
+    setCustomThemeHex(String(themeHex || '').toUpperCase());
   }, [themeId]);
 
   useEffect(() => {
@@ -679,7 +685,10 @@ export function ProposalsView() {
                       key={id}
                       type="button"
                       title={t.label}
-                      onClick={() => updateTheme(id)}
+                      onClick={() => {
+                        setCustomThemeHex(String(t.swatch || '').toUpperCase());
+                        updateTheme(id);
+                      }}
                       className={cn(
                         'w-6 h-6 rounded-full border border-black/10 transition-all hover:scale-110 shadow-sm',
                         themeId === id ? 'ring-2 ring-primary ring-offset-1 scale-110' : ''

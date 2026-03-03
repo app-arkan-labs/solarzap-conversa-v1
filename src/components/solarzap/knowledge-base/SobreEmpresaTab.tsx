@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface CompanyProfile {
+    company_name: string;
     elevator_pitch: string;
     differentials: string;
     installation_process: string;
@@ -15,6 +16,7 @@ interface CompanyProfile {
 }
 
 const DEFAULT_PROFILE: CompanyProfile = {
+    company_name: '',
     elevator_pitch: '',
     differentials: '',
     installation_process: '',
@@ -55,6 +57,7 @@ export function SobreEmpresaTab() {
 
             if (data) {
                 setProfile({
+                    company_name: data.company_name || '',
                     elevator_pitch: data.elevator_pitch || '',
                     differentials: data.differentials || '',
                     installation_process: data.installation_process || '',
@@ -124,7 +127,7 @@ export function SobreEmpresaTab() {
     };
 
     // Calculate progress
-    const totalFields = 5;
+    const totalFields = 6;
     const filledFields = Object.values(profile).filter(v => v && v.trim()).length;
     const progressPercent = Math.round((filledFields / totalFields) * 100);
 
@@ -187,6 +190,16 @@ export function SobreEmpresaTab() {
 
             {/* Question Cards */}
             <div className="space-y-4">
+                <QuestionCard
+                    question="Nome da empresa"
+                    hint="Esse nome é usado pela IA para se apresentar corretamente ao lead"
+                    placeholder="Ex: SolarTech Energia Solar"
+                    value={profile.company_name}
+                    onChange={(v) => handleChange('company_name', v)}
+                    maxLength={120}
+                    isSaved={savedFields.has('company_name')}
+                />
+
                 <QuestionCard
                     question="Descreva sua empresa em poucas palavras"
                     hint="Um resumo rápido que a IA pode usar para se apresentar ao cliente"

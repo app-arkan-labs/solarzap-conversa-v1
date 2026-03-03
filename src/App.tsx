@@ -14,22 +14,77 @@ import UpdatePassword from "./pages/UpdatePassword";
 import NotFound from "./pages/NotFound";
 import CallQrRedirect from "./pages/CallQrRedirect";
 import { supabase } from "@/lib/supabase";
+import { extractAuthErrorMetadata, shouldAttemptAuthRecovery } from "@/lib/authSessionGuard";
 
-const handleGlobalError = (error: Error) => {
-  console.error('Global Query Error:', error);
-  const errorMessage = error.message?.toLowerCase() || '';
+let authRecoveryInFlight: Promise<void> | null = null;
 
-  if (
-    errorMessage.includes('jwt expired') ||
-    errorMessage.includes('401') ||
-    errorMessage.includes('authapierror') ||
-    errorMessage.includes('invalid token')
-  ) {
-    console.warn('Authentication expired. Redirecting to login...');
-    supabase.auth.signOut().then(() => {
-      window.location.href = '/login';
-    });
+const recoverAuthSession = async (origin: string, error: unknown) => {
+  if (authRecoveryInFlight) {
+    await authRecoveryInFlight;
+    return;
   }
+
+  authRecoveryInFlight = (async () => {
+    const metadata = extractAuthErrorMetadata(error);
+
+    console.warn('[AuthGuard] Candidate auth failure detected', {
+      origin,
+      status: metadata.status,
+      code: metadata.code,
+      name: metadata.name,
+      message: metadata.message,
+    });
+
+    const { data: sessionResult, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) {
+      console.error('[AuthGuard] Failed to inspect current session', {
+        origin,
+        status: sessionError.status,
+        code: sessionError.code,
+        message: sessionError.message,
+      });
+      return;
+    }
+
+    if (!sessionResult.session) {
+      await supabase.auth.signOut();
+      if (window.location.pathname !== '/login') {
+        window.location.assign('/login');
+      }
+      return;
+    }
+
+    const { data: refreshResult, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshResult.session) {
+      console.error('[AuthGuard] Session refresh failed, forcing sign-out', {
+        origin,
+        status: refreshError?.status,
+        code: refreshError?.code,
+        message: refreshError?.message,
+      });
+      await supabase.auth.signOut();
+      if (window.location.pathname !== '/login') {
+        window.location.assign('/login');
+      }
+      return;
+    }
+
+    console.info('[AuthGuard] Session recovered without logout', {
+      origin,
+      expiresAt: refreshResult.session.expires_at,
+    });
+  })().finally(() => {
+    authRecoveryInFlight = null;
+  });
+
+  await authRecoveryInFlight;
+};
+
+const handleGlobalError = (error: unknown, origin: string) => {
+  console.error('Global Query Error:', { origin, error });
+  if (!shouldAttemptAuthRecovery(error)) return;
+
+  void recoverAuthSession(origin, error);
 };
 
 const queryClient = new QueryClient({
@@ -40,10 +95,14 @@ const queryClient = new QueryClient({
     },
   },
   queryCache: new QueryCache({
-    onError: handleGlobalError,
+    onError: (error, query) => {
+      handleGlobalError(error, `query:${query.queryHash}`);
+    },
   }),
   mutationCache: new MutationCache({
-    onError: handleGlobalError,
+    onError: (error, _variables, _context, mutation) => {
+      handleGlobalError(error, `mutation:${mutation.mutationId}`);
+    },
   }),
 });
 

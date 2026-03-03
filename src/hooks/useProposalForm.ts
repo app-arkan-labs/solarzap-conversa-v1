@@ -5,6 +5,12 @@ import { useToast } from '@/hooks/use-toast';
 import { useLeads } from '@/hooks/domain/useLeads';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
+import {
+  prefetchCoverImage,
+  prefetchCoverImages,
+  getCoverImageDataUrl,
+  getCoverImageDataUrls,
+} from '@/hooks/useProposalCoverImage';
 import { supabase } from '@/lib/supabase';
 import { BRAZIL_STATES, getIrradianceByUF } from '@/constants/solarIrradiance';
 import {
@@ -727,6 +733,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     if (field === 'tipo_cliente') {
       const nextTipo = value as ClientType;
+      // Pre-fetch cover gallery for the selected segment
+      void prefetchCoverImages(nextTipo, 3);
       setFormData(prev => {
         const patch: Partial<typeof formData> = {
           tipo_cliente: nextTipo,
@@ -1204,6 +1212,14 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     }
 
     const resolvedLogoDataUrl = await ensureLogoDataUrl();
+    // Resolve cover gallery (pre-fetched at step 1, or fetch now)
+    const resolvedCoverImages = getCoverImageDataUrls(formData.tipo_cliente || 'residencial', 3);
+    const hydratedCoverImages = resolvedCoverImages.length >= 3
+      ? resolvedCoverImages
+      : await prefetchCoverImages(formData.tipo_cliente || 'residencial', 3);
+    const resolvedCoverImage = hydratedCoverImages[0]
+      || getCoverImageDataUrl(formData.tipo_cliente || 'residencial')
+      || await prefetchCoverImage(formData.tipo_cliente || 'residencial');
     if (logoUrl && !resolvedLogoDataUrl) {
       toast({
         title: 'Logo indisponível',
@@ -1302,6 +1318,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         validadeDias: formData.validadeDias, returnBlob: true,
         propNum,
         logoDataUrl: resolvedLogoDataUrl || logoDataUrl,
+        coverImageDataUrl: resolvedCoverImage || null,
+        coverImageDataUrls: hydratedCoverImages,
       }) as Blob;
 
       // 4) Upload + payload

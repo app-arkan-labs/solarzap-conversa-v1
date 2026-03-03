@@ -99,6 +99,8 @@ export interface ProposalPDFData {
   returnBlob?: boolean;
   propNum?: string;
   logoDataUrl?: string | null;
+  coverImageDataUrl?: string | null;
+  coverImageDataUrls?: string[] | null;
   // Kit Fotovoltaico
   moduloNome?: string;
   moduloMarca?: string;
@@ -164,6 +166,8 @@ export interface SellerScriptPDFData {
   propNum?: string;
   colorTheme?: ProposalColorTheme;
   logoDataUrl?: string | null;
+  coverImageDataUrl?: string | null;
+  coverImageDataUrls?: string[] | null;
   signatureCompanyName?: string;
   signatureCompanyCnpj?: string;
   signatureContractorName?: string;
@@ -876,6 +880,167 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   };
 
 // ---
+  // PAGE 0  COVER (clean modern layout — white bg, brand stripe, partial photo)
+// ---
+  const coverImageSrc = data.coverImageDataUrl || null;
+  const coverImageList = Array.isArray(data.coverImageDataUrls)
+    ? data.coverImageDataUrls.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    : [];
+  const coverImages = [
+    ...coverImageList,
+    ...(coverImageSrc ? [coverImageSrc] : []),
+  ].slice(0, 3);
+  const tipoClienteCover = (data.tipo_cliente || 'residencial').toLowerCase();
+
+  const coverSubtitles: Record<string, string> = {
+    residencial: 'Economia e sustentabilidade para sua casa',
+    comercial: 'Reducao de custos operacionais com energia limpa',
+    industrial: 'Eficiencia energetica para sua industria',
+    rural: 'Energia solar no campo - economia e independencia',
+    usina: 'Investimento em geracao de energia solar',
+  };
+
+  // 1. Clean white background
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, W, H, 'F');
+
+  // 2. Brand vertical stripe (left edge)
+  doc.setFillColor(C.header[0], C.header[1], C.header[2]);
+  doc.rect(0, 0, 4.5, H, 'F');
+
+  // 3. Brand horizontal bar (bottom)
+  doc.setFillColor(C.header[0], C.header[1], C.header[2]);
+  doc.rect(0, H - 4, W, 4, 'F');
+
+  // 4. Right-side 3-image mosaic (landscape cards, no stretching)
+  const galleryX = 112;
+  const coverCardW = 90;
+  const coverCardH = 60; // 1.5 ratio, matches source images (1600x1067)
+  const coverCardGap = 8;
+  const galleryTop = (H - (coverCardH * 3 + coverCardGap * 2)) / 2;
+
+  const drawPhotoCard = (x: number, y: number, imageSrc: string | null) => {
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(x - 1.2, y - 1.2, coverCardW + 2.4, coverCardH + 2.4, 1.6, 1.6, 'F');
+    doc.setDrawColor(C.lightGray[0], C.lightGray[1], C.lightGray[2]);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(x - 1.2, y - 1.2, coverCardW + 2.4, coverCardH + 2.4, 1.6, 1.6, 'S');
+
+    if (imageSrc) {
+      try {
+        doc.addImage(imageSrc, detectImageFormat(imageSrc), x, y, coverCardW, coverCardH);
+        return;
+      } catch {
+        // fall through to gradient fallback
+      }
+    }
+
+    const fbSteps = 12;
+    for (let s = 0; s < fbSteps; s++) {
+      const t = s / Math.max(1, fbSteps - 1);
+      const fc = mixToward(C.lightBg, mixToward(C.header, [0, 0, 0] as RGB, 0.18) as RGB, t * 0.5);
+      doc.setFillColor(fc[0], fc[1], fc[2]);
+      doc.rect(x, y + (coverCardH / fbSteps) * s, coverCardW, coverCardH / fbSteps + 0.2, 'F');
+    }
+
+    doc.setDrawColor(C.gold[0], C.gold[1], C.gold[2]);
+    doc.setLineWidth(0.35);
+    doc.line(x + 10, y + coverCardH - 10, x + coverCardW - 12, y + 12);
+    doc.line(x + 16, y + coverCardH - 10, x + coverCardW - 6, y + 18);
+  };
+
+  drawPhotoCard(galleryX, galleryTop, coverImages[0] || null);
+  drawPhotoCard(galleryX, galleryTop + coverCardH + coverCardGap, coverImages[1] || coverImages[0] || null);
+  drawPhotoCard(galleryX, galleryTop + (coverCardH + coverCardGap) * 2, coverImages[2] || coverImages[0] || null);
+
+  // 5. Thin subtle accent border on gallery inner edge
+  doc.setDrawColor(C.gold[0], C.gold[1], C.gold[2]);
+  doc.setLineWidth(0.6);
+  doc.line(galleryX - 4, galleryTop - 2, galleryX - 4, galleryTop + coverCardH * 3 + coverCardGap * 2 + 2);
+
+  // 6. Logo (top-left)
+  const coverLogoSize = 22;
+  const coverLogoX = 20;
+  const coverLogoY = 28;
+  try {
+    if (!logoSrc) throw new Error('no logo');
+    doc.addImage(logoSrc, detectImageFormat(logoSrc), coverLogoX, coverLogoY, coverLogoSize, coverLogoSize);
+  } catch {
+    doc.setFillColor(C.lightBg[0], C.lightBg[1], C.lightBg[2]);
+    doc.roundedRect(coverLogoX, coverLogoY, coverLogoSize, coverLogoSize, 2, 2, 'F');
+    doc.setTextColor(C.header[0], C.header[1], C.header[2]);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SOLAR', coverLogoX + 2, coverLogoY + 9);
+    doc.text('ZAP', coverLogoX + 4, coverLogoY + 15);
+  }
+
+  // 7. Thin gold separator below logo
+  const txL = 20; // text left margin
+  doc.setDrawColor(C.gold[0], C.gold[1], C.gold[2]);
+  doc.setLineWidth(0.6);
+  doc.line(txL, 66, txL + 35, 66);
+
+  // 8. Title block — strong typographic hierarchy
+  doc.setTextColor(35, 35, 35);
+  doc.setFontSize(30);
+  doc.setFont('helvetica', 'bold');
+  doc.text('PROPOSTA', txL, 84);
+  doc.text('COMERCIAL', txL, 96);
+
+  // Thick brand-color rule under title
+  doc.setDrawColor(C.header[0], C.header[1], C.header[2]);
+  doc.setLineWidth(3);
+  doc.line(txL, 102, txL + 55, 102);
+
+  // Type subtitle
+  doc.setTextColor(C.header[0], C.header[1], C.header[2]);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text(isUsina ? 'de Usina Solar' : 'de Energia Solar', txL, 113);
+
+  // Descriptive subtitle
+  const coverSubtitle = coverSubtitles[tipoClienteCover] || coverSubtitles.residencial;
+  doc.setTextColor(130, 130, 130);
+  doc.setFontSize(10.5);
+  doc.setFont('helvetica', 'normal');
+  const subtitleLines = doc.splitTextToSize(coverSubtitle, 80);
+  doc.text(subtitleLines, txL, 127);
+
+  // 9. Client info block (lower-left)
+  // Thin gold separator
+  doc.setDrawColor(C.gold[0], C.gold[1], C.gold[2]);
+  doc.setLineWidth(0.6);
+  doc.line(txL, 232, txL + 35, 232);
+
+  doc.setTextColor(35, 35, 35);
+  doc.setFontSize(15);
+  doc.setFont('helvetica', 'bold');
+  doc.text(data.contact.name || 'Cliente', txL, 244);
+
+  if (data.contact.city) {
+    doc.setTextColor(100, 100, 100);
+    doc.setFontSize(10.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(data.contact.city, txL, 252);
+  }
+
+  // Segment label — pure typography, no badge
+  doc.setTextColor(C.header[0], C.header[1], C.header[2]);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text(segLabel.toUpperCase(), txL, 263);
+
+  // Date / proposal ID
+  doc.setTextColor(160, 160, 160);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${today}  |  ${propNum}`, txL, 280);
+
+  // --- Start PAGE 1 on a new page ---
+  doc.addPage();
+
+// ---
   // PAGE 1  COVER / OVERVIEW
 // ---
 
@@ -1507,11 +1672,12 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     y += companyCnpj ? 19 : 15;
   }
 
-  //  FOOTER on all pages 
+  //  FOOTER on all pages (skip cover page = page 1)
   const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) {
+  const contentPages = pages - 1; // cover page is page 1, content starts at page 2
+  for (let i = 2; i <= pages; i++) {
     doc.setPage(i);
-    drawFooter(i, pages);
+    drawFooter(i - 1, contentPages);
   }
 
   const fileName = buildProposalFileName(data.contact.name, propNum, isUsina);

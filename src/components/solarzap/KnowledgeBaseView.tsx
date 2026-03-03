@@ -137,7 +137,7 @@ export function KnowledgeBaseView() {
     return (
         <div className="h-full flex flex-col bg-background overflow-hidden">
             <PageHeader
-                title="Banco de Dados"
+                title="Minha Empresa"
                 subtitle="Treine a IA para representar sua empresa"
                 icon={Brain}
                 actionContent={

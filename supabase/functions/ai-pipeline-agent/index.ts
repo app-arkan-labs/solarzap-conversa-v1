@@ -2037,6 +2037,7 @@ Deno.serve(async (req) => {
 
         // --- RAG: INTERNAL KB SEARCH ---
         let kbBlock = '';
+        let companyNameForPrompt = '';
 
         // M7.2: strict org source (no silent fallback to user_id/user metadata).
         let kbOrgId = leadOrgId;
@@ -2046,6 +2047,22 @@ Deno.serve(async (req) => {
             console.warn(`⚠️ [${runId}] ai_settings.org_id (${settings.org_id}) differs from lead.org_id (${leadOrgId}). Using lead.org_id.`);
             kbOrgId = leadOrgId;
             kbOrgIdSource = 'lead.org_id';
+        }
+
+        try {
+            if (kbOrgId) {
+                const { data: companyProfileForName, error: companyNameErr } = await supabase
+                    .from('company_profile')
+                    .select('company_name')
+                    .eq('org_id', kbOrgId)
+                    .maybeSingle();
+
+                if (!companyNameErr) {
+                    companyNameForPrompt = String(companyProfileForName?.company_name || '').trim();
+                }
+            }
+        } catch (companyNameFetchErr: any) {
+            console.warn(`⚠️ [${runId}] Company name load exception (non-blocking):`, companyNameFetchErr?.message || companyNameFetchErr);
         }
 
         try {
@@ -2062,6 +2079,9 @@ Deno.serve(async (req) => {
                 } else if (kbResults && kbResults.length > 0) {
                     kbHitsCount = kbResults.length;
                     const kbLines: string[] = [];
+                    if (companyNameForPrompt) {
+                        kbLines.push(`[empresa_nome] ${companyNameForPrompt}`);
+                    }
                     for (const item of kbResults) {
                         const snippet = (item.content_snippet || '').substring(0, 400);
                         if (item.item_type === 'company_info') {
@@ -2082,6 +2102,11 @@ Deno.serve(async (req) => {
         } catch (err: any) {
             kbError = err?.message || String(err);
             console.warn(`⚠️ [${runId}] KB search exception (non-blocking):`, kbError);
+        }
+
+        if (!kbBlock && companyNameForPrompt) {
+            kbBlock = `[empresa_nome] ${companyNameForPrompt}`;
+            kbChars = kbBlock.length;
         }
 
         // --- WEB SEARCH FALLBACK (OpenAI Web Search -> Serper) ---

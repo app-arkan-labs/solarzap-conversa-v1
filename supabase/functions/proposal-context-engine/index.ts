@@ -156,7 +156,7 @@ Deno.serve(async (req) => {
           .limit(limitComments),
         serviceClient
           .from("company_profile")
-          .select("elevator_pitch, differentials, installation_process, warranty_info, payment_options")
+          .select("company_name, elevator_pitch, differentials, installation_process, warranty_info, payment_options")
           .eq("org_id", orgId)
           .maybeSingle(),
         serviceClient

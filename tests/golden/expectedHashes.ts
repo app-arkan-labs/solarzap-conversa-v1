@@ -1,9 +1,9 @@
 export const EXPECTED_PROPOSAL_PDF_HASHES = {
-  residencialA: '6d7db1931fd1c3fde9bf6f1fa4abc91c3467114f12fa473618eabb3759485bfc',
-  usinaB: '8b3458240e47b6e31a3c9ee4cdbaf9b0cfacf8d0b8bd97c57ea731cacb72526f',
+  residencialA: 'ebd29c0f064a8fd74e36023d6b0f5d332cc5d35ffda6312c7d6c30b34d7efbfa',
+  usinaB: '4d03e57bf82ce1a876e6a60cebb3586ff520cf740a5401294ab7707aeeb578b4',
 } as const;
 
 export const EXPECTED_PROPOSAL_PDF_HASHES_ADVANCED_FLAGS = {
-  residencialA: 'fcc96148f0eef48603c7e395374648e1e75d06024c2a0ef16b12a348621a8ad2',
-  usinaB: '61726c9d46cea1f01ddff4f20185f56685210ba071fe9c2f5d4b6b42a4b1096b',
+  residencialA: 'cd0a48dcd59411d89a621bf49663aa99fef57854953410fbffb3fd121eff4948',
+  usinaB: '08001ae842796c0d15f9d239eead683ac3f6cbfd2c373c254c554608864706c5',
 } as const;
