@@ -622,15 +622,28 @@ export function SolarZapLayout() {
     setMoveToProposalOpen(false);
 
     if (moveToProposal && actionContact) {
-      await handlePipelineStageChange(actionContact.id, 'aguardando_proposta', { skipGenerateProposalPromptModal: true });
-      toast({
-        title: "Lead movido!",
-        description: `${actionContact.name} movido para "Aguardando Proposta"`,
-      });
+      try {
+        await handlePipelineStageChange(actionContact.id, 'aguardando_proposta', { skipGenerateProposalPromptModal: true });
+        toast({
+          title: "Lead movido!",
+          description: `${actionContact.name} movido para "Aguardando Proposta"`,
+        });
 
-      proposalPromptTimerRef.current = setTimeout(() => {
-        setGenerateProposalPromptOpen(true);
-      }, 3000);
+        proposalPromptTimerRef.current = setTimeout(() => {
+          setGenerateProposalPromptOpen(true);
+        }, 3000);
+      } catch (error) {
+        console.error('Move to aguardando_proposta failed', {
+          contactId: actionContact.id,
+          targetStage: 'aguardando_proposta',
+          error,
+        });
+        toast({
+          title: "Falha ao mover lead",
+          description: "Nao foi possivel mover o lead para \"Aguardando Proposta\".",
+          variant: "destructive",
+        });
+      }
     } else {
       setActionContact(null);
     }
@@ -694,8 +707,10 @@ export function SolarZapLayout() {
 
       case 'proposta_pronta':
         // When moved to "Proposta Pronta", show proposal ready modal
-        setActionContact(contact);
-        setProposalReadyOpen(true);
+        if (isDragDropEnabled(newStage, oldStage)) {
+          setActionContact(contact);
+          setProposalReadyOpen(true);
+        }
         break;
 
       case 'visita_realizada':
@@ -909,7 +924,17 @@ export function SolarZapLayout() {
       });
     }
 
-    await handlePipelineStageChange(data.contactId, 'proposta_pronta');
+    let stageMoveError: Error | null = null;
+    try {
+      await handlePipelineStageChange(data.contactId, 'proposta_pronta');
+    } catch (error) {
+      stageMoveError = error instanceof Error ? error : new Error('Erro desconhecido ao mover etapa');
+      console.error('Proposal stage transition failed', {
+        contactId: data.contactId,
+        targetStage: 'proposta_pronta',
+        error,
+      });
+    }
 
     await updateLead({
       contactId: data.contactId,
@@ -929,8 +954,12 @@ export function SolarZapLayout() {
 
     const contact = selectedContact;
 
-    if (contact) {
+    if (contact && !stageMoveError) {
       onProposalReady(contact);
+    }
+
+    if (stageMoveError) {
+      throw new Error(`Proposta salva, mas nao foi possivel mover o lead para "Proposta Pronta". ${stageMoveError.message}`);
     }
 
     // Modal state is centralized in handlePipelineStageChange for proposta_pronta.
@@ -1338,7 +1367,21 @@ export function SolarZapLayout() {
 
             const isCallLikeType = appointment.type === 'reuniao' || appointment.type === 'chamada' || appointment.type === 'meeting' || appointment.type === 'call';
             const newStage: PipelineStage = isCallLikeType ? 'chamada_agendada' : 'visita_agendada';
-            await handlePipelineStageChange(actionContact.id, newStage, { skipScheduleModal: true });
+            try {
+              await handlePipelineStageChange(actionContact.id, newStage, { skipScheduleModal: true });
+            } catch (error) {
+              console.error('Appointment success stage transition failed', {
+                contactId: actionContact.id,
+                targetStage: newStage,
+                error,
+              });
+              toast({
+                title: "Falha ao mover lead",
+                description: "Agendamento salvo, mas nao foi possivel mover o lead para a etapa correspondente.",
+                variant: "destructive",
+              });
+              return;
+            }
 
             const dateStr = new Date(appointment.start_at).toLocaleDateString('pt-BR');
             const timeStr = format(new Date(appointment.start_at), 'HH:mm');

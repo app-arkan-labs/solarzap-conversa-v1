@@ -6,10 +6,11 @@ export type { AutomationSettings };
 export { DEFAULT_SETTINGS };
 
 // Ordered list of pipeline stages for comparison
-const STAGE_ORDER: PipelineStage[] = [
+export const PIPELINE_STAGE_ORDER: PipelineStage[] = [
     'novo_lead',
     'respondeu',
     'chamada_agendada',
+    'nao_compareceu',
     'chamada_realizada',
     'aguardando_proposta',
     'proposta_pronta',
@@ -24,15 +25,17 @@ const STAGE_ORDER: PipelineStage[] = [
     'projeto_instalado',
     'coletar_avaliacao',
     'contato_futuro',
-    'nao_compareceu',
     'perdido',
 ];
 
 // Get stage index for comparison (to detect backward moves)
-const getStageIndex = (stage: PipelineStage): number => {
-    const index = STAGE_ORDER.indexOf(stage);
+export const getPipelineStageIndex = (stage: PipelineStage): number => {
+    const index = PIPELINE_STAGE_ORDER.indexOf(stage);
     return index >= 0 ? index : 999;
 };
+
+export const isBackwardPipelineMove = (fromStage: PipelineStage, toStage: PipelineStage): boolean =>
+    getPipelineStageIndex(toStage) < getPipelineStageIndex(fromStage);
 
 export function useAutomationSettings() {
     const context = useContext(AutomationContext);
@@ -59,8 +62,8 @@ export function useAutomationSettings() {
     ): boolean => {
         // If skipBackwardMoves is enabled, check if this is a backward move
         if (activeSettings.skipBackwardMoves && fromStage) {
-            const fromIndex = getStageIndex(fromStage as PipelineStage);
-            const toIndex = getStageIndex(targetStage as PipelineStage);
+            const fromIndex = getPipelineStageIndex(fromStage as PipelineStage);
+            const toIndex = getPipelineStageIndex(targetStage as PipelineStage);
             if (toIndex < fromIndex) {
                 // This is a backward move, skip automation
                 return false;

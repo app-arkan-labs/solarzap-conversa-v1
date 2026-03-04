@@ -40,7 +40,7 @@ import {
 interface PipelineViewProps {
   contacts: Contact[];
   events: CalendarEvent[];
-  onMoveToPipeline: (contactId: string, stage: PipelineStage) => void;
+  onMoveToPipeline: (contactId: string, stage: PipelineStage) => Promise<void>;
   onUpdateLead?: (contactId: string, data: UpdateLeadData) => Promise<void>;
   onGoToConversation?: (contactId: string, prefilledMessage: string, shouldAutoMoveToVisita?: boolean) => void;
   onCallAction?: (contact: Contact) => void;
@@ -246,11 +246,22 @@ export function PipelineView({
     // IMPORTANT: Set proposalReadyOpen to true BEFORE closing the modal
     setProposalReadyOpen(true);
 
-    // Move to proposta_pronta
-    onMoveToPipeline(data.contactId, 'proposta_pronta');
+    try {
+      // Move to proposta_pronta
+      await onMoveToPipeline(data.contactId, 'proposta_pronta');
 
-    // Close the proposal modal after setting proposalReadyOpen
-    setProposalModalOpen(false);
+      // Close the proposal modal after setting proposalReadyOpen
+      setProposalModalOpen(false);
+    } catch (error) {
+      console.error('Failed to move lead to proposta_pronta from pipeline fallback', error);
+      setProposalReadyOpen(false);
+      toast({
+        title: "Falha ao mover lead",
+        description: "A proposta foi preparada, mas a etapa nao foi atualizada.",
+        variant: "destructive",
+      });
+      return;
+    }
   };
 
   const handleProposalReadyGoToConversation = (contactId: string, prefilledMessage: string) => {
@@ -338,11 +349,34 @@ export function PipelineView({
     return { text: NEXT_ACTIONS[stage] || 'Próxima ação', nextStageIcon };
   }, []);
 
-  const handleNextActionClick = (contact: Contact, e: React.MouseEvent) => {
+  const moveLeadAndToast = useCallback(async (
+    contact: Contact,
+    targetStage: PipelineStage,
+    successTitle: string,
+    successDescription: string,
+  ) => {
+    try {
+      await onMoveToPipeline(contact.id, targetStage);
+      toast({
+        title: successTitle,
+        description: successDescription,
+      });
+    } catch (error) {
+      console.error('Pipeline stage move failed', { contactId: contact.id, targetStage, error });
+      toast({
+        title: "Falha ao mover lead",
+        description: "Nao foi possivel atualizar a etapa. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  }, [onMoveToPipeline, toast]);
+
+  const handleNextActionClick = async (contact: Contact, e: React.MouseEvent) => {
     e.stopPropagation();
     const stage = contact.pipelineStage;
 
-    switch (stage) {
+    try {
+      switch (stage) {
       case 'novo_lead':
         // Entrar em contato -> ir para conversa
         if (onGoToConversation) {
@@ -354,7 +388,7 @@ export function PipelineView({
         }
         break;
       case 'respondeu':
-        // Agendar chamada -> abrir modal de agendar reunião
+        // Agendar chamada -> abrir modal de agendar reuniao
         if (onSchedule) onSchedule(contact, 'reuniao');
         break;
       case 'chamada_agendada':
@@ -369,7 +403,7 @@ export function PipelineView({
         setProposalModalOpen(true);
         break;
       case 'nao_compareceu':
-        // Reagendar -> abrir modal de agendar reunião
+        // Reagendar -> abrir modal de agendar reuniao
         if (onSchedule) onSchedule(contact, 'reuniao');
         break;
       case 'aguardando_proposta':
@@ -386,11 +420,7 @@ export function PipelineView({
         break;
       case 'visita_agendada':
         // Realizar visita -> confirmar visita realizada
-        onMoveToPipeline(contact.id, 'visita_realizada');
-        toast({
-          title: "Visita realizada!",
-          description: `${contact.name} movido para "Visita Realizada"`,
-        });
+        await moveLeadAndToast(contact, 'visita_realizada', 'Visita realizada!', `${contact.name} movido para "Visita Realizada"`);
         break;
       case 'visita_realizada':
         // Negociar proposta -> ir para conversa
@@ -403,7 +433,7 @@ export function PipelineView({
         }
         break;
       case 'proposta_negociacao':
-        // Fechar negócio -> ir para conversa
+        // Fechar negocio -> ir para conversa
         if (onGoToConversation) {
           onGoToConversation(contact.id, '');
           toast({
@@ -413,8 +443,8 @@ export function PipelineView({
         }
         break;
       case 'financiamento':
-        // Aprovar crédito -> mover para contrato assinado
-        onMoveToPipeline(contact.id, 'contrato_assinado');
+        // Aprovar credito -> mover para contrato assinado
+        await onMoveToPipeline(contact.id, 'contrato_assinado');
         toast({
           title: "Crédito aprovado!",
           description: `${contact.name} movido para "Contrato Assinado"`,
@@ -422,42 +452,50 @@ export function PipelineView({
         break;
       case 'contrato_assinado':
         // Aguardar pagamento -> mover para projeto pago
-        onMoveToPipeline(contact.id, 'projeto_pago');
+        await onMoveToPipeline(contact.id, 'projeto_pago');
         toast({
           title: "Pagamento recebido!",
           description: `${contact.name} movido para "Projeto Pago"`,
         });
         break;
       case 'projeto_pago':
-        // Agendar instalação -> abrir modal de visita (como instalação)
+        // Agendar instalacao -> abrir modal de visita (como instalacao)
         if (onSchedule) onSchedule(contact, 'visita');
         break;
       case 'aguardando_instalacao':
         // Instalar sistema -> mover para projeto instalado
-        onMoveToPipeline(contact.id, 'projeto_instalado');
+        await onMoveToPipeline(contact.id, 'projeto_instalado');
         toast({
           title: "Instalação concluída!",
           description: `${contact.name} movido para "Projeto Instalado"`,
         });
         break;
       case 'projeto_instalado':
-        // Coletar avaliação -> mover para coletar avaliação
-        onMoveToPipeline(contact.id, 'coletar_avaliacao');
+        // Coletar avaliacao -> mover para coletar avaliacao
+        await onMoveToPipeline(contact.id, 'coletar_avaliacao');
         toast({
           title: "Avaliação pendente!",
           description: `${contact.name} movido para "Coletar Avaliação"`,
         });
         break;
       case 'coletar_avaliacao':
-        // Pedir indicação -> ir para conversa
+        // Pedir indicacao -> ir para conversa
         if (onGoToConversation) {
           const referralMsg = getMessage('askForReferralMessage');
           onGoToConversation(contact.id, referralMsg);
         }
         break;
       default:
-        // Nenhuma ação especial
+        // Nenhuma acao especial
         break;
+      }
+    } catch (error) {
+      console.error('Failed to execute next action stage transition', { contactId: contact.id, stage, error });
+      toast({
+        title: "Falha ao mover lead",
+        description: "Nao foi possivel atualizar a etapa. Tente novamente.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -491,7 +529,7 @@ export function PipelineView({
     }
   };
 
-  const handleDrop = (e: React.DragEvent, targetStage: PipelineStage) => {
+  const handleDrop = async (e: React.DragEvent, targetStage: PipelineStage) => {
     e.preventDefault();
     e.stopPropagation();
     setDragOverStage(null);
@@ -512,12 +550,26 @@ export function PipelineView({
       const stageInfo = PIPELINE_STAGES[targetStage];
       const previousStage = contactToMove.pipelineStage;
 
-      // Move the contact (Layout will handle automations)
-      onMoveToPipeline(contactToMove.id, targetStage);
-      toast({
-        title: "Lead movido!",
-        description: `${contactToMove.name} movido para ${stageInfo.title}`,
-      });
+      try {
+        // Move the contact (Layout will handle automations)
+        await onMoveToPipeline(contactToMove.id, targetStage);
+        toast({
+          title: "Lead movido!",
+          description: `${contactToMove.name} movido para ${stageInfo.title}`,
+        });
+      } catch (error) {
+        console.error('Failed to move lead by drag and drop', {
+          contactId: contactToMove.id,
+          fromStage: previousStage,
+          targetStage,
+          error,
+        });
+        toast({
+          title: "Falha ao mover lead",
+          description: "Nao foi possivel atualizar a etapa via arrastar e soltar.",
+          variant: "destructive",
+        });
+      }
     }
 
     setDraggedContact(null);
@@ -924,5 +976,3 @@ export function PipelineView({
     </div>
   );
 }
-
-

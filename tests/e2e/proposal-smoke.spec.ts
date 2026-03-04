@@ -141,6 +141,20 @@ test('Pipeline: gerar proposta baixa PDF e cria registros premium (versions/even
     await clientDownload.saveAs(path.join(outDir, 'client.pdf'));
 
     await expect(page.getByText('Proposta Pronta!')).toBeVisible({ timeout: 30_000 });
+    await expect
+      .poll(
+        async () => {
+          const { data, error } = await admin
+            .from('leads')
+            .select('status_pipeline')
+            .eq('id', leadId)
+            .maybeSingle();
+          if (error) return `ERROR:${error.message}`;
+          return data?.status_pipeline || null;
+        },
+        { timeout: 30_000 },
+      )
+      .toBe('proposta_pronta');
 
     const sellerDownloadPromise = page.waitForEvent('download', { timeout: 60_000 });
     await page.getByTestId('download-seller-script').click();

@@ -3,6 +3,7 @@ import { supabase, EventoDB } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarEvent, EventType, PipelineStage } from '@/types/solarzap';
+import { assertLeadStageUpdateApplied } from './pipelineStageGuards';
 
 type ProposalSegment = 'residencial' | 'empresarial' | 'agronegocio' | 'usina' | 'indefinido';
 
@@ -85,16 +86,18 @@ export function usePipeline() {
             if (!user) throw new Error('User not authenticated');
             if (!orgId) throw new Error('Organização não vinculada ao usuário');
             // 1. Update Lead Status AND Stage Changed Date
-            const { error: leadError } = await supabase
+            const { data: updatedLeadRows, error: leadError } = await supabase
                 .from('leads')
                 .update({
                     status_pipeline: newStage,
                     stage_changed_at: new Date().toISOString()
                 })
                 .eq('id', Number(contactId))
-                .eq('org_id', orgId);
+                .eq('org_id', orgId)
+                .select('id, status_pipeline');
 
             if (leadError) throw leadError;
+            assertLeadStageUpdateApplied(updatedLeadRows);
 
             // 2. Fetch Lead Data for Deal Logic
             const { data: lead } = await supabase

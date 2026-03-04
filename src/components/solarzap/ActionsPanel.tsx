@@ -30,7 +30,7 @@ type LeadProposalItem = {
 
 interface ActionsPanelProps {
   conversation: Conversation | null;
-  onMoveToPipeline: (contactId: string, stage: PipelineStage) => void;
+  onMoveToPipeline: (contactId: string, stage: PipelineStage) => Promise<void>;
   onAction: (action: string, contact?: Conversation['contact']) => void;
   onClose: () => void;
   onUpdateLead?: (contactId: string, data: UpdateLeadData) => Promise<void>;
