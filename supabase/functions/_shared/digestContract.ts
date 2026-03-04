@@ -4,9 +4,21 @@ export type DigestSections = {
   recommendedActions: string
 }
 
+export type DigestType = 'daily' | 'weekly'
+
+export const DIGEST_TITLE_DAILY = 'Resumo das últimas 24h'
+export const DIGEST_TITLE_WEEKLY = 'Resumo semanal'
 export const DIGEST_LABEL_SUMMARY = 'Resumo'
 export const DIGEST_LABEL_CURRENT_SITUATION = 'Situação atual'
 export const DIGEST_LABEL_RECOMMENDED_ACTIONS = 'Ações recomendadas'
+
+export function getDigestTitle(digestType: DigestType): string {
+  return digestType === 'weekly' ? DIGEST_TITLE_WEEKLY : DIGEST_TITLE_DAILY
+}
+
+export function getDigestIntro(digestType: DigestType): string {
+  return digestType === 'weekly' ? 'Confira o resumo semanal' : 'Confira o resumo das últimas 24h'
+}
 
 const DEFAULT_SECTIONS: DigestSections = {
   summary: 'Sem conteúdo textual recente para resumir.',

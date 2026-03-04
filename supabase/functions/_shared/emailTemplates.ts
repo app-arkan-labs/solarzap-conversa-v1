@@ -12,6 +12,14 @@
  *  Accent   #eab308 (yellow-500) — for highlights
  */
 
+import {
+  DIGEST_LABEL_CURRENT_SITUATION,
+  DIGEST_LABEL_RECOMMENDED_ACTIONS,
+  DIGEST_LABEL_SUMMARY,
+  getDigestIntro,
+  getDigestTitle,
+} from './digestContract.ts'
+
 /* ─────────── helpers ─────────── */
 
 function esc(val: unknown): string {
@@ -458,7 +466,8 @@ export function digestEmail(opts: {
   senderName?: string | null
 }): { subject: string; html: string; text: string } {
   const isWeekly = opts.digestType === 'weekly'
-  const titleText = isWeekly ? 'Resumo Semanal' : 'Resumo Diário'
+  const titleText = getDigestTitle(opts.digestType)
+  const digestIntro = getDigestIntro(opts.digestType)
   const subject = `📊 ${titleText} — ${opts.dateBucket}`
 
   let leadsHtml = ''
@@ -482,13 +491,13 @@ export function digestEmail(opts: {
       </table>
       <div style="margin-top:10px;padding-left:2px;">
         <p style="margin:0 0 4px;font-size:12px;color:#71717a;">
-          <strong style="color:#3f3f46;">Resumo:</strong> ${esc(s.summary)}
+          <strong style="color:#3f3f46;">${DIGEST_LABEL_SUMMARY}:</strong> ${esc(s.summary)}
         </p>
         <p style="margin:0 0 4px;font-size:12px;color:#71717a;">
-          <strong style="color:#3f3f46;">Situação atual:</strong> ${esc(s.currentSituation)}
+          <strong style="color:#3f3f46;">${DIGEST_LABEL_CURRENT_SITUATION}:</strong> ${esc(s.currentSituation)}
         </p>
         <p style="margin:0;font-size:12px;color:#71717a;">
-          <strong style="color:#3f3f46;">Ações recomendadas:</strong> ${esc(s.recommendedActions)}
+          <strong style="color:#3f3f46;">${DIGEST_LABEL_RECOMMENDED_ACTIONS}:</strong> ${esc(s.recommendedActions)}
         </p>
       </div>
     </div>`
@@ -500,7 +509,7 @@ export function digestEmail(opts: {
       <span style="display:inline-block;margin-left:8px;">${badge(opts.dateBucket, '#f4f4f5', '#3f3f46')}</span>
     </div>
     <p style="margin:0 0 8px;font-size:14px;color:#3f3f46;line-height:1.6;">
-      ${isWeekly ? 'Confira o resumo semanal' : 'Confira o resumo diário'} do seu CRM. 
+      ${digestIntro} do seu CRM.
       <strong>${opts.leads.length} lead${opts.leads.length !== 1 ? 's' : ''}</strong> 
       ${opts.leads.length !== 1 ? 'tiveram' : 'teve'} atividade no período.
     </p>
@@ -514,9 +523,11 @@ export function digestEmail(opts: {
     `Leads com atividade: ${opts.leads.length}`,
     '',
     ...opts.leads.map((s, idx) =>
-      `${idx + 1}. ${s.leadName} [${s.stage}]\n- Resumo: ${s.summary}\n- Situação atual: ${s.currentSituation}\n- Ações recomendadas: ${s.recommendedActions}`
+      `${idx + 1}. ${s.leadName} [${s.stage}]\n- ${DIGEST_LABEL_SUMMARY}: ${s.summary}\n- ${DIGEST_LABEL_CURRENT_SITUATION}: ${s.currentSituation}\n- ${DIGEST_LABEL_RECOMMENDED_ACTIONS}: ${s.recommendedActions}`
     ),
   ]
+
+  const subtitleSuffix = isWeekly ? 'com atividade no período' : 'com atividade nas últimas 24h'
 
   return {
     subject,
@@ -524,7 +535,7 @@ export function digestEmail(opts: {
       iconEmoji: isWeekly ? '📈' : '📊',
       iconBg: isWeekly ? '#ede9fe' : '#dbeafe',
       title: titleText,
-      subtitle: `${opts.leads.length} lead${opts.leads.length !== 1 ? 's' : ''} com atividade — ${opts.dateBucket}`,
+      subtitle: `${opts.leads.length} lead${opts.leads.length !== 1 ? 's' : ''} ${subtitleSuffix} — ${opts.dateBucket}`,
       bodyHtml,
       senderName: opts.senderName,
     }),

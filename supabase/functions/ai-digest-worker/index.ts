@@ -5,10 +5,13 @@ import {
   classifyDigestAiErrorMessage,
 } from '../_shared/digestAiPolicy.ts'
 import {
+  getDigestTitle,
   normalizeDigestSections,
   renderDigestSectionsTextLines,
   type DigestSections,
 } from '../_shared/digestContract.ts'
+import { resolveDigestPeriodBounds } from '../_shared/digestPeriod.ts'
+import { buildDigestTextMessage } from '../_shared/digestTextFormatter.ts'
 import { resolveNotificationRouting, toDigits } from '../_shared/notificationRecipients.ts'
 
 const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim()
@@ -320,101 +323,6 @@ function parseTimeToMinuteOfDay(raw: string | null | undefined, fallback: string
   const hh = Math.max(0, Math.min(23, Number(m[1])))
   const mm = Math.max(0, Math.min(59, Number(m[2])))
   return hh * 60 + mm
-}
-
-function parseIsoDateParts(raw: string): { year: number; month: number; day: number } {
-  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!m) {
-    throw new Error(`invalid_date:${raw}`)
-  }
-  return {
-    year: Number(m[1]),
-    month: Number(m[2]),
-    day: Number(m[3]),
-  }
-}
-
-function parseIsoTimeParts(raw: string): { hour: number; minute: number; second: number } {
-  const m = raw.match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/)
-  if (!m) {
-    throw new Error(`invalid_time:${raw}`)
-  }
-  return {
-    hour: Number(m[1]),
-    minute: Number(m[2]),
-    second: Number(m[3] || '0'),
-  }
-}
-
-function getTimezoneDateTimeParts(date: Date, timezone: string) {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
-  const out = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value])) as Record<string, string>
-  return {
-    year: Number(out.year || '0'),
-    month: Number(out.month || '1'),
-    day: Number(out.day || '1'),
-    hour: Number(out.hour || '0'),
-    minute: Number(out.minute || '0'),
-    second: Number(out.second || '0'),
-  }
-}
-
-function zonedDateTimeToUtcIso(dateRaw: string, timeRaw: string, timezone: string): string {
-  const date = parseIsoDateParts(dateRaw)
-  const time = parseIsoTimeParts(timeRaw)
-  const targetMs = Date.UTC(date.year, date.month - 1, date.day, time.hour, time.minute, time.second)
-
-  let guessMs = targetMs
-  for (let i = 0; i < 4; i++) {
-    const inZone = getTimezoneDateTimeParts(new Date(guessMs), timezone)
-    const zonedMs = Date.UTC(
-      inZone.year,
-      inZone.month - 1,
-      inZone.day,
-      inZone.hour,
-      inZone.minute,
-      inZone.second,
-    )
-    const diff = targetMs - zonedMs
-    if (diff === 0) break
-    guessMs += diff
-  }
-
-  return new Date(guessMs).toISOString()
-}
-
-function resolveDigestPeriodBounds(digestType: 'daily' | 'weekly', timezone: string, localDate: string) {
-  const periodEndIso = new Date().toISOString()
-
-  if (digestType === 'weekly') {
-    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
-    return {
-      periodStartIso: new Date(Date.now() - sevenDaysMs).toISOString(),
-      periodEndIso,
-    }
-  }
-
-  try {
-    return {
-      periodStartIso: zonedDateTimeToUtcIso(localDate, '00:00:00', timezone),
-      periodEndIso,
-    }
-  } catch {
-    const oneDayMs = 24 * 60 * 60 * 1000
-    return {
-      periodStartIso: new Date(Date.now() - oneDayMs).toISOString(),
-      periodEndIso,
-    }
-  }
 }
 
 type LeadMessageRow = {
@@ -1122,16 +1030,18 @@ async function processDigestForOrg(
     return { skipped: false, failed: true, reason: 'ai_generation_failed' }
   }
 
-  const digestTitle = ctx.digestType === 'weekly' ? 'Resumo semanal' : 'Resumo diário'
-  const digestText = [
-    `${digestTitle} (${ctx.dateBucket})`,
-    `Leads com atividade: ${leadSummaries.length}`,
-    '',
-    ...leadSummaries.map((s, idx) => [
-      `${idx + 1}. ${s.leadName} [${s.stage}]`,
-      ...renderDigestSectionsTextLines(s.sections),
-    ].join('\n')),
-  ].join('\n')
+  const digestText = buildDigestTextMessage({
+    digestType: ctx.digestType,
+    dateBucket: ctx.dateBucket,
+    timezone: ctx.timezone,
+    periodStartIso: ctx.periodStartIso,
+    periodEndIso: ctx.periodEndIso,
+    leads: leadSummaries.map((s) => ({
+      leadName: s.leadName,
+      stage: s.stage,
+      sections: s.sections,
+    })),
+  })
 
   if (ctx.digestType === 'daily' && leadSummaries.length > 0) {
     const { data: ownerMember } = await supabase
@@ -1150,7 +1060,7 @@ async function processDigestForOrg(
       lead_id: s.leadId,
       user_id: actorUserId,
       texto: [
-        `Resumo do dia (${ctx.dateBucket})`,
+        `${getDigestTitle('daily')} (${ctx.dateBucket})`,
         ...renderDigestSectionsTextLines(s.sections),
       ].join('\n'),
       autor: 'Resumo da IA',
@@ -1308,7 +1218,7 @@ function resolveDueDigest(settings: NotificationSettingsRow): DigestContext[] {
   if (settings.daily_digest_enabled) {
     const targetMinute = parseTimeToMinuteOfDay(settings.daily_digest_time, '19:00')
     if (local.minuteOfDay >= targetMinute) {
-      const period = resolveDigestPeriodBounds('daily', timezone, local.date)
+      const period = resolveDigestPeriodBounds('daily')
       due.push({
         orgId: settings.org_id,
         digestType: 'daily',
@@ -1324,7 +1234,7 @@ function resolveDueDigest(settings: NotificationSettingsRow): DigestContext[] {
     const targetMinute = parseTimeToMinuteOfDay(settings.weekly_digest_time, '18:00')
     const isFriday = local.weekday === 'fri'
     if (isFriday && local.minuteOfDay >= targetMinute) {
-      const period = resolveDigestPeriodBounds('weekly', timezone, local.date)
+      const period = resolveDigestPeriodBounds('weekly')
       due.push({
         orgId: settings.org_id,
         digestType: 'weekly',

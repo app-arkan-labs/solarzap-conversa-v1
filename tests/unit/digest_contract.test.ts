@@ -1,30 +1,38 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest'
 
 import {
   DIGEST_LABEL_CURRENT_SITUATION,
   DIGEST_LABEL_RECOMMENDED_ACTIONS,
   DIGEST_LABEL_SUMMARY,
+  DIGEST_TITLE_DAILY,
+  DIGEST_TITLE_WEEKLY,
+  getDigestTitle,
   normalizeDigestSections,
   renderDigestSectionsTextLines,
-} from '../../supabase/functions/_shared/digestContract.ts';
+} from '../../supabase/functions/_shared/digestContract.ts'
 
 describe('digestContract', () => {
-  it('normaliza secoes e gera labels canonicas', () => {
+  it('normaliza seções e gera labels canônicas', () => {
     const sections = normalizeDigestSections({
       summary: '  Cliente pediu nova simulacao de prazo.  ',
       currentSituation: '',
       recommendedActions: ' ',
-    });
+    })
 
-    const lines = renderDigestSectionsTextLines(sections);
-    const full = lines.join('\n');
+    const lines = renderDigestSectionsTextLines(sections)
+    const full = lines.join('\n')
 
-    expect(lines).toHaveLength(3);
-    expect(full).toContain(`${DIGEST_LABEL_SUMMARY}:`);
-    expect(full).toContain(`${DIGEST_LABEL_CURRENT_SITUATION}:`);
-    expect(full).toContain(`${DIGEST_LABEL_RECOMMENDED_ACTIONS}:`);
-    expect(full).not.toContain('O que aconteceu');
-    expect(full).not.toContain('Pendência');
-    expect(full).not.toContain('Próximo passo');
-  });
-});
+    expect(lines).toHaveLength(3)
+    expect(full).toContain(`${DIGEST_LABEL_SUMMARY}:`)
+    expect(full).toContain(`${DIGEST_LABEL_CURRENT_SITUATION}:`)
+    expect(full).toContain(`${DIGEST_LABEL_RECOMMENDED_ACTIONS}:`)
+    expect(full).not.toContain('O que aconteceu')
+    expect(full).not.toContain('Pendência')
+    expect(full).not.toContain('Próximo passo')
+  })
+
+  it('resolve títulos canônicos por tipo de digest', () => {
+    expect(getDigestTitle('daily')).toBe(DIGEST_TITLE_DAILY)
+    expect(getDigestTitle('weekly')).toBe(DIGEST_TITLE_WEEKLY)
+  })
+})

@@ -1,12 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest'
 
 import {
+  DIGEST_LABEL_CURRENT_SITUATION,
+  DIGEST_LABEL_RECOMMENDED_ACTIONS,
   buildFallbackDigestSections,
   renderDigestSectionsTextLines,
-} from '../../supabase/functions/_shared/digestContract.ts';
+} from '../../supabase/functions/_shared/digestContract.ts'
 
 describe('digest fallback', () => {
-  it('gera secoes validas quando IA nao estiver disponivel', () => {
+  it('gera seções válidas quando IA não estiver disponível', () => {
     const sections = buildFallbackDigestSections(
       [
         {
@@ -26,15 +28,16 @@ describe('digest fallback', () => {
         },
       ],
       { stage: 'proposta_negociacao' },
-    );
+    )
 
-    const lines = renderDigestSectionsTextLines(sections);
+    const lines = renderDigestSectionsTextLines(sections)
+    const full = lines.join('\n')
 
-    expect(sections.summary.length).toBeGreaterThan(0);
-    expect(sections.currentSituation.length).toBeGreaterThan(0);
-    expect(sections.recommendedActions.length).toBeGreaterThan(0);
-    expect(lines.join('\n')).toContain('Resumo:');
-    expect(lines.join('\n')).toContain('Situação atual:');
-    expect(lines.join('\n')).toContain('Ações recomendadas:');
-  });
-});
+    expect(sections.summary.length).toBeGreaterThan(0)
+    expect(sections.currentSituation.length).toBeGreaterThan(0)
+    expect(sections.recommendedActions.length).toBeGreaterThan(0)
+    expect(full).toContain('Resumo:')
+    expect(full).toContain(`${DIGEST_LABEL_CURRENT_SITUATION}:`)
+    expect(full).toContain(`${DIGEST_LABEL_RECOMMENDED_ACTIONS}:`)
+  })
+})
