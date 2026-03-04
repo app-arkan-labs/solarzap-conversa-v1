@@ -28,6 +28,9 @@ export default tseslint.config(
       "@typescript-eslint/no-empty-object-type": "off",
       "@typescript-eslint/ban-ts-comment": "warn",
       "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-unused-expressions": "warn",
+      "prefer-const": "warn",
+      "no-control-regex": "warn",
     },
   },
 );
