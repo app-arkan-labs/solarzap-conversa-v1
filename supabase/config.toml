@@ -72,3 +72,6 @@ verify_jwt = true
 
 [functions.attribution-webhook]
 verify_jwt = false
+
+[functions.conversion-dispatcher]
+verify_jwt = false

@@ -105,3 +105,33 @@
   - `npm run typecheck` (pass)
   - `npm run test:unit` (26 files, 86 tests, pass)
   - `npm run build` (pass; existing bundle-size warnings unchanged)
+
+## PR5
+- Added conversion dispatcher edge function:
+  - `supabase/functions/conversion-dispatcher/index.ts`
+  - Claim batch via `tracking_claim_delivery_batch` (FOR UPDATE SKIP LOCKED)
+  - Processes `meta`, `google_ads`, `ga4` deliveries independently
+  - Retry/backoff with exact sequence: `30s -> 1m -> 5m -> 30m -> 1h`
+  - Google click-id rule implemented: `gclid > gbraid > wbraid` (`no_click_id` => skipped)
+  - Supports debug mode `validate_only=1` and `google_validate_only=true`
+  - Handles `disabled/skipped/failed/sent` updates per delivery without cross-impact
+- Added shared dispatcher helpers:
+  - `supabase/functions/_shared/conversionDispatcher.ts`
+  - Includes backoff calculator, stale guard predicate, click-id resolver, and in-memory claim simulator
+- Added migration:
+  - `supabase/migrations/20260304212000_tracking_v3_dispatcher_cron.sql`
+  - Creates `tracking_claim_delivery_batch(...)`
+  - Creates `tracking_requeue_stale_deliveries()` (processing > 3 min => pending)
+  - Registers pg_cron jobs idempotently:
+    - `dispatch-worker` (`30 seconds` with fallback `1 minute`)
+    - `dispatch-stale-guard` (`*/5 * * * *`)
+- Added unit tests:
+  - `tests/unit/conversionDispatcher.test.ts`
+  - Covers lock-like parallel claim simulation (no duplicates), retry isolation, stale guard, and click-id priority
+- Supabase function config:
+  - `supabase/config.toml` -> `[functions.conversion-dispatcher] verify_jwt = false`
+- Gates:
+  - `npm run lint` (warnings only)
+  - `npm run typecheck` (pass)
+  - `npm run test:unit` (27 files, 91 tests, pass)
+  - `npm run build` (pass; existing chunk warnings unchanged)
