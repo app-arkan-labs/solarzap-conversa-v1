@@ -135,3 +135,30 @@
   - `npm run typecheck` (pass)
   - `npm run test:unit` (27 files, 91 tests, pass)
   - `npm run build` (pass; existing chunk warnings unchanged)
+
+## PR6
+- Added secure credentials edge function:
+  - `supabase/functions/tracking-credentials/index.ts`
+  - Authenticated user required (`Authorization` bearer)
+  - Membership guard via `organization_members`
+  - Stores secrets in `vault.secrets` and persists only vault IDs/metadata in `ad_platform_credentials`
+  - Supports credential tests for Meta/Google/GA4
+- Updated Supabase function config:
+  - `supabase/config.toml` -> `[functions.tracking-credentials] verify_jwt = false`
+- Added full UI panel for Tracking & Conversoes:
+  - `src/components/solarzap/TrackingConversionsPanel.tsx`
+  - Integrated in `src/components/solarzap/IntegrationsView.tsx`
+  - Includes:
+    - org tracking toggles and rate-limit settings
+    - webhook endpoint + public org key generate/revoke
+    - snippet copy
+    - stage_event_map JSON editor + validation
+    - platform credentials save/test actions (Meta/Google/GA4)
+    - ad trigger messages CRUD
+    - deliveries dashboard with period filter and status summary
+- Gates:
+  - `npm run lint` (warnings only)
+  - `npm run typecheck` (pass)
+  - `npm run test:unit` (27 files, 91 tests, pass)
+  - `npm run build` (pass; existing chunk warnings unchanged)
+

@@ -75,3 +75,6 @@ verify_jwt = false
 
 [functions.conversion-dispatcher]
 verify_jwt = false
+
+[functions.tracking-credentials]
+verify_jwt = false
