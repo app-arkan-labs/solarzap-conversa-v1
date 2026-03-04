@@ -29,7 +29,8 @@ import {
   ChevronRight,
   LogOut,
   Palette,
-  Plug
+  Plug,
+  Copy
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIntegrationsContext } from '@/contexts/IntegrationsContext';
@@ -47,8 +48,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Textarea } from '@/components/ui/textarea';
 
 import { WHATSAPP_COLORS } from '@/constants';
+import { buildUniversalAttributionSnippet } from '@/lib/tracking/snippet';
 
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
 import { PageHeader } from './PageHeader';
@@ -60,6 +63,8 @@ export function IntegrationsView() {
   const [newInstanceName, setNewInstanceName] = useState('');
   const [currentQR, setCurrentQR] = useState<{ instanceName: string; qrCode: string } | null>(null);
   const [updatingColor, setUpdatingColor] = useState<string | null>(null);
+  const trackingSnippet = buildUniversalAttributionSnippet();
+  const webhookEndpoint = `${import.meta.env.VITE_SUPABASE_URL || '<SUPABASE_URL>'}/functions/v1/attribution-webhook`;
 
   const {
     isConnected,
@@ -224,6 +229,16 @@ export function IntegrationsView() {
 
   const handleDisconnect = (provider: string) => {
     disconnect(provider);
+  };
+
+  const copyText = async (value: string, successMessage: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(successMessage);
+    } catch (error) {
+      console.error('Clipboard copy failed:', error);
+      toast.error('NÃ£o foi possÃ­vel copiar para a Ã¡rea de transferÃªncia.');
+    }
   };
 
   if (integrationsLoading) {
@@ -712,6 +727,57 @@ export function IntegrationsView() {
               </Card>
             ))}
           </div>
+
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="text-base">Tracking de ConversÃµes</CardTitle>
+                  <CardDescription className="mt-1">
+                    Copie o snippet universal e envie leads para o webhook pÃºblico usando o header <code>x-szap-org-key</code>.
+                  </CardDescription>
+                </div>
+                <Badge variant="outline">PR3</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Endpoint webhook</div>
+                <div className="flex items-center gap-2">
+                  <Input value={webhookEndpoint} readOnly className="font-mono text-xs" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => copyText(webhookEndpoint, 'Endpoint copiado')}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copiar
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Snippet universal</div>
+                <Textarea
+                  value={trackingSnippet}
+                  readOnly
+                  className="min-h-[240px] font-mono text-[11px] leading-relaxed"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => copyText(trackingSnippet, 'Snippet copiado')}
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  Copiar snippet
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Help Card */}
           <Card className="border-0 shadow-sm bg-gradient-to-r from-muted/50 to-muted/30">

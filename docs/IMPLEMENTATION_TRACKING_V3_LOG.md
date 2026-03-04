@@ -62,3 +62,27 @@
   - `npm run lint` ?
   - `npm run typecheck` ?
   - `npm run test:unit` ?
+
+## PR3
+- Added universal public webhook function: `supabase/functions/attribution-webhook/index.ts`
+  - auth via header `x-szap-org-key`
+  - supports JSON + form payloads
+  - anti-spam: honeypot, org blocklist (IP/phone), optional reCAPTCHA
+  - org rate limit via `tracking_consume_webhook_rate_limit` (429 on exceed)
+  - lead create/lookup flow + `applyLeadAttribution` execution
+- Added webhook shared modules:
+  - `supabase/functions/_shared/attributionWebhook.ts`
+  - `supabase/functions/_shared/attributionWebhookService.ts`
+- Added snippet artifacts:
+  - `docs/landing/solarzap_attribution_snippet.html`
+  - `src/lib/tracking/snippet.ts`
+  - snippet copy UI section in `src/components/solarzap/IntegrationsView.tsx`
+- Supabase function config:
+  - `supabase/config.toml` -> `[functions.attribution-webhook] verify_jwt = false`
+- Added tests:
+  - `tests/unit/trackingWebhook.test.ts`
+  - `tests/unit/trackingSnippet.test.ts`
+- Gates:
+  - `npm run lint` (warnings only)
+  - `npm run typecheck` (pass)
+  - `npm run test:unit` (25 files, 82 tests, pass)
