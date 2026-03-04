@@ -24,9 +24,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { PIPELINE_STAGES, PipelineStage, ClientType, Contact } from '@/types/solarzap';
-import { Check, ChevronDown, ExternalLink, FileText, Palette, ImagePlus, X } from 'lucide-react';
+import { Check, ChevronDown, ExternalLink, FileText, Palette, ImagePlus, X, Trash2, Loader2 } from 'lucide-react';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
+import { useSellerPermissions } from '@/hooks/useSellerPermissions';
 import { PROPOSAL_THEMES, THEME_IDS, getThemeById, isValidThemeHex, normalizeThemeHex, toCustomThemeValue } from '@/utils/proposalColorThemes';
 import { generateProposalPDF, generateSellerScriptPDF } from '@/utils/generateProposalPDF';
 import { prefetchCoverImage, prefetchCoverImages } from '@/hooks/useProposalCoverImage';
@@ -41,6 +42,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { PageHeader } from './PageHeader';
 
 interface ProposalRow {
@@ -99,6 +109,7 @@ export function ProposalsView() {
   const { toast } = useToast();
   const { themeId, secondaryColorHex, updateTheme, updateSecondaryColor } = useProposalTheme();
   const { logoUrl, uploadLogo, removeLogo, loading: logoLoading } = useProposalLogo();
+  const { permissions } = useSellerPermissions();
   const logoInputRef = React.useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(false);
@@ -117,8 +128,12 @@ export function ProposalsView() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedRow, setSelectedRow] = useState<ProposalRow | null>(null);
+  const [rowToDelete, setRowToDelete] = useState<ProposalRow | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
   const [customThemeHex, setCustomThemeHex] = useState('');
   const [customSecondaryHex, setCustomSecondaryHex] = useState('');
+  const canDeleteProposals = permissions.can_delete_proposals;
 
   const secondaryPalette = [
     '#1D4ED8',
@@ -575,6 +590,62 @@ export function ProposalsView() {
     });
   };
 
+  const requestDelete = (row: ProposalRow) => {
+    if (!canDeleteProposals) return;
+    setRowToDelete(row);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!orgId || !rowToDelete || deletingVersionId) return;
+
+    const targetVersionId = rowToDelete.proposal_version_id;
+    setDeletingVersionId(targetVersionId);
+
+    try {
+      const { error } = await supabase.rpc('delete_proposal_version', {
+        p_org_id: orgId,
+        p_proposal_version_id: targetVersionId,
+      });
+
+      if (error) throw error;
+
+      setDeleteDialogOpen(false);
+      setRowToDelete(null);
+      setSelectedRow((current) => (
+        current?.proposal_version_id === targetVersionId ? null : current
+      ));
+
+      const deletingLastRowOnPage = rows.length === 1 && page > 0;
+      if (deletingLastRowOnPage) {
+        setPage((current) => Math.max(0, current - 1));
+      } else {
+        await fetchProposals();
+      }
+
+      toast({
+        title: 'Proposta excluida',
+        description: 'A versao selecionada foi removida com sucesso.',
+      });
+    } catch (error) {
+      console.error('Failed to delete proposal version:', error);
+      const errorMessage = (() => {
+        if (error instanceof Error) return error.message;
+        if (error && typeof error === 'object' && 'message' in error) {
+          return String((error as { message?: unknown }).message || '');
+        }
+        return '';
+      })();
+      toast({
+        title: 'Erro ao excluir proposta',
+        description: errorMessage || 'Nao foi possivel excluir a proposta.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingVersionId(null);
+    }
+  };
+
   const handleApplyCustomTheme = () => {
     if (!customThemeHex.trim()) return;
     if (!isValidThemeHex(customThemeHex)) {
@@ -904,58 +975,81 @@ export function ProposalsView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
-                    <tr
-                      key={row.proposal_version_id}
-                      className="border-b cursor-pointer hover:bg-muted/40"
-                      onClick={() => setSelectedRow(row)}
-                    >
-                      <td className="py-2 pr-3">
-                        <p className="font-medium">{row.lead_name || `Lead ${row.lead_id}`}</p>
-                        <p className="text-xs text-muted-foreground">{row.lead_phone || '-'}</p>
-                      </td>
-                      <td className="py-2 pr-3">V{row.version_no}</td>
-                      <td className="py-2 pr-3">{new Date(row.created_at).toLocaleString('pt-BR')}</td>
-                      <td className="py-2 pr-3">
-                        {typeof row.valor_projeto === 'number'
-                          ? row.valor_projeto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                          : '-'}
-                      </td>
-                      <td className="py-2 pr-3">
-                        <Badge variant="outline" className={STATUS_COLORS[row.status] || 'bg-slate-100 text-slate-700 border-slate-200'}>
-                          {STATUS_TRANSLATIONS[row.status] || row.status}
-                        </Badge>
-                      </td>
-                      <td className="py-2 pr-3">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={!row.pdf_url && !canGenerateFromRow(row)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownloadProposal(row);
-                            }}
-                          >
-                            <ExternalLink className="w-4 h-4 mr-1" />
-                            Baixar Proposta
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={!canGenerateFromRow(row)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownloadScript(row);
-                            }}
-                          >
-                            <FileText className="w-4 h-4 mr-1" />
-                            Baixar Roteiro
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map((row) => {
+                    const isDeletingRow = deletingVersionId === row.proposal_version_id;
+
+                    return (
+                      <tr
+                        key={row.proposal_version_id}
+                        className="border-b cursor-pointer hover:bg-muted/40"
+                        onClick={() => setSelectedRow(row)}
+                      >
+                        <td className="py-2 pr-3">
+                          <p className="font-medium">{row.lead_name || `Lead ${row.lead_id}`}</p>
+                          <p className="text-xs text-muted-foreground">{row.lead_phone || '-'}</p>
+                        </td>
+                        <td className="py-2 pr-3">V{row.version_no}</td>
+                        <td className="py-2 pr-3">{new Date(row.created_at).toLocaleString('pt-BR')}</td>
+                        <td className="py-2 pr-3">
+                          {typeof row.valor_projeto === 'number'
+                            ? row.valor_projeto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                            : '-'}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <Badge variant="outline" className={STATUS_COLORS[row.status] || 'bg-slate-100 text-slate-700 border-slate-200'}>
+                            {STATUS_TRANSLATIONS[row.status] || row.status}
+                          </Badge>
+                        </td>
+                        <td className="py-2 pr-3">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={!row.pdf_url && !canGenerateFromRow(row)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadProposal(row);
+                              }}
+                            >
+                              <ExternalLink className="w-4 h-4 mr-1" />
+                              Baixar Proposta
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={!canGenerateFromRow(row)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadScript(row);
+                              }}
+                            >
+                              <FileText className="w-4 h-4 mr-1" />
+                              Baixar Roteiro
+                            </Button>
+                            {canDeleteProposals && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                data-testid={`proposal-delete-${row.proposal_version_id}`}
+                                disabled={isDeletingRow}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  requestDelete(row);
+                                }}
+                              >
+                                {isDeletingRow ? (
+                                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-4 h-4 mr-1" />
+                                )}
+                                Excluir
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </CardContent>
@@ -1037,11 +1131,59 @@ export function ProposalsView() {
                   <FileText className="w-4 h-4 mr-1" />
                   Baixar Roteiro
                 </Button>
+                {canDeleteProposals && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={deletingVersionId === selectedRow.proposal_version_id}
+                    onClick={() => requestDelete(selectedRow)}
+                  >
+                    {deletingVersionId === selectedRow.proposal_version_id ? (
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4 mr-1" />
+                    )}
+                    Excluir
+                  </Button>
+                )}
               </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (deletingVersionId) return;
+          setDeleteDialogOpen(open);
+          if (!open) setRowToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir versao da proposta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acao remove a versao selecionada. Se for a ultima versao, a proposta base tambem sera excluida.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!deletingVersionId}>Cancelar</AlertDialogCancel>
+            <Button
+              type="button"
+              data-testid="proposal-delete-confirm"
+              onClick={handleConfirmDelete}
+              disabled={!rowToDelete || !!deletingVersionId}
+              variant="destructive"
+              size="sm"
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {deletingVersionId && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Excluir
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
