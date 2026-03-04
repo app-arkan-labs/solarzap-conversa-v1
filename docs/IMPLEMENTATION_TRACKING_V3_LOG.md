@@ -30,3 +30,19 @@
   - `npm run lint` ?
   - `npm run typecheck` ?
   - `npm run test:unit` ?
+
+## PR1
+- Added migration: `supabase/migrations/20260304170000_tracking_v3_schema.sql`
+  - Created the 7 tracking tables
+  - Added required UNIQUE constraints (`uq_lead_attribution`, `uq_touchpoint_fp`, `uq_conversion_idemp`, `uq_delivery`)
+  - Added partial indexes (`idx_deliveries_pending`, `idx_deliveries_processing`)
+  - Enabled RLS and org-scoped policies for all 7 tables
+  - Added idempotent seed/backfill for `org_tracking_settings` with `tracking_enabled=false`
+  - Added SQL helpers for default stage map, stable stage slug, org public key generation, and per-org webhook rate limit
+- Added SQL verification script: `docs/sql/tracking_v3_rls_smoke.sql`
+- Migration local reset check:
+  - `npx supabase db reset --local` ? blocked (Docker Desktop not available in this environment)
+- Gates:
+  - `npm run lint` ?
+  - `npm run typecheck` ?
+  - `npm run test:unit` ?
