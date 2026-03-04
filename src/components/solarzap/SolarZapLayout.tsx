@@ -18,6 +18,7 @@ import { AutomationsView } from './AutomationsView';
 import { AIAgentsView } from './AIAgentsView';
 import { KnowledgeBaseView } from './KnowledgeBaseView';
 import { ProposalsView } from './ProposalsView';
+import { BroadcastView } from './BroadcastView';
 import { ConfiguracoesContaView } from './ConfiguracoesContaView';
 import { NotificationsPanel } from './NotificationsPanel';
 import { CreateLeadModal, CreateLeadData } from './CreateLeadModal';
@@ -1293,6 +1294,12 @@ export function SolarZapLayout() {
           >
             <Plus className="w-6 h-6" />
           </Button>
+        </div>
+      )}
+
+      {activeTab === 'disparos' && (
+        <div className="flex-1 h-full overflow-hidden">
+          <BroadcastView />
         </div>
       )}
 
