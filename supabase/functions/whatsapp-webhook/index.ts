@@ -5,6 +5,10 @@ import {
     resolveInboundMessageNodeAndType,
     shouldSkipLidMessageWithoutPhone,
 } from '../_shared/whatsappWebhookMessageParsing.ts'
+import {
+    applyLeadAttribution,
+    extractCtwaFromWhatsAppMessage,
+} from '../_shared/trackingAttribution.ts'
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
 if (!ALLOWED_ORIGIN) {
@@ -633,6 +637,26 @@ Deno.serve(async (req: Request) => {
                     waMessageId,
                     ms: Math.round(perfNowMs() - upsertLeadStartedAt)
                 })
+
+                if (leadId) {
+                    try {
+                        const ctwa = extractCtwaFromWhatsAppMessage(msg, msgType || null)
+                        await applyLeadAttribution(supabase, {
+                            orgId,
+                            leadId: Number(leadId),
+                            messageText: text,
+                            ctwa,
+                            user_phone: phoneE164,
+                            user_agent: req.headers.get('user-agent'),
+                        })
+                    } catch (attributionError) {
+                        console.warn('⚠️ Failed to apply lead attribution in whatsapp-webhook', {
+                            orgId,
+                            leadId,
+                            error: attributionError instanceof Error ? attributionError.message : String(attributionError)
+                        })
+                    }
+                }
 
                 // Fast-path media placeholder (actual download/upload/transcription is resolved asynchronously)
                 const isMediaMessage = ['audioMessage', 'imageMessage', 'videoMessage', 'documentMessage', 'stickerMessage'].includes(msgType)

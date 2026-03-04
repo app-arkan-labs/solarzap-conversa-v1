@@ -46,3 +46,19 @@
   - `npm run lint` ?
   - `npm run typecheck` ?
   - `npm run test:unit` ?
+
+## PR2
+- Added attribution engine helper: `supabase/functions/_shared/trackingAttribution.ts`
+  - CTWA extraction (`externalAdReply`)
+  - trigger-message matcher (`exact`/`contains`/`starts_with`/`regex`)
+  - channel inference cascade (CTWA > trigger > UTM/click-id > keep current)
+  - channel guard (`canal` only overwritten when empty or previously inferred or force overwrite)
+  - touchpoint fingerprint SHA-256 and insertion with duplicate-safe behavior
+- Integrated attribution execution into `supabase/functions/whatsapp-webhook/index.ts`
+- Added manual channel guard marker on lead edit flow in `src/hooks/domain/useLeads.ts`
+  - when seller edits `canal`, `lead_attribution.channel_is_inferred=false` is persisted
+- Added unit tests: `tests/unit/trackingAttribution.test.ts`
+- Gates:
+  - `npm run lint` ?
+  - `npm run typecheck` ?
+  - `npm run test:unit` ?

@@ -578,6 +578,30 @@ export function useLeads() {
         return { data, error };
     };
 
+    const markLeadChannelAsManual = useCallback(
+        async (leadId: number, canal: string) => {
+            if (!orgId || !leadId || !canal) return;
+            try {
+                await supabase
+                    .from('lead_attribution')
+                    .upsert(
+                        {
+                            org_id: orgId,
+                            lead_id: leadId,
+                            inferred_channel: canal,
+                            attribution_method: 'manual',
+                            channel_is_inferred: false,
+                            last_touch_at: new Date().toISOString(),
+                        },
+                        { onConflict: 'lead_id' },
+                    );
+            } catch (error) {
+                console.warn('Failed to persist manual lead channel attribution marker:', error);
+            }
+        },
+        [orgId],
+    );
+
     const createLeadMutation = useMutation({
         mutationFn: async (data: LeadPatch) => {
             if (!user) throw new Error('User not authenticated');
@@ -674,6 +698,9 @@ export function useLeads() {
             const { error } = await safeSupabaseWrite('UPDATE', 'leads', basePayload, extendedPayload, Number(contactId));
 
             if (error) throw error;
+            if (data.canal !== undefined) {
+                await markLeadChannelAsManual(Number(contactId), data.canal);
+            }
             return { contactId, ...data };
         },
         onSuccess: () => {
