@@ -86,3 +86,22 @@
   - `npm run lint` (warnings only)
   - `npm run typecheck` (pass)
   - `npm run test:unit` (25 files, 82 tests, pass)
+
+## PR4
+- Added stage-change router migration:
+  - `supabase/migrations/20260304193000_tracking_v3_stage_router.sql`
+  - Creates `public.tr_lead_stage_change_v2()` trigger function
+  - Trigger runs only when `org_tracking_settings.tracking_enabled=true`
+  - Generates deterministic event idempotency key with SHA-256
+  - Inserts one `conversion_events` row per first stage-entry (`ON CONFLICT DO NOTHING`)
+  - Creates one `conversion_deliveries` row per enabled platform (`meta`, `google_ads`, `ga4`)
+- Added app helper for deterministic router logic:
+  - `src/lib/tracking/router.ts`
+- Added unit tests:
+  - `tests/unit/trackingRouter.test.ts`
+  - Covers stage map resolution, enabled platforms, and idempotency key determinism
+- Gates:
+  - `npm run lint` (warnings only)
+  - `npm run typecheck` (pass)
+  - `npm run test:unit` (26 files, 86 tests, pass)
+  - `npm run build` (pass; existing bundle-size warnings unchanged)
