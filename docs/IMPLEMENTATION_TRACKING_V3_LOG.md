@@ -162,3 +162,29 @@
   - `npm run test:unit` (27 files, 91 tests, pass)
   - `npm run build` (pass; existing chunk warnings unchanged)
 
+
+## PR7
+- Added regression unit suite with 12 new tests:
+  - `tests/unit/trackingV3Regression.test.ts`
+  - Coverage includes:
+    - stage re-entry idempotency key stability
+    - stage-change idempotency key difference
+    - concurrent lock/claim behavior (SKIP LOCKED simulation)
+    - retry backoff sequence + stale guard threshold
+    - channel guard preservation for manual channels
+    - webhook honeypot and webhook rate-limit 429
+    - touchpoint fingerprint determinism/uniqueness
+    - google click-id priority rule
+    - fbc cookie preference and fbc derivation fallback
+- Added manual idempotent backfill SQL (not auto-run):
+  - `docs/sql/tracking_v3_backfill.sql`
+  - Seeds missing `org_tracking_settings`
+  - Includes optional safe update for inferred channels only (`channel_is_inferred=true`)
+- Added tracking configuration and debug documentation:
+  - `docs/TRACKING_V3.md`
+  - Setup/rollout steps, webhook/snippet behavior, dispatcher/cron, and debug mode
+- Gates:
+  - `npm run lint` (warnings only)
+  - `npm run typecheck` (pass)
+  - `npm run test:unit` (28 files, 103 tests, pass)
+  - `npm run build` (pass; existing chunk warnings unchanged)
