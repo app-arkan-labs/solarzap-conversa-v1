@@ -55,6 +55,87 @@ async function fetchVaultSecret(admin: ReturnType<typeof createClient>, vaultId:
   return String(data.secret);
 }
 
+async function parseJsonResponse(response: Response): Promise<unknown> {
+  const raw = await response.text();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { raw };
+  }
+}
+
+type GoogleAdsAuthContextResult =
+  | {
+      ok: true;
+      accessToken: string;
+      developerToken: string;
+      refreshToken: string;
+    }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      details?: unknown;
+    };
+
+async function resolveGoogleAdsAuthContext(
+  admin: ReturnType<typeof createClient>,
+  orgId: string,
+): Promise<GoogleAdsAuthContextResult> {
+  const { data: creds } = await admin
+    .from('ad_platform_credentials')
+    .select('google_refresh_token_vault_id')
+    .eq('org_id', orgId)
+    .eq('platform', 'google_ads')
+    .maybeSingle();
+
+  const refreshVaultId = cleanString(creds?.google_refresh_token_vault_id);
+  if (!refreshVaultId) {
+    return { ok: false, status: 400, error: 'not_connected' };
+  }
+
+  const refreshToken = await fetchVaultSecret(admin, refreshVaultId);
+  if (!refreshToken) {
+    return { ok: false, status: 400, error: 'missing_refresh_token' };
+  }
+
+  const clientId = cleanString(Deno.env.get('GOOGLE_ADS_CLIENT_ID'));
+  const clientSecret = cleanString(Deno.env.get('GOOGLE_ADS_CLIENT_SECRET'));
+  const developerToken = cleanString(Deno.env.get('GOOGLE_ADS_DEVELOPER_TOKEN'));
+  if (!clientId || !clientSecret || !developerToken) {
+    return { ok: false, status: 500, error: 'missing_global_google_config' };
+  }
+
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+  const tokenData = asRecord(await parseJsonResponse(tokenResponse));
+  const accessToken = cleanString(tokenData.access_token);
+  if (!tokenResponse.ok || !accessToken) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'oauth_token_refresh_failed',
+      details: tokenData,
+    };
+  }
+
+  return {
+    ok: true,
+    accessToken,
+    developerToken,
+    refreshToken,
+  };
+}
+
 async function createVaultSecret(params: {
   admin: ReturnType<typeof createClient>;
   orgId: string;
@@ -282,10 +363,14 @@ async function testPlatformConnection(params: {
   }
 
   if (platform === 'google_ads') {
-    const clientId = cleanString(credentials.google_client_id);
-    const clientSecret = await fetchVaultSecret(admin, credentials.google_client_secret_vault_id);
+    const clientId = cleanString(credentials.google_client_id) || cleanString(Deno.env.get('GOOGLE_ADS_CLIENT_ID'));
+    const clientSecret =
+      (await fetchVaultSecret(admin, credentials.google_client_secret_vault_id)) ||
+      cleanString(Deno.env.get('GOOGLE_ADS_CLIENT_SECRET'));
     const refreshToken = await fetchVaultSecret(admin, credentials.google_refresh_token_vault_id);
-    const developerToken = await fetchVaultSecret(admin, credentials.google_developer_token_vault_id);
+    const developerToken =
+      (await fetchVaultSecret(admin, credentials.google_developer_token_vault_id)) ||
+      cleanString(Deno.env.get('GOOGLE_ADS_DEVELOPER_TOKEN'));
     if (!clientId || !clientSecret || !refreshToken || !developerToken) {
       throw new Error('google_missing_credentials');
     }
@@ -421,6 +506,227 @@ Deno.serve(async (req) => {
       });
 
       return jsonResponse(200, { success: true, data: result });
+    }
+
+    if (action === 'list_accessible_customers') {
+      const authContext = await resolveGoogleAdsAuthContext(admin, orgId);
+      if (!authContext.ok) {
+        return jsonResponse(authContext.status, {
+          success: false,
+          error: authContext.error,
+          ...(authContext.details ? { details: authContext.details } : {}),
+        });
+      }
+
+      const response = await fetch('https://googleads.googleapis.com/v18/customers:listAccessibleCustomers', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${authContext.accessToken}`,
+          'developer-token': authContext.developerToken,
+        },
+      });
+      const data = await parseJsonResponse(response);
+      if (!response.ok) {
+        return jsonResponse(400, { success: false, error: 'google_api_error', details: data });
+      }
+
+      return jsonResponse(200, { success: true, data });
+    }
+
+    if (action === 'account_hierarchy') {
+      const loginCustomerId = cleanString(body.login_customer_id);
+      if (!loginCustomerId) {
+        return jsonResponse(400, { success: false, error: 'missing_login_customer_id' });
+      }
+
+      const authContext = await resolveGoogleAdsAuthContext(admin, orgId);
+      if (!authContext.ok) {
+        return jsonResponse(authContext.status, {
+          success: false,
+          error: authContext.error,
+          ...(authContext.details ? { details: authContext.details } : {}),
+        });
+      }
+
+      const normalizedLoginCustomerId = loginCustomerId.replace(/\D/g, '');
+      if (!normalizedLoginCustomerId) {
+        return jsonResponse(400, { success: false, error: 'invalid_login_customer_id' });
+      }
+
+      const query =
+        "SELECT customer_client.client_customer, customer_client.level, customer_client.manager, customer_client.descriptive_name, customer_client.id, customer_client.status FROM customer_client WHERE customer_client.status = 'ENABLED'";
+      const response = await fetch(
+        `https://googleads.googleapis.com/v18/customers/${normalizedLoginCustomerId}/googleAds:search`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${authContext.accessToken}`,
+            'developer-token': authContext.developerToken,
+            'login-customer-id': normalizedLoginCustomerId,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query }),
+        },
+      );
+      const data = await parseJsonResponse(response);
+      if (!response.ok) {
+        return jsonResponse(400, { success: false, error: 'google_api_error', details: data });
+      }
+
+      const payload = asRecord(data);
+      const results = Array.isArray(payload.results) ? payload.results : [];
+      const customers = results.map((rawResult) => {
+        const result = asRecord(rawResult);
+        const customerClient = asRecord(result.customerClient ?? result.customer_client);
+        const managerRaw = customerClient.manager;
+        return {
+          customerId: cleanString(customerClient.id) || '',
+          descriptiveName: cleanString(customerClient.descriptiveName ?? customerClient.descriptive_name) || '',
+          isManager: managerRaw === true || String(managerRaw || '').toLowerCase() === 'true',
+          level: Number(customerClient.level || 0),
+          status: cleanString(customerClient.status) || '',
+        };
+      });
+
+      return jsonResponse(200, { success: true, data: { customers } });
+    }
+
+    if (action === 'list_conversion_actions') {
+      const customerId = cleanString(body.customer_id);
+      const loginCustomerId = cleanString(body.login_customer_id);
+      if (!customerId) {
+        return jsonResponse(400, { success: false, error: 'missing_customer_id' });
+      }
+
+      const authContext = await resolveGoogleAdsAuthContext(admin, orgId);
+      if (!authContext.ok) {
+        return jsonResponse(authContext.status, {
+          success: false,
+          error: authContext.error,
+          ...(authContext.details ? { details: authContext.details } : {}),
+        });
+      }
+
+      const normalizedCustomerId = customerId.replace(/\D/g, '');
+      if (!normalizedCustomerId) {
+        return jsonResponse(400, { success: false, error: 'invalid_customer_id' });
+      }
+
+      const query =
+        "SELECT conversion_action.id, conversion_action.name, conversion_action.status, conversion_action.type, conversion_action.category FROM conversion_action WHERE conversion_action.status = 'ENABLED'";
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${authContext.accessToken}`,
+        'developer-token': authContext.developerToken,
+        'Content-Type': 'application/json',
+      };
+      const normalizedLoginCustomerId = loginCustomerId?.replace(/\D/g, '') || '';
+      if (normalizedLoginCustomerId) {
+        headers['login-customer-id'] = normalizedLoginCustomerId;
+      }
+
+      const response = await fetch(
+        `https://googleads.googleapis.com/v18/customers/${normalizedCustomerId}/googleAds:search`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ query }),
+        },
+      );
+      const data = await parseJsonResponse(response);
+      if (!response.ok) {
+        return jsonResponse(400, { success: false, error: 'google_api_error', details: data });
+      }
+
+      const payload = asRecord(data);
+      const results = Array.isArray(payload.results) ? payload.results : [];
+      const conversionActions = results.map((rawResult) => {
+        const result = asRecord(rawResult);
+        const conversionAction = asRecord(result.conversionAction ?? result.conversion_action);
+        return {
+          id: cleanString(conversionAction.id) || '',
+          name: cleanString(conversionAction.name) || '',
+          status: cleanString(conversionAction.status) || '',
+          type: cleanString(conversionAction.type) || '',
+          category: cleanString(conversionAction.category) || '',
+        };
+      });
+
+      return jsonResponse(200, { success: true, data: { conversionActions } });
+    }
+
+    if (action === 'save_ads_selection') {
+      const loginCustomerId = cleanString(body.login_customer_id);
+      const customerId = cleanString(body.customer_id);
+      const conversionActionId = cleanString(body.conversion_action_id);
+
+      if (!customerId || !conversionActionId) {
+        return jsonResponse(400, { success: false, error: 'missing_customer_or_conversion_action' });
+      }
+
+      const { error } = await admin.from('ad_platform_credentials').upsert(
+        {
+          org_id: orgId,
+          platform: 'google_ads',
+          google_mcc_id: loginCustomerId,
+          google_customer_id: customerId,
+          google_conversion_action_id: conversionActionId,
+        },
+        { onConflict: 'org_id,platform' },
+      );
+
+      if (error) {
+        return jsonResponse(500, { success: false, error: 'save_failed', details: error.message });
+      }
+
+      return jsonResponse(200, { success: true });
+    }
+
+    if (action === 'disconnect_google_ads') {
+      const { data: creds } = await admin
+        .from('ad_platform_credentials')
+        .select('google_refresh_token_vault_id')
+        .eq('org_id', orgId)
+        .eq('platform', 'google_ads')
+        .maybeSingle();
+
+      const currentVaultId = cleanString(creds?.google_refresh_token_vault_id);
+
+      await admin
+        .from('ad_platform_credentials')
+        .update({
+          google_refresh_token_vault_id: null,
+          google_ads_connected_at: null,
+          google_ads_account_email: null,
+          google_mcc_id: null,
+          google_customer_id: null,
+          google_conversion_action_id: null,
+          enabled: false,
+        })
+        .eq('org_id', orgId)
+        .eq('platform', 'google_ads');
+
+      await admin
+        .from('org_tracking_settings')
+        .upsert(
+          {
+            org_id: orgId,
+            google_ads_enabled: false,
+          },
+          { onConflict: 'org_id' },
+        );
+
+      if (currentVaultId) {
+        const token = await fetchVaultSecret(admin, currentVaultId);
+        if (token) {
+          await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, {
+            method: 'POST',
+          }).catch(() => null);
+        }
+
+        await admin.schema('vault').from('secrets').delete().eq('id', currentVaultId).catch(() => null);
+      }
+
+      return jsonResponse(200, { success: true });
     }
 
     return jsonResponse(400, { success: false, error: 'unsupported_action' });

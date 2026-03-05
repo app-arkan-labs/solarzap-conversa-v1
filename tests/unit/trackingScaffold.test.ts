@@ -22,7 +22,11 @@ describe('tracking scaffold constants', () => {
   it('exposes default stage event mappings for the core stages', () => {
     const map = getDefaultStageEventMap();
     expect(map.novo_lead.ga4).toBe('generate_lead');
-    expect(map.contrato_assinado.meta).toBe('Purchase');
+    expect(map.chamada_realizada.meta).toBe('Schedule');
+    expect(map.visita_realizada.meta).toBe('SubmitApplication');
+    expect(map.chamada_agendada.meta).toBeNull();
+    expect(map.proposta_pronta.meta).toBeNull();
+    expect(map.contrato_assinado.meta).toBeNull();
     expect(map.projeto_pago.google_ads).toBe('purchase');
   });
 

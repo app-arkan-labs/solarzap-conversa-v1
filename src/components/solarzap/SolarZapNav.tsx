@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { ActiveTab } from '@/types/solarzap';
-import { MessageCircle, Kanban, Calendar, Users, Send, FileText, BarChart3, Bell, Settings, Plug, Zap, Brain, Bot, UserCog, User, Building2 } from 'lucide-react';
+import { MessageCircle, Kanban, Calendar, Users, Send, FileText, BarChart3, Bell, Settings, Plug, Zap, Brain, Bot, UserCog, User, Building2, Activity } from 'lucide-react';
 import { GoogleAccountButton } from './GoogleAccountButton';
 import {
   Popover,
@@ -24,6 +24,7 @@ interface SolarZapNavProps {
     ia_agentes: boolean;
     automacoes: boolean;
     integracoes: boolean;
+    tracking: boolean;
     banco_ia: boolean;
     minha_conta: boolean;
   };
@@ -53,7 +54,7 @@ export function SolarZapNav({
   userDisplayName,
   tabPermissions,
 }: SolarZapNavProps) {
-  const tp = tabPermissions ?? { ia_agentes: true, automacoes: true, integracoes: true, banco_ia: true, minha_conta: true };
+  const tp = tabPermissions ?? { ia_agentes: true, automacoes: true, integracoes: true, tracking: true, banco_ia: true, minha_conta: true };
   const normalizedAvatarUrl = typeof userAvatarUrl === 'string' && userAvatarUrl.trim().length > 0
     ? userAvatarUrl.trim()
     : null;
@@ -174,6 +175,19 @@ export function SolarZapNav({
                     <Zap className="w-4 h-4 text-primary" />
                   </div>
                   Automações
+                </button>
+              ) : null}
+
+              {tp.tracking ? (
+                <button
+                  data-testid="nav-tracking"
+                  onClick={() => onTabChange('tracking')}
+                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Activity className="w-4 h-4 text-primary" />
+                  </div>
+                  Tracking e Conversões
                 </button>
               ) : null}
 

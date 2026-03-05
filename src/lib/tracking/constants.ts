@@ -43,17 +43,29 @@ export function getDefaultStageEventMap(): StageEventMap {
       google_ads: null,
       ga4: 'generate_lead',
     },
-    chamada_agendada: {
-      event_key: 'chamada_agendada',
+    chamada_realizada: {
+      event_key: 'chamada_realizada',
       meta: 'Schedule',
       google_ads: 'schedule',
       ga4: 'schedule_appointment',
     },
-    proposta_pronta: {
-      event_key: 'proposta_pronta',
+    visita_realizada: {
+      event_key: 'visita_realizada',
       meta: 'SubmitApplication',
       google_ads: 'proposal_sent',
       ga4: 'proposal_ready',
+    },
+    chamada_agendada: {
+      event_key: 'chamada_agendada',
+      meta: null,
+      google_ads: null,
+      ga4: null,
+    },
+    proposta_pronta: {
+      event_key: 'proposta_pronta',
+      meta: null,
+      google_ads: null,
+      ga4: null,
     },
     financiamento: {
       event_key: 'financiamento',
@@ -69,9 +81,9 @@ export function getDefaultStageEventMap(): StageEventMap {
     },
     contrato_assinado: {
       event_key: 'contrato_assinado',
-      meta: 'Purchase',
-      google_ads: 'purchase',
-      ga4: 'purchase',
+      meta: null,
+      google_ads: null,
+      ga4: null,
     },
     projeto_pago: {
       event_key: 'projeto_pago',

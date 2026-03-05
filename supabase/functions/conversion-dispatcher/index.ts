@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
   buildDeliveryUpdatePatch,
+  resolvePlatformEventNameFromStageMap,
   resolveGoogleClickId,
   type DeliveryDispatchResult,
   type DispatcherPlatform,
@@ -84,13 +85,6 @@ type PlatformCredentialsRow = {
   google_developer_token_vault_id: string | null;
   ga4_measurement_id: string | null;
   ga4_api_secret_vault_id: string | null;
-};
-
-type StageEventMapEntry = {
-  event_key?: string | null;
-  meta?: string | null;
-  google_ads?: string | null;
-  ga4?: string | null;
 };
 
 type InvocationAuthResult =
@@ -180,16 +174,6 @@ function isPlatformEnabled(platform: DispatcherPlatform, settings: OrgTrackingSe
   if (platform === 'meta') return settings.meta_capi_enabled === true;
   if (platform === 'google_ads') return settings.google_ads_enabled === true;
   return settings.ga4_enabled === true;
-}
-
-function stageMapEntry(
-  stageEventMap: Record<string, unknown> | null | undefined,
-  crmStage: string,
-): StageEventMapEntry {
-  if (!stageEventMap || typeof stageEventMap !== 'object') return {};
-  const entry = stageEventMap[crmStage];
-  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return {};
-  return entry as StageEventMapEntry;
 }
 
 function toGoogleDateTime(occurredAt: string): string {
@@ -350,10 +334,16 @@ async function dispatchGoogleAds(params: {
 
   const customerId = cleanString(params.credentials.google_customer_id);
   const conversionActionId = cleanString(params.credentials.google_conversion_action_id);
-  const clientId = cleanString(params.credentials.google_client_id);
-  const clientSecret = await fetchVaultSecret(params.credentials.google_client_secret_vault_id, params.vaultCache);
+  const clientId = cleanString(params.credentials.google_client_id) || cleanString(Deno.env.get('GOOGLE_ADS_CLIENT_ID')) || null;
+  const clientSecret =
+    (await fetchVaultSecret(params.credentials.google_client_secret_vault_id, params.vaultCache)) ||
+    cleanString(Deno.env.get('GOOGLE_ADS_CLIENT_SECRET')) ||
+    null;
   const refreshToken = await fetchVaultSecret(params.credentials.google_refresh_token_vault_id, params.vaultCache);
-  const developerToken = await fetchVaultSecret(params.credentials.google_developer_token_vault_id, params.vaultCache);
+  const developerToken =
+    (await fetchVaultSecret(params.credentials.google_developer_token_vault_id, params.vaultCache)) ||
+    cleanString(Deno.env.get('GOOGLE_ADS_DEVELOPER_TOKEN')) ||
+    null;
 
   if (!customerId || !conversionActionId || !clientId || !clientSecret || !refreshToken || !developerToken) {
     return { status: 'failed', error: 'google_missing_credentials' };
@@ -530,13 +520,28 @@ async function processDelivery(
     .eq('lead_id', event.lead_id)
     .maybeSingle();
 
-  const mapEntry = stageMapEntry(settings.stage_event_map as Record<string, unknown> | null, event.crm_stage);
   const fallbackEventName = cleanString(event.event_name) || event.crm_stage;
-  const mappedMetaEventName = cleanString(mapEntry.meta) || fallbackEventName;
-  const mappedGoogleEventName = cleanString(mapEntry.google_ads) || fallbackEventName;
-  const mappedGa4EventName = cleanString(mapEntry.ga4) || fallbackEventName;
+  const mappedMetaEventName = resolvePlatformEventNameFromStageMap({
+    stageEventMap: settings.stage_event_map as Record<string, unknown> | null,
+    crmStage: event.crm_stage,
+    platform: 'meta',
+    fallbackEventName,
+  });
+  const mappedGoogleEventName = resolvePlatformEventNameFromStageMap({
+    stageEventMap: settings.stage_event_map as Record<string, unknown> | null,
+    crmStage: event.crm_stage,
+    platform: 'google_ads',
+    fallbackEventName,
+  });
+  const mappedGa4EventName = resolvePlatformEventNameFromStageMap({
+    stageEventMap: settings.stage_event_map as Record<string, unknown> | null,
+    crmStage: event.crm_stage,
+    platform: 'ga4',
+    fallbackEventName,
+  });
 
   if (delivery.platform === 'meta') {
+    if (!mappedMetaEventName) return { status: 'skipped', reason: 'event_not_mapped' };
     return dispatchMetaCapi({
       event: event as ConversionEventRow,
       attribution: (attribution || null) as LeadAttributionRow | null,
@@ -547,6 +552,7 @@ async function processDelivery(
   }
 
   if (delivery.platform === 'google_ads') {
+    if (!mappedGoogleEventName) return { status: 'skipped', reason: 'event_not_mapped' };
     const validateOnly = validateOnlyFromRequest || settings.google_validate_only === true;
     return dispatchGoogleAds({
       event: event as ConversionEventRow,
@@ -558,6 +564,7 @@ async function processDelivery(
     });
   }
 
+  if (!mappedGa4EventName) return { status: 'skipped', reason: 'event_not_mapped' };
   return dispatchGa4({
     event: event as ConversionEventRow,
     attribution: (attribution || null) as LeadAttributionRow | null,

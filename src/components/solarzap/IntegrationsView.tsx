@@ -49,7 +49,6 @@ import {
 } from '@/components/ui/alert-dialog';
 
 import { WHATSAPP_COLORS } from '@/constants';
-import { TrackingConversionsPanel } from './TrackingConversionsPanel';
 
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
 import { PageHeader } from './PageHeader';
@@ -713,8 +712,6 @@ export function IntegrationsView() {
               </Card>
             ))}
           </div>
-
-          <TrackingConversionsPanel />
 
           {/* Help Card */}
           <Card className="border-0 shadow-sm bg-gradient-to-r from-muted/50 to-muted/30">

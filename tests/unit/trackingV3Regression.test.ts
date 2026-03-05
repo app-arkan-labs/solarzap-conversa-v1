@@ -5,6 +5,7 @@ import {
   backoffSecondsForAttempt,
   computeNextAttemptAtIso,
   createInMemoryDeliveryClaimer,
+  resolvePlatformEventNameFromStageMap,
   resolveGoogleClickId,
   shouldRequeueStaleDelivery,
   type DeliveryLike,
@@ -251,6 +252,35 @@ describe('tracking v3 regression coverage', () => {
       type: 'wbraid',
       value: 'wbraid',
     });
+  });
+
+  it('skips dispatch when stage is explicitly unmapped for a platform', () => {
+    const mapped = resolvePlatformEventNameFromStageMap({
+      stageEventMap: {
+        contrato_assinado: {
+          event_key: 'contrato_assinado',
+          meta: null,
+          google_ads: null,
+          ga4: null,
+        },
+      },
+      crmStage: 'contrato_assinado',
+      platform: 'meta',
+      fallbackEventName: 'contrato_assinado',
+    });
+
+    expect(mapped).toBeNull();
+  });
+
+  it('keeps fallback event when stage has no explicit mapping', () => {
+    const mapped = resolvePlatformEventNameFromStageMap({
+      stageEventMap: {},
+      crmStage: 'etapa_custom',
+      platform: 'ga4',
+      fallbackEventName: 'etapa_custom',
+    });
+
+    expect(mapped).toBe('etapa_custom');
   });
 
   it('prefers _fbc/_fbp cookies over derived fbc values', () => {

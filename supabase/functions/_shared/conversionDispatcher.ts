@@ -67,6 +67,28 @@ export function resolveGoogleClickId(payload: {
   return null;
 }
 
+export function resolvePlatformEventNameFromStageMap(input: {
+  stageEventMap: Record<string, unknown> | null | undefined;
+  crmStage: string;
+  platform: DispatcherPlatform;
+  fallbackEventName: string;
+}): string | null {
+  const stage = cleanString(input.crmStage);
+  const fallback = cleanString(input.fallbackEventName) || stage;
+  if (!stage) return fallback;
+
+  const map = input.stageEventMap;
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return fallback;
+
+  if (!Object.prototype.hasOwnProperty.call(map, stage)) return fallback;
+
+  const entry = (map as Record<string, unknown>)[stage];
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+
+  const eventField = input.platform === 'meta' ? 'meta' : input.platform;
+  return cleanString((entry as Record<string, unknown>)[eventField]);
+}
+
 export function backoffSecondsForAttempt(attemptCount: number): number {
   const boundedAttempt = Math.max(1, Math.min(TRACKING_MAX_ATTEMPTS, Math.floor(attemptCount || 1)));
   const index = boundedAttempt - 1;
