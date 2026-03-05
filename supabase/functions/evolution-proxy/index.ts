@@ -1,18 +1,6 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim()
-const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true'
-if (!ALLOWED_ORIGIN && !ALLOW_WILDCARD_CORS) {
-  throw new Error('Missing ALLOWED_ORIGIN env (or set ALLOW_WILDCARD_CORS=true)')
-}
-if (!ALLOWED_ORIGIN && ALLOW_WILDCARD_CORS) {
-  console.warn('[evolution-proxy] wildcard CORS enabled by ALLOW_WILDCARD_CORS=true')
-}
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-api-key',
-}
+import { resolveRequestCors } from '../_shared/cors.ts'
 
 const DEFAULT_WEBHOOK_EVENTS = [
   'QRCODE_UPDATED',
@@ -70,7 +58,7 @@ function setCache<T>(cache: Map<string, CacheEntry<T>>, key: string, value: T, t
   })
 }
 
-function jsonResponse(payload: unknown, status = 200) {
+function jsonResponse(payload: unknown, corsHeaders: Record<string, string>, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -368,8 +356,35 @@ function requireString(payload: Record<string, unknown>, key: string): string {
 }
 
 Deno.serve(async (req) => {
+  const cors = resolveRequestCors(req, {
+    allowHeaders: 'authorization, x-client-info, apikey, content-type, x-internal-api-key',
+  })
+  const corsHeaders = cors.corsHeaders
+
   if (req.method === 'OPTIONS') {
+    if (cors.missingAllowedOriginConfig) {
+      return jsonResponse(
+        { success: false, error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados', code: 'missing_allowed_origin' },
+        corsHeaders,
+        500,
+      )
+    }
+    if (!cors.originAllowed) {
+      return jsonResponse({ success: false, error: 'Origin nao permitida', code: 'origin_not_allowed' }, corsHeaders, 403)
+    }
     return new Response('ok', { headers: corsHeaders })
+  }
+
+  if (cors.missingAllowedOriginConfig) {
+    return jsonResponse(
+      { success: false, error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados', code: 'missing_allowed_origin' },
+      corsHeaders,
+      500,
+    )
+  }
+
+  if (!cors.originAllowed) {
+    return jsonResponse({ success: false, error: 'Origin nao permitida', code: 'origin_not_allowed' }, corsHeaders, 403)
   }
 
   try {
@@ -655,11 +670,11 @@ Deno.serve(async (req) => {
       action,
       ms: Math.round(perfNow() - requestStartedAt),
     })
-    return jsonResponse({ success: true, data })
+    return jsonResponse({ success: true, data }, corsHeaders)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unexpected error'
     const status = /authorization|unauthorized|token|membership/i.test(message) ? 401 : 400
-    return jsonResponse({ success: false, error: message }, status)
+    return jsonResponse({ success: false, error: message }, corsHeaders, status)
   }
 })
 

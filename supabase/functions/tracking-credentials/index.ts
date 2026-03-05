@@ -1,10 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-
-const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim();
-const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true';
-if (!ALLOWED_ORIGIN && !ALLOW_WILDCARD_CORS) {
-  throw new Error('Missing ALLOWED_ORIGIN env (or set ALLOW_WILDCARD_CORS=true)');
-}
+import { resolveRequestCors } from '../_shared/cors.ts';
 
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').trim();
 const SUPABASE_ANON_KEY = (Deno.env.get('SUPABASE_ANON_KEY') || '').trim();
@@ -13,23 +8,17 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error('Missing SUPABASE_URL/SUPABASE_ANON_KEY/SUPABASE_SERVICE_ROLE_KEY env');
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
 type TrackingPlatform = 'meta' | 'google_ads' | 'ga4';
 
-function jsonResponse(status: number, body: Record<string, unknown>) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      ...corsHeaders,
-      'Content-Type': 'application/json',
-    },
-  });
-}
+const createJsonResponse = (corsHeaders: Record<string, string>) =>
+  (status: number, body: Record<string, unknown>) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      },
+    });
 
 function cleanString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -442,8 +431,26 @@ async function testPlatformConnection(params: {
 }
 
 Deno.serve(async (req) => {
+  const cors = resolveRequestCors(req);
+  const corsHeaders = cors.corsHeaders;
+  const jsonResponse = createJsonResponse(corsHeaders);
+
   if (req.method === 'OPTIONS') {
+    if (cors.missingAllowedOriginConfig) {
+      return jsonResponse(500, { success: false, error: 'missing_allowed_origin' });
+    }
+    if (!cors.originAllowed) {
+      return jsonResponse(403, { success: false, error: 'origin_not_allowed' });
+    }
     return new Response(null, { status: 200, headers: corsHeaders });
+  }
+
+  if (cors.missingAllowedOriginConfig) {
+    return jsonResponse(500, { success: false, error: 'missing_allowed_origin' });
+  }
+
+  if (!cors.originAllowed) {
+    return jsonResponse(403, { success: false, error: 'origin_not_allowed' });
   }
 
   if (req.method !== 'POST') {
