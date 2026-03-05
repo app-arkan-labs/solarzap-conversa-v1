@@ -42,12 +42,12 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
       const hasCoordinates = Number.isFinite(Number(form.formData.latitude))
         && Number.isFinite(Number(form.formData.longitude));
       const hasStrictPvgis = form.formData.irradianceSource === 'pvgis';
+      const hasManualLocation = Boolean(form.formData.cidade) && Boolean(form.formData.estado);
       return (
         Boolean(form.formData.estado)
         && Number(form.formData.consumoMensal) > 0
         && (Boolean(form.formData.cidade) || hasCoordinates)
-        && hasCoordinates
-        && hasStrictPvgis
+        && ((hasCoordinates && hasStrictPvgis) || hasManualLocation)
       );
     }
     if (currentStep === 3) {

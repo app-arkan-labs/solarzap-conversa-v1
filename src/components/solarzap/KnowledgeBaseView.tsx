@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Brain, Building2, MessageSquareQuote, ShieldQuestion, FileUp, Loader2, X, FileText, CheckCircle } from 'lucide-react';
+import { Building2, MessageSquareQuote, ShieldQuestion, FileUp, Loader2, X, FileText, CheckCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { SobreEmpresaTab } from './knowledge-base/SobreEmpresaTab';
 import { DepoimentosTab } from './knowledge-base/DepoimentosTab';
 import { ObjecoesFAQTab } from './knowledge-base/ObjecoesFAQTab';
+import { BrandingSettingsCard } from './knowledge-base/BrandingSettingsCard';
 import { PageHeader } from './PageHeader';
 
 export function KnowledgeBaseView() {
@@ -138,8 +139,8 @@ export function KnowledgeBaseView() {
         <div className="h-full flex flex-col bg-background overflow-hidden">
             <PageHeader
                 title="Minha Empresa"
-                subtitle="Treine a IA para representar sua empresa"
-                icon={Brain}
+                subtitle="Gerencie marca, logo e conhecimento usado pela IA"
+                icon={Building2}
                 actionContent={
                     <Button
                         variant="outline"
@@ -155,7 +156,8 @@ export function KnowledgeBaseView() {
 
             {/* Content with Tabs */}
             <div className="flex-1 p-6 overflow-auto bg-slate-50/50">
-                <div className="w-full">
+                <div className="w-full space-y-6">
+                    <BrandingSettingsCard canEdit={canEdit} />
                     <Tabs defaultValue="empresa" className="w-full space-y-6">
                         <TabsList className="bg-white border shadow-sm p-1.5 rounded-xl h-auto flex flex-wrap justify-start gap-1">
                             <TabsTrigger

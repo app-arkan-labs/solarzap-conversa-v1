@@ -24,11 +24,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { PIPELINE_STAGES, PipelineStage, ClientType, Contact } from '@/types/solarzap';
-import { Check, ChevronDown, ExternalLink, FileText, Palette, ImagePlus, X, Trash2, Loader2 } from 'lucide-react';
+import { Check, ChevronDown, ExternalLink, FileText, Trash2, Loader2 } from 'lucide-react';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
-import { useProposalLogo } from '@/hooks/useProposalLogo';
 import { useSellerPermissions } from '@/hooks/useSellerPermissions';
-import { PROPOSAL_THEMES, THEME_IDS, getThemeById, isValidThemeHex, normalizeThemeHex, toCustomThemeValue } from '@/utils/proposalColorThemes';
+import { getThemeById, normalizeThemeHex } from '@/utils/proposalColorThemes';
 import { generateProposalPDF, generateSellerScriptPDF } from '@/utils/generateProposalPDF';
 import { prefetchCoverImage, prefetchCoverImages } from '@/hooks/useProposalCoverImage';
 import { resolveProposalLinks } from '@/utils/proposalLinks';
@@ -107,10 +106,8 @@ const STATUS_COLORS: Record<string, string> = {
 export function ProposalsView() {
   const { orgId } = useAuth();
   const { toast } = useToast();
-  const { themeId, secondaryColorHex, updateTheme, updateSecondaryColor } = useProposalTheme();
-  const { logoUrl, uploadLogo, removeLogo, loading: logoLoading } = useProposalLogo();
+  const { themeId, secondaryColorHex } = useProposalTheme();
   const { permissions } = useSellerPermissions();
-  const logoInputRef = React.useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<ProposalRow[]>([]);
@@ -131,20 +128,7 @@ export function ProposalsView() {
   const [rowToDelete, setRowToDelete] = useState<ProposalRow | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
-  const [customThemeHex, setCustomThemeHex] = useState('');
-  const [customSecondaryHex, setCustomSecondaryHex] = useState('');
   const canDeleteProposals = permissions.can_delete_proposals;
-
-  const secondaryPalette = [
-    '#1D4ED8',
-    '#EA580C',
-    '#DC2626',
-    '#0D9488',
-    '#7C3AED',
-    '#CA8A04',
-    '#334155',
-    '#16A34A',
-  ];
 
   const fetchProposalsFallback = useCallback(async () => {
     if (!orgId) return [] as ProposalRow[];
@@ -646,42 +630,6 @@ export function ProposalsView() {
     }
   };
 
-  const handleApplyCustomTheme = () => {
-    if (!customThemeHex.trim()) return;
-    if (!isValidThemeHex(customThemeHex)) {
-      toast({ title: 'Cor inválida', description: 'Use um código HEX válido, ex: #1D4ED8', variant: 'destructive' });
-      return;
-    }
-    const customValue = toCustomThemeValue(customThemeHex);
-    if (!customValue) return;
-    updateTheme(customValue);
-    setCustomThemeHex(customValue.replace('custom:', '').toUpperCase());
-  };
-
-  const handleApplySecondaryColor = () => {
-    const normalized = normalizeThemeHex(customSecondaryHex || '');
-    if (!normalized) {
-      toast({ title: 'Cor secundária inválida', description: 'Use um código HEX válido, ex: #1D4ED8', variant: 'destructive' });
-      return;
-    }
-    updateSecondaryColor(normalized);
-    setCustomSecondaryHex(normalized.toUpperCase());
-  };
-
-  const handleResetSecondaryColor = () => {
-    updateSecondaryColor(null);
-    setCustomSecondaryHex('');
-  };
-
-  useEffect(() => {
-    const themeHex = getThemeById(themeId).swatch;
-    setCustomThemeHex(String(themeHex || '').toUpperCase());
-  }, [themeId]);
-
-  useEffect(() => {
-    setCustomSecondaryHex(secondaryColorHex ? secondaryColorHex.toUpperCase() : '');
-  }, [secondaryColorHex]);
-
   return (
     <div className="flex-1 flex flex-col h-full w-full overflow-hidden bg-muted/30 relative">
       <PageHeader
@@ -689,137 +637,6 @@ export function ProposalsView() {
         subtitle="Histórico global de versões com filtros"
         icon={FileText}
         className="z-10"
-        actionContent={
-          <div className="flex items-center gap-4 flex-wrap mt-2 sm:mt-0">
-            {/* Logo upload */}
-            <div className="flex items-center gap-2">
-              <input
-                ref={logoInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadLogo(file);
-                  e.target.value = '';
-                }}
-              />
-              {logoUrl ? (
-                <div className="flex items-center gap-1.5 group">
-                  <button
-                    type="button"
-                    title="Alterar logo"
-                    onClick={() => logoInputRef.current?.click()}
-                    className="relative w-9 h-9 rounded-lg border border-border overflow-hidden bg-white hover:ring-2 hover:ring-primary/40 transition-all"
-                  >
-                    <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-0.5" />
-                  </button>
-                  <button
-                    type="button"
-                    title="Remover logo"
-                    onClick={removeLogo}
-                    disabled={logoLoading}
-                    className="w-5 h-5 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity absolute -top-1 -right-1"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  title="Enviar logo da empresa para as propostas"
-                  onClick={() => logoInputRef.current?.click()}
-                  disabled={logoLoading}
-                  className="w-9 h-9 rounded-lg border-2 border-dashed border-border flex items-center justify-center hover:border-primary/50 hover:bg-white/50 transition-all glass"
-                >
-                  {logoLoading ? (
-                    <div className="w-4 h-4 border-2 border-primary/40 border-t-primary rounded-full animate-spin" />
-                  ) : (
-                    <ImagePlus className="w-4 h-4 text-muted-foreground" />
-                  )}
-                </button>
-              )}
-              <span className="text-xs text-muted-foreground hidden sm:inline">Logo</span>
-            </div>
-
-            <div className="hidden sm:block w-px h-6 bg-border" />
-
-            {/* Theme colors */}
-            <div className="flex items-center gap-2">
-              <Palette className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground mr-1">Tema:</span>
-              <div className="flex gap-1.5 glass px-2 py-1 rounded-full border border-border/50">
-                {THEME_IDS.map((id) => {
-                  const t = PROPOSAL_THEMES[id];
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      title={t.label}
-                      onClick={() => {
-                        setCustomThemeHex(String(t.swatch || '').toUpperCase());
-                        updateTheme(id);
-                      }}
-                      className={cn(
-                        'w-6 h-6 rounded-full border border-black/10 transition-all hover:scale-110 shadow-sm',
-                        themeId === id ? 'ring-2 ring-primary ring-offset-1 scale-110' : ''
-                      )}
-                      style={{ backgroundColor: t.swatch }}
-                    />
-                  );
-                })}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Input
-                  value={customThemeHex}
-                  onChange={(e) => setCustomThemeHex(e.target.value)}
-                  placeholder="#1D4ED8"
-                  className="h-8 w-28 text-xs uppercase"
-                />
-                <Button type="button" variant="outline" size="sm" className="h-8" onClick={handleApplyCustomTheme}>
-                  Aplicar
-                </Button>
-              </div>
-            </div>
-
-            {/* Secondary color */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground mr-1">Secundária:</span>
-              <div className="flex gap-1.5 glass px-2 py-1 rounded-full border border-border/50">
-                {secondaryPalette.map((hex) => (
-                  <button
-                    key={hex}
-                    type="button"
-                    title={`Secundária ${hex}`}
-                    onClick={() => {
-                      setCustomSecondaryHex(hex);
-                      updateSecondaryColor(hex);
-                    }}
-                    className={cn(
-                      'w-5 h-5 rounded-full border border-black/10 transition-all hover:scale-110 shadow-sm',
-                      (secondaryColorHex || '').toUpperCase() === hex ? 'ring-2 ring-primary ring-offset-1 scale-110' : ''
-                    )}
-                    style={{ backgroundColor: hex }}
-                  />
-                ))}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Input
-                  value={customSecondaryHex}
-                  onChange={(e) => setCustomSecondaryHex(e.target.value)}
-                  placeholder="#1D4ED8"
-                  className="h-8 w-28 text-xs uppercase"
-                />
-                <Button type="button" variant="outline" size="sm" className="h-8" onClick={handleApplySecondaryColor}>
-                  Aplicar
-                </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={handleResetSecondaryColor}>
-                  Auto
-                </Button>
-              </div>
-            </div>
-          </div>
-        }
       />
 
       <ScrollArea className="flex-1">
@@ -1187,3 +1004,4 @@ export function ProposalsView() {
     </div>
   );
 }
+
