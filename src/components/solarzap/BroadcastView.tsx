@@ -8,6 +8,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useBroadcasts, type BroadcastCampaignInput } from '@/hooks/useBroadcasts';
 import { useUserWhatsAppInstances } from '@/hooks/useUserWhatsAppInstances';
 import { useToast } from '@/hooks/use-toast';
+import { formatBroadcastInterval } from '@/utils/broadcastTimer';
+import { PageHeader } from './PageHeader';
 import { BroadcastCampaignModal } from './BroadcastCampaignModal';
 import { BroadcastStatusPanel } from './BroadcastStatusPanel';
 import type { BroadcastCampaign } from '@/types/broadcast';
@@ -111,155 +113,159 @@ export function BroadcastView() {
   };
 
   return (
-    <div className="flex-1 h-full overflow-auto p-6 space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <SendHorizontal className="w-5 h-5 text-primary" />
-            Disparos em Massa
-          </h1>
-          <p className="text-sm text-muted-foreground">Crie campanhas, acompanhe progresso e controle o envio via WhatsApp.</p>
-        </div>
+    <div className="flex-1 flex flex-col bg-muted/30 overflow-hidden">
+      <PageHeader
+        title="Disparos em Massa"
+        subtitle="Crie campanhas, acompanhe progresso e controle o envio via WhatsApp."
+        icon={SendHorizontal}
+        actionContent={(
+          <Button
+            onClick={() => setIsCampaignModalOpen(true)}
+            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10 w-full sm:w-auto"
+          >
+            <Plus className="w-4 h-4" />
+            Nova Campanha
+          </Button>
+        )}
+      />
 
-        <Button onClick={() => setIsCampaignModalOpen(true)}>
-          <Plus className="w-4 h-4 mr-1" />
-          Nova Campanha
-        </Button>
-      </div>
+      <div className="flex-1 overflow-y-auto">
+        <div className="w-full px-6 py-6 space-y-6">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+          {isLoading && campaigns.length === 0 ? (
+            <div className="rounded-lg border border-border/50 bg-background/50 glass shadow-sm p-8 flex items-center justify-center gap-2 text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Carregando campanhas...
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {campaigns.map((campaign) => {
+                const progressBase = campaign.total_recipients > 0
+                  ? ((campaign.sent_count + campaign.failed_count) / campaign.total_recipients) * 100
+                  : 0;
 
-      {isLoading && campaigns.length === 0 ? (
-        <div className="rounded-lg border p-8 flex items-center justify-center gap-2 text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Carregando campanhas...
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {campaigns.map((campaign) => {
-            const progressBase = campaign.total_recipients > 0
-              ? ((campaign.sent_count + campaign.failed_count) / campaign.total_recipients) * 100
-              : 0;
+                return (
+                  <Card key={campaign.id} className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
+                    <CardHeader className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <CardTitle className="text-base">{campaign.name}</CardTitle>
+                          <p className="text-xs text-muted-foreground mt-1">Instancia: {campaign.instance_name}</p>
+                        </div>
+                        <Badge className={campaignStatusClass[campaign.status]}>{campaignStatusLabel[campaign.status]}</Badge>
+                      </div>
 
-            return (
-              <Card key={campaign.id} className="border-muted/70">
-                <CardHeader className="space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <CardTitle className="text-base">{campaign.name}</CardTitle>
-                      <p className="text-xs text-muted-foreground mt-1">Instancia: {campaign.instance_name}</p>
-                    </div>
-                    <Badge className={campaignStatusClass[campaign.status]}>{campaignStatusLabel[campaign.status]}</Badge>
-                  </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Progresso</span>
+                          <span>
+                            {campaign.sent_count + campaign.failed_count}/{campaign.total_recipients}
+                          </span>
+                        </div>
+                        <Progress value={Math.min(100, progressBase)} />
+                      </div>
+                    </CardHeader>
 
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Progresso</span>
-                      <span>
-                        {campaign.sent_count + campaign.failed_count}/{campaign.total_recipients}
-                      </span>
-                    </div>
-                    <Progress value={Math.min(100, progressBase)} />
-                  </div>
-                </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="rounded border p-2">
+                          <p className="text-muted-foreground">Enviadas</p>
+                          <p className="font-semibold">{campaign.sent_count}</p>
+                        </div>
+                        <div className="rounded border p-2">
+                          <p className="text-muted-foreground">Falhas</p>
+                          <p className="font-semibold">{campaign.failed_count}</p>
+                        </div>
+                        <div className="rounded border p-2">
+                          <p className="text-muted-foreground">Timer</p>
+                          <p className="font-semibold">{formatBroadcastInterval(campaign.interval_seconds)}</p>
+                        </div>
+                      </div>
 
-                <CardContent className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="rounded border p-2">
-                      <p className="text-muted-foreground">Enviadas</p>
-                      <p className="font-semibold">{campaign.sent_count}</p>
-                    </div>
-                    <div className="rounded border p-2">
-                      <p className="text-muted-foreground">Falhas</p>
-                      <p className="font-semibold">{campaign.failed_count}</p>
-                    </div>
-                    <div className="rounded border p-2">
-                      <p className="text-muted-foreground">Timer</p>
-                      <p className="font-semibold">{campaign.interval_seconds}s</p>
-                    </div>
-                  </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openStatusPanel(campaign.id)}>
+                          <Eye className="w-4 h-4 mr-1" />
+                          Detalhes
+                        </Button>
 
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openStatusPanel(campaign.id)}>
-                      <Eye className="w-4 h-4 mr-1" />
-                      Detalhes
-                    </Button>
-
-                    {(campaign.status === 'draft' || campaign.status === 'paused') && (
-                      <Button
-                        size="sm"
-                        onClick={() => void runCampaignAction(
-                          campaign.id,
-                          campaign.status === 'draft' ? 'start' : 'resume',
-                          () => (campaign.status === 'draft' ? startCampaign(campaign.id) : resumeCampaign(campaign.id)),
+                        {(campaign.status === 'draft' || campaign.status === 'paused') && (
+                          <Button
+                            size="sm"
+                            onClick={() => void runCampaignAction(
+                              campaign.id,
+                              campaign.status === 'draft' ? 'start' : 'resume',
+                              () => (campaign.status === 'draft' ? startCampaign(campaign.id) : resumeCampaign(campaign.id)),
+                            )}
+                            disabled={actionInFlight !== null}
+                          >
+                            {actionInFlight === `${campaign.id}:${campaign.status === 'draft' ? 'start' : 'resume'}` ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Play className="w-4 h-4 mr-1" />
+                                {campaign.status === 'draft' ? 'Iniciar' : 'Retomar'}
+                              </>
+                            )}
+                          </Button>
                         )}
-                        disabled={actionInFlight !== null}
-                      >
-                        {actionInFlight === `${campaign.id}:${campaign.status === 'draft' ? 'start' : 'resume'}` ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <>
-                            <Play className="w-4 h-4 mr-1" />
-                            {campaign.status === 'draft' ? 'Iniciar' : 'Retomar'}
-                          </>
-                        )}
-                      </Button>
-                    )}
 
-                    {campaign.status === 'running' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void runCampaignAction(campaign.id, 'pause', () => pauseCampaign(campaign.id))}
-                        disabled={actionInFlight !== null}
-                      >
-                        {actionInFlight === `${campaign.id}:pause` ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <>
-                            <Pause className="w-4 h-4 mr-1" />
-                            Pausar
-                          </>
+                        {campaign.status === 'running' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void runCampaignAction(campaign.id, 'pause', () => pauseCampaign(campaign.id))}
+                            disabled={actionInFlight !== null}
+                          >
+                            {actionInFlight === `${campaign.id}:pause` ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Pause className="w-4 h-4 mr-1" />
+                                Pausar
+                              </>
+                            )}
+                          </Button>
                         )}
-                      </Button>
-                    )}
 
-                    {(campaign.status === 'running' || campaign.status === 'paused' || campaign.status === 'draft') && (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => void runCampaignAction(campaign.id, 'cancel', () => cancelCampaign(campaign.id))}
-                        disabled={actionInFlight !== null}
-                      >
-                        {actionInFlight === `${campaign.id}:cancel` ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <>
-                            <Square className="w-4 h-4 mr-1" />
-                            Cancelar
-                          </>
+                        {(campaign.status === 'running' || campaign.status === 'paused' || campaign.status === 'draft') && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => void runCampaignAction(campaign.id, 'cancel', () => cancelCampaign(campaign.id))}
+                            disabled={actionInFlight !== null}
+                          >
+                            {actionInFlight === `${campaign.id}:cancel` ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Square className="w-4 h-4 mr-1" />
+                                Cancelar
+                              </>
+                            )}
+                          </Button>
                         )}
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
 
-          {campaigns.length === 0 && (
-            <Card className="lg:col-span-2">
-              <CardContent className="py-16 text-center text-muted-foreground">
-                Nenhuma campanha criada ainda. Clique em "Nova Campanha" para iniciar.
-              </CardContent>
-            </Card>
+              {campaigns.length === 0 && (
+                <Card className="lg:col-span-2 border-border/50 bg-background/50 glass shadow-sm">
+                  <CardContent className="py-16 text-center text-muted-foreground">
+                    Nenhuma campanha criada ainda. Clique em "Nova Campanha" para iniciar.
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </div>
 
       <BroadcastCampaignModal
         isOpen={isCampaignModalOpen}

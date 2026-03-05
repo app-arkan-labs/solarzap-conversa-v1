@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { BroadcastCampaign, BroadcastRecipient } from '@/types/broadcast';
+import { formatBroadcastInterval } from '@/utils/broadcastTimer';
 
 interface BroadcastStatusPanelProps {
   isOpen: boolean;
@@ -38,13 +39,6 @@ const statusBadgeClass: Record<BroadcastRecipient['status'], string> = {
   sent: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30',
   failed: 'bg-destructive/15 text-destructive border-destructive/30',
   skipped: 'bg-amber-500/15 text-amber-700 border-amber-500/30',
-};
-
-const formatDuration = (seconds: number): string => {
-  const safeSeconds = Math.max(0, Math.round(seconds));
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainingSeconds = safeSeconds % 60;
-  return `${minutes}m ${remainingSeconds.toString().padStart(2, '0')}s`;
 };
 
 const RecipientStatusIcon = ({ status }: { status: BroadcastRecipient['status'] }) => {
@@ -137,7 +131,7 @@ export function BroadcastStatusPanel({
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">Tempo estimado</p>
-              <p className="font-semibold">{formatDuration(estimatedSeconds)}</p>
+              <p className="font-semibold">{formatBroadcastInterval(estimatedSeconds)}</p>
             </div>
           </div>
 

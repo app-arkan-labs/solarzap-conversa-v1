@@ -27,6 +27,12 @@ import type { BroadcastCampaignInput, BroadcastRecipientInput } from '@/hooks/us
 import type { UserWhatsAppInstance } from '@/hooks/useUserWhatsAppInstances';
 import { CHANNEL_INFO, type Channel } from '@/types/solarzap';
 import { parseContactsFile, type ImportedContactRow } from '@/utils/contactsImport';
+import {
+  BROADCAST_MIN_TIMER_SECONDS,
+  BROADCAST_SLIDER_MAX_TIMER_SECONDS,
+  clampBroadcastTimerSeconds,
+  formatBroadcastInterval,
+} from '@/utils/broadcastTimer';
 
 interface BroadcastCampaignModalProps {
   isOpen: boolean;
@@ -46,11 +52,8 @@ const STEP_LABELS: Record<Step, string> = {
 };
 
 const DEFAULT_MESSAGES = [''];
-
-const clampTimer = (value: number): number => {
-  if (!Number.isFinite(value)) return 15;
-  return Math.min(120, Math.max(10, Math.round(value)));
-};
+const PREVIEW_CONTACTS_LIMIT = 40;
+const TIMER_PRESETS_SECONDS = [15, 60, 300, 3_600, 86_400];
 
 export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }: BroadcastCampaignModalProps) {
   const { toast } = useToast();
@@ -135,7 +138,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
     }
 
     if (step === 4) {
-      if (clampTimer(timerSeconds) < 10) {
+      if (clampBroadcastTimerSeconds(timerSeconds) < BROADCAST_MIN_TIMER_SECONDS) {
         toast({ title: 'O timer minimo e 10 segundos', variant: 'destructive' });
         return false;
       }
@@ -227,7 +230,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
           instance_name: instanceName,
           source_channel: sourceChannel,
           messages: normalizedMessages,
-          interval_seconds: clampTimer(timerSeconds),
+          interval_seconds: clampBroadcastTimerSeconds(timerSeconds),
           pipeline_stage: 'novo_lead',
           ai_enabled: true,
           recipients,
@@ -244,7 +247,8 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
     }
   };
 
-  const previewContacts = contacts.slice(0, 8);
+  const normalizedTimerSeconds = clampBroadcastTimerSeconds(timerSeconds);
+  const previewContacts = contacts.slice(0, PREVIEW_CONTACTS_LIMIT);
   const completedSteps = step - 1;
 
   return (
@@ -316,7 +320,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
           )}
 
           {step === 2 && (
-            <div className="space-y-4">
+            <div className="space-y-4 h-full flex flex-col min-h-0">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -327,15 +331,15 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
 
               <button
                 type="button"
-                className="w-full border-2 border-dashed border-muted-foreground/30 rounded-xl p-10 hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                className="w-full border-2 border-dashed border-muted-foreground/30 rounded-xl p-6 hover:border-primary/50 hover:bg-muted/30 transition-colors"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isParsing}
               >
                 <div className="flex flex-col items-center gap-3 text-center">
                   {isParsing ? (
-                    <Loader2 className="w-10 h-10 animate-spin text-primary" />
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
                   ) : (
-                    <Upload className="w-10 h-10 text-muted-foreground" />
+                    <Upload className="w-8 h-8 text-muted-foreground" />
                   )}
                   <div>
                     <p className="font-medium">Upload CSV/XLSX</p>
@@ -357,22 +361,30 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                 </div>
               )}
 
-              {previewContacts.length > 0 && (
-                <ScrollArea className="h-[260px] border rounded-md p-3">
-                  <div className="space-y-2">
-                    {previewContacts.map((contact) => (
-                      <div key={contact.phone} className="rounded border p-2 text-sm">
-                        <p className="font-medium">{contact.name}</p>
-                        <p className="text-muted-foreground">{contact.phone}</p>
-                        {contact.email && <p className="text-muted-foreground">{contact.email}</p>}
-                      </div>
-                    ))}
-                    {contacts.length > previewContacts.length && (
-                      <p className="text-xs text-muted-foreground">Mostrando {previewContacts.length} de {contacts.length} contatos.</p>
-                    )}
+              <div className="flex-1 min-h-0 border rounded-md p-3">
+                {previewContacts.length > 0 ? (
+                  <ScrollArea className="h-[320px] sm:h-[360px] lg:h-[420px] pr-2">
+                    <div className="space-y-2">
+                      {previewContacts.map((contact) => (
+                        <div key={contact.phone} className="rounded border p-2 text-sm">
+                          <p className="font-medium">{contact.name}</p>
+                          <p className="text-muted-foreground">{contact.phone}</p>
+                          {contact.email && <p className="text-muted-foreground">{contact.email}</p>}
+                        </div>
+                      ))}
+                      {contacts.length > previewContacts.length && (
+                        <p className="text-xs text-muted-foreground">
+                          Mostrando {previewContacts.length} de {contacts.length} contatos.
+                        </p>
+                      )}
+                    </div>
+                  </ScrollArea>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                    A lista importada aparecera aqui.
                   </div>
-                </ScrollArea>
-              )}
+                )}
+              </div>
             </div>
           )}
 
@@ -424,25 +436,40 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
           {step === 4 && (
             <div className="space-y-6">
               <div className="space-y-3">
-                <Label>Intervalo entre mensagens</Label>
+                <Label>Intervalo entre mensagens (minimo 10s, sem limite maximo)</Label>
                 <div className="flex items-center gap-3">
                   <Slider
-                    min={10}
-                    max={120}
-                    step={1}
-                    value={[timerSeconds]}
-                    onValueChange={(values) => setTimerSeconds(clampTimer(values[0] || 15))}
+                    min={BROADCAST_MIN_TIMER_SECONDS}
+                    max={BROADCAST_SLIDER_MAX_TIMER_SECONDS}
+                    step={10}
+                    value={[Math.min(timerSeconds, BROADCAST_SLIDER_MAX_TIMER_SECONDS)]}
+                    onValueChange={(values) => setTimerSeconds(clampBroadcastTimerSeconds(values[0] || 15))}
                   />
                   <Input
                     type="number"
-                    min={10}
-                    max={120}
+                    min={BROADCAST_MIN_TIMER_SECONDS}
                     className="w-28"
                     value={timerSeconds}
-                    onChange={(event) => setTimerSeconds(clampTimer(Number(event.target.value)))}
+                    onChange={(event) => setTimerSeconds(clampBroadcastTimerSeconds(Number(event.target.value)))}
                   />
                   <span className="text-sm text-muted-foreground">segundos</span>
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  {TIMER_PRESETS_SECONDS.map((preset) => (
+                    <Button
+                      key={preset}
+                      type="button"
+                      size="sm"
+                      variant={timerSeconds === preset ? 'default' : 'outline'}
+                      onClick={() => setTimerSeconds(preset)}
+                    >
+                      {formatBroadcastInterval(preset)}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Intervalo atual: {formatBroadcastInterval(normalizedTimerSeconds)} ({normalizedTimerSeconds}s)
+                </p>
               </div>
 
               <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-2">
@@ -451,7 +478,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                   Randomizacao anti-bloqueio
                 </p>
                 <p className="text-muted-foreground">
-                  O sistema aplica variacao automatica de ±30% no intervalo por destinatario para reduzir padrao repetitivo.
+                  O sistema aplica variacao automatica de +/-30% no intervalo por destinatario para reduzir padrao repetitivo.
                 </p>
                 <p className="text-xs text-amber-600">Timer minimo de seguranca: 10s.</p>
               </div>
@@ -475,7 +502,9 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Intervalo base</p>
-                  <p className="font-semibold">{clampTimer(timerSeconds)}s (±30%)</p>
+                  <p className="font-semibold">
+                    {formatBroadcastInterval(normalizedTimerSeconds)} ({normalizedTimerSeconds}s, +/-30%)
+                  </p>
                 </div>
               </div>
 
@@ -538,3 +567,4 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
     </Dialog>
   );
 }
+
