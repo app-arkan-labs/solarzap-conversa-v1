@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>SolarZap – Google Ads API Design Document</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            color: #333;
+        }
+
+        h1 {
+            color: #1a73e8;
+            border-bottom: 2px solid #1a73e8;
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            color: #185abc;
+            margin-top: 30px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 6px;
+        }
+
+        h3 {
+            color: #333;
+            margin-top: 20px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 10px 14px;
+            text-align: left;
+        }
+
+        th {
+            background: #f1f3f4;
+            font-weight: 600;
+        }
+
+        .header-meta {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 20px 0;
+        }
+
+        .header-meta p {
+            margin: 4px 0;
+        }
+
+        .diagram {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: monospace;
+            white-space: pre;
+            line-height: 1.4;
+            font-size: 13px;
+            overflow-x: auto;
+        }
+
+        .highlight {
+            background: #e8f0fe;
+            padding: 12px;
+            border-left: 4px solid #1a73e8;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        ul {
+            padding-left: 24px;
+        }
+
+        li {
+            margin: 6px 0;
+        }
+
+        @media print {
+            body {
+                margin: 20px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>SolarZap – Google Ads API Design Document</h1>
+
+    <div class="header-meta">
+        <p><strong>Company:</strong> Arkan Labs (ARKAN)</p>
+        <p><strong>Product:</strong> SolarZap CRM</p>
+        <p><strong>Website:</strong> https://solarzap.com.br</p>
+        <p><strong>API Contact:</strong> aplicativos@arkanlabs.com.br</p>
+        <p><strong>MCC ID:</strong> 430-521-4446</p>
+        <p><strong>Developer Token:</strong> RYYVRx3N_ERk6nWxhf5T7Q</p>
+        <p><strong>Date:</strong> March 4, 2026</p>
+        <p><strong>Version:</strong> 1.0</p>
+    </div>
+
+    <h2>1. Company Overview</h2>
+    <p>Arkan Labs is a Brazilian technology company specializing in SaaS solutions for the solar energy industry. Our
+        flagship product, <strong>SolarZap CRM</strong>, is a comprehensive customer relationship management platform
+        designed specifically for solar energy companies. It helps businesses manage leads, automate sales pipelines,
+        generate solar proposals, and track marketing conversions across multiple advertising platforms.</p>
+
+    <p>SolarZap serves solar energy companies throughout Brazil, providing tools that integrate marketing, sales, and
+        customer service into a single platform.</p>
+
+    <h2>2. Product Description</h2>
+    <p><strong>SolarZap CRM</strong> is a web-based application that enables solar energy companies to:</p>
+    <ul>
+        <li>Manage leads and customer relationships via an integrated CRM</li>
+        <li>Communicate with customers through WhatsApp</li>
+        <li>Generate solar energy proposals with technical calculations</li>
+        <li>Track and attribute marketing conversions across advertising platforms</li>
+        <li>Automate sales pipeline stages with AI-powered workflows</li>
+    </ul>
+
+    <h2>3. Google Ads API Usage</h2>
+
+    <h3>3.1 Purpose</h3>
+    <p>SolarZap uses the Google Ads API exclusively for <strong>Offline Conversion Tracking</strong>. When a lead that
+        originated from a Google Ads click progresses through the sales pipeline (e.g., schedules a visit, closes a
+        sale), SolarZap automatically uploads these offline conversion events back to Google Ads. This enables our users
+        to:</p>
+    <ul>
+        <li>Measure the true ROI of their Google Ads campaigns</li>
+        <li>Optimize bidding strategies based on actual sales outcomes</li>
+        <li>Identify which keywords and ads drive real revenue</li>
+    </ul>
+
+    <h3>3.2 API Features Used</h3>
+    <table>
+        <tr>
+            <th>API Feature</th>
+            <th>Purpose</th>
+            <th>Frequency</th>
+        </tr>
+        <tr>
+            <td>ListAccessibleCustomers</td>
+            <td>List Google Ads accounts accessible to the authenticated user during initial setup</td>
+            <td>On-demand (setup only)</td>
+        </tr>
+        <tr>
+            <td>CustomerService (GAQL)</td>
+            <td>Query customer hierarchy to map MCC → child accounts</td>
+            <td>On-demand (setup only)</td>
+        </tr>
+        <tr>
+            <td>ConversionActionService (GAQL)</td>
+            <td>List available conversion actions for the selected customer account</td>
+            <td>On-demand (setup only)</td>
+        </tr>
+        <tr>
+            <td>ConversionUploadService.UploadClickConversions</td>
+            <td>Upload offline conversion events (pipeline stage changes mapped to conversions)</td>
+            <td>Event-driven, typically 5-50 per org per day</td>
+        </tr>
+    </table>
+
+    <h3>3.3 Data Flow</h3>
+    <div class="diagram">
+        1. User clicks Google Ad → lands on client's website
+        2. SolarZap tracking script captures gclid/gbraid/wbraid
+        3. Lead is created in SolarZap CRM with click ID attached
+        4. Lead progresses through pipeline (e.g., "Qualified" → "Visit Scheduled" → "Proposal Sent" → "Sale Closed")
+        5. Each configured stage triggers a conversion event
+        6. SolarZap conversion-dispatcher sends the event to Google Ads API via UploadClickConversions
+        7. Google Ads receives the offline conversion and attributes it to the original click
+    </div>
+
+    <h2>4. Authentication & Authorization</h2>
+
+    <h3>4.1 OAuth 2.0 Flow</h3>
+    <p>SolarZap implements the standard <strong>OAuth 2.0 Authorization Code Flow</strong> with offline access:</p>
+
+    <div class="diagram">
+        User clicks "Connect Google Ads"
+        │
+        ▼
+        SolarZap Backend generates OAuth URL
+        (scope: adwords, access_type: offline, prompt: consent)
+        │
+        ▼
+        User is redirected to Google's consent screen
+        │
+        ▼
+        User authorizes SolarZap
+        │
+        ▼
+        Google redirects to SolarZap callback with authorization code
+        │
+        ▼
+        SolarZap exchanges code for access_token + refresh_token
+        │
+        ▼
+        refresh_token is stored in Supabase Vault (encrypted)
+        access_token is used immediately, then discarded
+        │
+        ▼
+        User selects MCC → Customer Account → Conversion Action
+        │
+        ▼
+        Configuration is saved to the database
+    </div>
+
+    <h3>4.2 Token Management</h3>
+    <table>
+        <tr>
+            <th>Token Type</th>
+            <th>Storage</th>
+            <th>Lifecycle</th>
+        </tr>
+        <tr>
+            <td>Access Token</td>
+            <td>In-memory only (server-side)</td>
+            <td>Refreshed on each API call, never persisted</td>
+        </tr>
+        <tr>
+            <td>Refresh Token</td>
+            <td>Supabase Vault (encrypted at rest)</td>
+            <td>Stored per-organization, rotated on re-authorization</td>
+        </tr>
+        <tr>
+            <td>Developer Token</td>
+            <td>Supabase Edge Function secret</td>
+            <td>Global, managed by Arkan Labs</td>
+        </tr>
+        <tr>
+            <td>Client ID/Secret</td>
+            <td>Supabase Edge Function secrets</td>
+            <td>Global, managed by Arkan Labs</td>
+        </tr>
+    </table>
+
+    <h3>4.3 Token Security</h3>
+    <ul>
+        <li>All tokens are handled exclusively on the server-side (Supabase Edge Functions / Deno runtime)</li>
+        <li>Refresh tokens are never exposed to the client/browser</li>
+        <li>Refresh tokens are stored in Supabase Vault with encryption at rest</li>
+        <li>Old refresh tokens are automatically deleted when a user re-authorizes</li>
+        <li>Token revocation is attempted on disconnect</li>
+    </ul>
+
+    <h2>5. Architecture</h2>
+
+    <h3>5.1 Technology Stack</h3>
+    <table>
+        <tr>
+            <th>Layer</th>
+            <th>Technology</th>
+        </tr>
+        <tr>
+            <td>Frontend</td>
+            <td>React 18 + Vite + Shadcn/Radix UI + Tailwind CSS</td>
+        </tr>
+        <tr>
+            <td>Backend</td>
+            <td>Supabase Edge Functions (Deno runtime)</td>
+        </tr>
+        <tr>
+            <td>Database</td>
+            <td>PostgreSQL (Supabase hosted)</td>
+        </tr>
+        <tr>
+            <td>Secret Storage</td>
+            <td>Supabase Vault (PostgreSQL pgcrypto)</td>
+        </tr>
+        <tr>
+            <td>Hosting</td>
+            <td>Supabase Cloud</td>
+        </tr>
+    </table>
+
+    <h3>5.2 System Architecture Diagram</h3>
+    <div class="diagram">
+        ┌──────────────────────────────────────────────────────────┐
+        │ SolarZap Frontend │
+        │ (React + Vite, served via CDN) │
+        │ │
+        │ ┌─────────────────┐ ┌──────────────────────────────┐ │
+        │ │ "Connect Google │ │ MCC / Customer / Conversion │ │
+        │ │ Ads" Button │ │ Action Dropdowns │ │
+        │ └────────┬─────────┘ └──────────────┬───────────────┘ │
+        └───────────┼───────────────────────────┼───────────────────┘
+        │ │
+        ▼ ▼
+        ┌───────────────────────────────────────────────────────────┐
+        │ Supabase Edge Functions (Deno) │
+        │ │
+        │ ┌──────────────────┐ ┌─────────────────────────────┐ │
+        │ │ google-ads-oauth │ │ tracking-credentials │ │
+        │ │ (OAuth URL gen) │ │ (list accounts, save config)│ │
+        │ └──────────────────┘ └─────────────────────────────┘ │
+        │ │
+        │ ┌──────────────────┐ ┌─────────────────────────────┐ │
+        │ │google-ads-callback│ │ conversion-dispatcher │ │
+        │ │(token exchange) │ │ (upload offline conversions)│ │
+        │ └──────────────────┘ └─────────────────────────────┘ │
+        └───────────────────────────────────────────────────────────┘
+        │ │
+        ▼ ▼
+        ┌───────────────────────┐ ┌────────────────────────────────┐
+        │ Supabase Vault │ │ Google Ads API v18 │
+        │ (encrypted secrets) │ │ - ListAccessibleCustomers │
+        │ - refresh_token │ │ - GAQL queries │
+        │ - client_secret │ │ - UploadClickConversions │
+        │ - developer_token │ │ │
+        └───────────────────────┘ └────────────────────────────────┘
+    </div>
+
+    <h2>6. User Experience</h2>
+
+    <h3>6.1 Setup Flow</h3>
+    <ol>
+        <li>User navigates to Settings → Tracking & Conversions → Platforms</li>
+        <li>User clicks "Connect Google Ads" button</li>
+        <li>User is redirected to Google OAuth consent screen</li>
+        <li>User authorizes SolarZap to access their Google Ads account</li>
+        <li>User is redirected back to SolarZap with a success notification</li>
+        <li>Dropdowns populate with the user's accessible accounts</li>
+        <li>User selects: MCC Account → Customer Account → Conversion Action</li>
+        <li>User clicks "Save Selection" and optionally "Test Connection"</li>
+        <li>Integration is active — conversions are uploaded automatically</li>
+    </ol>
+
+    <h3>6.2 Ongoing Usage</h3>
+    <p>Once configured, the integration runs fully automatically. As leads progress through the CRM pipeline:</p>
+    <ul>
+        <li>Stage changes trigger conversion events</li>
+        <li>The conversion-dispatcher retrieves credentials from Vault</li>
+        <li>Offline conversions are uploaded to Google Ads via the API</li>
+        <li>Failed uploads are retried with exponential backoff (30s → 60s → 5m → 30m → 1h)</li>
+        <li>Users can monitor delivery status on the "Entregas" tab</li>
+    </ul>
+
+    <h2>7. Rate Limits & Compliance</h2>
+
+    <h3>7.1 Expected API Usage</h3>
+    <table>
+        <tr>
+            <th>Metric</th>
+            <th>Expected Value</th>
+        </tr>
+        <tr>
+            <td>Organizations using Google Ads</td>
+            <td>10-100 (growing)</td>
+        </tr>
+        <tr>
+            <td>Conversion uploads per org per day</td>
+            <td>5-50</td>
+        </tr>
+        <tr>
+            <td>Total API calls per day</td>
+            <td>~500-5,000</td>
+        </tr>
+        <tr>
+            <td>Setup API calls (list accounts)</td>
+            <td>Occasional (on-demand)</td>
+        </tr>
+    </table>
+
+    <h3>7.2 Compliance</h3>
+    <ul>
+        <li>SolarZap does NOT modify campaigns, ad groups, ads, or bidding strategies</li>
+        <li>SolarZap does NOT access user data beyond what is necessary for conversion tracking</li>
+        <li>SolarZap does NOT store Google Ads data locally (beyond the configuration IDs)</li>
+        <li>All API interactions are server-side only (no client-side API calls)</li>
+        <li>Privacy Policy: https://solarzap.com.br/privacidade</li>
+        <li>Terms of Service: https://solarzap.com.br/termos</li>
+        <li>Compliant with LGPD (Brazil's General Data Protection Law)</li>
+    </ul>
+
+    <h2>8. Error Handling & Monitoring</h2>
+    <ul>
+        <li><strong>Token expiration:</strong> Access tokens are refreshed on every API call using the stored refresh
+            token</li>
+        <li><strong>Failed uploads:</strong> Automatic retry with exponential backoff (up to 5 attempts)</li>
+        <li><strong>Invalid credentials:</strong> Users are prompted to re-authorize via the "Reconnect" flow</li>
+        <li><strong>Rate limiting:</strong> Respected via retry-after headers</li>
+        <li><strong>Monitoring:</strong> All conversion deliveries are logged with status tracking (pending → processing
+            → sent/failed)</li>
+    </ul>
+
+    <h2>9. Contact Information</h2>
+    <table>
+        <tr>
+            <th>Field</th>
+            <th>Value</th>
+        </tr>
+        <tr>
+            <td>Company</td>
+            <td>Arkan Labs (ARKAN)</td>
+        </tr>
+        <tr>
+            <td>Product</td>
+            <td>SolarZap CRM</td>
+        </tr>
+        <tr>
+            <td>Website</td>
+            <td>https://solarzap.com.br</td>
+        </tr>
+        <tr>
+            <td>Company Website</td>
+            <td>https://adsarkan.com.br</td>
+        </tr>
+        <tr>
+            <td>API Contact Email</td>
+            <td>aplicativos@arkanlabs.com.br</td>
+        </tr>
+        <tr>
+            <td>Type</td>
+            <td>Agency / SEM</td>
+        </tr>
+        <tr>
+            <td>Country</td>
+            <td>Brazil</td>
+        </tr>
+    </table>
+
+</body>
+
+</html>
