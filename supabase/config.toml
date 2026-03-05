@@ -16,6 +16,9 @@ verify_jwt = false
 [functions.google-callback]
 verify_jwt = false
 
+[functions.google-ads-callback]
+verify_jwt = false
+
 [functions.meta-oauth]
 verify_jwt = false
 
@@ -55,6 +58,9 @@ verify_jwt = false
 [functions.whatsapp-webhook]
 verify_jwt = false
 
+[functions.media-resolver]
+verify_jwt = false
+
 [functions.ai-pipeline-agent]
 verify_jwt = false
 
@@ -78,3 +84,6 @@ verify_jwt = false
 
 [functions.tracking-credentials]
 verify_jwt = false
+
+[functions.admin-api]
+verify_jwt = true

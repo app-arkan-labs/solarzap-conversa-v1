@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { type OrgRole } from '@/lib/orgAdminClient';
 import { Button } from '@/components/ui/button';
+import OrgSuspendedScreen from '@/components/admin/OrgSuspendedScreen';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -30,7 +31,7 @@ const ORG_ERROR_DESCRIPTION_BY_KIND = {
 } as const;
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRoles }) => {
-  const { user, loading, role, orgId, signOut, orgResolutionStatus, orgResolutionError } = useAuth();
+  const { user, loading, role, orgId, orgStatus, suspensionReason, signOut, orgResolutionStatus, orgResolutionError } = useAuth();
   const { toast } = useToast();
   const hasShownAccessToastRef = useRef(false);
 
@@ -144,6 +145,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
         </div>
       </div>
     );
+  }
+
+  if (orgStatus === 'suspended') {
+    return <OrgSuspendedScreen reason={suspensionReason} />;
   }
 
   if (missingRequiredRole) {

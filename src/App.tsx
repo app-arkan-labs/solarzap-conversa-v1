@@ -1,8 +1,9 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AutomationProvider } from "@/contexts/AutomationContext";
 import { GoogleIntegrationProvider } from "@/contexts/GoogleIntegrationContext";
@@ -14,8 +15,11 @@ import UpdatePassword from "./pages/UpdatePassword";
 import OrganizationSelect from "./pages/OrganizationSelect";
 import NotFound from "./pages/NotFound";
 import CallQrRedirect from "./pages/CallQrRedirect";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
 import { supabase } from "@/lib/supabase";
 import { extractAuthErrorMetadata, shouldAttemptAuthRecovery } from "@/lib/authSessionGuard";
+import { AdminGuard } from "@/components/admin/AdminGuard";
 
 let authRecoveryInFlight: Promise<void> | null = null;
 
@@ -107,6 +111,8 @@ const queryClient = new QueryClient({
   }),
 });
 
+const Admin = lazy(() => import('./pages/Admin'));
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -122,6 +128,8 @@ const App = () => (
                   <Route path="/select-organization" element={<OrganizationSelect />} />
                   <Route path="/update-password" element={<UpdatePassword />} />
                   <Route path="/qr/call" element={<CallQrRedirect />} />
+                  <Route path="/privacidade" element={<PrivacyPolicy />} />
+                  <Route path="/termos" element={<TermsOfService />} />
                   <Route
                     path="/"
                     element={
@@ -131,11 +139,22 @@ const App = () => (
                     }
                   />
                   <Route
-                    path="/admin/members"
+                    path="/settings/members"
                     element={
                       <ProtectedRoute requiredRoles={['owner', 'admin']}>
                         <Index />
                       </ProtectedRoute>
+                    }
+                  />
+                  <Route path="/admin/members" element={<Navigate to="/settings/members" replace />} />
+                  <Route
+                    path="/admin/*"
+                    element={
+                      <AdminGuard>
+                        <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando admin...</div>}>
+                          <Admin />
+                        </Suspense>
+                      </AdminGuard>
                     }
                   />
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

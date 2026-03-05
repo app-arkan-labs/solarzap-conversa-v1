@@ -816,8 +816,8 @@ export function useUserWhatsAppInstances() {
           inst.instance_name === instanceName ? { ...inst, ai_enabled: true } : inst
         ));
 
-        // 2. Batch update leads
-        const { data, error } = await supabase
+        // 2) Batch update leads directly linked to the instance
+        const { data: directData, error: directError } = await supabase
           .from('leads')
           .update({
             ai_enabled: true,
@@ -828,9 +828,50 @@ export function useUserWhatsAppInstances() {
           .eq('org_id', orgId)
           .select('id');
 
-        if (error) throw error;
+        if (directError) throw directError;
 
-        return data?.length || 0;
+        // 3) Also activate leads that interacted through this instance
+        // even when legacy rows still point to a different canonical instance_name.
+        const { data: interactions, error: interactionsError } = await supabase
+          .from('interacoes')
+          .select('lead_id')
+          .eq('org_id', orgId)
+          .eq('instance_name', instanceName)
+          .not('lead_id', 'is', null);
+
+        if (interactionsError) throw interactionsError;
+
+        const mappedLeadIds = Array.from(
+          new Set(
+            (interactions ?? [])
+              .map((row) => Number(row.lead_id))
+              .filter((leadId) => Number.isFinite(leadId) && leadId > 0),
+          ),
+        );
+
+        let mappedData: Array<{ id: number }> = [];
+        if (mappedLeadIds.length > 0) {
+          const { data, error } = await supabase
+            .from('leads')
+            .update({
+              ai_enabled: true,
+              ai_paused_reason: null,
+              ai_paused_at: null,
+            })
+            .eq('org_id', orgId)
+            .in('id', mappedLeadIds)
+            .select('id');
+
+          if (error) throw error;
+          mappedData = data ?? [];
+        }
+
+        const affectedLeadIds = new Set<number>([
+          ...(directData ?? []).map((row) => Number(row.id)),
+          ...mappedData.map((row) => Number(row.id)),
+        ]);
+
+        return affectedLeadIds.size;
       } catch (error) {
         console.error('Error activating all leads:', error);
         throw error;

@@ -34,6 +34,8 @@ interface AuthContextType {
   user: User | null;
   orgId: string | null;
   role: string | null;
+  orgStatus: string | null;
+  suspensionReason: string | null;
   canViewTeamLeads: boolean;
   organizations: UserOrganizationOption[];
   hasMultipleOrganizations: boolean;
@@ -266,6 +268,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [role, setRole] = useState<OrgRole | null>(null);
+  const [orgStatus, setOrgStatus] = useState<string | null>(null);
+  const [suspensionReason, setSuspensionReason] = useState<string | null>(null);
   const [canViewTeamLeads, setCanViewTeamLeads] = useState(false);
   const [organizations, setOrganizations] = useState<UserOrganizationOption[]>([]);
   const [orgResolutionStatus, setOrgResolutionStatus] = useState<OrgResolutionStatus>('idle');
@@ -282,6 +286,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setOrgId(membership.orgId);
     setRole(membership.role);
     setCanViewTeamLeads(membership.canViewTeamLeads);
+    setOrgStatus(null);
+    setSuspensionReason(null);
   };
 
   const markOrgResolving = () => {
@@ -739,6 +745,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadOrgStatus = async () => {
+      if (!user?.id || !orgId) {
+        if (mounted) {
+          setOrgStatus(null);
+          setSuspensionReason(null);
+        }
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('organizations')
+          .select('status, suspension_reason')
+          .eq('id', orgId)
+          .maybeSingle();
+
+        if (!mounted) return;
+        if (error || !data) {
+          setOrgStatus(null);
+          setSuspensionReason(null);
+          return;
+        }
+
+        setOrgStatus(typeof data.status === 'string' ? data.status : null);
+        setSuspensionReason(
+          typeof data.suspension_reason === 'string' ? data.suspension_reason : null,
+        );
+      } catch {
+        if (!mounted) return;
+        setOrgStatus(null);
+        setSuspensionReason(null);
+      }
+    };
+
+    void loadOrgStatus();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id, orgId]);
+
   const selectOrganization = async (nextOrgId: string, opts?: SelectOrganizationOptions) => {
     const option = organizations.find((item) => item.org_id === nextOrgId);
     if (!option) {
@@ -829,6 +879,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
     orgId,
     role,
+    orgStatus,
+    suspensionReason,
     canViewTeamLeads,
     organizations,
     hasMultipleOrganizations,

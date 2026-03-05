@@ -14,6 +14,7 @@ import { CalendarView } from './CalendarView';
 import { ContactsView } from './ContactsView';
 import { DashboardView } from './DashboardView';
 import { IntegrationsView } from './IntegrationsView';
+import { TrackingView } from './TrackingView';
 import { AutomationsView } from './AutomationsView';
 import { AIAgentsView } from './AIAgentsView';
 import { KnowledgeBaseView } from './KnowledgeBaseView';
@@ -82,7 +83,7 @@ class AppointmentModalErrorBoundary extends Component<AppointmentModalErrorBound
   }
 }
 
-const isAdminMembersPath = (pathname: string): boolean => pathname === '/admin/members';
+const isAdminMembersPath = (pathname: string): boolean => pathname === '/settings/members';
 const CONVERSAS_SIDEBAR_MIN_WIDTH = 280;
 const CONVERSAS_SIDEBAR_MAX_WIDTH = 560;
 const CONVERSAS_SIDEBAR_DEFAULT_WIDTH = 320;
@@ -118,8 +119,6 @@ export function SolarZapLayout() {
     setLeadScope,
     leadScopeMembers,
     isLoadingLeadScopeMembers,
-    showTeamLeads,
-    setShowTeamLeads,
     canViewTeam,
     createLead,
     updateLead,
@@ -986,7 +985,7 @@ export function SolarZapLayout() {
         unreadNotifications={unreadNotifications}
         onNotificationsClick={() => setIsNotificationsPanelOpen(true)}
         isAdminUser={canAccessAdmin}
-        onAdminMembersClick={() => navigate('/admin/members')}
+        onAdminMembersClick={() => navigate('/settings/members')}
         hasMultipleOrganizations={hasMultipleOrganizations}
         onSwitchOrganization={() => setIsOrganizationSwitcherOpen(true)}
         activeOrganizationName={activeOrganizationName ?? undefined}
@@ -996,6 +995,7 @@ export function SolarZapLayout() {
           ia_agentes: sellerPerms.tab_ia_agentes,
           automacoes: sellerPerms.tab_automacoes,
           integracoes: sellerPerms.tab_integracoes,
+          tracking: sellerPerms.tab_integracoes,
           banco_ia: sellerPerms.tab_banco_ia,
           minha_conta: sellerPerms.tab_minha_conta,
         }}
@@ -1074,8 +1074,11 @@ export function SolarZapLayout() {
               conversations={filteredConversations}
               contacts={contacts}
               canViewTeam={canViewTeam}
-              showTeamLeads={showTeamLeads}
-              onToggleTeamLeads={setShowTeamLeads}
+              leadScope={leadScope}
+              onLeadScopeChange={setLeadScope}
+              leadScopeMembers={leadScopeMembers}
+              leadScopeLoading={isLoadingLeadScopeMembers}
+              currentUserId={user?.id ?? null}
               selectedId={selectedConversation?.id || null}
               channelFilter={channelFilter}
               searchQuery={searchQuery}
@@ -1329,6 +1332,12 @@ export function SolarZapLayout() {
       {activeTab === 'integracoes' && (
         <div className="flex-1 flex flex-col h-full overflow-hidden">
           <IntegrationsView />
+        </div>
+      )}
+
+      {activeTab === 'tracking' && (
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          <TrackingView />
         </div>
       )}
 

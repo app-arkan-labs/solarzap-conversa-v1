@@ -1,0 +1,1021 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+type SystemRole = 'super_admin' | 'ops' | 'support' | 'billing' | 'read_only';
+
+type AdminIdentity = {
+  user_id: string;
+  system_role: SystemRole;
+};
+
+type ActionPermission = {
+  minRole: SystemRole;
+  requireMfa: boolean;
+};
+
+const ROLE_LEVEL: Record<SystemRole, number> = {
+  super_admin: 50,
+  ops: 40,
+  support: 30,
+  billing: 20,
+  read_only: 10,
+};
+
+const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
+  whoami: { minRole: 'read_only', requireMfa: true },
+  list_orgs: { minRole: 'read_only', requireMfa: true },
+  get_org_details: { minRole: 'support', requireMfa: true },
+  list_org_members: { minRole: 'support', requireMfa: true },
+  get_system_metrics: { minRole: 'ops', requireMfa: true },
+  list_audit_log: { minRole: 'ops', requireMfa: true },
+  suspend_org: { minRole: 'ops', requireMfa: true },
+  reactivate_org: { minRole: 'ops', requireMfa: true },
+  update_org_plan: { minRole: 'billing', requireMfa: true },
+  list_feature_flags: { minRole: 'read_only', requireMfa: true },
+  create_feature_flag: { minRole: 'ops', requireMfa: true },
+  set_org_feature: { minRole: 'ops', requireMfa: true },
+};
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const FLAG_KEY_REGEX = /^[a-z][a-z0-9_]*$/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_REGEX.test(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function stripBearer(authHeader: string): string {
+  return authHeader.replace(/^Bearer\s+/i, '').trim();
+}
+
+function normalizeBase64Url(input: string): string {
+  const base64 = input.replace(/-/g, '+').replace(/_/g, '/');
+  const padLength = (4 - (base64.length % 4)) % 4;
+  return `${base64}${'='.repeat(padLength)}`;
+}
+
+function extractAalFromAuthHeader(authHeader: string): string {
+  try {
+    const token = stripBearer(authHeader);
+    const segments = token.split('.');
+    if (segments.length < 2) return 'aal1';
+    const payloadRaw = atob(normalizeBase64Url(segments[1]));
+    const payload = JSON.parse(payloadRaw) as Record<string, unknown>;
+    return typeof payload.aal === 'string' && payload.aal ? payload.aal : 'aal1';
+  } catch {
+    return 'aal1';
+  }
+}
+
+function parsePagination(
+  payload: Record<string, unknown>,
+  defaults = { page: 1, perPage: 20, maxPerPage: 100 },
+): { page: number; perPage: number } {
+  const pageInput = Number(payload.page);
+  const perPageInput = Number(payload.per_page);
+
+  const page = Number.isFinite(pageInput) ? Math.floor(pageInput) : defaults.page;
+  const perPage = Number.isFinite(perPageInput)
+    ? Math.floor(perPageInput)
+    : defaults.perPage;
+
+  return {
+    page: Math.min(1_000_000, Math.max(1, page)),
+    perPage: Math.min(defaults.maxPerPage, Math.max(1, perPage)),
+  };
+}
+
+function toJsonBody(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function toTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function toReason(value: unknown): string | null {
+  const normalized = toTrimmedString(value);
+  return normalized && normalized.length > 0 ? normalized : null;
+}
+
+function json(
+  status: number,
+  body: Record<string, unknown>,
+  corsHeaders?: Record<string, string>,
+) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...(corsHeaders ?? {}),
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
+function corsForOrigin(origin: string): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  };
+}
+
+function toErrorCode(error: unknown, fallback = 'internal_error'): string {
+  if (isRecord(error) && typeof error.code === 'string') {
+    return error.code;
+  }
+  return fallback;
+}
+
+function toErrorStatus(error: unknown, fallback = 500): number {
+  if (isRecord(error) && typeof error.status === 'number') {
+    return error.status;
+  }
+  return fallback;
+}
+
+async function enforcePolicy(
+  adminClient: ReturnType<typeof createClient>,
+  userId: string,
+  action: string,
+  aal: string,
+): Promise<AdminIdentity> {
+  const permission = ACTION_PERMISSIONS[action];
+  if (!permission) {
+    throw { status: 403, code: 'action_not_allowed' };
+  }
+
+  const { data, error } = await adminClient
+    .from('_admin_system_admins')
+    .select('system_role')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[admin-api] enforcePolicy query failed', error);
+    throw { status: 500, code: 'admin_lookup_failed' };
+  }
+
+  if (!data || typeof data.system_role !== 'string') {
+    throw { status: 403, code: 'not_system_admin' };
+  }
+
+  const role = data.system_role as SystemRole;
+  if (!ROLE_LEVEL[role]) {
+    throw { status: 403, code: 'invalid_system_role' };
+  }
+
+  if (ROLE_LEVEL[role] < ROLE_LEVEL[permission.minRole]) {
+    throw { status: 403, code: 'insufficient_role' };
+  }
+
+  if (permission.requireMfa && aal !== 'aal2') {
+    throw { status: 403, code: 'mfa_required' };
+  }
+
+  return {
+    user_id: userId,
+    system_role: role,
+  };
+}
+
+async function writeAuditLog(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  action: string,
+  details: {
+    target_type: string;
+    target_id?: string | null;
+    org_id?: string | null;
+    before?: unknown;
+    after?: unknown;
+    reason?: string | null;
+  },
+  req: Request,
+) {
+  const ip =
+    req.headers
+      .get('x-forwarded-for')
+      ?.split(',')
+      .map((part) => part.trim())
+      .filter(Boolean)[0] ?? null;
+  const userAgent = req.headers.get('user-agent') ?? null;
+
+  const { error } = await adminClient.from('_admin_audit_log').insert({
+    actor_user_id: admin.user_id,
+    actor_system_role: admin.system_role,
+    action,
+    target_type: details.target_type,
+    target_id: details.target_id ?? null,
+    org_id: details.org_id ?? null,
+    before: details.before ?? null,
+    after: details.after ?? null,
+    ip,
+    user_agent: userAgent,
+    reason: details.reason ?? null,
+  });
+
+  if (error) {
+    console.error('[admin-api] writeAuditLog failed', error);
+    throw { status: 500, code: 'audit_log_failed' };
+  }
+}
+
+async function listOrgMembersWithProfiles(
+  adminClient: ReturnType<typeof createClient>,
+  orgId: string,
+) {
+  const { data: members, error: membersError } = await adminClient
+    .from('organization_members')
+    .select('org_id, user_id, role, can_view_team_leads, created_at')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: true })
+    .order('user_id', { ascending: true });
+
+  if (membersError) {
+    throw { status: 500, code: 'members_query_failed' };
+  }
+
+  const enriched = await Promise.all(
+    (members ?? []).map(async (member) => {
+      const userId = String(member.user_id || '');
+      let email: string | null = null;
+      let displayName: string | null = null;
+
+      if (userId) {
+        const { data: userData } = await adminClient.auth.admin.getUserById(userId);
+        email = userData.user?.email ?? null;
+
+        const metadata = userData.user?.user_metadata;
+        if (isRecord(metadata)) {
+          const displayCandidate =
+            (typeof metadata.display_name === 'string' && metadata.display_name.trim()) ||
+            (typeof metadata.name === 'string' && metadata.name.trim()) ||
+            (typeof metadata.full_name === 'string' && metadata.full_name.trim()) ||
+            null;
+          displayName = displayCandidate;
+        }
+      }
+
+      return {
+        org_id: member.org_id,
+        user_id: userId,
+        email,
+        display_name: displayName,
+        role: member.role,
+        can_view_team_leads: member.can_view_team_leads === true,
+        joined_at: member.created_at ?? null,
+      };
+    }),
+  );
+
+  return enriched;
+}
+
+async function countAuthUsers(adminClient: ReturnType<typeof createClient>) {
+  const perPage = 1000;
+  let total = 0;
+
+  for (let page = 1; page <= 100; page += 1) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      throw { status: 500, code: 'users_count_failed' };
+    }
+    const users = data.users ?? [];
+    total += users.length;
+    if (users.length < perPage) break;
+  }
+
+  return total;
+}
+
+async function handleWhoAmI(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  aal: string,
+  req: Request,
+) {
+  const response = {
+    ok: true,
+    user_id: admin.user_id,
+    system_role: admin.system_role,
+    aal,
+  };
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'whoami',
+    {
+      target_type: 'system',
+      target_id: 'admin-api',
+    },
+    req,
+  );
+
+  return response;
+}
+
+async function handleListOrgs(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const { page, perPage } = parsePagination(payload);
+  const search = toTrimmedString(payload.search);
+  const status = toTrimmedString(payload.status);
+  const from = (page - 1) * perPage;
+  const to = from + perPage - 1;
+
+  let query = adminClient
+    .from('_admin_orgs_summary')
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false });
+
+  if (search) {
+    query = query.ilike('name', `%${search}%`);
+  }
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  const { data, error, count } = await query.range(from, to);
+  if (error) {
+    throw { status: 500, code: 'list_orgs_failed' };
+  }
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'list_orgs',
+    {
+      target_type: 'read',
+      target_id: 'orgs',
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    orgs: data ?? [],
+    total: count ?? 0,
+    page,
+    per_page: perPage,
+  };
+}
+
+async function handleGetOrgDetails(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const orgId = payload.org_id;
+  if (!isUuid(orgId)) {
+    throw { status: 400, code: 'invalid_org_id' };
+  }
+
+  const { data: org, error: orgError } = await adminClient
+    .from('_admin_orgs_summary')
+    .select('*')
+    .eq('id', orgId)
+    .maybeSingle();
+
+  if (orgError) {
+    throw { status: 500, code: 'org_lookup_failed' };
+  }
+  if (!org) {
+    throw { status: 404, code: 'org_not_found' };
+  }
+
+  const members = await listOrgMembersWithProfiles(adminClient, orgId);
+  const stats = {
+    member_count: Number((org as Record<string, unknown>).member_count ?? 0),
+    lead_count: Number((org as Record<string, unknown>).lead_count ?? 0),
+    proposal_count: Number((org as Record<string, unknown>).proposal_count ?? 0),
+    instance_count: Number((org as Record<string, unknown>).instance_count ?? 0),
+  };
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'get_org_details',
+    {
+      target_type: 'organization',
+      target_id: orgId,
+      org_id: orgId,
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    org,
+    members,
+    stats,
+  };
+}
+
+async function handleListOrgMembers(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const orgId = payload.org_id;
+  if (!isUuid(orgId)) {
+    throw { status: 400, code: 'invalid_org_id' };
+  }
+
+  const members = await listOrgMembersWithProfiles(adminClient, orgId);
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'list_org_members',
+    {
+      target_type: 'organization',
+      target_id: orgId,
+      org_id: orgId,
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    members,
+  };
+}
+
+async function handleGetSystemMetrics(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  req: Request,
+) {
+  const [orgsResult, leadsResult, proposalsResult, instancesResult, totalUsers] =
+    await Promise.all([
+      adminClient.from('organizations').select('id', { count: 'exact', head: true }),
+      adminClient.from('leads').select('id', { count: 'exact', head: true }),
+      adminClient.from('propostas').select('id', { count: 'exact', head: true }),
+      adminClient
+        .from('whatsapp_instances')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_active', true)
+        .in('status', ['connected', 'open']),
+      countAuthUsers(adminClient),
+    ]);
+
+  if (orgsResult.error || leadsResult.error || proposalsResult.error || instancesResult.error) {
+    throw { status: 500, code: 'metrics_query_failed' };
+  }
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'get_system_metrics',
+    {
+      target_type: 'read',
+      target_id: 'metrics',
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    metrics: {
+      total_orgs: orgsResult.count ?? 0,
+      total_users: totalUsers,
+      total_leads: leadsResult.count ?? 0,
+      total_proposals: proposalsResult.count ?? 0,
+      active_instances: instancesResult.count ?? 0,
+    },
+  };
+}
+
+async function handleListAuditLog(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const { page, perPage } = parsePagination(payload);
+  const filters = toJsonBody(payload.filters);
+  const from = (page - 1) * perPage;
+  const to = from + perPage - 1;
+
+  let query = adminClient
+    .from('_admin_audit_log')
+    .select('*', { count: 'exact' })
+    .order('ts', { ascending: false });
+
+  const actorUserId = filters.actor_user_id;
+  if (actorUserId !== undefined) {
+    if (!isUuid(actorUserId)) throw { status: 400, code: 'invalid_actor_user_id' };
+    query = query.eq('actor_user_id', actorUserId);
+  }
+
+  const orgId = filters.org_id;
+  if (orgId !== undefined) {
+    if (!isUuid(orgId)) throw { status: 400, code: 'invalid_org_id' };
+    query = query.eq('org_id', orgId);
+  }
+
+  const action = toTrimmedString(filters.action);
+  if (action) query = query.eq('action', action);
+
+  const targetType = toTrimmedString(filters.target_type);
+  if (targetType) query = query.eq('target_type', targetType);
+
+  const dateFrom = toTrimmedString(filters.date_from);
+  if (dateFrom) query = query.gte('ts', dateFrom);
+
+  const dateTo = toTrimmedString(filters.date_to);
+  if (dateTo) query = query.lte('ts', dateTo);
+
+  const { data, error, count } = await query.range(from, to);
+  if (error) {
+    throw { status: 500, code: 'list_audit_log_failed' };
+  }
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'list_audit_log',
+    {
+      target_type: 'audit',
+      target_id: 'audit-log',
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    entries: data ?? [],
+    total: count ?? 0,
+    page,
+    per_page: perPage,
+  };
+}
+
+async function fetchOrganizationState(adminClient: ReturnType<typeof createClient>, orgId: string) {
+  const { data, error } = await adminClient
+    .from('organizations')
+    .select('id, status, suspended_at, suspended_by, suspension_reason, plan, plan_limits')
+    .eq('id', orgId)
+    .maybeSingle();
+
+  if (error) throw { status: 500, code: 'org_state_fetch_failed' };
+  if (!data) throw { status: 404, code: 'org_not_found' };
+  return data;
+}
+
+async function handleSuspendOrg(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const orgId = payload.org_id;
+  if (!isUuid(orgId)) throw { status: 400, code: 'invalid_org_id' };
+
+  const reason = toReason(payload.reason);
+  if (!reason) throw { status: 400, code: 'reason_required' };
+
+  const before = await fetchOrganizationState(adminClient, orgId);
+  const { data: updated, error: updateError } = await adminClient
+    .from('organizations')
+    .update({
+      status: 'suspended',
+      suspended_at: new Date().toISOString(),
+      suspended_by: admin.user_id,
+      suspension_reason: reason,
+    })
+    .eq('id', orgId)
+    .select('id, status, suspended_at, suspended_by, suspension_reason, plan, plan_limits')
+    .single();
+
+  if (updateError) throw { status: 500, code: 'suspend_org_failed' };
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'suspend_org',
+    {
+      target_type: 'organization',
+      target_id: orgId,
+      org_id: orgId,
+      before,
+      after: updated,
+      reason,
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    org: updated,
+  };
+}
+
+async function handleReactivateOrg(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const orgId = payload.org_id;
+  if (!isUuid(orgId)) throw { status: 400, code: 'invalid_org_id' };
+
+  const reason = toReason(payload.reason);
+  if (!reason) throw { status: 400, code: 'reason_required' };
+
+  const before = await fetchOrganizationState(adminClient, orgId);
+  const { data: updated, error: updateError } = await adminClient
+    .from('organizations')
+    .update({
+      status: 'active',
+      suspended_at: null,
+      suspended_by: null,
+      suspension_reason: null,
+    })
+    .eq('id', orgId)
+    .select('id, status, suspended_at, suspended_by, suspension_reason, plan, plan_limits')
+    .single();
+
+  if (updateError) throw { status: 500, code: 'reactivate_org_failed' };
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'reactivate_org',
+    {
+      target_type: 'organization',
+      target_id: orgId,
+      org_id: orgId,
+      before,
+      after: updated,
+      reason,
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    org: updated,
+  };
+}
+
+async function handleUpdateOrgPlan(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const orgId = payload.org_id;
+  if (!isUuid(orgId)) throw { status: 400, code: 'invalid_org_id' };
+
+  const reason = toReason(payload.reason);
+  if (!reason) throw { status: 400, code: 'reason_required' };
+
+  const plan = toTrimmedString(payload.plan);
+  if (!plan) throw { status: 400, code: 'invalid_plan' };
+
+  const limits = payload.limits ?? {};
+  if (typeof limits !== 'object' || limits === null || Array.isArray(limits)) {
+    throw { status: 400, code: 'invalid_limits' };
+  }
+
+  const before = await fetchOrganizationState(adminClient, orgId);
+  const { data: updated, error: updateError } = await adminClient
+    .from('organizations')
+    .update({
+      plan,
+      plan_limits: limits,
+    })
+    .eq('id', orgId)
+    .select('id, status, suspended_at, suspended_by, suspension_reason, plan, plan_limits')
+    .single();
+
+  if (updateError) throw { status: 500, code: 'update_org_plan_failed' };
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'update_org_plan',
+    {
+      target_type: 'organization',
+      target_id: orgId,
+      org_id: orgId,
+      before,
+      after: updated,
+      reason,
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    org: updated,
+  };
+}
+
+async function handleListFeatureFlags(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const orgId = payload.org_id;
+  if (orgId !== undefined && !isUuid(orgId)) {
+    throw { status: 400, code: 'invalid_org_id' };
+  }
+
+  const { data: flags, error: flagsError } = await adminClient
+    .from('_admin_feature_flags')
+    .select('flag_key, description, default_enabled, created_at, updated_at')
+    .order('flag_key', { ascending: true });
+  if (flagsError) throw { status: 500, code: 'list_feature_flags_failed' };
+
+  let overridesByKey: Record<string, boolean> = {};
+  if (isUuid(orgId)) {
+    const { data: overrides, error: overridesError } = await adminClient
+      .from('_admin_org_feature_overrides')
+      .select('flag_key, enabled')
+      .eq('org_id', orgId);
+    if (overridesError) throw { status: 500, code: 'list_feature_overrides_failed' };
+    overridesByKey = Object.fromEntries(
+      (overrides ?? [])
+        .filter((row) => typeof row.flag_key === 'string')
+        .map((row) => [String(row.flag_key), row.enabled === true]),
+    );
+  }
+
+  const resolved = (flags ?? []).map((flag) => {
+    const key = String(flag.flag_key);
+    const hasOverride = Object.prototype.hasOwnProperty.call(overridesByKey, key);
+    return {
+      ...flag,
+      org_override_enabled: hasOverride ? overridesByKey[key] : null,
+      effective_enabled: hasOverride ? overridesByKey[key] : flag.default_enabled === true,
+    };
+  });
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'list_feature_flags',
+    {
+      target_type: 'read',
+      target_id: 'feature_flags',
+      org_id: isUuid(orgId) ? orgId : null,
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    flags: resolved,
+  };
+}
+
+async function handleCreateFeatureFlag(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const reason = toReason(payload.reason);
+  if (!reason) throw { status: 400, code: 'reason_required' };
+
+  const flagKey = toTrimmedString(payload.flag_key);
+  if (!flagKey || !FLAG_KEY_REGEX.test(flagKey)) {
+    throw { status: 400, code: 'invalid_flag_key' };
+  }
+
+  const description = toTrimmedString(payload.description);
+  const defaultEnabled = payload.default_enabled === true;
+
+  const { data: existing, error: existingError } = await adminClient
+    .from('_admin_feature_flags')
+    .select('flag_key')
+    .eq('flag_key', flagKey)
+    .maybeSingle();
+
+  if (existingError) throw { status: 500, code: 'feature_flag_lookup_failed' };
+  if (existing) throw { status: 409, code: 'feature_flag_exists' };
+
+  const { data: inserted, error: insertError } = await adminClient
+    .from('_admin_feature_flags')
+    .insert({
+      flag_key: flagKey,
+      description: description ?? null,
+      default_enabled: defaultEnabled,
+    })
+    .select('flag_key, description, default_enabled, created_at, updated_at')
+    .single();
+
+  if (insertError) throw { status: 500, code: 'create_feature_flag_failed' };
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'create_feature_flag',
+    {
+      target_type: 'feature_flag',
+      target_id: flagKey,
+      after: inserted,
+      reason,
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    flag: inserted,
+  };
+}
+
+async function handleSetOrgFeature(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const reason = toReason(payload.reason);
+  if (!reason) throw { status: 400, code: 'reason_required' };
+
+  const orgId = payload.org_id;
+  if (!isUuid(orgId)) throw { status: 400, code: 'invalid_org_id' };
+
+  const flagKey = toTrimmedString(payload.flag_key);
+  if (!flagKey || !FLAG_KEY_REGEX.test(flagKey)) {
+    throw { status: 400, code: 'invalid_flag_key' };
+  }
+
+  if (typeof payload.enabled !== 'boolean') {
+    throw { status: 400, code: 'invalid_enabled' };
+  }
+
+  const enabled = payload.enabled === true;
+
+  const { data: before, error: beforeError } = await adminClient
+    .from('_admin_org_feature_overrides')
+    .select('org_id, flag_key, enabled, updated_at, updated_by')
+    .eq('org_id', orgId)
+    .eq('flag_key', flagKey)
+    .maybeSingle();
+  if (beforeError) throw { status: 500, code: 'feature_override_lookup_failed' };
+
+  const { error: upsertError } = await adminClient
+    .from('_admin_org_feature_overrides')
+    .upsert(
+      {
+        org_id: orgId,
+        flag_key: flagKey,
+        enabled,
+        updated_at: new Date().toISOString(),
+        updated_by: admin.user_id,
+      },
+      { onConflict: 'org_id,flag_key' },
+    );
+  if (upsertError) throw { status: 500, code: 'set_org_feature_failed' };
+
+  const { data: after, error: afterError } = await adminClient
+    .from('_admin_org_feature_overrides')
+    .select('org_id, flag_key, enabled, updated_at, updated_by')
+    .eq('org_id', orgId)
+    .eq('flag_key', flagKey)
+    .single();
+  if (afterError) throw { status: 500, code: 'feature_override_fetch_after_failed' };
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'set_org_feature',
+    {
+      target_type: 'feature_override',
+      target_id: `${orgId}:${flagKey}`,
+      org_id: orgId,
+      before,
+      after,
+      reason,
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    override: after,
+  };
+}
+
+async function dispatchAction(
+  action: string,
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+  aal: string,
+) {
+  switch (action) {
+    case 'whoami':
+      return await handleWhoAmI(adminClient, admin, aal, req);
+    case 'list_orgs':
+      return await handleListOrgs(adminClient, admin, payload, req);
+    case 'get_org_details':
+      return await handleGetOrgDetails(adminClient, admin, payload, req);
+    case 'list_org_members':
+      return await handleListOrgMembers(adminClient, admin, payload, req);
+    case 'get_system_metrics':
+      return await handleGetSystemMetrics(adminClient, admin, req);
+    case 'list_audit_log':
+      return await handleListAuditLog(adminClient, admin, payload, req);
+    case 'suspend_org':
+      return await handleSuspendOrg(adminClient, admin, payload, req);
+    case 'reactivate_org':
+      return await handleReactivateOrg(adminClient, admin, payload, req);
+    case 'update_org_plan':
+      return await handleUpdateOrgPlan(adminClient, admin, payload, req);
+    case 'list_feature_flags':
+      return await handleListFeatureFlags(adminClient, admin, payload, req);
+    case 'create_feature_flag':
+      return await handleCreateFeatureFlag(adminClient, admin, payload, req);
+    case 'set_org_feature':
+      return await handleSetOrgFeature(adminClient, admin, payload, req);
+    default:
+      throw { status: 403, code: 'action_not_allowed' };
+  }
+}
+
+Deno.serve(async (req) => {
+  const allowedOrigin = (Deno.env.get('ALLOWED_ORIGIN') || '').trim();
+  if (!allowedOrigin) {
+    return json(500, { ok: false, code: 'missing_allowed_origin' });
+  }
+
+  const corsHeaders = corsForOrigin(allowedOrigin);
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+  if (req.method !== 'POST') {
+    return json(405, { ok: false, code: 'method_not_allowed' }, corsHeaders);
+  }
+
+  const supabaseUrl = (Deno.env.get('SUPABASE_URL') || '').trim();
+  const serviceRoleKey = (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
+  if (!supabaseUrl || !serviceRoleKey) {
+    return json(500, { ok: false, code: 'missing_env' }, corsHeaders);
+  }
+
+  const authHeader = req.headers.get('authorization') ?? '';
+  if (!/^Bearer\s+/i.test(authHeader)) {
+    return json(401, { ok: false, code: 'missing_auth' }, corsHeaders);
+  }
+
+  const aal = extractAalFromAuthHeader(authHeader);
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = toJsonBody(await req.json());
+  } catch {
+    return json(400, { ok: false, code: 'invalid_json' }, corsHeaders);
+  }
+
+  const action = typeof payload.action === 'string' ? payload.action.trim() : '';
+  if (!action) {
+    return json(400, { ok: false, code: 'missing_action' }, corsHeaders);
+  }
+
+  try {
+    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const authClient = createClient(supabaseUrl, serviceRoleKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const { data: userData, error: userError } = await authClient.auth.getUser(stripBearer(authHeader));
+    if (userError || !userData.user) {
+      return json(401, { ok: false, code: 'unauthorized' }, corsHeaders);
+    }
+
+    const admin = await enforcePolicy(adminClient, userData.user.id, action, aal);
+    const result = await dispatchAction(action, adminClient, admin, payload, req, aal);
+    return json(200, result, corsHeaders);
+  } catch (error) {
+    const status = toErrorStatus(error);
+    const code = toErrorCode(error);
+    if (status >= 500) {
+      console.error('[admin-api] request failed', { action, error });
+    }
+    return json(status, { ok: false, code }, corsHeaders);
+  }
+});

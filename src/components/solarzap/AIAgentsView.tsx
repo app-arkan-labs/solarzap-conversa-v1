@@ -198,6 +198,7 @@ export function AIAgentsView() {
                                                         <Button
                                                             size="sm"
                                                             variant="outline"
+                                                            data-testid={`instance-ai-activate-all-${inst.instance_name}`}
                                                             className="h-7 text-[11px] text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200 px-2"
                                                             disabled={!isOnline}
                                                             onClick={async () => {
@@ -275,13 +276,13 @@ export function AIAgentsView() {
                                     agent.defaultPrompt;
 
                                 return (
-                                    <Card
-                                        key={agent.stage}
-                                        className={`shadow-sm transition-all ${isEnabled ? 'border-l-4 border-l-green-500' : 'opacity-70'}`}
-                                        data-testid={`ai-stage-card-${agent.stage}`}
-                                    >
-                                        <CardContent className="p-4">
-                                            <div className="flex items-start gap-3">
+                                    <div key={agent.stage} data-testid={`ai-stage-row-${agent.stage}`}>
+                                        <Card
+                                            className={`shadow-sm transition-all ${isEnabled ? 'border-l-4 border-l-green-500' : 'opacity-70'}`}
+                                            data-testid={`ai-stage-card-${agent.stage}`}
+                                        >
+                                            <CardContent className="p-4">
+                                                <div className="flex items-start gap-3">
                                                 {/* Stage icon */}
                                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${stageInfo.color} bg-opacity-20`}>
                                                     <span className="text-lg">{stageInfo.icon}</span>
@@ -327,9 +328,10 @@ export function AIAgentsView() {
                                                         disabled={!canEdit}
                                                     />
                                                 </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
                                 );
                             })}
                         </div>
