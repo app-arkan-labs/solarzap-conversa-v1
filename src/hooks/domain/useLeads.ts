@@ -6,6 +6,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Contact, Channel, PipelineStage, ClientType } from '@/types/solarzap';
 import type { LeadStageData } from '@/types/ai';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
+import { normalizeLeadStage } from '@/lib/leadStageNormalization';
+import {
+    buildImportLeadsSummary,
+    type ImportLeadsSummary,
+    type ImportLeadRpcRow,
+} from '@/lib/importLeadsSummary';
 
 // Module-level cache for DB schema capabilities (to avoid repeated failed requests)
 let dbSupportsExtendedColumns: boolean | null = null;
@@ -107,40 +113,7 @@ export const mapChannel = (canal: string): Channel => {
 };
 
 export const mapPipelineStage = (status: string): PipelineStage => {
-    if (!status) return 'novo_lead';
-
-    const normalized = status
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, '_')
-        .trim();
-
-    const stageMap: Record<string, PipelineStage> = {
-        'novo_lead': 'novo_lead',
-        'respondeu': 'respondeu',
-        'chamada_agendada': 'chamada_agendada',
-        'chamada_realizada': 'chamada_realizada',
-        'nao_compareceu': 'nao_compareceu',
-        'aguardando_proposta': 'aguardando_proposta',
-        'proposta_pronta': 'proposta_pronta',
-        'visita_agendada': 'visita_agendada',
-        'visita_realizada': 'visita_realizada',
-        'proposta_negociacao': 'proposta_negociacao',
-        'financiamento': 'financiamento',
-        'aprovou_projeto': 'aprovou_projeto',
-        'contrato_assinado': 'contrato_assinado',
-        'projeto_pago': 'projeto_pago',
-        'aguardando_instalacao': 'aguardando_instalacao',
-        'projeto_instalado': 'projeto_instalado',
-        'coletar_avaliacao': 'coletar_avaliacao',
-        'contato_futuro': 'contato_futuro',
-        'perdido': 'perdido',
-        'novo': 'novo_lead',
-        'lead': 'novo_lead',
-    };
-
-    return stageMap[normalized] || 'novo_lead';
+    return normalizeLeadStage(status);
 };
 
 export const leadToContact = (lead: any): Contact => {
@@ -618,7 +591,7 @@ export function useLeads() {
                 canal: data.canal || 'whatsapp',
                 consumo_kwh: normalizeConsumokwhForDb(data.consumo_kwh) || 0,
                 valor_estimado: data.valor_estimado || 0,
-                status_pipeline: data.status_pipeline || 'novo_lead',
+                status_pipeline: normalizeLeadStage(data.status_pipeline || 'novo_lead'),
                 observacoes: data.observacoes || '',
             };
 
@@ -668,7 +641,7 @@ export function useLeads() {
             if (data.consumo_kwh !== undefined) basePayload.consumo_kwh = normalizeConsumokwhForDb(data.consumo_kwh);
             if (data.valor_estimado !== undefined) basePayload.valor_estimado = data.valor_estimado;
             if (data.status_pipeline !== undefined) {
-                basePayload.status_pipeline = data.status_pipeline;
+                basePayload.status_pipeline = normalizeLeadStage(data.status_pipeline);
                 basePayload.stage_changed_at = new Date().toISOString();
             }
             if (data.canal !== undefined) basePayload.canal = data.canal;
@@ -709,52 +682,30 @@ export function useLeads() {
     });
 
     const importContactsMutation = useMutation({
-        mutationFn: async (contacts: any[]) => {
+        mutationFn: async (contacts: any[]): Promise<ImportLeadsSummary> => {
             if (!user) throw new Error('User not authenticated');
             if (!orgId) throw new Error('Organização não vinculada ao usuário');
-            // Simplified import handling (batch imports handled individually for safety or via simple batch if columns trusted)
-            // For now, retaining existing batch logic but adding type_cliente if it exists in DB
 
-            // NOTE: Importing huge lists with the "try/catch" logic row-by-row is slow.
-            // As a compromise for this increment, we will perform ONE check for columns using a dummy or first row,
-            // then process the rest. OR just fall back to simple logic for import.
-            // Given the requirement "No migration", we'll just try to insert extended fields and if it fails, the user will see error.
-            // But to be consistent, let's keep the existing logic but pass 'tipo_cliente' which we know is crucial.
+            const payload = contacts.map((contact) => ({
+                ...contact,
+                status_pipeline: normalizeLeadStage(contact?.status_pipeline || 'novo_lead'),
+            }));
 
-            const chunkSize = 50;
-            for (let i = 0; i < contacts.length; i += chunkSize) {
-                const chunk = contacts.slice(i, i + chunkSize);
-                // We try to include tipo_cliente
-                const { error } = await supabase.from('leads').insert(
-                    chunk.map(c => ({
-                        org_id: orgId,
-                        user_id: user.id,
-                        assigned_to_user_id: user.id,
-                        nome: c.nome,
-                        telefone: c.telefone,
-                        email: c.email || null,
-                        empresa: c.empresa || null,
-                        canal: c.canal || 'whatsapp',
-                        consumo_kwh: normalizeConsumokwhForDb(c.consumo_kwh as number | undefined) || 0,
-                        valor_estimado: c.valor_estimado || 0,
-                        status_pipeline: c.status_pipeline || 'novo_lead',
-                        observacoes: c.observacoes || '',
-                        // Try sending type. If it fails, batch import fails.
-                        // Ideally we'd use the safeSupabaseWrite logic but it doesn't support batch nicely yet.
-                        // Assuming types match existing DB for batch import usage (legacy).
-                        tipo_cliente: c.tipo_cliente || 'residencial',
-                    }))
-                );
-                if (error) {
-                    // Fallback: Try without tipo_cliente if that was the issue?
-                    // For now, throw to alert user.
-                    throw error;
-                }
+            const { data, error } = await supabase.rpc('import_leads_batch', {
+                p_org_id: orgId,
+                p_rows: payload,
+            });
+
+            if (error) {
+                throw new Error(error.message || 'Falha ao importar leads.');
             }
-            return Promise.resolve();
+
+            return buildImportLeadsSummary(data as ImportLeadRpcRow[] | null | undefined);
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
+        onSuccess: (summary) => {
+            if ((summary.inserted_count + summary.updated_count) > 0) {
+                queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
+            }
         }
     });
 
