@@ -11,18 +11,19 @@ export function OwnerPerformanceTable({ data, isLoading }: OwnerPerformanceProps
     if (!data || data.length === 0) return <div>Sem dados.</div>;
 
     const formatCurrency = (value: number) =>
-        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
     return (
         <div className="rounded-md border">
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>Responsável</TableHead>
+                        <TableHead>Responsavel</TableHead>
                         <TableHead>Leads</TableHead>
                         <TableHead>Fechados (Won)</TableHead>
-                        <TableHead>Conversão</TableHead>
+                        <TableHead>Conversao</TableHead>
                         <TableHead className="text-right">Faturamento</TableHead>
+                        <TableHead className="text-right">Lucro realizado</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -33,6 +34,7 @@ export function OwnerPerformanceTable({ data, isLoading }: OwnerPerformanceProps
                             <TableCell>{row.won}</TableCell>
                             <TableCell>{row.conversion.toFixed(1)}%</TableCell>
                             <TableCell className="text-right">{formatCurrency(row.revenue)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(row.profit)}</TableCell>
                         </TableRow>
                     ))}
                 </TableBody>

@@ -196,7 +196,7 @@ export function DashboardView({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="leads">Leads (CSV)</SelectItem>
-                <SelectItem value="deals">Deals (CSV)</SelectItem>
+                <SelectItem value="deals">Recebimentos (CSV)</SelectItem>
                 <SelectItem value="appointments">Agenda (CSV)</SelectItem>
               </SelectContent>
             </Select>

@@ -2,6 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { DashboardPayload } from "@/types/dashboard";
 
+const FINANCE_PROJECT_PAID_FLAG = "finance_project_paid_v1";
+
+const toSafeNumber = (value: unknown): number => {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
 export interface DashboardFilters {
     start: Date;
     end: Date;
@@ -26,6 +33,20 @@ export const useDashboardReport = (params: DashboardFilters) => {
             if (!user) throw new Error("User not authenticated");
             const hasOwnerFilter = !!filters && Object.prototype.hasOwnProperty.call(filters, 'owner_user_id');
             const ownerUserId = hasOwnerFilter ? (filters?.owner_user_id ?? null) : user.id;
+            let financeCashMode = false;
+
+            if (orgId) {
+                try {
+                    const { data: flags } = await supabase.rpc("get_org_feature_flags", {
+                        p_org_id: orgId,
+                    });
+                    if (flags && typeof flags === "object" && !Array.isArray(flags)) {
+                        financeCashMode = (flags as Record<string, unknown>)[FINANCE_PROJECT_PAID_FLAG] === true;
+                    }
+                } catch (error) {
+                    console.warn("[useDashboardReport] failed to load org feature flags, using fallback", error);
+                }
+            }
 
             // --- 0. Date Calculations ---
             const periodDuration = end.getTime() - start.getTime();
@@ -105,6 +126,35 @@ export const useDashboardReport = (params: DashboardFilters) => {
             }
             if (orgId) prevWonDealsQ = prevWonDealsQ.eq('org_id', orgId);
 
+            let paidInstallmentsQ = supabase
+                .from("lead_sale_installments")
+                .select("lead_id, paid_amount, profit_amount, paid_at")
+                .eq("status", "paid")
+                .not("paid_at", "is", null)
+                .gte("paid_at", startIso)
+                .lte("paid_at", endIso);
+
+            let prevPaidInstallmentsQ = supabase
+                .from("lead_sale_installments")
+                .select("lead_id, paid_amount, profit_amount, paid_at")
+                .eq("status", "paid")
+                .not("paid_at", "is", null)
+                .gte("paid_at", prevStartIso)
+                .lte("paid_at", prevEndIso);
+
+            if (shouldForceDealsEmpty) {
+                paidInstallmentsQ = paidInstallmentsQ.in("lead_id", [-1]);
+                prevPaidInstallmentsQ = prevPaidInstallmentsQ.in("lead_id", [-1]);
+            }
+            if (ownerUserId && ownerLeadIds && ownerLeadIds.length > 0) {
+                paidInstallmentsQ = paidInstallmentsQ.in("lead_id", ownerLeadIds);
+                prevPaidInstallmentsQ = prevPaidInstallmentsQ.in("lead_id", ownerLeadIds);
+            }
+            if (orgId) {
+                paidInstallmentsQ = paidInstallmentsQ.eq("org_id", orgId);
+                prevPaidInstallmentsQ = prevPaidInstallmentsQ.eq("org_id", orgId);
+            }
+
             // Forecast scoped to dashboard date range
             let openDealsQ = supabase
                 .from("deals")
@@ -142,13 +192,27 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 { data: wonDeals, error: dealsError },
                 { data: prevWonDeals },
                 { data: openDeals },
-                { data: staleLeadsData }
+                { data: staleLeadsData },
+                { data: paidInstallments, error: paidInstallmentsError },
+                { data: prevPaidInstallments, error: prevPaidInstallmentsError }
             ] = await Promise.all([
-                leadsQ, prevLeadsQ, wonDealsQ, prevWonDealsQ, openDealsQ, staleLeadsQ
+                leadsQ,
+                prevLeadsQ,
+                wonDealsQ,
+                prevWonDealsQ,
+                openDealsQ,
+                staleLeadsQ,
+                financeCashMode ? paidInstallmentsQ : Promise.resolve({ data: [], error: null }),
+                financeCashMode ? prevPaidInstallmentsQ : Promise.resolve({ data: [], error: null }),
             ]);
 
             if (leadsError) throw leadsError;
             if (dealsError) throw dealsError;
+            if (paidInstallmentsError) throw paidInstallmentsError;
+            if (prevPaidInstallmentsError) throw prevPaidInstallmentsError;
+
+            const paidInstallmentsRows: any[] = Array.isArray(paidInstallments) ? paidInstallments : [];
+            const prevPaidInstallmentsRows: any[] = Array.isArray(prevPaidInstallments) ? prevPaidInstallments : [];
 
             // Fetch Leads for Won Deals to map Source (depends on wonDeals result)
             // We need the `canal` of the leads associated with Won Deals
@@ -162,6 +226,28 @@ export const useDashboardReport = (params: DashboardFilters) => {
 
                 if (wonLeads) {
                     wonLeads.forEach(l => wonLeadsMap.set(String(l.id), l)); // cast ID just in case
+                }
+            }
+
+            const paidLeadsMap = new Map<string, any>();
+            if (financeCashMode && paidInstallmentsRows.length > 0) {
+                const paidLeadIds = Array.from(
+                    new Set(
+                        paidInstallmentsRows
+                            .map((i: any) => Number(i.lead_id))
+                            .filter((id: number) => Number.isFinite(id)),
+                    ),
+                );
+
+                if (paidLeadIds.length > 0) {
+                    const { data: paidLeads } = await supabase
+                        .from("leads")
+                        .select("id, canal")
+                        .in("id", paidLeadIds);
+
+                    if (paidLeads) {
+                        paidLeads.forEach((lead) => paidLeadsMap.set(String(lead.id), lead));
+                    }
                 }
             }
 
@@ -213,17 +299,44 @@ export const useDashboardReport = (params: DashboardFilters) => {
             const leadsCount = leadsData?.length || 0;
             const leadsDelta = prevLeadsCount ? ((leadsCount - prevLeadsCount) / prevLeadsCount) * 100 : 0;
 
-            // KPI: Revenue
-            const revenue = wonDeals?.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) || 0;
-            const prevRevenue = prevWonDeals?.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) || 0;
+            const wonCount = wonDeals?.length || 0;
+            const paidInstallmentsCount = paidInstallmentsRows.length;
+
+            // KPI: Revenue / Profit (cash mode when feature is enabled)
+            const dealsRevenue = wonDeals?.reduce((sum, d) => sum + toSafeNumber(d.amount), 0) || 0;
+            const prevDealsRevenue = prevWonDeals?.reduce((sum, d) => sum + toSafeNumber(d.amount), 0) || 0;
+            const installmentsRevenue = paidInstallmentsRows.reduce((sum: number, installment: any) => {
+                const paidAmount = toSafeNumber(installment.paid_amount);
+                const fallbackAmount = toSafeNumber((installment as any).amount);
+                return sum + (paidAmount > 0 ? paidAmount : fallbackAmount);
+            }, 0) || 0;
+            const prevInstallmentsRevenue = prevPaidInstallmentsRows.reduce((sum: number, installment: any) => {
+                const paidAmount = toSafeNumber(installment.paid_amount);
+                const fallbackAmount = toSafeNumber((installment as any).amount);
+                return sum + (paidAmount > 0 ? paidAmount : fallbackAmount);
+            }, 0) || 0;
+
+            const installmentsProfit = paidInstallmentsRows.reduce((sum: number, installment: any) => {
+                return sum + toSafeNumber(installment.profit_amount);
+            }, 0) || 0;
+            const prevInstallmentsProfit = prevPaidInstallmentsRows.reduce((sum: number, installment: any) => {
+                return sum + toSafeNumber(installment.profit_amount);
+            }, 0) || 0;
+
+            const revenue = financeCashMode ? installmentsRevenue : dealsRevenue;
+            const prevRevenue = financeCashMode ? prevInstallmentsRevenue : prevDealsRevenue;
+            const profit = financeCashMode ? installmentsProfit : 0;
+            const prevProfit = financeCashMode ? prevInstallmentsProfit : 0;
+
             const revenueDelta = prevRevenue ? ((revenue - prevRevenue) / prevRevenue) * 100 : 0;
+            const profitDelta = prevProfit ? ((profit - prevProfit) / prevProfit) * 100 : 0;
 
             // KPI: Conversion
-            const wonCount = wonDeals?.length || 0;
             const conversionRate = leadsCount ? (wonCount / leadsCount) * 100 : 0;
 
             // KPI: Ticket Avg
-            const ticketAverage = wonCount > 0 ? (revenue / wonCount) : 0;
+            const ticketDivisor = financeCashMode ? paidInstallmentsCount : wonCount;
+            const ticketAverage = ticketDivisor > 0 ? (revenue / ticketDivisor) : 0;
 
             // KPI: Forecast
             const forecastValue = openDeals?.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) || 0;
@@ -245,16 +358,27 @@ export const useDashboardReport = (params: DashboardFilters) => {
 
             // Chart: Sales by Source
             const salesSourceMap: Record<string, number> = {};
-            wonDeals?.forEach(d => {
-                const lead = wonLeadsMap.get(String(d.lead_id));
-                const s = lead?.canal || "unknown";
-                salesSourceMap[s] = (salesSourceMap[s] || 0) + 1;
-            });
+            const salesSourceTotal = financeCashMode ? paidInstallmentsCount : wonCount;
+
+            if (financeCashMode) {
+                paidInstallmentsRows.forEach((installment: any) => {
+                    const lead = paidLeadsMap.get(String(installment.lead_id));
+                    const source = lead?.canal || "unknown";
+                    salesSourceMap[source] = (salesSourceMap[source] || 0) + 1;
+                });
+            } else {
+                wonDeals?.forEach(d => {
+                    const lead = wonLeadsMap.get(String(d.lead_id));
+                    const source = lead?.canal || "unknown";
+                    salesSourceMap[source] = (salesSourceMap[source] || 0) + 1;
+                });
+            }
+
             const salesBySource = Object.entries(salesSourceMap)
                 .map(([source, count]) => ({
                     source,
                     count,
-                    pct: (count / wonCount) * 100
+                    pct: salesSourceTotal > 0 ? (count / salesSourceTotal) * 100 : 0
                 }))
                 .sort((a, b) => b.count - a.count);
 
@@ -275,7 +399,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
                     timeBuckets[key] = {
                         month: d.toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' }), // Label: dd/MM
-                        leads: 0, sales: 0, revenue: 0
+                        leads: 0, sales: 0, revenue: 0, profit: 0
                     };
                 }
             } else {
@@ -286,7 +410,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     const key = d.toISOString().slice(0, 7); // YYYY-MM
                     timeBuckets[key] = {
                         month: d.toLocaleDateString("pt-BR", { month: 'short', year: '2-digit' }), // Label: MMM/YY
-                        leads: 0, sales: 0, revenue: 0
+                        leads: 0, sales: 0, revenue: 0, profit: 0
                     };
                     d.setMonth(d.getMonth() + 1);
                 }
@@ -298,16 +422,33 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 if (timeBuckets[k]) timeBuckets[k].leads++;
             });
 
-            wonDeals?.forEach(d => {
-                // uses closed_at for sales if available, else created_at
-                const dateRef = d.closed_at || d.created_at;
-                if (!dateRef) return;
-                const k = useDays ? dateRef.slice(0, 10) : dateRef.slice(0, 7);
-                if (timeBuckets[k]) {
-                    timeBuckets[k].sales++;
-                    timeBuckets[k].revenue += (Number(d.amount) || 0);
-                }
-            });
+            if (financeCashMode) {
+                paidInstallmentsRows.forEach((installment: any) => {
+                    const paidAt = String(installment.paid_at || "");
+                    if (!paidAt) return;
+                    const key = useDays ? paidAt.slice(0, 10) : paidAt.slice(0, 7);
+                    if (!timeBuckets[key]) return;
+
+                    const paidAmount = toSafeNumber(installment.paid_amount);
+                    const fallbackAmount = toSafeNumber((installment as any).amount);
+                    const realizedRevenue = paidAmount > 0 ? paidAmount : fallbackAmount;
+
+                    timeBuckets[key].sales++;
+                    timeBuckets[key].revenue += realizedRevenue;
+                    timeBuckets[key].profit += toSafeNumber(installment.profit_amount);
+                });
+            } else {
+                wonDeals?.forEach(d => {
+                    // uses closed_at for sales if available, else created_at
+                    const dateRef = d.closed_at || d.created_at;
+                    if (!dateRef) return;
+                    const key = useDays ? dateRef.slice(0, 10) : dateRef.slice(0, 7);
+                    if (timeBuckets[key]) {
+                        timeBuckets[key].sales++;
+                        timeBuckets[key].revenue += toSafeNumber(d.amount);
+                    }
+                });
+            }
 
             const monthlyChart = Object.values(timeBuckets).map((m: any) => ({
                 ...m,
@@ -324,6 +465,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     leads: { value: leadsCount, delta_pct: leadsDelta },
                     conversion: { value_pct: conversionRate, won: wonCount, leads: leadsCount },
                     revenue: { value: revenue, delta_pct: revenueDelta },
+                    profit: { value: profit, delta_pct: profitDelta },
                     avg_close_days: { value: 0 }, // Simplify for client-side (requires history calc)
                     ticket_avg: { value: ticketAverage },
                     forecast: { value: forecastValue, count: forecastCount }
@@ -346,6 +488,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
                         leads: leadsCount,
                         won: wonCount,
                         revenue,
+                        profit,
                         conversion: conversionRate,
                         ticket_avg: ticketAverage
                     }]

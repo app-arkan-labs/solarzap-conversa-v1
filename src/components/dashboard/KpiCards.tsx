@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+﻿import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowDownIcon, ArrowUpIcon, DollarSign, Users, Timer, TrendingUp } from "lucide-react";
 import { DashboardPayload } from "@/types/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,9 +29,6 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
     const formatCurrency = (value: number) =>
         new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
-    const formatPercent = (value: number) =>
-        new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 1 }).format(value / 100);
-
     const deltaColor = (delta: number) =>
         delta > 0 ? 'text-green-500' : delta < 0 ? 'text-red-500' : 'text-gray-400';
 
@@ -44,7 +41,6 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
 
     return (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {/* Row 1: Volume & Efficiency */}
             <Card className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">Total Leads</CardTitle>
@@ -59,14 +55,14 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
                         <span className={deltaColor(data.leads.delta_pct)}>
                             {Math.abs(data.leads.delta_pct).toFixed(1)}%
                         </span>
-                        <span className="ml-1">vs período anterior</span>
+                        <span className="ml-1">vs periodo anterior</span>
                     </p>
                 </CardContent>
             </Card>
 
             <Card className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Taxa de Conversão</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Taxa de Conversao</CardTitle>
                     <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center">
                         <TrendingUp className="h-4 w-4 text-blue-500" />
                     </div>
@@ -81,7 +77,7 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
 
             <Card className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Ciclo Médio</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Ciclo Medio</CardTitle>
                     <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center">
                         <Timer className="h-4 w-4 text-amber-500" />
                     </div>
@@ -94,7 +90,6 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
                 </CardContent>
             </Card>
 
-            {/* Row 2: Financials */}
             <Card className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">Faturamento</CardTitle>
@@ -116,7 +111,26 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
 
             <Card className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Ticket Médio</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Lucro Realizado</CardTitle>
+                    <div className="w-8 h-8 rounded-full bg-green-600/10 flex items-center justify-center">
+                        <DollarSign className="h-4 w-4 text-green-600" />
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold text-foreground">{formatCurrency(data.profit.value)}</div>
+                    <p className="text-xs text-muted-foreground flex items-center mt-1">
+                        <DeltaIcon delta={data.profit.delta_pct} />
+                        <span className={deltaColor(data.profit.delta_pct)}>
+                            {Math.abs(data.profit.delta_pct).toFixed(1)}%
+                        </span>
+                        <span className="ml-1">vs anterior</span>
+                    </p>
+                </CardContent>
+            </Card>
+
+            <Card className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Ticket Medio</CardTitle>
                     <div className="w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center">
                         <DollarSign className="h-4 w-4 text-purple-500" />
                     </div>
@@ -124,14 +138,14 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
                 <CardContent>
                     <div className="text-2xl font-bold text-foreground">{formatCurrency(data.ticket_avg.value)}</div>
                     <p className="text-xs text-muted-foreground mt-1">
-                        Valor médio por venda
+                        Valor medio por venda
                     </p>
                 </CardContent>
             </Card>
 
             <Card className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Em Negociação</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Em Negociacao</CardTitle>
                     <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center">
                         <TrendingUp className="h-4 w-4 text-indigo-500" />
                     </div>
