@@ -1,4 +1,4 @@
-import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText, Bot, CheckSquare, Loader2, Users, User } from 'lucide-react';
+import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText, Bot, CheckSquare, Loader2, Users, User, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Conversation, CHANNEL_INFO, PIPELINE_STAGES, PipelineStage, Contact, ChannelFilter } from '@/types/solarzap';
 import { Input } from '@/components/ui/input';
@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +36,9 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
+import { getMemberDisplayName } from '@/lib/memberDisplayName';
+import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
+import type { LeadScopeValue } from './LeadScopeSelect';
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -51,8 +54,11 @@ interface ConversationListProps {
   onImportContacts?: (contacts: ImportedContact[]) => Promise<unknown>;
   onDeleteLead?: (contactId: string) => Promise<void>;
   canViewTeam?: boolean;
-  showTeamLeads?: boolean;
-  onToggleTeamLeads?: (show: boolean) => void;
+  leadScope?: LeadScopeValue;
+  onLeadScopeChange?: (scope: LeadScopeValue) => void;
+  leadScopeMembers?: MemberDto[];
+  leadScopeLoading?: boolean;
+  currentUserId?: string | null;
 }
 
 const channelFilters: { id: ChannelFilter; label: string }[] = [
@@ -88,8 +94,11 @@ export function ConversationList({
   onImportContacts,
   onDeleteLead,
   canViewTeam = false,
-  showTeamLeads = false,
-  onToggleTeamLeads,
+  leadScope = 'mine',
+  onLeadScopeChange,
+  leadScopeMembers = [],
+  leadScopeLoading = false,
+  currentUserId = null,
 }: ConversationListProps) {
   const { toast } = useToast();
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
@@ -106,6 +115,8 @@ export function ConversationList({
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [fallbackLeadScopeMembers, setFallbackLeadScopeMembers] = useState<MemberDto[]>([]);
+  const [isRefreshingLeadScopeMembers, setIsRefreshingLeadScopeMembers] = useState(false);
 
   const formatTime = (date: Date) => {
     const now = new Date();
@@ -149,6 +160,54 @@ export function ConversationList({
     () => visibleLeadIds.filter((leadId) => selectedLeadIds.has(leadId)).length,
     [visibleLeadIds, selectedLeadIds],
   );
+  const effectiveLeadScopeMembers = useMemo(() => {
+    const merged = [...leadScopeMembers, ...fallbackLeadScopeMembers];
+    const seen = new Set<string>();
+    return merged.filter((member) => {
+      if (!member.user_id) return false;
+      if (seen.has(member.user_id)) return false;
+      seen.add(member.user_id);
+      return true;
+    });
+  }, [fallbackLeadScopeMembers, leadScopeMembers]);
+  const availableTeamMembers = useMemo(() => {
+    const seen = new Set<string>();
+    return effectiveLeadScopeMembers.filter((member) => {
+      if (!member.user_id || member.user_id === currentUserId) return false;
+      if (seen.has(member.user_id)) return false;
+      seen.add(member.user_id);
+      return true;
+    });
+  }, [currentUserId, effectiveLeadScopeMembers]);
+  const leadScopeLabel = useMemo(() => {
+    if (leadScope === 'org_all') return 'Toda a equipe';
+    if (leadScope === 'mine') return 'Meus leads';
+
+    if (leadScope.startsWith('user:')) {
+      const scopedUserId = leadScope.slice(5).trim();
+      if (!scopedUserId) return 'Membro selecionado';
+      const scopedMember = effectiveLeadScopeMembers.find((member) => member.user_id === scopedUserId);
+      return scopedMember ? getMemberDisplayName(scopedMember) : 'Membro selecionado';
+    }
+
+    return 'Meus leads';
+  }, [effectiveLeadScopeMembers, leadScope]);
+  const isLeadScopeMembersLoading = leadScopeLoading || isRefreshingLeadScopeMembers;
+  const refreshLeadScopeMembers = useCallback(async () => {
+    if (!canViewTeam) return;
+    if (effectiveLeadScopeMembers.length > 0) return;
+    if (isRefreshingLeadScopeMembers) return;
+
+    setIsRefreshingLeadScopeMembers(true);
+    try {
+      const response = await listMembers(undefined, { forceRefresh: true });
+      setFallbackLeadScopeMembers(response.members || []);
+    } catch (error) {
+      console.warn('Failed to refresh members for conversations lead scope:', error);
+    } finally {
+      setIsRefreshingLeadScopeMembers(false);
+    }
+  }, [canViewTeam, effectiveLeadScopeMembers.length, isRefreshingLeadScopeMembers]);
 
   const allVisibleSelected = visibleLeadIds.length > 0 && selectedVisibleCount === visibleLeadIds.length;
   const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
@@ -162,6 +221,12 @@ export function ConversationList({
       return next.size === prev.size ? prev : next;
     });
   }, [visibleLeadIds, selectedLeadIds.size]);
+
+  useEffect(() => {
+    if (leadScopeMembers.length > 0 && fallbackLeadScopeMembers.length > 0) {
+      setFallbackLeadScopeMembers([]);
+    }
+  }, [fallbackLeadScopeMembers.length, leadScopeMembers.length]);
 
   const toggleSelectionMode = () => {
     if (isSelectionMode) {
@@ -417,36 +482,81 @@ export function ConversationList({
         </div>
       )}
 
-      {canViewTeam && onToggleTeamLeads && (
+      {canViewTeam && onLeadScopeChange ? (
         <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-          <button
-            onClick={() => onToggleTeamLeads(false)}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap',
-              !showTeamLeads
-                ? 'bg-secondary text-secondary-foreground shadow-sm'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            )}
-            data-testid="toggle-team-leads-mine"
+          <DropdownMenu
+            onOpenChange={(open) => {
+              if (open) {
+                void refreshLeadScopeMembers();
+              }
+            }}
           >
-            <User className="w-3 h-3" />
-            Meus leads
-          </button>
-          <button
-            onClick={() => onToggleTeamLeads(true)}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap',
-              showTeamLeads
-                ? 'bg-secondary text-secondary-foreground shadow-sm'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            )}
-            data-testid="toggle-team-leads"
-          >
-            <Users className="w-3 h-3" />
-            Toda a equipe
-          </button>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="w-full h-9 flex items-center justify-between gap-2 px-3 rounded-md text-sm font-medium bg-background border border-border/60 text-foreground hover:bg-muted transition-colors"
+                data-testid="toggle-team-leads"
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <Users className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+                  <span className="truncate">{leadScopeLabel}</span>
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56 bg-popover border border-border z-50">
+              <DropdownMenuItem
+                onClick={() => onLeadScopeChange('org_all')}
+                data-testid="toggle-team-leads-option-org-all"
+                className={cn('gap-2', leadScope === 'org_all' && 'bg-muted font-medium')}
+              >
+                <Users className="w-3.5 h-3.5" />
+                Toda a equipe
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onLeadScopeChange('mine')}
+                data-testid="toggle-team-leads-option-mine"
+                className={cn('gap-2', leadScope === 'mine' && 'bg-muted font-medium')}
+              >
+                <User className="w-3.5 h-3.5" />
+                Meus leads
+              </DropdownMenuItem>
+              {availableTeamMembers.map((member) => {
+                const scopeValue = `user:${member.user_id}` as LeadScopeValue;
+                return (
+                  <DropdownMenuItem
+                    key={member.user_id}
+                    onClick={() => onLeadScopeChange(scopeValue)}
+                    data-testid={`toggle-team-leads-option-user-${member.user_id}`}
+                    className={cn('gap-2', leadScope === scopeValue && 'bg-muted font-medium')}
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    {getMemberDisplayName(member)}
+                  </DropdownMenuItem>
+                );
+              })}
+              {isLeadScopeMembersLoading && availableTeamMembers.length === 0 ? (
+                <DropdownMenuItem
+                  disabled
+                  data-testid="toggle-team-leads-option-loading"
+                  className="gap-2 text-muted-foreground"
+                >
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Carregando membros...
+                </DropdownMenuItem>
+              ) : null}
+              {!isLeadScopeMembersLoading && availableTeamMembers.length === 0 ? (
+                <DropdownMenuItem
+                  disabled
+                  data-testid="toggle-team-leads-option-empty"
+                  className="gap-2 text-muted-foreground"
+                >
+                  Nenhum outro membro encontrado
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-      )}
+      ) : null}
 
       {/* Channel Filters */}
       <div className="px-3 py-2 flex gap-2 overflow-x-auto border-b border-border">
