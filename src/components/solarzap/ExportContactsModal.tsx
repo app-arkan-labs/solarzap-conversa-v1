@@ -30,6 +30,7 @@ const EXPORT_COLUMNS = [
   { key: 'company', label: 'Empresa', default: true },
   { key: 'clientType', label: 'Tipo de Cliente', default: true },
   { key: 'pipelineStage', label: 'Etapa do Pipeline', default: true },
+  { key: 'pipelineStageCode', label: 'Etapa do Pipeline (Código)', default: true },
   { key: 'channel', label: 'Canal', default: false },
   { key: 'address', label: 'Endereço', default: false },
   { key: 'city', label: 'Cidade', default: true },
@@ -91,6 +92,8 @@ export function ExportContactsModal({ isOpen, onClose, contacts }: ExportContact
       }
       case 'pipelineStage':
         return PIPELINE_STAGES[contact.pipelineStage]?.title || contact.pipelineStage;
+      case 'pipelineStageCode':
+        return contact.pipelineStage;
       case 'channel':
         return CHANNEL_INFO[contact.channel]?.label || contact.channel;
       case 'address':

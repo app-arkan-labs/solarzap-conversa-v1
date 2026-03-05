@@ -19,7 +19,9 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
     && Number.isFinite(Number(form.formData.longitude));
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
-    : 'nao resolvida';
+    : form.formData.irradianceSource === 'pvgis_cache_degraded'
+      ? 'PVGIS (cache degradado)'
+      : 'nao resolvida';
 
   return (
     <div className="space-y-5 rounded-lg border bg-muted/20 p-4">
@@ -282,6 +284,31 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             <Label>Estrutura tipo</Label>
             <Input value={form.formData.estruturaTipo} onChange={(e) => form.handleChange('estruturaTipo', e.target.value)} />
           </div>
+          <div className="space-y-1">
+            <Label>Posicao do telhado</Label>
+            <Select
+              value={form.formData.posicaoTelhado || 'nao_definido'}
+              onValueChange={(value) => form.handleChange('posicaoTelhado', value)}
+            >
+              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <SelectContent className="bg-popover">
+                {form.options.ROOF_POSITION_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label>Sombreamento (%)</Label>
+            <Input
+              type="number"
+              min={0}
+              max={99}
+              step="0.1"
+              value={form.formData.sombreamentoPct ?? ''}
+              onChange={(e) => form.handleChange('sombreamentoPct', parseFloat(e.target.value) || 0)}
+            />
+          </div>
         </div>
       </div>
 
@@ -330,6 +357,9 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
           </div>
           <div className="space-y-1">
             <Label>Compensacao TUSD (%)</Label>
+            <p className="text-xs text-muted-foreground">
+              Percentual do Fio B compensado pelos creditos solares (Lei 14.300/2022)
+            </p>
             <Input
               type="number"
               step="0.1"
@@ -341,6 +371,9 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
           </div>
           <div className="space-y-1">
             <Label>Aumento anual energia (%)</Label>
+            <p className="text-xs text-muted-foreground">
+              Pode variar conforme bandeira tarifaria e regulacao vigente
+            </p>
             <Input
               type="number"
               step="0.1"

@@ -604,7 +604,10 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     consumoMensalKwh: Math.max(0, Number(data.consumoMensal) || 0),
     potenciaSistemaKwp: Math.max(0, Number(data.potenciaSistema) || 0),
     rentabilityRatePerKwh: resolvedRentabilityRate,
-    tarifaKwh: resolvedRentabilityRate,
+    tarifaKwh: Math.max(
+      0,
+      Number(data.tarifaKwh ?? data.financialInputs?.tarifaKwh ?? resolvedRentabilityRate) || 0,
+    ),
     rentabilitySource: data.financialInputs?.rentabilitySource || data.financialInputs?.tariffSource || 'fallback',
     tariffSource: data.financialInputs?.tariffSource || data.financialInputs?.rentabilitySource || 'fallback',
     custoDisponibilidadeKwh: Math.max(
@@ -749,6 +752,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     || tusdTeSimplifiedEnabled;
   const mapIrradianceSourceLabel = (source: string): string => {
     if (source === 'pvgis') return 'PVGIS georreferenciado';
+    if (source === 'pvgis_cache_degraded') return 'PVGIS cache degradado';
     if (source === 'open_meteo') return 'Open-Meteo georreferenciado';
     if (source === 'cache') return 'cache georreferenciado';
     if (source === 'uf_fallback') return 'fallback por UF';

@@ -135,17 +135,49 @@ export function StepEquipment({ form }: StepEquipmentProps) {
               />
             </div>
           </div>
-
-          <div className="space-y-1.5">
-            <Label>Tipo de estrutura</Label>
-            <Input
-              value={form.formData.estruturaTipo || ''}
-              onChange={(e) => form.handleChange('estruturaTipo', e.target.value)}
-              placeholder="Ex: Telhado ceramico / Solo 2 linhas"
-            />
-          </div>
         </TabsContent>
       </Tabs>
+
+      <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/20 p-4 md:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label>Tipo de estrutura</Label>
+          <Input
+            value={form.formData.estruturaTipo || ''}
+            onChange={(e) => form.handleChange('estruturaTipo', e.target.value)}
+            placeholder="Ex: Telhado ceramico / Solo 2 linhas"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Posicao do telhado</Label>
+          <Select
+            value={form.formData.posicaoTelhado || 'nao_definido'}
+            onValueChange={(value) => form.handleChange('posicaoTelhado', value)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione a posicao" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              {form.options.ROOF_POSITION_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Sombreamento (%)</Label>
+          <Input
+            type="number"
+            min={0}
+            max={99}
+            step="0.1"
+            value={form.formData.sombreamentoPct ?? ''}
+            onChange={(e) => form.handleChange('sombreamentoPct', parseFloat(e.target.value) || 0)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Auto-preenchido pela posicao do telhado, mas pode ser editado.
+          </p>
+        </div>
+      </div>
 
       <div className="rounded-lg border bg-muted/30 p-3 text-sm">
         <p className="font-medium">

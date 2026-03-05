@@ -21,6 +21,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { CHANNEL_INFO } from '@/types/solarzap';
+import { resolveImportedPipelineStage } from '@/lib/leadStageNormalization';
+import type { ImportLeadsSummary } from '@/lib/importLeadsSummary';
 
 interface ImportContactsModalProps {
   isOpen: boolean;
@@ -35,6 +37,7 @@ export interface ImportedContact {
   empresa?: string;
   tipo_cliente?: string;
   status_pipeline?: string;
+  status_pipeline_code?: string;
   canal?: string;
   endereco?: string;
   cidade?: string;
@@ -55,6 +58,7 @@ const DB_COLUMNS = [
   { key: 'empresa', label: 'Empresa', required: false },
   { key: 'tipo_cliente', label: 'Tipo de Cliente', required: false },
   { key: 'status_pipeline', label: 'Etapa do Pipeline', required: false },
+  { key: 'status_pipeline_code', label: 'Etapa do Pipeline (Código)', required: false },
   // Canal is handled globally
   { key: 'endereco', label: 'Endereço', required: false },
   { key: 'cidade', label: 'Cidade', required: false },
@@ -67,7 +71,10 @@ const DB_COLUMNS = [
   { key: 'observacoes', label: 'Observações', required: false },
 ];
 
-type Step = 'upload' | 'mapping' | 'preview' | 'importing';
+const normalizeHeaderToken = (value: string) =>
+  value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+type Step = 'upload' | 'mapping' | 'preview' | 'importing' | 'result';
 
 export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContactsModalProps) {
   const [step, setStep] = useState<Step>('upload');
@@ -76,6 +83,7 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [fileName, setFileName] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<ImportLeadsSummary | null>(null);
   const [selectedSource, setSelectedSource] = useState<string>('cold_list'); // Default for imports
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -87,6 +95,7 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
     setColumnMapping({});
     setFileName('');
     setIsImporting(false);
+    setImportSummary(null);
     setSelectedSource('cold_list');
   }, []);
 
@@ -149,22 +158,32 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
         // Auto-map columns based on similar names
         const autoMapping: Record<string, string> = {};
         fileHeaders.forEach((header) => {
-          const headerLower = header.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const headerLower = normalizeHeaderToken(header);
+          const headerKey = headerLower.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
           for (const col of DB_COLUMNS) {
-            const colLower = col.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            const colLower = normalizeHeaderToken(col.label);
             const keyLower = col.key.toLowerCase();
 
             if (
               headerLower.includes(colLower) ||
               colLower.includes(headerLower) ||
               headerLower.includes(keyLower) ||
+              headerKey.includes(keyLower) ||
+              headerKey === keyLower ||
               headerLower === colLower ||
               // Common variations
               (col.key === 'nome' && (headerLower.includes('name') || headerLower.includes('cliente'))) ||
               (col.key === 'telefone' && (headerLower.includes('phone') || headerLower.includes('cel') || headerLower.includes('fone'))) ||
               (col.key === 'email' && headerLower.includes('mail')) ||
               (col.key === 'empresa' && (headerLower.includes('company') || headerLower.includes('empresa'))) ||
+              (col.key === 'status_pipeline_code' && (
+                (headerLower.includes('etapa') && headerLower.includes('codigo')) ||
+                (headerLower.includes('pipeline') && headerLower.includes('codigo')) ||
+                headerKey.includes('stage_code') ||
+                headerKey.includes('pipeline_stage') ||
+                headerKey.includes('status_pipeline_code')
+              )) ||
               (col.key === 'cidade' && headerLower.includes('city')) ||
               (col.key === 'estado' && (headerLower.includes('state') || headerLower.includes('uf'))) ||
               (col.key === 'endereco' && (headerLower.includes('address') || headerLower.includes('logradouro') || headerLower.includes('rua')))
@@ -218,13 +237,18 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
   };
 
   const getMappedContacts = (): ImportedContact[] => {
-    const valid = fileData.map(row => {
+    const mapped = fileData.map(row => {
       const contact: Record<string, any> = {};
+      let hasMappedValue = false;
 
       headers.forEach((header, index) => {
         const dbColumn = columnMapping[header];
         if (dbColumn) {
           const rawValue = row[index];
+          const rawText = String(rawValue || '').trim();
+          if (rawText) {
+            hasMappedValue = true;
+          }
 
           // Convert numeric fields
           if (dbColumn === 'consumo_kwh' || dbColumn === 'valor_estimado') {
@@ -236,22 +260,33 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
               cleanPhone = '55' + cleanPhone;
             }
             contact[dbColumn] = cleanPhone;
+          } else if (dbColumn === 'status_pipeline' || dbColumn === 'status_pipeline_code') {
+            contact[dbColumn] = String(rawValue || '').trim();
           } else if (dbColumn !== 'canal') { // Don't map canal from CSV, use the global selector
             contact[dbColumn] = String(rawValue || '').trim();
           }
         }
       });
 
+      if (!hasMappedValue) {
+        return null;
+      }
+
       // Apply the global source selected by the user
       contact['canal'] = selectedSource;
+      contact['status_pipeline'] = resolveImportedPipelineStage({
+        statusPipeline: contact.status_pipeline,
+        statusPipelineCode: contact.status_pipeline_code,
+      });
 
       return contact as ImportedContact;
-    }).filter(c => c.nome && c.telefone); // Only include contacts with required fields
+    }).filter((contact): contact is ImportedContact => Boolean(contact));
 
     // Deduplicate by phone number within the import file
     const seen = new Set<string>();
-    return valid.filter(c => {
-      const phone = c.telefone.replace(/\D/g, '');
+    return mapped.filter(c => {
+      const phone = String(c.telefone || '').replace(/\D/g, '');
+      if (!phone) return true;
       if (seen.has(phone)) return false;
       seen.add(phone);
       return true;
@@ -261,6 +296,24 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
   const requiredFieldsMapped = () => {
     const mappedValues = Object.values(columnMapping);
     return mappedValues.includes('nome') && mappedValues.includes('telefone');
+  };
+
+  const coerceImportSummary = (value: unknown): ImportLeadsSummary => {
+    if (!value || typeof value !== 'object') {
+      return { inserted_count: 0, updated_count: 0, failed_count: 0, failures: [] };
+    }
+    const obj = value as Partial<ImportLeadsSummary>;
+    return {
+      inserted_count: Number(obj.inserted_count || 0),
+      updated_count: Number(obj.updated_count || 0),
+      failed_count: Number(obj.failed_count || 0),
+      failures: Array.isArray(obj.failures)
+        ? obj.failures.map((failure) => ({
+          row_index: Number((failure as any)?.row_index || 0),
+          message: String((failure as any)?.message || 'Erro desconhecido'),
+        }))
+        : [],
+    };
   };
 
   const handleImport = async () => {
@@ -279,16 +332,32 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
     setStep('importing');
 
     try {
-      await onImport(contacts);
-      toast({
-        title: 'Importação concluída!',
-        description: `${contacts.length} contato(s) importado(s) com sucesso.`,
-      });
-      handleClose();
+      const summary = coerceImportSummary(await onImport(contacts));
+      setImportSummary(summary);
+      setStep('result');
+
+      if (summary.failed_count > 0 && (summary.inserted_count + summary.updated_count) > 0) {
+        toast({
+          title: 'Importação concluída com ressalvas',
+          description: `${summary.inserted_count} inserido(s), ${summary.updated_count} atualizado(s), ${summary.failed_count} falha(s).`,
+        });
+      } else if (summary.failed_count > 0) {
+        toast({
+          title: 'Importação finalizada sem sucesso',
+          description: `${summary.failed_count} linha(s) falharam. Veja o relatório no modal.`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Importação concluída!',
+          description: `${summary.inserted_count} inserido(s) e ${summary.updated_count} atualizado(s).`,
+        });
+      }
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Não foi possível importar os contatos. Tente novamente.';
       toast({
         title: 'Erro na importação',
-        description: 'Não foi possível importar os contatos. Tente novamente.',
+        description: message,
         variant: 'destructive',
       });
       setStep('preview');
@@ -296,7 +365,6 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
       setIsImporting(false);
     }
   };
-
   const previewContacts = getMappedContacts().slice(0, 5);
 
   return (
@@ -312,6 +380,7 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
             {step === 'mapping' && 'Correlacione as colunas do arquivo com os campos do sistema.'}
             {step === 'preview' && 'Confira a prévia dos dados antes de importar.'}
             {step === 'importing' && 'Importando contatos...'}
+            {step === 'result' && 'Resultado da importação.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -480,6 +549,42 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
               <p className="text-sm text-muted-foreground">Aguarde enquanto processamos seus dados.</p>
             </div>
           )}
+
+          {/* Step 5: Result */}
+          {step === 'result' && importSummary && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Inseridos</div>
+                  <div className="text-2xl font-semibold">{importSummary.inserted_count}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Atualizados</div>
+                  <div className="text-2xl font-semibold">{importSummary.updated_count}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Falhas</div>
+                  <div className="text-2xl font-semibold">{importSummary.failed_count}</div>
+                </div>
+              </div>
+
+              {importSummary.failed_count > 0 && (
+                <div className="rounded-lg border border-destructive/30 p-3">
+                  <div className="text-sm font-medium mb-2">Linhas com falha</div>
+                  <ScrollArea className="h-[180px]">
+                    <div className="space-y-2 text-sm">
+                      {importSummary.failures.map((failure) => (
+                        <div key={`${failure.row_index}-${failure.message}`} className="rounded-md bg-destructive/5 p-2">
+                          <span className="font-medium">Linha {failure.row_index}:</span>{' '}
+                          <span className="text-muted-foreground">{failure.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter className="mt-4">
@@ -522,6 +627,10 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
                 )}
               </Button>
             </>
+          )}
+
+          {step === 'result' && (
+            <Button onClick={handleClose}>Fechar</Button>
           )}
         </DialogFooter>
       </DialogContent>

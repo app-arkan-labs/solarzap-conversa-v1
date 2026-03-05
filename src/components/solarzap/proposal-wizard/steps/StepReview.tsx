@@ -14,7 +14,9 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
     .map((option) => option.label);
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
-    : 'nao resolvida';
+    : form.formData.irradianceSource === 'pvgis_cache_degraded'
+      ? 'PVGIS (cache degradado)'
+      : 'nao resolvida';
 
   return (
     <div className="space-y-4">

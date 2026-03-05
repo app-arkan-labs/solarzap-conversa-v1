@@ -1,13 +1,17 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN");
-if (!ALLOWED_ORIGIN) {
-  throw new Error("Missing ALLOWED_ORIGIN env");
-}
+const ALLOWED_ORIGIN = (Deno.env.get("ALLOWED_ORIGIN") || "").trim();
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+const buildCorsHeaders = (req: Request) => {
+  const origin = req.headers.get("Origin") || "";
+  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  const allowed = !ALLOWED_ORIGIN
+    ? "*"
+    : (origin === ALLOWED_ORIGIN || isLocalhost) ? origin : ALLOWED_ORIGIN;
+  return {
+    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  };
 };
 
 const CACHE_TTL_DAYS = 30;
@@ -67,8 +71,29 @@ const normalizeFactors = (factors: number[]): number[] => {
   return safe.map((v) => v / avg);
 };
 
+type SolarResourceSource = "pvgis" | "pvgis_cache_degraded";
+
+type SolarResourceErrorCode =
+  | "unauthorized"
+  | "geocode_failed"
+  | "pvgis_unavailable"
+  | "upstream_rate_limited"
+  | "upstream_timeout"
+  | "upstream_http_error"
+  | "unexpected_error";
+
+type SolarResourceDebug = {
+  phase?: "auth" | "geocode" | "pvgis" | "cache" | "unexpected";
+  upstreamStatus?: number | null;
+  attempts?: number;
+  lat?: number | null;
+  lon?: number | null;
+  cacheKeyTried?: string[];
+  message?: string;
+};
+
 type SolarResourcePayload = {
-  source: "pvgis";
+  source: SolarResourceSource;
   lat: number | null;
   lon: number | null;
   annualIrradianceKwhM2Day: number;
@@ -76,7 +101,12 @@ type SolarResourcePayload = {
   monthlyGenerationFactors: number[];
   referenceYear: number | null;
   cached: boolean;
+  degraded?: boolean;
+  errorCode?: SolarResourceErrorCode;
+  debug?: SolarResourceDebug;
 };
+
+// jsonResponse and errorResponse are defined inside the handler to access dynamic CORS headers
 
 async function fetchWithTimeout(
   url: string,
@@ -323,20 +353,44 @@ async function geocodeZip(zipRaw: string, googleApiKeyOverride = ""): Promise<{ 
   return null;
 }
 
-async function fetchPvgisMonthly(lat: number, lon: number): Promise<{
-  annual: number;
-  monthlyDaily: number[];
-  referenceYear: number | null;
-} | null> {
+type PvgisFetchErrorCode = Extract<
+  SolarResourceErrorCode,
+  "pvgis_unavailable" | "upstream_rate_limited" | "upstream_timeout" | "upstream_http_error"
+>;
+
+type PvgisFetchResult =
+  | {
+    ok: true;
+    annual: number;
+    monthlyDaily: number[];
+    referenceYear: number | null;
+    attempts: number;
+  }
+  | {
+    ok: false;
+    errorCode: PvgisFetchErrorCode;
+    attempts: number;
+    upstreamStatus: number | null;
+    message?: string;
+  };
+
+async function fetchPvgisMonthly(lat: number, lon: number): Promise<PvgisFetchResult> {
   const pvgisBases = [
     "https://re.jrc.ec.europa.eu/api/v5_3/PVcalc",
     "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
   ];
 
   let data: any = null;
+  let attempts = 0;
+  let sawRateLimit = false;
+  let sawTimeout = false;
+  let sawHttpError = false;
+  let upstreamStatus: number | null = null;
+  let lastMessage = "";
 
   for (const base of pvgisBases) {
     for (let attempt = 0; attempt < 4; attempt += 1) {
+      attempts += 1;
       const url = new URL(base);
       url.searchParams.set("lat", String(lat));
       url.searchParams.set("lon", String(lon));
@@ -346,17 +400,38 @@ async function fetchPvgisMonthly(lat: number, lon: number): Promise<{
       url.searchParams.set("outputformat", "json");
       url.searchParams.set("browser", "0");
 
-      const response = await fetchWithTimeout(url.toString(), PVGIS_TIMEOUT_MS).catch(() => null);
+      let response: Response | null = null;
+      let fetchError: unknown = null;
+      try {
+        response = await fetchWithTimeout(url.toString(), PVGIS_TIMEOUT_MS);
+      } catch (error) {
+        fetchError = error;
+      }
+
       if (!response) {
+        const errorName = fetchError instanceof Error ? fetchError.name : "";
+        if (errorName === "AbortError") {
+          sawTimeout = true;
+          lastMessage = "timeout";
+        } else {
+          lastMessage = fetchError ? String(fetchError) : "network_error";
+        }
         await sleep(250 + (attempt * 250));
         continue;
       }
 
       if (!response.ok) {
+        upstreamStatus = response.status;
         if (response.status === 429 || response.status === 529 || response.status >= 500) {
+          if (response.status === 429 || response.status === 529) {
+            sawRateLimit = true;
+          } else {
+            sawHttpError = true;
+          }
           await sleep(300 + (attempt * 300));
           continue;
         }
+        sawHttpError = true;
         console.error(`PVGIS PVcalc non-retryable HTTP ${response.status} for lat=${lat}, lon=${lon} base=${base}`);
         break;
       }
@@ -370,6 +445,8 @@ async function fetchPvgisMonthly(lat: number, lon: number): Promise<{
         break;
       }
 
+      sawHttpError = true;
+      lastMessage = "invalid_monthly_payload";
       await sleep(200 + (attempt * 200));
     }
 
@@ -377,8 +454,24 @@ async function fetchPvgisMonthly(lat: number, lon: number): Promise<{
   }
 
   if (!data) {
-    console.error(`PVGIS PVcalc unavailable after retries for lat=${lat}, lon=${lon}`);
-    return null;
+    const errorCode: PvgisFetchErrorCode = sawRateLimit
+      ? "upstream_rate_limited"
+      : sawTimeout
+        ? "upstream_timeout"
+        : sawHttpError || upstreamStatus !== null
+          ? "upstream_http_error"
+          : "pvgis_unavailable";
+
+    console.error(
+      `PVGIS PVcalc unavailable for lat=${lat}, lon=${lon}, code=${errorCode}, status=${upstreamStatus ?? "none"}, attempts=${attempts}, msg=${lastMessage || "n/a"}`,
+    );
+    return {
+      ok: false,
+      errorCode,
+      attempts,
+      upstreamStatus,
+      ...(lastMessage ? { message: lastMessage } : {}),
+    };
   }
 
   const monthlyRows = Array.isArray((data as any)?.outputs?.monthly?.fixed)
@@ -386,7 +479,13 @@ async function fetchPvgisMonthly(lat: number, lon: number): Promise<{
     : [];
   if (monthlyRows.length === 0) {
     console.error("PVGIS PVcalc: no monthly rows in response");
-    return null;
+    return {
+      ok: false,
+      errorCode: "upstream_http_error",
+      attempts,
+      upstreamStatus,
+      message: "no_monthly_rows",
+    };
   }
 
   // Extract H(i)_d (daily irradiance on tilted plane, kWh/m²/day) for each month
@@ -400,7 +499,13 @@ async function fetchPvgisMonthly(lat: number, lon: number): Promise<{
   const validCount = monthlyDaily.filter((value) => value > 0.01).length;
   if (validCount < 8) {
     console.error(`PVGIS PVcalc: only ${validCount}/12 valid months`);
-    return null;
+    return {
+      ok: false,
+      errorCode: "upstream_http_error",
+      attempts,
+      upstreamStatus,
+      message: `insufficient_valid_months_${validCount}`,
+    };
   }
 
   const knownAvg = monthlyDaily.filter((v) => v > 0).reduce((acc, v) => acc + v, 0) / validCount;
@@ -417,13 +522,33 @@ async function fetchPvgisMonthly(lat: number, lon: number): Promise<{
     : null;
 
   return {
+    ok: true,
     annual: Number(annual.toFixed(4)),
     monthlyDaily: patchedMonthlyDaily.map((value) => Number(value.toFixed(4))),
     referenceYear,
+    attempts,
   };
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
+
+  const jsonResponse = (body: unknown, status = 200, extraHeaders?: Record<string, string>): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json", ...(extraHeaders || {}) },
+    });
+
+  const errorResponse = (
+    status: number,
+    errorCode: SolarResourceErrorCode,
+    debug?: SolarResourceDebug,
+  ): Response => jsonResponse({
+    error: errorCode,
+    errorCode,
+    ...(debug ? { debug } : {}),
+  }, status);
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -433,9 +558,9 @@ Deno.serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
     const supabaseServiceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRole) {
-      return new Response(JSON.stringify({ error: "missing_supabase_env" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return errorResponse(500, "unexpected_error", {
+        phase: "unexpected",
+        message: "missing_supabase_env",
       });
     }
 
@@ -445,9 +570,9 @@ Deno.serve(async (req) => {
     });
     const { data: authData, error: authError } = await authClient.auth.getUser();
     if (authError || !authData?.user) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return errorResponse(401, "unauthorized", {
+        phase: "auth",
+        message: authError?.message || "missing_user",
       });
     }
 
@@ -459,6 +584,8 @@ Deno.serve(async (req) => {
     const geocodingApiKey = String((body as any)?.geocodingApiKey || "").trim();
     const strictPvgisOnly = Boolean((body as any)?.strictPvgisOnly ?? true);
     const normalizedZip = String(zip || "").replace(/\D/g, "").slice(0, 8);
+
+    console.log(`[solar-resource] REQ zip=${normalizedZip} city=${city} uf=${uf} addr=${addressLine.slice(0, 30)} strictPvgis=${strictPvgisOnly}`);
     let lat = toFinite((body as any)?.lat, NaN);
     let lon = toFinite((body as any)?.lon, NaN);
 
@@ -481,107 +608,131 @@ Deno.serve(async (req) => {
     const serviceClient = createClient(supabaseUrl, supabaseServiceRole);
 
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      return new Response(JSON.stringify({ error: "geocode_failed" }), {
-        status: 422,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      console.error(`[solar-resource] GEOCODE_FAILED zip=${normalizedZip} city=${city} uf=${uf}`);
+      return errorResponse(422, "geocode_failed", {
+        phase: "geocode",
+        lat: Number.isFinite(lat) ? lat : null,
+        lon: Number.isFinite(lon) ? lon : null,
+        cacheKeyTried: [],
       });
     }
 
-    if (Number.isFinite(lat) && Number.isFinite(lon)) {
-      const latRounded = Number(lat.toFixed(4));
-      const lonRounded = Number(lon.toFixed(4));
-      const cacheKey = `${latRounded}:${lonRounded}`;
-      const minFetchedAtIso = new Date(Date.now() - CACHE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    console.log(`[solar-resource] GEOCODE_OK lat=${lat} lon=${lon}`);
 
-      const { data: cacheRow } = await serviceClient
+    const latRounded = Number(lat.toFixed(5));
+    const lonRounded = Number(lon.toFixed(5));
+    const legacyLatRounded = Number(lat.toFixed(4));
+    const legacyLonRounded = Number(lon.toFixed(4));
+    const primaryCacheKey = `${latRounded}:${lonRounded}`;
+    const legacyCacheKey = `${legacyLatRounded}:${legacyLonRounded}`;
+    const cacheKeys = Array.from(new Set([primaryCacheKey, legacyCacheKey]));
+    const minFetchedAtIso = new Date(Date.now() - CACHE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+    const buildCachePayload = (cacheRow: any): SolarResourcePayload | null => {
+      const cachedMonthlyIrr = Array.isArray((cacheRow as any).monthly_irradiance_kwh_m2_day)
+        ? ((cacheRow as any).monthly_irradiance_kwh_m2_day as unknown[]).slice(0, 12).map((v) => Math.max(0, toFinite(v, 0)))
+        : [];
+      const cachedFactors = Array.isArray((cacheRow as any).monthly_generation_factors)
+        ? ((cacheRow as any).monthly_generation_factors as unknown[]).slice(0, 12).map((v) => Math.max(0, toFinite(v, 0)))
+        : [];
+      if (cachedMonthlyIrr.length !== 12 || cachedFactors.length !== 12) return null;
+
+      return {
+        source: "pvgis",
+        lat: toFinite((cacheRow as any).latitude, latRounded),
+        lon: toFinite((cacheRow as any).longitude, lonRounded),
+        annualIrradianceKwhM2Day: Math.max(0.01, toFinite((cacheRow as any).annual_irradiance_kwh_m2_day, 4.5)),
+        monthlyIrradianceKwhM2Day: cachedMonthlyIrr,
+        monthlyGenerationFactors: cachedFactors,
+        referenceYear: Number.isFinite(Number((cacheRow as any).reference_year)) ? Number((cacheRow as any).reference_year) : null,
+        cached: true,
+      };
+    };
+
+    const getCachePayload = async (allowStale: boolean): Promise<SolarResourcePayload | null> => {
+      let query = serviceClient
         .from("solar_resource_cache")
-        .select("latitude,longitude,annual_irradiance_kwh_m2_day,monthly_irradiance_kwh_m2_day,monthly_generation_factors,reference_year")
-        .eq("cache_key", cacheKey)
-        .gte("fetched_at", minFetchedAtIso)
+        .select("cache_key,latitude,longitude,annual_irradiance_kwh_m2_day,monthly_irradiance_kwh_m2_day,monthly_generation_factors,reference_year,fetched_at")
+        .in("cache_key", cacheKeys)
         .order("fetched_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
 
-      if (cacheRow) {
-        const cachedMonthlyIrr = Array.isArray((cacheRow as any).monthly_irradiance_kwh_m2_day)
-          ? ((cacheRow as any).monthly_irradiance_kwh_m2_day as unknown[]).slice(0, 12).map((v) => Math.max(0, toFinite(v, 0)))
-          : [];
-        const cachedFactors = Array.isArray((cacheRow as any).monthly_generation_factors)
-          ? ((cacheRow as any).monthly_generation_factors as unknown[]).slice(0, 12).map((v) => Math.max(0, toFinite(v, 0)))
-          : [];
-        if (cachedMonthlyIrr.length === 12 && cachedFactors.length === 12) {
-          const payload: SolarResourcePayload = {
-            source: "pvgis",
-            lat: toFinite((cacheRow as any).latitude, latRounded),
-            lon: toFinite((cacheRow as any).longitude, lonRounded),
-            annualIrradianceKwhM2Day: Math.max(0.01, toFinite((cacheRow as any).annual_irradiance_kwh_m2_day, 4.5)),
-            monthlyIrradianceKwhM2Day: cachedMonthlyIrr,
-            monthlyGenerationFactors: cachedFactors,
-            referenceYear: Number.isFinite(Number((cacheRow as any).reference_year)) ? Number((cacheRow as any).reference_year) : null,
-            cached: true,
-          };
-          return new Response(JSON.stringify(payload), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
+      if (!allowStale) {
+        query = query.gte("fetched_at", minFetchedAtIso);
       }
 
-      let pvgis: Awaited<ReturnType<typeof fetchPvgisMonthly>> = null;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        pvgis = await fetchPvgisMonthly(latRounded, lonRounded).catch(() => null);
-        if (pvgis) break;
-      }
+      const { data: cacheRow } = await query.maybeSingle();
+      if (!cacheRow) return null;
+      return buildCachePayload(cacheRow);
+    };
 
-      if (pvgis) {
-        const factors = normalizeFactors(pvgis.monthlyDaily);
-        const payload: SolarResourcePayload = {
-          source: "pvgis",
-          lat: latRounded,
-          lon: lonRounded,
-          annualIrradianceKwhM2Day: pvgis.annual,
-          monthlyIrradianceKwhM2Day: pvgis.monthlyDaily,
-          monthlyGenerationFactors: factors.map((factor) => Number(factor.toFixed(6))),
-          referenceYear: pvgis.referenceYear,
-          cached: false,
+    const pvgis = await fetchPvgisMonthly(latRounded, lonRounded);
+    if (pvgis.ok) {
+      const factors = normalizeFactors(pvgis.monthlyDaily);
+      const payload: SolarResourcePayload = {
+        source: "pvgis",
+        lat: latRounded,
+        lon: lonRounded,
+        annualIrradianceKwhM2Day: pvgis.annual,
+        monthlyIrradianceKwhM2Day: pvgis.monthlyDaily,
+        monthlyGenerationFactors: factors.map((factor) => Number(factor.toFixed(6))),
+        referenceYear: pvgis.referenceYear,
+        cached: false,
+      };
+      await serviceClient.from("solar_resource_cache").upsert({
+        cache_key: primaryCacheKey,
+        city: city || null,
+        uf: uf || null,
+        latitude: latRounded,
+        longitude: lonRounded,
+        source: "pvgis",
+        annual_irradiance_kwh_m2_day: payload.annualIrradianceKwhM2Day,
+        monthly_irradiance_kwh_m2_day: payload.monthlyIrradianceKwhM2Day,
+        monthly_generation_factors: payload.monthlyGenerationFactors,
+        reference_year: payload.referenceYear,
+        fetched_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "cache_key" });
+
+      console.log(`[solar-resource] PVGIS_OK lat=${latRounded} lon=${lonRounded} annual=${pvgis.annual} attempts=${pvgis.attempts}`);
+      return jsonResponse(payload, 200, { "X-Solar-Source": "pvgis" });
+    }
+
+    const pvgisDebug: SolarResourceDebug = {
+      phase: "pvgis",
+      upstreamStatus: pvgis.upstreamStatus,
+      attempts: pvgis.attempts,
+      lat: latRounded,
+      lon: lonRounded,
+      cacheKeyTried: cacheKeys,
+      ...(pvgis.message ? { message: pvgis.message } : {}),
+    };
+
+    if (pvgis.errorCode === "upstream_rate_limited" || pvgis.errorCode === "upstream_timeout") {
+      const staleCache = await getCachePayload(true);
+      if (staleCache) {
+        const degradedPayload: SolarResourcePayload = {
+          ...staleCache,
+          source: "pvgis_cache_degraded",
+          cached: true,
+          degraded: true,
+          errorCode: pvgis.errorCode,
+          debug: pvgisDebug,
         };
-        await serviceClient.from("solar_resource_cache").upsert({
-          cache_key: cacheKey,
-          city: city || null,
-          uf: uf || null,
-          latitude: latRounded,
-          longitude: lonRounded,
-          source: "pvgis",
-          annual_irradiance_kwh_m2_day: payload.annualIrradianceKwhM2Day,
-          monthly_irradiance_kwh_m2_day: payload.monthlyIrradianceKwhM2Day,
-          monthly_generation_factors: payload.monthlyGenerationFactors,
-          reference_year: payload.referenceYear,
-          fetched_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "cache_key" });
-
-        return new Response(JSON.stringify(payload), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      if (strictPvgisOnly) {
-        return new Response(JSON.stringify({ error: "pvgis_unavailable" }), {
-          status: 503,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return jsonResponse(degradedPayload, 200);
       }
     }
 
-    return new Response(JSON.stringify({ error: "pvgis_unavailable" }), {
-      status: 503,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const status = pvgis.errorCode === "upstream_http_error" ? 502 : 503;
+    if (strictPvgisOnly) {
+      return errorResponse(status, pvgis.errorCode, pvgisDebug);
+    }
+
+    return errorResponse(status, pvgis.errorCode, pvgisDebug);
   } catch (error) {
-    return new Response(JSON.stringify({ error: "unexpected_error", details: String(error) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return errorResponse(500, "unexpected_error", {
+      phase: "unexpected",
+      message: String(error),
     });
   }
 });

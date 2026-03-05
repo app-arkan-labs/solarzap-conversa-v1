@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, FileText, Loader2 } from 'lucide-react';
 import { Contact } from '@/types/solarzap';
 import {
@@ -29,19 +29,23 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
   const form = useProposalForm({ isOpen, onClose, contact, onGenerate });
   const [currentStep, setCurrentStep] = useState(1);
   const [manualConfigOpen, setManualConfigOpen] = useState(false);
+  const wasOpenRef = useRef(isOpen);
 
   useEffect(() => {
-    if (!isOpen) return;
-    setCurrentStep(1);
-    setManualConfigOpen(false);
-  }, [isOpen, contact?.id]);
+    if (!wasOpenRef.current && isOpen) {
+      setCurrentStep(1);
+      setManualConfigOpen(false);
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen]);
 
   const canProceed = useMemo(() => {
     if (currentStep === 1) return Boolean(form.formData.tipo_cliente);
     if (currentStep === 2) {
       const hasCoordinates = Number.isFinite(Number(form.formData.latitude))
         && Number.isFinite(Number(form.formData.longitude));
-      const hasStrictPvgis = form.formData.irradianceSource === 'pvgis';
+      const hasStrictPvgis = form.formData.irradianceSource === 'pvgis'
+        || form.formData.irradianceSource === 'pvgis_cache_degraded';
       const hasManualLocation = Boolean(form.formData.cidade) && Boolean(form.formData.estado);
       return (
         Boolean(form.formData.estado)

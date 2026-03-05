@@ -25,6 +25,7 @@ import { NotificationsPanel } from './NotificationsPanel';
 import { CreateLeadModal, CreateLeadData } from './CreateLeadModal';
 import { AppointmentModal } from './AppointmentModal';
 import { VisitOutcomeAfterModal, VisitOutcomeItem } from './VisitOutcomeAfterModal';
+import { ProjectPaidFinanceModal } from './ProjectPaidFinanceModal';
 // import { ScheduleModal, ScheduleData } from './ScheduleModal'; // Replaced by AppointmentModal
 import { ProposalModal, ProposalData } from './ProposalModal';
 import { CallConfirmModal } from './CallConfirmModal';
@@ -47,6 +48,7 @@ import { supabase } from '@/lib/supabase';
 import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
 import { OrganizationSelectorPanel } from '@/components/organization/OrganizationSelectorPanel';
 import AdminMembersPage from '@/pages/AdminMembersPage';
+import type { UpdateLeadData } from './EditLeadModal';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -61,6 +63,7 @@ type PipelineStageChangeOptions = {
   skipScheduleModal?: boolean;
   skipMoveToProposalModal?: boolean;
   skipGenerateProposalPromptModal?: boolean;
+  skipProjectPaidFinanceModal?: boolean;
 };
 
 class AppointmentModalErrorBoundary extends Component<AppointmentModalErrorBoundaryProps, AppointmentModalErrorBoundaryState> {
@@ -174,11 +177,16 @@ export function SolarZapLayout() {
   const [isResizingConversationsSidebar, setIsResizingConversationsSidebar] = useState(false);
   const conversationsSidebarRef = useRef<HTMLDivElement | null>(null);
   const proposalPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const projectPaidFinanceResolverRef = useRef<((completed: boolean) => void) | null>(null);
 
   // Cleanup proposal prompt timer on unmount
   useEffect(() => {
     return () => {
       if (proposalPromptTimerRef.current) clearTimeout(proposalPromptTimerRef.current);
+      if (projectPaidFinanceResolverRef.current) {
+        projectPaidFinanceResolverRef.current(false);
+        projectPaidFinanceResolverRef.current = null;
+      }
     };
   }, []);
 
@@ -289,6 +297,8 @@ export function SolarZapLayout() {
     onVisitScheduled,
     onProposalReady,
     onCallCompleted,
+    confirmInstallmentPaid,
+    rescheduleInstallment,
   } = useNotifications();
 
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
@@ -313,6 +323,8 @@ export function SolarZapLayout() {
   const [moveToProposalOpen, setMoveToProposalOpen] = useState(false);
   const [generateProposalPromptOpen, setGenerateProposalPromptOpen] = useState(false);
   const [proposalReadyOpen, setProposalReadyOpen] = useState(false);
+  const [projectPaidFinanceOpen, setProjectPaidFinanceOpen] = useState(false);
+  const [projectPaidFinanceContact, setProjectPaidFinanceContact] = useState<Contact | null>(null);
 
   // Last proposal data (for seller script in ProposalReadyModal)
   const [lastProposalSellerData, setLastProposalSellerData] = useState<any>(null);
@@ -662,6 +674,24 @@ export function SolarZapLayout() {
     setActionContact(null);
   };
 
+  const openProjectPaidFinanceGate = useCallback((contact: Contact) => {
+    return new Promise<boolean>((resolve) => {
+      projectPaidFinanceResolverRef.current = resolve;
+      setProjectPaidFinanceContact(contact);
+      setProjectPaidFinanceOpen(true);
+    });
+  }, []);
+
+  const resolveProjectPaidFinanceGate = useCallback((completed: boolean) => {
+    setProjectPaidFinanceOpen(false);
+    setProjectPaidFinanceContact(null);
+    const resolver = projectPaidFinanceResolverRef.current;
+    projectPaidFinanceResolverRef.current = null;
+    if (resolver) {
+      resolver(completed);
+    }
+  }, []);
+
   /* 
     CENTRALIZED PIPELINE AUTOMATION HANDLER 
     Ensures that ALL stage changes (Drag&Drop, Dropdown, Buttons) trigger the same behavior.
@@ -674,6 +704,20 @@ export function SolarZapLayout() {
 
     const contact = contacts.find(c => c.id === contactId);
     const oldStage = contact?.pipelineStage;
+
+    if (
+      newStage === 'projeto_pago' &&
+      !options.skipProjectPaidFinanceModal
+    ) {
+      if (!contact) {
+        throw new Error('Lead nao encontrado para abrir o fechamento financeiro.');
+      }
+
+      const financeCompleted = await openProjectPaidFinanceGate(contact);
+      if (!financeCompleted) {
+        return;
+      }
+    }
 
     // Perform the move
     await moveToPipeline({ contactId, newStage });
@@ -751,7 +795,35 @@ export function SolarZapLayout() {
         break;
     }
 
-  }, [contacts, moveToPipeline, onStageChanged, toast, isDragDropEnabled]);
+  }, [contacts, moveToPipeline, onStageChanged, toast, isDragDropEnabled, openProjectPaidFinanceGate]);
+
+  const compactLeadPatch = useCallback((data: UpdateLeadData): UpdateLeadData => {
+    return Object.fromEntries(
+      Object.entries(data || {}).filter(([, value]) => value !== undefined),
+    ) as UpdateLeadData;
+  }, []);
+
+  const handleLeadUpdateWithoutStage = useCallback(async (contactId: string, data: UpdateLeadData) => {
+    const { status_pipeline: _ignoredStage, ...rest } = data || {};
+    const payload = compactLeadPatch(rest as UpdateLeadData);
+    if (Object.keys(payload).length === 0) return;
+    await updateLead({ contactId, data: payload });
+  }, [compactLeadPatch, updateLead]);
+
+  const handleLeadUpdateWithStageGuard = useCallback(async (contactId: string, data: UpdateLeadData) => {
+    const { status_pipeline: requestedStage, ...rest } = data || {};
+    const payload = compactLeadPatch(rest as UpdateLeadData);
+    if (Object.keys(payload).length > 0) {
+      await updateLead({ contactId, data: payload });
+    }
+
+    if (!requestedStage) return;
+
+    const currentStage = contacts.find((item) => item.id === contactId)?.pipelineStage;
+    if (requestedStage !== currentStage) {
+      await handlePipelineStageChange(contactId, requestedStage);
+    }
+  }, [compactLeadPatch, contacts, handlePipelineStageChange, updateLead]);
 
   const handleVisitOutcomeSubmit = useCallback(async (targetStage: string, notes: string) => {
     if (!pendingVisitOutcome) return;
@@ -944,7 +1016,7 @@ export function SolarZapLayout() {
         uf: data.estado,
         concessionaria: data.concessionaria,
         tipo_ligacao: data.tipoLigacao,
-        tarifa_kwh: data.rentabilityRatePerKwh ?? data.tarifaKwh,
+        tarifa_kwh: data.tarifaKwh ?? data.rentabilityRatePerKwh,
         custo_disponibilidade_kwh: data.custoDisponibilidadeKwh,
         performance_ratio: data.performanceRatio,
         preco_por_kwp: data.precoPorKwp,
@@ -1053,6 +1125,8 @@ export function SolarZapLayout() {
         onMarkAllAsRead={markAllNotificationsAsRead}
         onDelete={deleteNotification}
         onClearAll={clearAllNotifications}
+        onConfirmInstallmentPaid={confirmInstallmentPaid}
+        onRescheduleInstallment={rescheduleInstallment}
         onGoToContact={(contactId) => {
           const conv = conversations.find(c => c.id === contactId);
           if (conv) {
@@ -1225,7 +1299,7 @@ export function SolarZapLayout() {
               onMoveToPipeline={handlePipelineStageChange}
               onAction={handleAction}
               onClose={() => setIsDetailsPanelOpen(false)}
-              onUpdateLead={async (contactId, data) => { await updateLead({ contactId, data }); }}
+              onUpdateLead={handleLeadUpdateWithoutStage}
             />
           )}
         </>
@@ -1237,7 +1311,7 @@ export function SolarZapLayout() {
             contacts={contacts}
             events={events}
             onMoveToPipeline={handlePipelineStageChange}
-            onUpdateLead={async (contactId, data) => { await updateLead({ contactId, data }); }}
+            onUpdateLead={handleLeadUpdateWithStageGuard}
             onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
             canViewTeam={canViewTeam}
             leadScope={leadScope}
@@ -1278,7 +1352,7 @@ export function SolarZapLayout() {
         <div className="flex-1 relative">
           <ContactsView
             contacts={contacts}
-            onUpdateLead={async (contactId, data) => { await updateLead({ contactId, data }); }}
+            onUpdateLead={handleLeadUpdateWithStageGuard}
             onImportContacts={importContacts}
             onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
             onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
@@ -1434,6 +1508,14 @@ export function SolarZapLayout() {
         }}
         contact={actionContact}
         onGenerate={handleProposal}
+      />
+
+      <ProjectPaidFinanceModal
+        isOpen={projectPaidFinanceOpen}
+        contact={projectPaidFinanceContact}
+        orgId={orgId}
+        onCancel={() => resolveProjectPaidFinanceGate(false)}
+        onCompleted={() => resolveProjectPaidFinanceGate(true)}
       />
 
       <CallConfirmModal

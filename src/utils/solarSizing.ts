@@ -9,6 +9,7 @@ export interface SolarSizingParams {
   precoPorKwp?: number;
   custoDisponibilidadeKwh?: number;
   aplicarCustoDisponibilidadeNoDimensionamento?: boolean;
+  sombreamentoPct?: number;
 }
 
 export interface SolarSizingResult {
@@ -41,9 +42,13 @@ export function calculateSolarSizing(params: SolarSizingParams): SolarSizingResu
   const consumoBaseDimensionamentoKwh = aplicarCustoDisponibilidadeNoDimensionamento
     ? Math.max(consumoMensal - Math.min(custoDisponibilidadeKwh, consumoMensal), 0)
     : consumoMensal;
+  const shadingFraction = Math.max(0, Math.min(0.99, toSafeNumber(params.sombreamentoPct, 0) / 100));
+  const adjustedConsumption = consumoBaseDimensionamentoKwh > 0
+    ? consumoBaseDimensionamentoKwh / (1 - shadingFraction)
+    : 0;
 
-  const basePotencia = consumoBaseDimensionamentoKwh > 0
-    ? consumoBaseDimensionamentoKwh / (irradiancia * diasMes * performanceRatio)
+  const basePotencia = adjustedConsumption > 0
+    ? adjustedConsumption / (irradiancia * diasMes * performanceRatio)
     : 0;
   const quantidadePaineis = basePotencia > 0
     ? Math.ceil((basePotencia * 1000) / moduloPotenciaW)
@@ -54,7 +59,7 @@ export function calculateSolarSizing(params: SolarSizingParams): SolarSizingResu
   const valorTotal = Math.round(potenciaSistemaKwp * precoPorKwp);
 
   return {
-    consumoBaseDimensionamentoKwh,
+    consumoBaseDimensionamentoKwh: adjustedConsumption,
     basePotenciaKwp: basePotencia,
     potenciaSistemaKwp,
     quantidadePaineis,
