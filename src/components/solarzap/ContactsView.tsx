@@ -27,6 +27,7 @@ import { PageHeader } from './PageHeader'; // New Import
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { scopeProposalByIdsQuery } from '@/lib/multiOrgLeadScoping';
 import { resolveProposalLinks } from '@/utils/proposalLinks';
 import { LeadScopeSelect, type LeadScopeValue } from './LeadScopeSelect';
 import type { MemberDto } from '@/lib/orgAdminClient';
@@ -267,10 +268,12 @@ export function ContactsView({
 
         let valorProjetoMap = new Map<number, number | null>();
         if (proposalIds.length > 0) {
-          const { data: propostas, error: propostasError } = await supabase
-            .from('propostas')
-            .select('id, valor_projeto')
-            .in('id', proposalIds);
+          const { data: propostas, error: propostasError } = await scopeProposalByIdsQuery(
+            (supabase
+              .from('propostas')
+              .select('id, valor_projeto')) as any,
+            { proposalIds, orgId },
+          );
 
           if (propostasError) throw propostasError;
 

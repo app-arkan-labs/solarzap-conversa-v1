@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { evolutionApi } from '@/lib/evolutionApi';
+import {
+  buildUpsertLeadCanonicalPayload,
+  doesLeadBelongToOrg,
+} from '@/lib/multiOrgLeadScoping';
 import type {
   BroadcastCampaign,
   BroadcastCampaignStatus,
@@ -257,19 +261,39 @@ export function useBroadcasts() {
     let leadId: number | null = null;
 
     const { data: rpcData, error: rpcError } = await supabase
-      .rpc('upsert_lead_canonical', {
-        p_user_id: user.id,
-        p_instance_name: campaign.instance_name,
-        p_phone_e164: normalizedPhone,
-        p_telefone: normalizedPhone,
-        p_name: recipient.name,
-        p_push_name: recipient.name,
-        p_source: campaign.source_channel || 'cold_list',
-      })
+      .rpc('upsert_lead_canonical', buildUpsertLeadCanonicalPayload({
+        userId: user.id,
+        orgId,
+        instanceName: campaign.instance_name,
+        phoneE164: normalizedPhone,
+        telefone: normalizedPhone,
+        name: recipient.name,
+        pushName: recipient.name,
+        source: campaign.source_channel || 'cold_list',
+      }))
       .maybeSingle();
 
     if (!rpcError && rpcData) {
-      leadId = Number((rpcData as Record<string, unknown>).id || 0) || null;
+      const rpcLeadId = Number((rpcData as Record<string, unknown>).id || 0) || null;
+      if (rpcLeadId) {
+        const { data: rpcLead } = await supabase
+          .from('leads')
+          .select('id, org_id')
+          .eq('id', rpcLeadId)
+          .maybeSingle();
+
+        if (doesLeadBelongToOrg(rpcLead, orgId)) {
+          leadId = rpcLeadId;
+        } else {
+          console.warn('Discarding cross-org lead returned by upsert_lead_canonical', {
+            orgId,
+            rpcLeadId,
+            rpcLeadOrgId: rpcLead?.org_id ?? null,
+            campaignId: campaign.id,
+            recipientId: recipient.id,
+          });
+        }
+      }
     }
 
     if (!leadId) {

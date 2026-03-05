@@ -9,6 +9,7 @@ import {
     applyLeadAttribution,
     extractCtwaFromWhatsAppMessage,
 } from '../_shared/trackingAttribution.ts'
+import { buildUpsertLeadCanonicalPayload } from '../_shared/leadCanonical.ts'
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
 if (!ALLOWED_ORIGIN) {
@@ -610,15 +611,19 @@ Deno.serve(async (req: Request) => {
 
                 let leadId = null
                 const upsertLeadStartedAt = perfNowMs()
-                const { data: leadData, error: upsertLeadError } = await supabase.rpc('upsert_lead_canonical', {
-                    p_user_id: userId,
-                    p_instance_name: instanceName,
-                    p_phone_e164: phoneE164,
-                    p_telefone: leadTelefone,
-                    p_name: pushName,
-                    p_push_name: pushName,
-                    p_source: 'whatsapp'
-                }).single()
+                const { data: leadData, error: upsertLeadError } = await supabase.rpc(
+                    'upsert_lead_canonical',
+                    buildUpsertLeadCanonicalPayload({
+                        userId,
+                        orgId,
+                        instanceName,
+                        phoneE164,
+                        telefone: leadTelefone,
+                        name: pushName,
+                        pushName,
+                        source: 'whatsapp'
+                    })
+                ).single()
                 if (upsertLeadError) {
                     console.error('❌ upsert_lead_canonical failed in whatsapp-webhook', {
                         userId,

@@ -6,6 +6,7 @@ import {
   type OrgTrackingSettingsRow,
   type RateLimitResult,
 } from '../_shared/attributionWebhookService.ts';
+import { buildUpsertLeadCanonicalPayload } from '../_shared/leadCanonical.ts';
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
 if (!ALLOWED_ORIGIN) {
@@ -129,15 +130,16 @@ const repo: AttributionWebhookRepo = {
     const { orgId, userId, phoneE164, email, name } = input;
 
     const rpcResult = await supabase
-      .rpc('upsert_lead_canonical', {
-        p_user_id: userId,
-        p_instance_name: 'attribution-webhook',
-        p_phone_e164: phoneE164,
-        p_telefone: phoneE164,
-        p_name: name,
-        p_push_name: name,
-        p_source: 'webhook',
-      })
+      .rpc('upsert_lead_canonical', buildUpsertLeadCanonicalPayload({
+        userId,
+        orgId,
+        instanceName: 'attribution-webhook',
+        phoneE164,
+        telefone: phoneE164,
+        name,
+        pushName: name,
+        source: 'webhook',
+      }))
       .maybeSingle();
 
     if (!rpcResult.error && rpcResult.data) {

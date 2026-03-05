@@ -22,6 +22,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLeads } from '@/hooks/domain/useLeads';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
+import { scopeProposalVersionByIdQuery } from '@/lib/multiOrgLeadScoping';
 import { supabase } from '@/lib/supabase';
 import { BRAZIL_STATES, getIrradianceByUF } from '@/constants/solarIrradiance';
 import {
@@ -1109,12 +1110,18 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
       // 7) Share link + tracking (best-effort, background)
       const versionId = (saveResult as any)?.proposalVersionId;
       const propostaId = (saveResult as any)?.proposal?.id;
-      if (versionId && storageResult) {
+      if (versionId && storageResult && orgId) {
         const share = await generateShareLink(versionId);
         if (share) {
           try {
-            const { data: ver } = await supabase.from('proposal_versions').select('premium_payload').eq('id', versionId).maybeSingle();
-            await supabase.from('proposal_versions').update({ premium_payload: { ...((ver?.premium_payload as Record<string, unknown>) || {}), share } }).eq('id', versionId);
+            const { data: ver } = await scopeProposalVersionByIdQuery(
+              (supabase.from('proposal_versions').select('premium_payload')) as any,
+              { proposalVersionId: String(versionId), orgId },
+            ).maybeSingle();
+            await scopeProposalVersionByIdQuery(
+              (supabase.from('proposal_versions').update({ premium_payload: { ...((ver?.premium_payload as Record<string, unknown>) || {}), share } })) as any,
+              { proposalVersionId: String(versionId), orgId },
+            );
           } catch { /* non-blocking */ }
         }
       }

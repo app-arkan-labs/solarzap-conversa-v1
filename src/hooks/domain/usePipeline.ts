@@ -3,6 +3,11 @@ import { supabase, EventoDB } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarEvent, EventType, PipelineStage } from '@/types/solarzap';
+import {
+    scopeLeadProposalLookupQuery,
+    scopeProposalByIdQuery,
+    scopeProposalVersionByProposalIdQuery,
+} from '@/lib/multiOrgLeadScoping';
 import { assertLeadStageUpdateApplied } from './pipelineStageGuards';
 
 type ProposalSegment = 'residencial' | 'empresarial' | 'agronegocio' | 'usina' | 'indefinido';
@@ -108,6 +113,15 @@ export function usePipeline() {
                 .single();
 
             if (lead) {
+                const { data: financePlan } = await supabase
+                    .from('lead_sale_finance_plans')
+                    .select('sale_value')
+                    .eq('org_id', orgId)
+                    .eq('lead_id', Number(contactId))
+                    .maybeSingle();
+
+                const dealAmount = Number(financePlan?.sale_value ?? lead.valor_estimado ?? 0);
+
                 // 3. Map Stage to Deal Status
                 let dealStatus = 'open';
                 const wonStages = [
@@ -136,7 +150,7 @@ export function usePipeline() {
                     org_id: orgId,
                     user_id: lead.user_id,
                     status: dealStatus,
-                    amount: lead.valor_estimado || 0,
+                    amount: dealAmount,
                     // If moving to won/lost, set closed_at. If moving back to open, clear it.
                     closed_at: (dealStatus === 'won' || dealStatus === 'lost') ? new Date().toISOString() : null
                 };
@@ -312,20 +326,23 @@ export function usePipeline() {
 
             let proposal: any = null;
             try {
-                const { data: existingProposal, error: existingErr } = await supabase
-                    .from('propostas')
-                    .select('id')
-                    .eq('lead_id', leadId)
-                    .eq('user_id', user.id)
+                const { data: existingProposal, error: existingErr } = await scopeLeadProposalLookupQuery(
+                    (supabase
+                        .from('propostas')
+                        .select('id')) as any,
+                    { leadId, orgId }
+                )
                     .order('id', { ascending: false })
                     .limit(1)
                     .maybeSingle();
 
                 if (!existingErr && existingProposal?.id) {
-                    const { data: upd, error: updErr } = await supabase
-                        .from('propostas')
-                        .update(proposalPayload)
-                        .eq('id', existingProposal.id)
+                    const { data: upd, error: updErr } = await scopeProposalByIdQuery(
+                        (supabase
+                            .from('propostas')
+                            .update(proposalPayload)) as any,
+                        { proposalId: existingProposal.id, orgId }
+                    )
                         .select()
                         .single();
                     if (!updErr) proposal = upd;
@@ -448,10 +465,12 @@ export function usePipeline() {
             try {
                 let nextVersionNo = 1;
                 try {
-                    const { data: lastVersion, error: lastVersionErr } = await supabase
-                        .from('proposal_versions')
-                        .select('version_no')
-                        .eq('proposta_id', proposal.id)
+                    const { data: lastVersion, error: lastVersionErr } = await scopeProposalVersionByProposalIdQuery(
+                        (supabase
+                            .from('proposal_versions')
+                            .select('version_no')) as any,
+                        { proposalId: proposal.id, orgId }
+                    )
                         .order('version_no', { ascending: false })
                         .limit(1)
                         .maybeSingle();

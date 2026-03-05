@@ -17,6 +17,7 @@ import {
 import { UpdateLeadData } from './EditLeadModal';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { scopeProposalVersionByIdsQuery } from '@/lib/multiOrgLeadScoping';
 import { resolveProposalLinks } from '@/utils/proposalLinks';
 
 type LeadProposalItem = {
@@ -174,10 +175,12 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
 
         const versionPayloadMap = new Map<string, Record<string, unknown> | null>();
         if (versionIds.length > 0) {
-          const { data: versionRows } = await supabase
-            .from('proposal_versions')
-            .select('id, premium_payload')
-            .in('id', versionIds);
+          const { data: versionRows } = await scopeProposalVersionByIdsQuery(
+            (supabase
+              .from('proposal_versions')
+              .select('id, premium_payload')) as any,
+            { proposalVersionIds: versionIds, orgId },
+          );
 
           (versionRows || []).forEach((row: any) => {
             versionPayloadMap.set(String(row.id), (row.premium_payload as Record<string, unknown>) || null);

@@ -2,6 +2,10 @@ import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '@/hooks/use-toast';
 import { supabase, InteracaoDB } from '@/lib/supabase';
+import {
+    scopeUserOrgQuery,
+    scopeWhatsappInstanceQuery,
+} from '@/lib/multiOrgLeadScoping';
 import { useAuth } from '@/contexts/AuthContext';
 import { Contact, Conversation, Message } from '@/types/solarzap';
 
@@ -630,11 +634,12 @@ export function useChat(contacts: Contact[] = []) {
             } else {
                 // Default fallback
                 const instanceLookupStart = toPerfNow();
-                const { data: defaultInstance, error: instanceError } = await supabase
-                    .from('whatsapp_instances')
-                    .select('instance_name')
-                    .eq('user_id', user.id)
-                    .eq('status', 'connected')
+                const { data: defaultInstance, error: instanceError } = await scopeWhatsappInstanceQuery(
+                    (supabase
+                        .from('whatsapp_instances')
+                        .select('instance_name')) as any,
+                    { userId: user.id, orgId }
+                )
                     .limit(1)
                     .maybeSingle();
                 perf.instanceLookup = Math.round(toPerfNow() - instanceLookupStart);
@@ -856,13 +861,12 @@ export function useChat(contacts: Contact[] = []) {
 
             let instance: { instance_name: string } | null = null;
             if (instanceName) {
-                const { data: specificInstance, error: specificErr } = await supabase
-                    .from('whatsapp_instances')
-                    .select('instance_name')
-                    .eq('user_id', user.id)
-                    .eq('instance_name', instanceName)
-                    .eq('status', 'connected')
-                    .eq('is_active', true)
+                const { data: specificInstance, error: specificErr } = await scopeWhatsappInstanceQuery(
+                    (supabase
+                        .from('whatsapp_instances')
+                        .select('instance_name')) as any,
+                    { userId: user.id, orgId, instanceName, requireActive: true }
+                )
                     .single();
 
                 if (specificErr || !specificInstance) {
@@ -870,12 +874,12 @@ export function useChat(contacts: Contact[] = []) {
                 }
                 instance = specificInstance;
             } else {
-                const { data: defaultInstance, error: instanceError } = await supabase
-                    .from('whatsapp_instances')
-                    .select('instance_name')
-                    .eq('user_id', user.id)
-                    .eq('status', 'connected')
-                    .eq('is_active', true)
+                const { data: defaultInstance, error: instanceError } = await scopeWhatsappInstanceQuery(
+                    (supabase
+                        .from('whatsapp_instances')
+                        .select('instance_name')) as any,
+                    { userId: user.id, orgId, requireActive: true }
+                )
                     .order('updated_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
@@ -1172,12 +1176,12 @@ export function useChat(contacts: Contact[] = []) {
             // 2. Get Connected Instance
             let instance: { instance_name: string } | null = null;
             if (instanceName) {
-                const { data: specificInstance, error: specificErr } = await supabase
-                    .from('whatsapp_instances')
-                    .select('instance_name')
-                    .eq('user_id', user.id)
-                    .eq('instance_name', instanceName)
-                    .eq('status', 'connected')
+                const { data: specificInstance, error: specificErr } = await scopeWhatsappInstanceQuery(
+                    (supabase
+                        .from('whatsapp_instances')
+                        .select('instance_name')) as any,
+                    { userId: user.id, orgId, instanceName }
+                )
                     .single();
 
                 if (specificErr || !specificInstance) {
@@ -1185,11 +1189,12 @@ export function useChat(contacts: Contact[] = []) {
                 }
                 instance = specificInstance;
             } else {
-                const { data: defaultInstance, error: instanceError } = await supabase
-                    .from('whatsapp_instances')
-                    .select('instance_name')
-                    .eq('user_id', user.id)
-                    .eq('status', 'connected')
+                const { data: defaultInstance, error: instanceError } = await scopeWhatsappInstanceQuery(
+                    (supabase
+                        .from('whatsapp_instances')
+                        .select('instance_name')) as any,
+                    { userId: user.id, orgId }
+                )
                     .limit(1)
                     .maybeSingle();
 
@@ -1269,11 +1274,13 @@ export function useChat(contacts: Contact[] = []) {
                     response.error.includes('does not exist')
                 )) {
                     console.warn(`Instance ${instance.instance_name} not found on server. Deleting from DB.`);
-                    await supabase
-                        .from('whatsapp_instances')
-                        .delete()
-                        .eq('instance_name', instance.instance_name)
-                        .eq('user_id', user.id);
+                    await scopeUserOrgQuery(
+                        (supabase
+                            .from('whatsapp_instances')
+                            .delete()) as any,
+                        { userId: user.id, orgId }
+                    )
+                        .eq('instance_name', instance.instance_name);
 
                     throw new Error('Instância do WhatsApp inválida ou desconectada. Por favor, atualize a página e conecte novamente.');
                 }

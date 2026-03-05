@@ -22,6 +22,10 @@ import {
 } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import {
+  scopeProposalByIdsQuery,
+  scopeProposalVersionByIdsQuery,
+} from '@/lib/multiOrgLeadScoping';
 import { useToast } from '@/hooks/use-toast';
 import { PIPELINE_STAGES, PipelineStage, ClientType, Contact } from '@/types/solarzap';
 import { Check, ChevronDown, ExternalLink, FileText, Trash2, Loader2 } from 'lucide-react';
@@ -159,10 +163,12 @@ export function ProposalsView() {
           .in('id', leadIds)
         : Promise.resolve({ data: [], error: null } as any),
       propostaIds.length > 0
-        ? supabase
-          .from('propostas')
-          .select('id, valor_projeto, consumo_kwh, potencia_kw, paineis_qtd, economia_mensal, payback_anos')
-          .in('id', propostaIds)
+        ? scopeProposalByIdsQuery(
+          (supabase
+            .from('propostas')
+            .select('id, valor_projeto, consumo_kwh, potencia_kw, paineis_qtd, economia_mensal, payback_anos')) as any,
+          { proposalIds: propostaIds, orgId },
+        )
         : Promise.resolve({ data: [], error: null } as any),
     ]);
 
@@ -298,16 +304,20 @@ export function ProposalsView() {
             .in('id', leadIds)
           : Promise.resolve({ data: [], error: null } as any),
         propostaIds.length > 0
-          ? supabase
-            .from('propostas')
-            .select('id, valor_projeto, consumo_kwh, potencia_kw, paineis_qtd, economia_mensal, payback_anos')
-            .in('id', propostaIds)
+          ? scopeProposalByIdsQuery(
+            (supabase
+              .from('propostas')
+              .select('id, valor_projeto, consumo_kwh, potencia_kw, paineis_qtd, economia_mensal, payback_anos')) as any,
+            { proposalIds: propostaIds, orgId },
+          )
           : Promise.resolve({ data: [], error: null } as any),
         versionIds.length > 0
-          ? supabase
-            .from('proposal_versions')
-            .select('id, premium_payload')
-            .in('id', versionIds)
+          ? scopeProposalVersionByIdsQuery(
+            (supabase
+              .from('proposal_versions')
+              .select('id, premium_payload')) as any,
+            { proposalVersionIds: versionIds, orgId },
+          )
           : Promise.resolve({ data: [], error: null } as any),
       ]);
 
