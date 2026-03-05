@@ -218,6 +218,90 @@ describe('calculateProposalFinancials', () => {
     }
   });
 
+  it('usa breakdown TE 72% e TUSD 28% quando a tarifa total e 0.80', () => {
+    const result = calculateProposalFinancials({
+      tipoCliente: 'residencial',
+      investimentoTotal: 14850,
+      consumoMensalKwh: 350,
+      potenciaSistemaKwp: 3.3,
+      rentabilityRatePerKwh: 0.75,
+      tarifaKwh: 0.8,
+      teRatePerKwh: 0.576,
+      tusdRatePerKwh: 0.224,
+      tusdCompensationPct: 0,
+      custoDisponibilidadeKwh: 50,
+      analysisYears: 25,
+    }, {
+      tusdTeSimplifiedEnabled: true,
+    });
+
+    expect(result.assumptionsSnapshot?.teRatePerKwh).toBeCloseTo(0.576, 4);
+    expect(result.assumptionsSnapshot?.tusdRatePerKwh).toBeCloseTo(0.224, 4);
+    expect(result.teSavingsMonthly).toBeCloseTo(172.8, 4);
+    expect(result.tusdSavingsMonthly).toBe(0);
+  });
+
+  it('mantem rentabilidade desacoplada da tarifa real no snapshot nao-usina', () => {
+    const result = calculateProposalFinancials({
+      tipoCliente: 'residencial',
+      investimentoTotal: 14850,
+      consumoMensalKwh: 350,
+      potenciaSistemaKwp: 3.3,
+      rentabilityRatePerKwh: 0.75,
+      tarifaKwh: 0.85,
+      custoDisponibilidadeKwh: 50,
+      analysisYears: 25,
+    }, {
+      tusdTeSimplifiedEnabled: false,
+    });
+
+    expect(result.billBeforeMonthly).toBeCloseTo(262.5, 4);
+    expect(result.billAfterMonthly).toBeCloseTo(37.5, 4);
+    expect(result.savingsMonthly).toBeCloseTo(225, 4);
+  });
+
+  it('aplica compensacao TUSD parcial de 50%', () => {
+    const result = calculateProposalFinancials({
+      tipoCliente: 'residencial',
+      investimentoTotal: 14850,
+      consumoMensalKwh: 350,
+      potenciaSistemaKwp: 3.3,
+      rentabilityRatePerKwh: 0.75,
+      tarifaKwh: 0.8,
+      teRatePerKwh: 0.576,
+      tusdRatePerKwh: 0.224,
+      tusdCompensationPct: 50,
+      custoDisponibilidadeKwh: 50,
+      analysisYears: 25,
+    }, {
+      tusdTeSimplifiedEnabled: true,
+    });
+
+    expect(result.tusdSavingsMonthly).toBeCloseTo(33.6, 4);
+    expect(result.savingsMonthly).toBeCloseTo(206.4, 4);
+  });
+
+  it('aplica compensacao TUSD integral em regime 100%', () => {
+    const result = calculateProposalFinancials({
+      tipoCliente: 'residencial',
+      investimentoTotal: 14850,
+      consumoMensalKwh: 350,
+      potenciaSistemaKwp: 3.3,
+      rentabilityRatePerKwh: 0.75,
+      tarifaKwh: 0.8,
+      teRatePerKwh: 0.576,
+      tusdRatePerKwh: 0.224,
+      tusdCompensationPct: 100,
+      custoDisponibilidadeKwh: 50,
+      analysisYears: 25,
+    }, {
+      tusdTeSimplifiedEnabled: true,
+    });
+
+    expect(result.tusdSavingsMonthly).toBeCloseTo(67.2, 4);
+    expect(result.savingsMonthly).toBeCloseTo(240, 4);
+  });
+
   it('permite overrides de flags para shadow mode', () => {
     const previousOm = process.env.VITE_USE_OM_COST_MODEL;
     process.env.VITE_USE_OM_COST_MODEL = 'true';
