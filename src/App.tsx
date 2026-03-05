@@ -19,6 +19,7 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import { supabase } from "@/lib/supabase";
 import { extractAuthErrorMetadata, shouldAttemptAuthRecovery } from "@/lib/authSessionGuard";
+import { getPasswordRecoveryRedirectTarget } from "@/lib/passwordRecoveryRedirect";
 import { AdminGuard } from "@/components/admin/AdminGuard";
 
 let authRecoveryInFlight: Promise<void> | null = null;
@@ -113,60 +114,70 @@ const queryClient = new QueryClient({
 
 const Admin = lazy(() => import('./pages/Admin'));
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <AutomationProvider>
-        <GoogleIntegrationProvider>
-          <IntegrationsProvider>
-            <TooltipProvider>
-              <Toaster />
-              <Sonner />
-              <BrowserRouter>
-                <Routes>
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/select-organization" element={<OrganizationSelect />} />
-                  <Route path="/update-password" element={<UpdatePassword />} />
-                  <Route path="/qr/call" element={<CallQrRedirect />} />
-                  <Route path="/privacidade" element={<PrivacyPolicy />} />
-                  <Route path="/termos" element={<TermsOfService />} />
-                  <Route
-                    path="/"
-                    element={
-                      <ProtectedRoute>
-                        <Index />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/settings/members"
-                    element={
-                      <ProtectedRoute requiredRoles={['owner', 'admin']}>
-                        <Index />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route path="/admin/members" element={<Navigate to="/settings/members" replace />} />
-                  <Route
-                    path="/admin/*"
-                    element={
-                      <AdminGuard>
-                        <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando admin...</div>}>
-                          <Admin />
-                        </Suspense>
-                      </AdminGuard>
-                    }
-                  />
-                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </BrowserRouter>
-            </TooltipProvider>
-          </IntegrationsProvider>
-        </GoogleIntegrationProvider>
-      </AutomationProvider>
-    </AuthProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  if (typeof window !== 'undefined') {
+    const recoveryRedirectTarget = getPasswordRecoveryRedirectTarget(window.location);
+    if (recoveryRedirectTarget) {
+      window.location.replace(recoveryRedirectTarget);
+      return null;
+    }
+  }
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <AutomationProvider>
+          <GoogleIntegrationProvider>
+            <IntegrationsProvider>
+              <TooltipProvider>
+                <Toaster />
+                <Sonner />
+                <BrowserRouter>
+                  <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/select-organization" element={<OrganizationSelect />} />
+                    <Route path="/update-password" element={<UpdatePassword />} />
+                    <Route path="/qr/call" element={<CallQrRedirect />} />
+                    <Route path="/privacidade" element={<PrivacyPolicy />} />
+                    <Route path="/termos" element={<TermsOfService />} />
+                    <Route
+                      path="/"
+                      element={
+                        <ProtectedRoute>
+                          <Index />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/settings/members"
+                      element={
+                        <ProtectedRoute requiredRoles={['owner', 'admin']}>
+                          <Index />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route path="/admin/members" element={<Navigate to="/settings/members" replace />} />
+                    <Route
+                      path="/admin/*"
+                      element={
+                        <AdminGuard>
+                          <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando admin...</div>}>
+                            <Admin />
+                          </Suspense>
+                        </AdminGuard>
+                      }
+                    />
+                    {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </BrowserRouter>
+              </TooltipProvider>
+            </IntegrationsProvider>
+          </GoogleIntegrationProvider>
+        </AutomationProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;

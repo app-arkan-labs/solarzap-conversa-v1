@@ -254,6 +254,17 @@ const getOrgHintFromLocation = (): string | null => {
   return null;
 };
 
+const isUpdatePasswordPath = (pathname: string): boolean => {
+  const normalized = pathname.replace(/\/+$/, '') || '/';
+  return normalized === '/update-password' || normalized.endsWith('/update-password');
+};
+
+const hasPasswordRecoveryMarker = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const searchMarker = new URLSearchParams(window.location.search).get('password_recovery');
+  return searchMarker === '1' || searchMarker === 'true';
+};
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
@@ -729,6 +740,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (
+        typeof window !== 'undefined' &&
+        !isUpdatePasswordPath(window.location.pathname) &&
+        (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && hasPasswordRecoveryMarker()))
+      ) {
+        const recoveryUrl = new URL('/update-password', window.location.origin);
+        recoveryUrl.search = window.location.search;
+        recoveryUrl.hash = window.location.hash;
+        window.location.replace(recoveryUrl.toString());
+        return;
+      }
+
       void (async () => {
         await applySessionState(newSession, event);
         if (mounted) {

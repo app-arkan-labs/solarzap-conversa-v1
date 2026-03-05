@@ -74,8 +74,10 @@ const Login = () => {
     }
     setIsLoading(true);
     try {
+      // Use a root callback marker because some Supabase setups only allow origin-level redirects.
+      const passwordRecoveryRedirectTo = `${window.location.origin}/?password_recovery=1`;
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/update-password`,
+        redirectTo: passwordRecoveryRedirectTo,
       });
       if (error) throw error;
       toast({
