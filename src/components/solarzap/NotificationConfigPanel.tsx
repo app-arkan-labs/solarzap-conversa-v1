@@ -42,6 +42,7 @@ import {
   CheckCircle2,
   Phone,
   Landmark,
+  CircleDollarSign,
   Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -523,6 +524,25 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     onCheckedChange={(v) => save({ evt_financiamento_update: v })}
                     disabled={!on}
                     className="data-[state=checked]:bg-amber-500 scale-90"
+                  />
+                </div>
+
+                {/* Parcela vencida */}
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center', settings?.evt_installment_due_check ? 'bg-emerald-500/15' : 'bg-muted')}>
+                      <CircleDollarSign className={cn('w-3.5 h-3.5', settings?.evt_installment_due_check ? 'text-emerald-600' : 'text-muted-foreground')} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Parcela Vencida</p>
+                      <p className="text-[10px] text-muted-foreground">Confirmação de pagamento</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings?.evt_installment_due_check !== false}
+                    onCheckedChange={(v) => save({ evt_installment_due_check: v })}
+                    disabled={!on}
+                    className="data-[state=checked]:bg-emerald-500 scale-90"
                   />
                 </div>
               </div>

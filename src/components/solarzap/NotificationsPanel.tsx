@@ -3,10 +3,14 @@ import { cn } from '@/lib/utils';
 import { Notification, NOTIFICATION_CONFIG } from '@/types/notifications';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { X, Check, CheckCheck, Trash2, Bell, BellOff, Settings2 } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { X, Check, CheckCheck, Trash2, Bell, BellOff, Settings2, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { NotificationConfigPanel } from './NotificationConfigPanel';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
 
 interface NotificationsPanelProps {
   notifications: Notification[];
@@ -17,6 +21,8 @@ interface NotificationsPanelProps {
   onDelete: (id: string) => void;
   onClearAll: () => void;
   onGoToContact?: (contactId: string) => void;
+  onConfirmInstallmentPaid?: (installmentId: string) => Promise<void>;
+  onRescheduleInstallment?: (installmentId: string, newDueOn: string) => Promise<void>;
 }
 
 export function NotificationsPanel({
@@ -28,20 +34,56 @@ export function NotificationsPanel({
   onDelete,
   onClearAll,
   onGoToContact,
+  onConfirmInstallmentPaid,
+  onRescheduleInstallment,
 }: NotificationsPanelProps) {
+  const { toast } = useToast();
   const [showConfig, setShowConfig] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<Notification | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const unreadNotifications = notifications.filter(n => !n.isRead);
   const readNotifications = notifications.filter(n => n.isRead);
 
+  const handleConfirmInstallment = async (notification: Notification) => {
+    if (!notification.installmentId || !onConfirmInstallmentPaid) return;
+
+    setActionLoadingId(notification.id);
+    try {
+      await onConfirmInstallmentPaid(notification.installmentId);
+      onMarkAsRead(notification.id);
+      toast({
+        title: 'Parcela confirmada',
+        description: 'Recebimento registrado no faturamento e lucro.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Falha ao confirmar parcela',
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleOpenReschedule = (notification: Notification) => {
+    if (!notification.installmentId) return;
+    setRescheduleTarget(notification);
+    setRescheduleDate(notification.dueOn || '');
+  };
+
   const renderNotification = (notification: Notification) => {
     const config = NOTIFICATION_CONFIG[notification.type];
-    const timeAgo = formatDistanceToNow(notification.createdAt, { 
-      addSuffix: true, 
-      locale: ptBR 
+    const timeAgo = formatDistanceToNow(notification.createdAt, {
+      addSuffix: true,
+      locale: ptBR
     });
+    const isInstallmentAction = notification.type === 'installment_due_check' && notification.requiresAction;
+    const isActionLoading = actionLoadingId === notification.id;
 
     return (
       <div
@@ -88,11 +130,42 @@ export function NotificationsPanel({
             <span className="text-xs text-muted-foreground/70 mt-1 block">
               {timeAgo}
             </span>
+
+            {isInstallmentAction && notification.installmentId ? (
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled={isActionLoading || !onConfirmInstallmentPaid}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleConfirmInstallment(notification);
+                  }}
+                >
+                  {isActionLoading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : null}
+                  Parcela paga
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  disabled={isActionLoading || !onRescheduleInstallment}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleOpenReschedule(notification);
+                  }}
+                >
+                  Nao paga
+                </Button>
+              </div>
+            ) : null}
           </div>
 
           {/* Actions */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            {!notification.isRead && (
+            {!notification.isRead && !isInstallmentAction && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -106,18 +179,20 @@ export function NotificationsPanel({
                 <Check className="h-3.5 w-3.5" />
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(notification.id);
-              }}
-              title="Remover"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            {!isInstallmentAction ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(notification.id);
+                }}
+                title="Remover"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -126,7 +201,41 @@ export function NotificationsPanel({
 
   const handleClose = () => {
     setShowConfig(false);
+    setRescheduleTarget(null);
+    setRescheduleDate('');
     onClose();
+  };
+
+  const handleRescheduleSubmit = async () => {
+    if (!rescheduleTarget?.installmentId || !onRescheduleInstallment) return;
+    if (!rescheduleDate) {
+      toast({
+        title: 'Nova data obrigatoria',
+        description: 'Informe a nova data para reagendar a cobranca.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setActionLoadingId(rescheduleTarget.id);
+    try {
+      await onRescheduleInstallment(rescheduleTarget.installmentId, rescheduleDate);
+      onMarkAsRead(rescheduleTarget.id);
+      toast({
+        title: 'Parcela reagendada',
+        description: 'Novo ciclo de cobranca criado com sucesso.',
+      });
+      setRescheduleTarget(null);
+      setRescheduleDate('');
+    } catch (error) {
+      toast({
+        title: 'Falha ao reagendar parcela',
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
   return (
@@ -245,6 +354,41 @@ export function NotificationsPanel({
           </div>
         )}
       </div>
+
+      <Dialog open={!!rescheduleTarget} onOpenChange={(open) => !open && setRescheduleTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reagendar parcela</DialogTitle>
+            <DialogDescription>
+              Informe a nova data de cobranca para manter o ciclo de confirmacao ativo.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="reschedule-date">Nova data (obrigatoria)</Label>
+            <Input
+              id="reschedule-date"
+              type="date"
+              value={rescheduleDate}
+              onChange={(event) => setRescheduleDate(event.target.value)}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setRescheduleTarget(null)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => { void handleRescheduleSubmit(); }}
+              disabled={actionLoadingId === rescheduleTarget?.id}
+            >
+              {actionLoadingId === rescheduleTarget?.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Salvar nova data
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

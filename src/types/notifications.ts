@@ -1,16 +1,17 @@
-// Notification Types for SolarZap CRM
+﻿// Notification Types for SolarZap CRM
 
-export type NotificationType = 
-  | 'new_lead_response'       // Lead respondeu pela primeira vez
-  | 'pending_response'        // Vendedor não respondeu em 10min
-  | 'stage_changed'           // Lead mudou de etapa no pipeline
-  | 'call_scheduled'          // Chamada agendada
-  | 'visit_scheduled'         // Visita agendada
-  | 'proposal_ready'          // Proposta pronta para enviar
-  | 'follow_up_reminder'      // Lembrete de follow-up
-  | 'lead_inactive'           // Lead inativo há muito tempo
-  | 'call_completed'          // Chamada realizada
-  | 'visit_completed';        // Visita realizada
+export type NotificationType =
+  | 'new_lead_response'
+  | 'pending_response'
+  | 'stage_changed'
+  | 'call_scheduled'
+  | 'visit_scheduled'
+  | 'proposal_ready'
+  | 'follow_up_reminder'
+  | 'lead_inactive'
+  | 'call_completed'
+  | 'visit_completed'
+  | 'installment_due_check';
 
 export type NotificationPriority = 'low' | 'medium' | 'high' | 'urgent';
 
@@ -26,6 +27,11 @@ export interface Notification {
   isRead: boolean;
   actionUrl?: string;
   actionLabel?: string;
+  installmentId?: string;
+  dueOn?: string;
+  amount?: number;
+  cycleNo?: number;
+  requiresAction?: boolean;
 }
 
 export const NOTIFICATION_CONFIG: Record<NotificationType, {
@@ -93,5 +99,11 @@ export const NOTIFICATION_CONFIG: Record<NotificationType, {
     icon: '✅',
     priority: 'low',
     color: 'bg-green-600',
+  },
+  installment_due_check: {
+    title: 'Parcela Vencida',
+    icon: '💸',
+    priority: 'urgent',
+    color: 'bg-red-500',
   },
 };

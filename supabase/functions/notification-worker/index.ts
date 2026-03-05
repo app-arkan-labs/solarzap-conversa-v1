@@ -38,6 +38,7 @@ const NOTIFICATION_SETTINGS_FULL_SELECT = [
   'evt_chamada_agendada',
   'evt_chamada_realizada',
   'evt_financiamento_update',
+  'evt_installment_due_check',
 ].join(', ')
 
 type NotificationEventRow = {
@@ -69,6 +70,7 @@ type NotificationSettingsRow = {
   evt_chamada_agendada: boolean
   evt_chamada_realizada: boolean
   evt_financiamento_update: boolean
+  evt_installment_due_check: boolean
 }
 
 type InvocationAuthResult =
@@ -232,6 +234,7 @@ function normalizeNotificationSettingsRow(row: Record<string, unknown>): Notific
     evt_chamada_agendada: toBoolean(row.evt_chamada_agendada, true),
     evt_chamada_realizada: toBoolean(row.evt_chamada_realizada, true),
     evt_financiamento_update: toBoolean(row.evt_financiamento_update, true),
+    evt_installment_due_check: toBoolean(row.evt_installment_due_check, true),
   }
 }
 
@@ -278,6 +281,15 @@ function formatDateTime(value: unknown): string {
   })
 }
 
+function formatCurrencyBR(value: unknown): string {
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return ''
+  return amount.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  })
+}
+
 function buildMessage(event: NotificationEventRow, lead: { nome?: string | null; telefone?: string | null } | null) {
   const payload = event.payload || {}
   const leadName = String(payload.nome || lead?.nome || 'Lead').trim()
@@ -286,6 +298,9 @@ function buildMessage(event: NotificationEventRow, lead: { nome?: string | null;
   const startAt = formatDateTime(payload.start_at)
   const fromStage = String(payload.from_stage || '').trim()
   const toStage = String(payload.to_stage || '').trim()
+  const dueOn = String(payload.due_on || '').trim()
+  const amount = formatCurrencyBR(payload.amount)
+  const installmentNo = Number(payload.installment_no || 0)
 
   // Build context for both plain-text (WhatsApp) and HTML (email) templates
   const ctx: TemplateContext = {
@@ -295,6 +310,9 @@ function buildMessage(event: NotificationEventRow, lead: { nome?: string | null;
     startAt: payload.start_at ? String(payload.start_at) : undefined,
     fromStage: fromStage || undefined,
     toStage: toStage || undefined,
+    dueOn: dueOn || undefined,
+    amount: amount || undefined,
+    installmentNo: Number.isFinite(installmentNo) && installmentNo > 0 ? installmentNo : undefined,
   }
 
   // Plain-text for WhatsApp
@@ -328,6 +346,10 @@ function buildMessage(event: NotificationEventRow, lead: { nome?: string | null;
     case 'stage_changed':
       subject = 'Mudança de etapa no pipeline'
       text = `Lead ${leadName} mudou etapa de ${fromStage || 'origem'} para ${toStage || 'destino'}.`
+      break
+    case 'installment_due_check':
+      subject = 'Parcela pendente de confirmação'
+      text = `Parcela${installmentNo > 0 ? ` #${installmentNo}` : ''} de ${leadName}${amount ? ` no valor de ${amount}` : ''} venceu${dueOn ? ` em ${dueOn}` : ''}. Confirme se foi paga.`
       break
     default:
       subject = 'Notificação CRM'
@@ -548,6 +570,7 @@ async function processEvent(
     chamada_agendada: settings.evt_chamada_agendada !== false,
     chamada_realizada: settings.evt_chamada_realizada !== false,
     financiamento_update: settings.evt_financiamento_update !== false,
+    installment_due_check: settings.evt_installment_due_check !== false,
   }
   if (eventToggleMap[event.event_type] === false) {
     await supabase
