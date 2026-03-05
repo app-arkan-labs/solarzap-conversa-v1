@@ -756,43 +756,92 @@ Deno.serve(async (req: Request) => {
                         Deno.env.get('MEDIA_RESOLVER_INTERNAL_SECRET')
                         || Deno.env.get('ARKAN_WEBHOOK_SECRET')
                         || ''
-                    supabase.functions
-                        .invoke('media-resolver', {
+                    const dispatchTimeoutRaw = Number(Deno.env.get('MEDIA_RESOLVER_INVOKE_TIMEOUT_MS') || '1500')
+                    const dispatchTimeoutMs = Number.isFinite(dispatchTimeoutRaw)
+                        ? Math.max(300, Math.min(dispatchTimeoutRaw, 10_000))
+                        : 1500
+                    const invokeStartedAt = perfNowMs()
+                    const mediaResolverPayload = {
+                        orgId,
+                        interactionId: inserted.id,
+                        instanceName,
+                        waMessageId,
+                        remoteJid,
+                        mediaType: msgType,
+                        mimeType: mediaMimeType,
+                        fileName: mediaFileName,
+                        leadId,
+                        userId,
+                        action: 'resolveOne',
+                    }
+
+                    const markDispatchFailure = async (rawMessage: string) => {
+                        const dispatchMessage = rawMessage.trim().slice(0, 180) || 'unknown_dispatch_failure'
+                        const { error: markDispatchError } = await supabase
+                            .from('interacoes')
+                            .update({
+                                attachment_error: true,
+                                attachment_error_message: `RESOLVER_DISPATCH_FAILED:${dispatchMessage}`,
+                            })
+                            .eq('id', inserted.id)
+                            .eq('attachment_ready', false)
+
+                        if (markDispatchError) {
+                            console.error('❌ Failed to persist media resolver dispatch failure', {
+                                orgId,
+                                instanceName,
+                                waMessageId,
+                                interactionId: inserted.id,
+                                error: markDispatchError.message,
+                            })
+                        }
+                    }
+
+                    try {
+                        const invokePromise = supabase.functions.invoke('media-resolver', {
                             ...(mediaResolverSecret
                                 ? { headers: { 'x-internal-secret': mediaResolverSecret } }
                                 : {}),
-                            body: {
-                                orgId,
-                                interactionId: inserted.id,
-                                instanceName,
-                                waMessageId,
-                                remoteJid,
-                                mediaType: msgType,
-                                mimeType: mediaMimeType,
-                                fileName: mediaFileName,
-                                leadId,
-                                userId,
-                            }
+                            body: mediaResolverPayload
                         })
-                        .then(({ error: mediaResolverError }) => {
-                            if (!mediaResolverError) return
+                        const timeoutPromise = new Promise<{ data: null; error: { message: string } }>((resolve) => {
+                            setTimeout(() => resolve({
+                                data: null,
+                                error: { message: `dispatch_timeout_${dispatchTimeoutMs}ms` }
+                            }), dispatchTimeoutMs)
+                        })
+                        const { error: mediaResolverError } = await Promise.race([invokePromise, timeoutPromise])
+
+                        if (mediaResolverError) {
+                            const dispatchErrorMessage = mediaResolverError.message || 'invoke_failed'
                             console.error('❌ Failed to invoke media-resolver from whatsapp-webhook', {
                                 orgId,
                                 instanceName,
                                 waMessageId,
-                                interactionId: inserted?.id,
-                                error: mediaResolverError.message,
+                                interactionId: inserted.id,
+                                error: dispatchErrorMessage,
                             })
-                        })
-                        .catch((mediaResolverErr) => {
-                            console.error('❌ Exception invoking media-resolver from whatsapp-webhook', {
-                                orgId,
+                            await markDispatchFailure(dispatchErrorMessage)
+                        } else {
+                            console.log('[WHATSAPP_WEBHOOK_LATENCY] media_resolver_dispatch_ms', {
+                                event,
                                 instanceName,
                                 waMessageId,
-                                interactionId: inserted?.id,
-                                error: mediaResolverErr instanceof Error ? mediaResolverErr.message : String(mediaResolverErr),
+                                interactionId: inserted.id,
+                                ms: Math.round(perfNowMs() - invokeStartedAt),
                             })
+                        }
+                    } catch (mediaResolverErr) {
+                        const dispatchErrorMessage = mediaResolverErr instanceof Error ? mediaResolverErr.message : String(mediaResolverErr)
+                        console.error('❌ Exception invoking media-resolver from whatsapp-webhook', {
+                            orgId,
+                            instanceName,
+                            waMessageId,
+                            interactionId: inserted.id,
+                            error: dispatchErrorMessage,
                         })
+                        await markDispatchFailure(dispatchErrorMessage)
+                    }
                 }
 
                 if (isFromMe && leadId) {
