@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isChartFixedSeasonalProfileEnabled,
   isDegradationAllClientsEnabled,
   isFinancialShadowModeEnabled,
   isOmCostModelEnabled,
@@ -65,6 +66,9 @@ describe('featureFlags', () => {
     });
     withEnv('VITE_USE_FINANCIAL_SHADOW_MODE', 'true', () => {
       expect(isFinancialShadowModeEnabled()).toBe(true);
+    });
+    withEnv('VITE_USE_CHART_FIXED_SEASONAL_PROFILE', 'true', () => {
+      expect(isChartFixedSeasonalProfileEnabled()).toBe(true);
     });
   });
 });

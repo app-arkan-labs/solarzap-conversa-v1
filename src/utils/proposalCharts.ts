@@ -684,6 +684,34 @@ export const normalizeGenerationFactors = (factors: number[], fallbackFactors = 
 };
 const MONTH_LABELS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
+export function buildMonthlyChartSeriesFromAnnual(
+  annualKwh: number,
+  factors: number[] = BRAZIL_MONTHLY_IRRADIATION_FACTOR,
+): number[] {
+  const annualTarget = Math.max(0, Math.round(Number(annualKwh) || 0));
+  if (annualTarget <= 0) return new Array(12).fill(0);
+
+  const normalizedFactors = normalizeGenerationFactors(factors, BRAZIL_MONTHLY_IRRADIATION_FACTOR);
+  const monthlyBase = annualTarget / 12;
+  const exactValues = normalizedFactors.map((factor) => monthlyBase * factor);
+  const flooredValues = exactValues.map((value) => Math.max(0, Math.floor(value)));
+  const flooredTotal = flooredValues.reduce((acc, value) => acc + value, 0);
+  const remainder = annualTarget - flooredTotal;
+  if (remainder <= 0) return flooredValues;
+
+  const indicesByRemainder = exactValues
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction)
+    .map((item) => item.index);
+
+  const adjusted = [...flooredValues];
+  for (let i = 0; i < remainder; i += 1) {
+    const index = indicesByRemainder[i % indicesByRemainder.length];
+    adjusted[index] += 1;
+  }
+  return adjusted;
+}
+
 export function calcMonthlyGeneration(
   potenciaKwp: number,
   consumoMensal?: number,

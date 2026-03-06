@@ -1900,6 +1900,9 @@ Deno.serve(async (req) => {
         } else {
             stagePromptText = stageConfig.prompt_override || stageConfig.default_prompt || '';
             console.log(`📝 [${runId}] Stage '${currentStage}' prompt source: ${stageConfig.prompt_override ? 'OVERRIDE' : 'DEFAULT'}. Length: ${stagePromptText.length}`);
+            if (stagePromptText.length > 0 && stagePromptText.length < 200) {
+                console.warn(`🚨 [${runId}] CRITICAL: Stage prompt for '${currentStage}' is suspiciously short (${stagePromptText.length} chars). Likely a placeholder seed. Check ai_stage_config.default_prompt for org_id=${leadOrgId}.`);
+            }
         }
 
         // HISTORY SCOPED TO INSTANCE
@@ -2176,8 +2179,8 @@ Deno.serve(async (req) => {
                             } else {
                                 webError = openAiSearch.error || 'openai_search_failed';
                                 console.warn(`⚠️ [${runId}] OpenAI web search failed, fallback to Serper: ${webError}`);
+                            }
                         }
-                    }
 
                         if (!webUsed) {
                             if (!serperKey) {

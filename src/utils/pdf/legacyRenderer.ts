@@ -24,6 +24,7 @@ import {
   drawBeforeAfterComparison,
   calcEnvironmentalImpact,
   calcMonthlyGeneration,
+  buildMonthlyChartSeriesFromAnnual,
   type ChartTheme,
 } from '@/utils/proposalCharts';
 import {
@@ -39,6 +40,7 @@ import {
   isSolarResourceApiEnabled,
   isTusdTeSimplifiedEnabled,
   isUnifiedGenerationEnabled,
+  isChartFixedSeasonalProfileEnabled,
 } from '@/config/featureFlags';
 import {
   DEFAULT_ANALYSIS_YEARS,
@@ -708,6 +710,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const envImpact: EnvironmentalImpact = premium?.environmentalImpact
     || calcEnvironmentalImpact(data.consumoMensal * 12, 25);
   const unifiedGenerationEnabled = isUnifiedGenerationEnabled();
+  const chartFixedSeasonalProfileEnabled = isChartFixedSeasonalProfileEnabled();
   const fallbackMonthlyGen = calcMonthlyGeneration(data.potenciaSistema, data.consumoMensal, {
     monthlyGenerationFactors: data.monthlyGenerationFactors || data.financialInputs?.monthlyGenerationFactors,
     uf: data.contact?.state || data.financialInputs?.uf,
@@ -731,6 +734,12 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const annualGenerationKwh = unifiedGenerationEnabled && Number.isFinite(financialOutputs?.annualGenerationKwhYear1)
     ? Math.max(0, Number(financialOutputs.annualGenerationKwhYear1) || 0)
     : annualGenerationFromMonthly;
+  const annualBaseForChart = Number.isFinite(financialOutputs?.annualGenerationKwhYear1)
+    ? Math.max(0, Number(financialOutputs?.annualGenerationKwhYear1) || 0)
+    : annualGenerationFromMonthly;
+  const monthlyGenChart = chartFixedSeasonalProfileEnabled
+    ? buildMonthlyChartSeriesFromAnnual(annualBaseForChart)
+    : monthlyGen;
   const avgMonthlyGenerationKwh = annualGenerationKwh / 12;
   const daysInMonthAssumption = solarResourceApiEnabled ? 30.4375 : 30;
   const resolvedPerformanceRatio = Math.max(0, Number(data.performanceRatio ?? 0.8) || 0.8);
@@ -1404,7 +1413,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   // Monthly Generation Chart
   checkPageBreak(82);
-  drawMonthlyGenerationChart(doc, M, y, W - 2 * M, 76, monthlyGen, chartTheme);
+  drawMonthlyGenerationChart(doc, M, y, W - 2 * M, 76, monthlyGenChart, chartTheme);
   y += 82;
 
   // Environmental Impact Infographic

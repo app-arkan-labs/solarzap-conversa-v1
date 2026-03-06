@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { AISettings, AIStageConfig, DEFAULT_AI_SETTINGS } from '@/types/ai';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { getDefaultStageGoal, getDefaultStagePrompt } from '@/constants/aiPipelinePdfPrompts';
 
 const STAGE_COL = 'pipeline_stage';
 const LEGACY_COL = 'status_pipeline';
@@ -61,10 +62,8 @@ const getStageSeedDefaults = (stage: string): Pick<AIStageConfig, 'is_active' | 
   const stageTitle = toStageTitle(stage);
   return {
     is_active: true,
-    agent_goal: `Conduzir o lead com clareza na etapa ${stageTitle}.`,
-    default_prompt:
-      `Voce e um consultor solar experiente. Atue na etapa ${stageTitle}, ` +
-      'mantenha linguagem objetiva e avance o lead para o proximo passo.',
+    agent_goal: getDefaultStageGoal(stage),
+    default_prompt: getDefaultStagePrompt(stage, stageTitle),
   };
 };
 

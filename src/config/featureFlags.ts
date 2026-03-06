@@ -42,3 +42,7 @@ export function isPdfRendererV2Enabled(): boolean {
 export function isFinancialShadowModeEnabled(): boolean {
   return readFeatureFlag('VITE_USE_FINANCIAL_SHADOW_MODE');
 }
+
+export function isChartFixedSeasonalProfileEnabled(): boolean {
+  return readFeatureFlag('VITE_USE_CHART_FIXED_SEASONAL_PROFILE');
+}
