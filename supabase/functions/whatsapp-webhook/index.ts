@@ -785,6 +785,8 @@ Deno.serve(async (req: Request) => {
                         const { error: markDispatchError } = await supabase
                             .from('interacoes')
                             .update({
+                                // Fail-safe: avoid indefinite "loading media" when resolver dispatch never started.
+                                attachment_ready: true,
                                 attachment_error: true,
                                 attachment_error_message: `RESOLVER_DISPATCH_FAILED:${dispatchMessage}`,
                             })

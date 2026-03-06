@@ -278,8 +278,9 @@ async function resolveSingleMedia(
       attachment_error_message: code,
     }
 
-    if (attempts !== null && attempts >= maxAttempts) {
-      // Avoid infinite loading state when retries are exhausted.
+    const shouldFinalizeAsReady = code === 'FATAL_NO_BASE64' || (attempts !== null && attempts >= maxAttempts)
+    if (shouldFinalizeAsReady) {
+      // Avoid infinite loading state when media is unrecoverable or retries are exhausted.
       updatePayload.attachment_ready = true
     }
 

@@ -51,6 +51,8 @@ type SendMessageMutationContext = {
 const INTERACOES_SELECT_COLUMNS =
     'id,lead_id,user_id,mensagem,tipo,created_at,read_at,instance_name,phone_e164,remote_jid,wa_message_id,reply_to_interacao_id,reply_preview,reply_type,reactions,attachment_url,attachment_type,attachment_ready,attachment_mimetype,attachment_name';
 const MAX_SCOPED_LEAD_IDS = 400;
+const PENDING_MEDIA_RECONCILE_WINDOW_MS = 15 * 60 * 1000;
+const PENDING_MEDIA_RECONCILE_LIMIT = 50;
 
 const toPerfNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
@@ -239,6 +241,8 @@ export function useChat(contacts: Contact[] = []) {
         }
 
         const t0 = toPerfNow();
+        let pendingCheckedCount = 0;
+        let pendingUpdatedCount = 0;
         let query = supabase
             .from('interacoes')
             .select(INTERACOES_SELECT_COLUMNS)
@@ -263,10 +267,58 @@ export function useChat(contacts: Contact[] = []) {
             appendMessagesToCache(incoming);
         }
 
+        if (reason === 'light_reconcile') {
+            const cachedMessages = queryClient.getQueryData<Message[]>(interactionsQueryKey) || [];
+            const pendingCutoffMs = now - PENDING_MEDIA_RECONCILE_WINDOW_MS;
+            const pendingIds = Array.from(new Set(
+                cachedMessages
+                    .filter((message) =>
+                        Boolean(message.attachment_type)
+                        && message.attachment_ready === false
+                        && message.timestamp.getTime() >= pendingCutoffMs
+                    )
+                    .sort((a, b) => parseMessageNumericId(b.id) - parseMessageNumericId(a.id))
+                    .slice(0, PENDING_MEDIA_RECONCILE_LIMIT)
+                    .map((message) => parseMessageNumericId(message.id))
+                    .filter((id) => id > 0)
+            ));
+
+            pendingCheckedCount = pendingIds.length;
+
+            if (pendingIds.length > 0) {
+                let pendingQuery = supabase
+                    .from('interacoes')
+                    .select(INTERACOES_SELECT_COLUMNS)
+                    .eq('org_id', orgId)
+                    .in('id', pendingIds);
+
+                if (canScopeInteractionsByLead) {
+                    pendingQuery = pendingQuery.in('lead_id', scopedLeadIdNumbers);
+                }
+
+                const { data: pendingData, error: pendingError } = await pendingQuery;
+                if (pendingError) {
+                    console.warn('[CHAT_LATENCY] pending_media_reconcile_error', {
+                        reason,
+                        error: pendingError.message,
+                        pendingCheckedCount,
+                    });
+                } else {
+                    const pendingUpdates = (pendingData || []).map(interacaoToMessage);
+                    pendingUpdatedCount = pendingUpdates.length;
+                    if (pendingUpdates.length > 0) {
+                        appendMessagesToCache(pendingUpdates);
+                    }
+                }
+            }
+        }
+
         import.meta.env.DEV && console.log('[CHAT_LATENCY] incremental_sync_done', {
             reason,
             maxSeenIdBefore: maxSeenId,
             count: incoming.length,
+            pendingCheckedCount,
+            pendingUpdatedCount,
             elapsed_ms: Math.round(toPerfNow() - t0),
             maxSeenIdAfter: maxSeenInteractionIdRef.current,
         });

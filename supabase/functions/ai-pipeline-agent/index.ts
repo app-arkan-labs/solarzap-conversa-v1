@@ -2909,6 +2909,11 @@ DADOS ESTRUTURADOS POR ETAPA (OPCIONAL, quando houver alta/medio confianca):
 - Para currentStage="proposta_negociacao", use namespace "negociacao" (ou "proposta_negociacao" se preferir) dentro de "stage_data".
 - Nunca invente; omita campos sem certeza.
 
+INCREMENTO_CIRURGICO_V2_20260306_GLOBAL:
+- Se currentStage for "respondeu" ou "nao_compareceu", nao incluir "proposal" no JSON e nao usar acao de proposta.
+- Se currentStage for "respondeu" ou "nao_compareceu", continuar qualificacao ate agendamento (chamada_agendada ou visita_agendada).
+- Ao tratar promocao, nunca inventar valores/condicoes; usar apenas dados explicitamente presentes no contexto.
+
 COMENTÁRIOS INTERNOS E FOLLOW-UPS (V7):
 - Antes de pedir dados novamente, confira COMENTARIOS_CRM_RECENTES e RESUMO_PROPOSTA_ATUAL para não repetir perguntas já respondidas pelo lead.
 - Após coletar uma informação importante ou definir próximo passo, registre um comentário interno via add_comment. Use comment_type: "summary" para resumos, "next_step" para próximo passo, "note" para observações gerais.
