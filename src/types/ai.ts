@@ -1,3 +1,21 @@
+export type AppointmentWindowType = 'call' | 'visit' | 'meeting' | 'installation';
+export type AppointmentDayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+
+export interface AppointmentWindowRule {
+    start: string;
+    end: string;
+    days: AppointmentDayKey[];
+}
+
+export type AppointmentWindowConfig = Record<AppointmentWindowType, AppointmentWindowRule>;
+
+export const DEFAULT_APPOINTMENT_WINDOW_CONFIG: AppointmentWindowConfig = {
+    call: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+    visit: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+    meeting: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+    installation: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+};
+
 export interface AISettings {
     id: number;
     org_id?: string;
@@ -18,6 +36,7 @@ export interface AISettings {
     support_ai_auto_disable_on_seller_message?: boolean;
     respondeu_flow_mode?: string;
     support_ai_stage_toggles?: Record<string, boolean>;
+    appointment_window_config?: AppointmentWindowConfig;
 }
 
 export interface AIStageConfig {
@@ -114,5 +133,6 @@ export const DEFAULT_AI_SETTINGS: Partial<AISettings> = {
     assistant_identity_name: 'Consultor Solar',
     daily_report_enabled: false,
     weekly_report_enabled: false,
-    monthly_report_enabled: false
+    monthly_report_enabled: false,
+    appointment_window_config: DEFAULT_APPOINTMENT_WINDOW_CONFIG,
 };

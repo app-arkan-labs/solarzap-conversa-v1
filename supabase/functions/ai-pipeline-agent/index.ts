@@ -43,6 +43,396 @@ function normalizeStage(str: string | null | undefined): string {
         .replace(/[^a-z0-9_]/g, '')
 }
 
+type AppointmentWindowType = 'call' | 'visit' | 'meeting' | 'installation';
+type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+type AppointmentWindowRule = {
+    start: string;
+    end: string;
+    days: DayKey[];
+};
+type AppointmentWindowConfig = Record<AppointmentWindowType, AppointmentWindowRule>;
+
+const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+const DEFAULT_APPOINTMENT_WINDOW_CONFIG: AppointmentWindowConfig = {
+    call: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+    visit: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+    meeting: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+    installation: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+};
+
+function normalizeDayKey(raw: any): DayKey | null {
+    const value = String(raw || '').trim().toLowerCase();
+    if (DAY_KEYS.includes(value as DayKey)) return value as DayKey;
+    const aliases: Record<string, DayKey> = {
+        sunday: 'sun',
+        domingo: 'sun',
+        monday: 'mon',
+        segunda: 'mon',
+        tuesday: 'tue',
+        terca: 'tue',
+        'terça': 'tue',
+        wednesday: 'wed',
+        quarta: 'wed',
+        thursday: 'thu',
+        quinta: 'thu',
+        friday: 'fri',
+        sexta: 'fri',
+        saturday: 'sat',
+        sabado: 'sat',
+        'sábado': 'sat',
+    };
+    return aliases[value] || null;
+}
+
+function normalizeHHMM(value: any, fallback: string): string {
+    const parsed = String(value || '').trim();
+    const match = parsed.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return fallback;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return fallback;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function parseHHMMToMinutes(value: string): number {
+    const match = value.match(/^(\d{2}):(\d{2})$/);
+    if (!match) return -1;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    return (hour * 60) + minute;
+}
+
+function normalizeAppointmentWindowConfig(raw: any): AppointmentWindowConfig {
+    const source = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw as Record<string, any> : {};
+    const normalized = { ...DEFAULT_APPOINTMENT_WINDOW_CONFIG };
+    const keys: AppointmentWindowType[] = ['call', 'visit', 'meeting', 'installation'];
+
+    for (const key of keys) {
+        const incoming = source[key];
+        if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) continue;
+        const start = normalizeHHMM(incoming.start, DEFAULT_APPOINTMENT_WINDOW_CONFIG[key].start);
+        const end = normalizeHHMM(incoming.end, DEFAULT_APPOINTMENT_WINDOW_CONFIG[key].end);
+        const incomingDays = Array.isArray(incoming.days) ? incoming.days : [];
+        const normalizedDays = Array.from(
+            new Set(
+                incomingDays
+                    .map((day: any) => normalizeDayKey(day))
+                    .filter((day): day is DayKey => !!day)
+            )
+        );
+        normalized[key] = {
+            start,
+            end,
+            days: normalizedDays.length > 0 ? normalizedDays : DEFAULT_APPOINTMENT_WINDOW_CONFIG[key].days,
+        };
+    }
+
+    return normalized;
+}
+
+function getZonedDateParts(date: Date, timeZone: string): {
+    year: number;
+    month: number;
+    day: number;
+    hour: number;
+    minute: number;
+    second: number;
+    weekday: DayKey;
+} {
+    const datePartFormatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    });
+    const weekdayFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        weekday: 'short',
+    });
+
+    const parts = datePartFormatter.formatToParts(date);
+    const year = Number(parts.find((p) => p.type === 'year')?.value || '0');
+    const month = Number(parts.find((p) => p.type === 'month')?.value || '0');
+    const day = Number(parts.find((p) => p.type === 'day')?.value || '0');
+    const hour = Number(parts.find((p) => p.type === 'hour')?.value || '0');
+    const minute = Number(parts.find((p) => p.type === 'minute')?.value || '0');
+    const second = Number(parts.find((p) => p.type === 'second')?.value || '0');
+    const weekdayRaw = String(weekdayFormatter.format(date) || '').toLowerCase().slice(0, 3);
+    const weekday = (DAY_KEYS.includes(weekdayRaw as DayKey) ? weekdayRaw : 'mon') as DayKey;
+
+    return { year, month, day, hour, minute, second, weekday };
+}
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
+    const parts = getZonedDateParts(date, timeZone);
+    const localAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+    return localAsUtc - date.getTime();
+}
+
+function zonedDateTimeToUtc(
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number,
+    second: number,
+    timeZone: string
+): Date {
+    const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+    const offset = getTimeZoneOffsetMs(utcGuess, timeZone);
+    return new Date(utcGuess.getTime() - offset);
+}
+
+function inferAppointmentWindowType(rawType: any, targetStage: string | null | undefined, currentStage: string): AppointmentWindowType {
+    const type = String(rawType || '').toLowerCase();
+    if (type.includes('visit') || type.includes('visita')) return 'visit';
+    if (type.includes('meet') || type.includes('reun')) return 'meeting';
+    if (type.includes('instal')) return 'installation';
+    const target = normalizeStage(targetStage);
+    if (target === 'visita_agendada') return 'visit';
+    if (target === 'chamada_agendada') return 'call';
+    return currentStage === 'nao_compareceu' ? 'call' : 'call';
+}
+
+function overlapsBusyRange(
+    startMs: number,
+    endMs: number,
+    busyRanges: Array<{ startMs: number; endMs: number }>
+): boolean {
+    return busyRanges.some((range) => startMs < range.endMs && endMs > range.startMs);
+}
+
+function generateAvailableSlotsForType(params: {
+    now: Date;
+    timeZone: string;
+    windowRule: AppointmentWindowRule;
+    busyRanges: Array<{ startMs: number; endMs: number }>;
+    slotMinutes?: number;
+    limit?: number;
+    lookaheadDays?: number;
+}): string[] {
+    const {
+        now,
+        timeZone,
+        windowRule,
+        busyRanges,
+        slotMinutes = 30,
+        limit = 8,
+        lookaheadDays = 14,
+    } = params;
+
+    const startMinutes = parseHHMMToMinutes(windowRule.start);
+    const endMinutes = parseHHMMToMinutes(windowRule.end);
+    if (startMinutes < 0 || endMinutes <= startMinutes) return [];
+
+    const results: string[] = [];
+    const seen = new Set<string>();
+    const nowMs = now.getTime();
+    const nowZoned = getZonedDateParts(now, timeZone);
+    const localTodayNoonUtc = zonedDateTimeToUtc(
+        nowZoned.year,
+        nowZoned.month,
+        nowZoned.day,
+        12,
+        0,
+        0,
+        timeZone
+    );
+
+    for (let dayOffset = 0; dayOffset <= lookaheadDays && results.length < limit; dayOffset++) {
+        const dayProbeUtc = new Date(localTodayNoonUtc.getTime() + (dayOffset * 24 * 60 * 60 * 1000));
+        const dayParts = getZonedDateParts(dayProbeUtc, timeZone);
+        if (!windowRule.days.includes(dayParts.weekday)) continue;
+
+        for (let minute = startMinutes; minute + slotMinutes <= endMinutes; minute += slotMinutes) {
+            const hour = Math.floor(minute / 60);
+            const minutePart = minute % 60;
+            const slotStartUtc = zonedDateTimeToUtc(
+                dayParts.year,
+                dayParts.month,
+                dayParts.day,
+                hour,
+                minutePart,
+                0,
+                timeZone
+            );
+            const slotStartMs = slotStartUtc.getTime();
+            const slotEndMs = slotStartMs + (slotMinutes * 60 * 1000);
+            if (slotStartMs <= nowMs) continue;
+            if (overlapsBusyRange(slotStartMs, slotEndMs, busyRanges)) continue;
+
+            const iso = slotStartUtc.toISOString();
+            if (seen.has(iso)) continue;
+            seen.add(iso);
+            results.push(iso);
+            if (results.length >= limit) break;
+        }
+    }
+
+    return results;
+}
+
+function formatSlotLabel(slotIso: string, timeZone: string, now: Date): string {
+    const slotDate = new Date(slotIso);
+    if (isNaN(slotDate.getTime())) return slotIso;
+    const nowParts = getZonedDateParts(now, timeZone);
+    const slotParts = getZonedDateParts(slotDate, timeZone);
+    const slotTime = `${String(slotParts.hour).padStart(2, '0')}:${String(slotParts.minute).padStart(2, '0')}`;
+
+    if (slotParts.year === nowParts.year && slotParts.month === nowParts.month && slotParts.day === nowParts.day) {
+        return `hoje ${slotTime}`;
+    }
+
+    const tomorrowProbe = zonedDateTimeToUtc(nowParts.year, nowParts.month, nowParts.day, 12, 0, 0, timeZone);
+    const tomorrow = getZonedDateParts(new Date(tomorrowProbe.getTime() + (24 * 60 * 60 * 1000)), timeZone);
+    if (slotParts.year === tomorrow.year && slotParts.month === tomorrow.month && slotParts.day === tomorrow.day) {
+        return `amanhã ${slotTime}`;
+    }
+
+    return `${String(slotParts.day).padStart(2, '0')}/${String(slotParts.month).padStart(2, '0')} ${slotTime}`;
+}
+
+function buildSlotCatalogText(
+    slotsByType: Record<AppointmentWindowType, string[]>,
+    timeZone: string,
+    now: Date
+): string {
+    const entries: Array<{ key: AppointmentWindowType; label: string }> = [
+        { key: 'call', label: 'chamada_ligacao' },
+        { key: 'visit', label: 'visita_tecnica' },
+        { key: 'meeting', label: 'reuniao_meeting' },
+        { key: 'installation', label: 'instalacao' },
+    ];
+    const lines: string[] = [];
+    for (const entry of entries) {
+        const formatted = (slotsByType[entry.key] || [])
+            .slice(0, 5)
+            .map((slot) => `${formatSlotLabel(slot, timeZone, now)} (${slot})`);
+        lines.push(`- ${entry.label}: ${formatted.length > 0 ? formatted.join(' | ') : '(sem slots livres)'}`);
+    }
+    return lines.join('\n');
+}
+
+function buildScheduleRetryContent(
+    typeKey: AppointmentWindowType,
+    slotsByType: Record<AppointmentWindowType, string[]>,
+    timeZone: string,
+    now: Date
+): string {
+    const labelsByType: Record<AppointmentWindowType, string> = {
+        call: 'chamada',
+        visit: 'visita',
+        meeting: 'reuniao',
+        installation: 'instalacao',
+    };
+    const available = (slotsByType[typeKey] || []).slice(0, 2).map((slot) => formatSlotLabel(slot, timeZone, now));
+    if (available.length >= 2) {
+        return `Esse horario nao esta disponivel. Posso te oferecer ${available[0]} ou ${available[1]} para ${labelsByType[typeKey]}?`;
+    }
+    if (available.length === 1) {
+        return `Esse horario nao esta disponivel. Tenho ${available[0]} para ${labelsByType[typeKey]}. Pode ser?`;
+    }
+    return `Esse horario nao esta disponivel no momento. Me diga outro periodo (manha, tarde ou noite) para eu te sugerir opcoes livres.`;
+}
+
+function isImplicitScheduleConfirmation(text: string): boolean {
+    const normalized = String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    if (!normalized.trim()) return false;
+    if (!/(beleza|blz|perfeito|fechado|combinado|ta bom|tudo certo|ok|pode ser|fiquei no aguardo|fico no aguardo|no aguardo|aguardo|confirmado|confirmo)/i.test(normalized)) {
+        return false;
+    }
+    if (/(duvida|qual|quando|que horas|horario\?|horario\.)/i.test(normalized)) {
+        return false;
+    }
+    return true;
+}
+
+function extractSlotsFromAssistantText(text: string, timeZone: string, now: Date): string[] {
+    const content = String(text || '');
+    if (!content) return [];
+    const searchable = content
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    const slots: string[] = [];
+    const seen = new Set<string>();
+    const base = getZonedDateParts(now, timeZone);
+    const nowMs = now.getTime();
+
+    const pushSlot = (year: number, month: number, day: number, hour: number, minute: number) => {
+        if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return;
+        if (!Number.isFinite(hour) || !Number.isFinite(minute)) return;
+        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return;
+        const utc = zonedDateTimeToUtc(year, month, day, hour, minute, 0, timeZone);
+        if (isNaN(utc.getTime())) return;
+        if (utc.getTime() <= nowMs) return;
+        const iso = utc.toISOString();
+        if (seen.has(iso)) return;
+        seen.add(iso);
+        slots.push(iso);
+    };
+
+    const relativeRegex = /\b(hoje|amanha)\s*(?:as|a)?\s*(\d{1,2})(?::(\d{2}))?\s*h?\b/gi;
+    let relativeMatch: RegExpExecArray | null;
+    while ((relativeMatch = relativeRegex.exec(searchable)) !== null) {
+        const dayWord = String(relativeMatch[1] || '').toLowerCase();
+        const hour = Number(relativeMatch[2]);
+        const minute = Number(relativeMatch[3] || '0');
+        const baseNoon = zonedDateTimeToUtc(base.year, base.month, base.day, 12, 0, 0, timeZone);
+        const offsetDays = dayWord.startsWith('amanh') ? 1 : 0;
+        const targetDayParts = getZonedDateParts(new Date(baseNoon.getTime() + (offsetDays * 24 * 60 * 60 * 1000)), timeZone);
+        pushSlot(targetDayParts.year, targetDayParts.month, targetDayParts.day, hour, minute);
+    }
+
+    const absoluteRegex = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s*(?:as|a)?\s*(\d{1,2})(?::(\d{2}))?\s*h?\b/gi;
+    let absoluteMatch: RegExpExecArray | null;
+    while ((absoluteMatch = absoluteRegex.exec(searchable)) !== null) {
+        const day = Number(absoluteMatch[1]);
+        const month = Number(absoluteMatch[2]);
+        const yearRaw = absoluteMatch[3];
+        const hour = Number(absoluteMatch[4]);
+        const minute = Number(absoluteMatch[5] || '0');
+        let year = base.year;
+        if (yearRaw) {
+            const parsedYear = Number(yearRaw);
+            if (Number.isFinite(parsedYear)) {
+                year = parsedYear < 100 ? (2000 + parsedYear) : parsedYear;
+            }
+        }
+        pushSlot(year, month, day, hour, minute);
+    }
+
+    return slots;
+}
+
+function isSlotWithinWindow(
+    startUtcIso: string,
+    typeKey: AppointmentWindowType,
+    config: AppointmentWindowConfig,
+    timeZone: string
+): boolean {
+    const start = new Date(startUtcIso);
+    if (isNaN(start.getTime())) return false;
+    const rule = config[typeKey] || DEFAULT_APPOINTMENT_WINDOW_CONFIG[typeKey];
+    const slotParts = getZonedDateParts(start, timeZone);
+    if (!rule.days.includes(slotParts.weekday)) return false;
+    const startMin = parseHHMMToMinutes(rule.start);
+    const endMin = parseHHMMToMinutes(rule.end);
+    if (startMin < 0 || endMin <= startMin) return false;
+    const slotMinuteOfDay = (slotParts.hour * 60) + slotParts.minute;
+    const slotEndMinuteOfDay = slotMinuteOfDay + 30;
+    return slotMinuteOfDay >= startMin && slotEndMinuteOfDay <= endMin;
+}
+
 function isMissingOrgIdColumnError(error: any): boolean {
     if (!error) return false;
     const code = String(error.code || '');
@@ -1252,6 +1642,24 @@ Deno.serve(async (req) => {
         let stageMoveResult: string | null = null;
         // Tracks whether the agent actually sent an outbound reply this run (Tarefa 1)
         let didSendOutbound = false;
+        // Scheduling / appointment observability
+        let scheduleTimezone = 'America/Sao_Paulo';
+        let scheduleCatalogText = '';
+        let scheduleWindowConfigNormalized: AppointmentWindowConfig = normalizeAppointmentWindowConfig(null);
+        let availableSlotsByType: Record<AppointmentWindowType, string[]> = {
+            call: [],
+            visit: [],
+            meeting: [],
+            installation: [],
+        };
+        let scheduleBusyCount = 0;
+        let appointmentPrecheckBlockedReason: string | null = null;
+        let stageGateBlockReason: string | null = null;
+        let implicitConfirmationUsed = false;
+        let lastAssistantMessageText = '';
+        let slotSelectionEvent: string | null = null;
+        let slotSelectionStartAt: string | null = null;
+        let slotSelectionType: AppointmentWindowType | null = null;
 
         // 1. STRICT INSTANCE CHECK
         const { leadId, instanceName } = payload;
@@ -1980,6 +2388,78 @@ Deno.serve(async (req) => {
                 : ''
         );
 
+        if (history && history.length > 0) {
+            for (const interaction of history) {
+                const role = interaction?.tipo === 'mensagem_cliente' ? 'user' : 'assistant';
+                if (role !== 'assistant') continue;
+                const attachmentUrl = interaction?.attachment_url ? String(interaction.attachment_url) : null;
+                const normalizedText = normalizeHistoryText(interaction?.mensagem, attachmentUrl);
+                if (!normalizedText) continue;
+                lastAssistantMessageText = normalizedText;
+                break;
+            }
+        }
+
+        scheduleTimezone = String(settings?.timezone || 'America/Sao_Paulo').trim() || 'America/Sao_Paulo';
+        scheduleWindowConfigNormalized = normalizeAppointmentWindowConfig((settings as any)?.appointment_window_config);
+        const busyRanges: Array<{ startMs: number; endMs: number }> = [];
+
+        try {
+            const nowIso = new Date().toISOString();
+            const { data: busyAppointments, error: busyErr } = await supabase
+                .from('appointments')
+                .select('start_at, end_at, status, type')
+                .eq('org_id', leadOrgId)
+                .eq('user_id', lead.user_id)
+                .in('status', ['scheduled', 'confirmed'])
+                .gte('end_at', nowIso)
+                .order('start_at', { ascending: true })
+                .limit(500);
+
+            if (busyErr) {
+                console.warn(`⚠️ [${runId}] Scheduling busy appointments load failed (non-blocking):`, busyErr.message);
+            } else {
+                for (const appt of (busyAppointments || [])) {
+                    const start = new Date(appt.start_at);
+                    const end = new Date(appt.end_at);
+                    if (isNaN(start.getTime()) || isNaN(end.getTime())) continue;
+                    busyRanges.push({ startMs: start.getTime(), endMs: end.getTime() });
+                }
+                scheduleBusyCount = busyRanges.length;
+            }
+        } catch (busyLoadErr: any) {
+            console.warn(`⚠️ [${runId}] Scheduling busy appointments exception (non-blocking):`, busyLoadErr?.message || busyLoadErr);
+        }
+
+        const nowForSlots = new Date();
+        availableSlotsByType = {
+            call: generateAvailableSlotsForType({
+                now: nowForSlots,
+                timeZone: scheduleTimezone,
+                windowRule: scheduleWindowConfigNormalized.call,
+                busyRanges,
+            }),
+            visit: generateAvailableSlotsForType({
+                now: nowForSlots,
+                timeZone: scheduleTimezone,
+                windowRule: scheduleWindowConfigNormalized.visit,
+                busyRanges,
+            }),
+            meeting: generateAvailableSlotsForType({
+                now: nowForSlots,
+                timeZone: scheduleTimezone,
+                windowRule: scheduleWindowConfigNormalized.meeting,
+                busyRanges,
+            }),
+            installation: generateAvailableSlotsForType({
+                now: nowForSlots,
+                timeZone: scheduleTimezone,
+                windowRule: scheduleWindowConfigNormalized.installation,
+                busyRanges,
+            }),
+        };
+        scheduleCatalogText = buildSlotCatalogText(availableSlotsByType, scheduleTimezone, nowForSlots);
+
         const openAIApiKey = Deno.env.get('OPENAI_API_KEY') || settings.openai_api_key || '';
         const openai = openAIApiKey ? new OpenAI({ apiKey: openAIApiKey }) : null;
 
@@ -2343,6 +2823,9 @@ Deno.serve(async (req) => {
 
             const systemPrompt = `
 IDENTIDADE: ${settings.assistant_identity_name || 'Consultor Solar'}. Consultor de energia solar no Brasil.
+Ao se apresentar, use explicitamente o nome "${settings.assistant_identity_name || 'Consultor Solar'}". Evite apresentações genéricas como "assistente da empresa".
+TIMEZONE_OPERACIONAL: ${scheduleTimezone}
+AGORA_UTC_ISO: ${new Date().toISOString()}
 
 ${SOLAR_BR_PACK}
 
@@ -2388,8 +2871,12 @@ PROIBIÇÕES ABSOLUTAS:
 - Proibido: emoji 😊
 
 REGRA DE AGENDAMENTO:
-- Se o cliente confirma agendamento (diz "sim", "pode", "vamos", "bora", "quero agendar"), SEMPRE responda pedindo dia e horário sugerindo 2 opções.
-- Só mova para chamada_agendada quando o cliente fornecer dia+horário concretos.
+- Se o cliente confirma agendamento (diz "sim", "pode", "vamos", "bora", "quero agendar"), ofereça 2 slots reais disponíveis.
+- NUNCA sugira horário passado.
+- Use APENAS os horários de SLOTS_DISPONIVEIS_REAIS.
+- Se o horário solicitado estiver indisponível/conflitado, peça nova escolha.
+- Para efetivar agendamento no CRM, inclua appointment.start_at em ISO.
+- Só mova para chamada_agendada/visita_agendada quando houver appointment válido.
 
 PROTOCOLO DA ETAPA:
 ${stagePromptText}
@@ -2405,6 +2892,9 @@ ${kbBlock || '(sem dados internos disponíveis)'}
 
 PESQUISA_WEB:
 ${webBlock || '(sem pesquisa web)'}
+
+SLOTS_DISPONIVEIS_REAIS:
+${scheduleCatalogText || '(sem slots livres no momento)'}
 
 EXTRAÇÃO DE DADOS DO LEAD (OBRIGATÓRIO):
 Sempre que o lead informar dados úteis (conta de luz, consumo, telha, concessionária, cidade, CEP, tipo de instalação, padrão de energia, financiamento), extraia e inclua "fields" no JSON de resposta.
@@ -2427,11 +2917,13 @@ COMENTÁRIOS INTERNOS E FOLLOW-UPS (V7):
 - Você pode combinar: action="send_message" + "comment":{"text":"...","type":"next_step"} para responder E registrar comentário ao mesmo tempo.
 
 FORMATO DE SAÍDA (JSON ESTRITO, sem markdown, sem explicação fora do JSON):
-{"action": "send_message"|"move_stage"|"update_lead_fields"|"add_comment"|"create_followup"|"none", "content": "Texto humano aqui...", "target_stage": "next_stage_id", "fields": {"campo": {"value": "...", "confidence": "high"|"medium"|"low", "source": "user"|"inferred"|"confirmed"}}, "stage_data": {"campo_ou_namespace": "valor"}, "comment": {"text": "Resumo/nota interna", "type": "summary|note|next_step"}, "task": {"title": "Título do follow-up", "notes": "Detalhes", "due_at": "ISO", "priority": "low|medium|high", "channel": "whatsapp|call|email"}}
+{"action": "send_message"|"move_stage"|"update_lead_fields"|"add_comment"|"create_followup"|"create_appointment"|"none", "content": "Texto humano aqui...", "target_stage": "next_stage_id", "fields": {"campo": {"value": "...", "confidence": "high"|"medium"|"low", "source": "user"|"inferred"|"confirmed"}}, "stage_data": {"campo_ou_namespace": "valor"}, "comment": {"text": "Resumo/nota interna", "type": "summary|note|next_step"}, "task": {"title": "Título do follow-up", "notes": "Detalhes", "due_at": "ISO", "priority": "low|medium|high", "channel": "whatsapp|call|email"}, "appointment": {"type": "call|visit|meeting|installation", "title": "Título curto", "start_at": "ISO", "end_at": "ISO opcional", "location": "Opcional", "notes": "Opcional"}}
 
 Se action for "move_stage", DEVE incluir "target_stage".
 Se currentStage for "novo_lead" e action for "send_message", DEVE incluir "target_stage": "respondeu" (obrigatorio - lead respondeu pela primeira vez).
 Se action for "send_message", "content" é obrigatório.
+Se houver confirmação de agendamento, inclua "appointment.start_at" obrigatoriamente.
+Se action for "create_appointment", inclua "appointment" com "start_at".
 Você pode combinar: action="send_message" + "fields" para responder E extrair dados ao mesmo tempo.
 Você pode combinar: action="send_message" + "stage_data" para responder E salvar dados estruturados da etapa.
 Se action for "add_comment", inclua "content" com o texto do comentário.
@@ -2584,6 +3076,153 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             }
         }
 
+        const normalizedTargetStage = normalizeStage(aiRes?.target_stage);
+        const hasScheduleTargetStage = normalizedTargetStage === 'chamada_agendada' || normalizedTargetStage === 'visita_agendada';
+        const hasAppointmentObject = aiRes?.appointment && typeof aiRes.appointment === 'object' && !Array.isArray(aiRes.appointment);
+        const currentAppointmentStartRaw = hasAppointmentObject ? String(aiRes.appointment.start_at || '').trim() : '';
+        const implicitConfirmationDetected = isImplicitScheduleConfirmation(lastUserTextAggregated || '');
+
+        if (!currentAppointmentStartRaw && implicitConfirmationDetected && lastAssistantMessageText) {
+            const inferredTypeFromContext = inferAppointmentWindowType(
+                hasAppointmentObject ? aiRes.appointment.type : null,
+                aiRes?.target_stage,
+                currentStage
+            );
+            const offeredSlots = extractSlotsFromAssistantText(lastAssistantMessageText, scheduleTimezone, new Date());
+            let selectedImplicitSlot: string | null = null;
+
+            for (const offeredSlot of offeredSlots) {
+                const slotStart = new Date(offeredSlot);
+                if (isNaN(slotStart.getTime())) continue;
+                const slotEndMs = slotStart.getTime() + (30 * 60 * 1000);
+                if (!isSlotWithinWindow(offeredSlot, inferredTypeFromContext, scheduleWindowConfigNormalized, scheduleTimezone)) continue;
+                if (overlapsBusyRange(slotStart.getTime(), slotEndMs, busyRanges)) continue;
+                selectedImplicitSlot = slotStart.toISOString();
+                break;
+            }
+
+            if (selectedImplicitSlot) {
+                implicitConfirmationUsed = true;
+                slotSelectionEvent = 'implicit_confirmation_used';
+                slotSelectionStartAt = selectedImplicitSlot;
+                slotSelectionType = inferredTypeFromContext;
+                aiRes.appointment = {
+                    ...(hasAppointmentObject ? aiRes.appointment : {}),
+                    type: hasAppointmentObject && aiRes.appointment.type ? aiRes.appointment.type : inferredTypeFromContext,
+                    title: hasAppointmentObject && aiRes.appointment.title
+                        ? aiRes.appointment.title
+                        : (inferredTypeFromContext === 'visit' ? 'Visita tecnica' : 'Chamada comercial'),
+                    start_at: selectedImplicitSlot,
+                    end_at: hasAppointmentObject ? aiRes.appointment.end_at : undefined,
+                };
+                if (!aiRes.target_stage && (currentStage === 'respondeu' || currentStage === 'nao_compareceu')) {
+                    aiRes.target_stage = inferredTypeFromContext === 'visit' ? 'visita_agendada' : 'chamada_agendada';
+                }
+                if (!aiRes.content) {
+                    aiRes.content = `Perfeito, ficou confirmado para ${formatSlotLabel(selectedImplicitSlot, scheduleTimezone, new Date())}.`;
+                }
+                console.log(`📅 [${runId}] slot_selection: implicit_confirmation_used (${selectedImplicitSlot})`);
+            } else {
+                appointmentPrecheckBlockedReason = 'implicit_confirmation_no_valid_slot';
+                slotSelectionEvent = 'slot_selection_missing';
+                if (!aiRes.content || hasScheduleTargetStage || aiRes.action === 'create_appointment') {
+                    aiRes.content = buildScheduleRetryContent(
+                        inferredTypeFromContext,
+                        availableSlotsByType,
+                        scheduleTimezone,
+                        new Date()
+                    );
+                }
+            }
+        }
+
+        const shouldValidateAppointment =
+            hasScheduleTargetStage ||
+            aiRes?.action === 'create_appointment' ||
+            (aiRes?.appointment && typeof aiRes.appointment === 'object' && !Array.isArray(aiRes.appointment));
+
+        if (shouldValidateAppointment) {
+            const rawAppointment = (aiRes?.appointment && typeof aiRes.appointment === 'object' && !Array.isArray(aiRes.appointment))
+                ? { ...aiRes.appointment }
+                : {};
+            const inferredType = inferAppointmentWindowType(rawAppointment.type, aiRes?.target_stage, currentStage);
+            const startRaw = String(rawAppointment.start_at || '').trim();
+
+            if (!startRaw) {
+                appointmentPrecheckBlockedReason = appointmentPrecheckBlockedReason || 'missing_start_at';
+            } else {
+                const nowForValidation = new Date();
+                const startDate = new Date(startRaw);
+                if (isNaN(startDate.getTime())) {
+                    appointmentPrecheckBlockedReason = 'invalid_dates';
+                } else {
+                    const startIso = startDate.toISOString();
+                    if (startDate.getTime() <= nowForValidation.getTime()) {
+                        appointmentPrecheckBlockedReason = 'past_slot';
+                    } else if (!isSlotWithinWindow(startIso, inferredType, scheduleWindowConfigNormalized, scheduleTimezone)) {
+                        appointmentPrecheckBlockedReason = 'outside_window';
+                    } else {
+                        let endDate = rawAppointment.end_at ? new Date(rawAppointment.end_at) : new Date(startDate.getTime() + (30 * 60 * 1000));
+                        if (isNaN(endDate.getTime()) || endDate.getTime() <= startDate.getTime()) {
+                            endDate = new Date(startDate.getTime() + (30 * 60 * 1000));
+                        }
+                        if (overlapsBusyRange(startDate.getTime(), endDate.getTime(), busyRanges)) {
+                            appointmentPrecheckBlockedReason = 'slot_conflict';
+                        } else {
+                            aiRes.appointment = {
+                                ...rawAppointment,
+                                type: rawAppointment.type || inferredType,
+                                title: String(rawAppointment.title || (inferredType === 'visit' ? 'Visita tecnica' : 'Chamada comercial')).trim().substring(0, 200),
+                                start_at: startIso,
+                                end_at: endDate.toISOString(),
+                            };
+                            slotSelectionEvent = slotSelectionEvent || 'slot_selection';
+                            slotSelectionStartAt = startIso;
+                            slotSelectionType = inferredType;
+                            if (!aiRes.target_stage && (currentStage === 'respondeu' || currentStage === 'nao_compareceu')) {
+                                aiRes.target_stage = inferredType === 'visit' ? 'visita_agendada' : 'chamada_agendada';
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (appointmentPrecheckBlockedReason) {
+                const typeForRetry = inferAppointmentWindowType(rawAppointment.type, aiRes?.target_stage, currentStage);
+                const hasScheduleTargetNow = ['chamada_agendada', 'visita_agendada'].includes(normalizeStage(aiRes?.target_stage));
+                const reasonForLog = appointmentPrecheckBlockedReason;
+                if (reasonForLog === 'outside_window') {
+                    slotSelectionEvent = 'outside_window';
+                    console.log(`📅 [${runId}] outside_window: appointment rejected`);
+                } else if (reasonForLog === 'slot_conflict') {
+                    slotSelectionEvent = 'slot_conflict';
+                    console.log(`📅 [${runId}] slot_conflict: appointment rejected`);
+                } else {
+                    slotSelectionEvent = slotSelectionEvent || 'slot_selection_blocked';
+                    console.log(`📅 [${runId}] slot_selection_blocked: ${reasonForLog}`);
+                }
+
+                delete aiRes.appointment;
+                if (aiRes.action === 'create_appointment') {
+                    aiRes.action = 'send_message';
+                }
+                if (
+                    !aiRes.content ||
+                    hasScheduleTargetNow ||
+                    aiRes.action === 'send_message' ||
+                    aiRes.action === 'move_stage' ||
+                    aiRes.action === 'create_appointment'
+                ) {
+                    aiRes.content = buildScheduleRetryContent(
+                        typeForRetry,
+                        availableSlotsByType,
+                        scheduleTimezone,
+                        new Date()
+                    );
+                }
+            }
+        }
+
         // --- V6: EXTRACT AND SAVE LEAD FIELDS (side-effect, non-blocking) ---
         if (aiRes.fields && typeof aiRes.fields === 'object' && Object.keys(aiRes.fields).length > 0) {
             try {
@@ -2726,10 +3365,15 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
         let appointmentSkippedReason: string | null = null;
         let appointmentError: string | null = null;
 
-        const sideEffectAppointment = aiRes.appointment && typeof aiRes.appointment === 'object' && aiRes.appointment.title;
+        const sideEffectAppointment = aiRes.appointment && typeof aiRes.appointment === 'object' && aiRes.appointment.start_at;
         const isAppointmentAction = aiRes.action === 'create_appointment';
+        const hasScheduleTargetNow = ['chamada_agendada', 'visita_agendada'].includes(normalizeStage(aiRes?.target_stage));
 
-        if (sideEffectAppointment || isAppointmentAction) {
+        if (appointmentPrecheckBlockedReason && (sideEffectAppointment || isAppointmentAction || hasScheduleTargetNow)) {
+            appointmentSkippedReason = appointmentPrecheckBlockedReason;
+        }
+
+        if ((sideEffectAppointment || isAppointmentAction) && !appointmentPrecheckBlockedReason) {
             try {
                 const apptData = aiRes.appointment || {};
                 const v9Result = await executeCreateAppointment(
@@ -2742,6 +3386,8 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                 appointmentError = v9Err?.message || String(v9Err);
                 console.error(`⚠️ [${runId}] V9: Appointment creation failed:`, appointmentError);
             }
+        } else if (sideEffectAppointment || isAppointmentAction) {
+            console.warn(`🛑 [${runId}] V9: Appointment blocked by precheck (${appointmentPrecheckBlockedReason})`);
         }
 
         // --- V10: PROPOSAL DRAFT SIDE-EFFECT (non-blocking) ---
@@ -3119,13 +3765,14 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
 
             // --- V9 GATING LOGIC ---
             let gateCheck = true;
-            if (target === 'chamada_agendada') {
+            if (target === 'chamada_agendada' || target === 'visita_agendada') {
                 // Gated: only move if appointment was written OR duplicate
                 if (appointmentWritten || appointmentSkippedReason === 'skipped_duplicate') {
                     gateCheck = true;
                 } else {
                     gateCheck = false;
-                    console.warn(`🛑 [${runId}] Gate Block: 'chamada_agendada' requires successful appointment. Written=${appointmentWritten}, Skipped=${appointmentSkippedReason}`);
+                    stageGateBlockReason = appointmentSkippedReason || appointmentError || appointmentPrecheckBlockedReason || 'missing_appointment_write';
+                    console.warn(`🛑 [${runId}] stage_gate_block: target=${target}, reason=${stageGateBlockReason}`);
                 }
             }
 
@@ -3143,6 +3790,9 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                 }
 
             } else if (target !== currentStage) {
+                if (!stageGateBlockReason && !isValidTransition(currentStage, target)) {
+                    stageGateBlockReason = 'invalid_transition';
+                }
                 console.warn(`⚠️ [${runId}] Invalid transition blocked (or Gated): ${currentStage} -> ${target}`);
                 stageMoveResult = `blocked:${currentStage}_to_${target}`; // Tarefa 2
             }
@@ -3190,6 +3840,18 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             web_used: webUsed,
             web_results_count: webResultsCount,
             web_error: webError,
+            schedule_timezone: scheduleTimezone,
+            schedule_busy_count: scheduleBusyCount,
+            schedule_slots_available_call: availableSlotsByType.call.length,
+            schedule_slots_available_visit: availableSlotsByType.visit.length,
+            schedule_slots_available_meeting: availableSlotsByType.meeting.length,
+            schedule_slots_available_installation: availableSlotsByType.installation.length,
+            slot_selection_event: slotSelectionEvent,
+            slot_selection_start_at: slotSelectionStartAt,
+            slot_selection_type: slotSelectionType,
+            appointment_precheck_block_reason: appointmentPrecheckBlockedReason,
+            implicit_confirmation_used: implicitConfirmationUsed,
+            stage_gate_block_reason: stageGateBlockReason,
             evolutionSendStatus,
             transport_mode: transportMode,
             transport_sim_reason: transportSimReason,
@@ -3245,6 +3907,14 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                     kb_chars: kbChars,
                     web_used: webUsed,
                     web_results_count: webResultsCount,
+                    schedule_timezone: scheduleTimezone,
+                    schedule_busy_count: scheduleBusyCount,
+                    slot_selection_event: slotSelectionEvent,
+                    slot_selection_start_at: slotSelectionStartAt,
+                    slot_selection_type: slotSelectionType,
+                    appointment_precheck_block_reason: appointmentPrecheckBlockedReason,
+                    implicit_confirmation_used: implicitConfirmationUsed,
+                    stage_gate_block_reason: stageGateBlockReason,
                     v6_fields_candidate_count: v6FieldsCandidateCount,
                     v6_fields_written_count: v6FieldsWrittenCount,
                     v11_stage_data_candidate_count: v11StageDataCandidateCount,
@@ -3364,15 +4034,9 @@ async function executeCreateAppointment(
     }
 
     try {
-        // Insert Appointment
-        // lead_id is int8, make sure to cast
-        // User migration show NO org_id in V9? 
-        // Migration 20260128_calendar_module.sql (referenced in Step 14):
-        // CREATE TABLE IF NOT EXISTS public.appointments ( ... user_id uuid NOT NULL ... ) -- NO org_id present!
-        // Make sure to pass user_id, but NOT org_id if column missing.
-        // Actually, user_id is required. 
-
+        // Insert appointment (org-aware first; fallback only for legacy schema without org_id)
         const insertPayload: any = {
+            org_id: orgId,
             user_id: userId,
             lead_id: Number(leadId),
             title,
@@ -3384,7 +4048,23 @@ async function executeCreateAppointment(
             location
         };
 
-        const { data: inserted, error: insertErr } = await supabase.from('appointments').insert(insertPayload).select('id').single();
+        let inserted: any = null;
+        let insertErr: any = null;
+
+        {
+            const resp = await supabase.from('appointments').insert(insertPayload).select('id').single();
+            inserted = resp.data;
+            insertErr = resp.error;
+        }
+
+        if (insertErr && isMissingOrgIdColumnError(insertErr)) {
+            console.warn(`⚠️ [${runId}] V9: appointments.org_id missing, retrying legacy insert without org_id`);
+            const legacyPayload = { ...insertPayload };
+            delete legacyPayload.org_id;
+            const retryResp = await supabase.from('appointments').insert(legacyPayload).select('id').single();
+            inserted = retryResp.data;
+            insertErr = retryResp.error;
+        }
 
         if (insertErr) {
             console.error(`❌ [${runId}] V9: appointments insert error:`, insertErr.message);

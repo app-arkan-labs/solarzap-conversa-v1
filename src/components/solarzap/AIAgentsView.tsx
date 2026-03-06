@@ -27,6 +27,98 @@ import {
 } from "../ui/dialog";
 import { Textarea } from '../ui/textarea';
 import { PageHeader } from './PageHeader';
+import {
+    DEFAULT_APPOINTMENT_WINDOW_CONFIG,
+    type AppointmentWindowConfig,
+    type AppointmentWindowType,
+    type AppointmentDayKey,
+} from '@/types/ai';
+
+const APPOINTMENT_WINDOW_TYPE_OPTIONS: Array<{ key: AppointmentWindowType; label: string }> = [
+    { key: 'call', label: 'Chamada' },
+    { key: 'visit', label: 'Visita' },
+    { key: 'meeting', label: 'Reuniao' },
+    { key: 'installation', label: 'Instalacao' },
+];
+
+const APPOINTMENT_DAY_OPTIONS: Array<{ key: AppointmentDayKey; label: string }> = [
+    { key: 'mon', label: 'Seg' },
+    { key: 'tue', label: 'Ter' },
+    { key: 'wed', label: 'Qua' },
+    { key: 'thu', label: 'Qui' },
+    { key: 'fri', label: 'Sex' },
+    { key: 'sat', label: 'Sab' },
+    { key: 'sun', label: 'Dom' },
+];
+
+const parseTimeToMinutes = (value: string): number | null => {
+    const match = /^(\d{2}):(\d{2})$/.exec(String(value || '').trim());
+    if (!match) return null;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return hour * 60 + minute;
+};
+
+const formatMinutesToHHMM = (minutes: number): string => {
+    const hour = Math.floor(minutes / 60);
+    const minute = minutes % 60;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+
+const cloneWindowConfig = (config: AppointmentWindowConfig): AppointmentWindowConfig => ({
+    call: { ...config.call, days: [...config.call.days] },
+    visit: { ...config.visit, days: [...config.visit.days] },
+    meeting: { ...config.meeting, days: [...config.meeting.days] },
+    installation: { ...config.installation, days: [...config.installation.days] },
+});
+
+const normalizeWindowConfig = (raw: unknown): AppointmentWindowConfig => {
+    const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {};
+    const next = cloneWindowConfig(DEFAULT_APPOINTMENT_WINDOW_CONFIG);
+    for (const { key } of APPOINTMENT_WINDOW_TYPE_OPTIONS) {
+        const incoming = source[key];
+        if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) continue;
+        const startMin = parseTimeToMinutes(String(incoming.start || ''));
+        const endMin = parseTimeToMinutes(String(incoming.end || ''));
+        const start = startMin === null ? next[key].start : formatMinutesToHHMM(startMin);
+        const end = endMin === null ? next[key].end : formatMinutesToHHMM(endMin);
+        const days = Array.isArray(incoming.days)
+            ? Array.from(new Set(incoming.days.filter((day: string) => APPOINTMENT_DAY_OPTIONS.some((d) => d.key === day))))
+            : [];
+        next[key] = {
+            start,
+            end,
+            days: days.length > 0 ? (days as AppointmentDayKey[]) : [...DEFAULT_APPOINTMENT_WINDOW_CONFIG[key].days],
+        };
+    }
+    return next;
+};
+
+const validateWindowConfig = (config: AppointmentWindowConfig): Record<AppointmentWindowType, string | null> => {
+    const errors: Record<AppointmentWindowType, string | null> = {
+        call: null,
+        visit: null,
+        meeting: null,
+        installation: null,
+    };
+
+    for (const { key } of APPOINTMENT_WINDOW_TYPE_OPTIONS) {
+        const rule = config[key];
+        const startMin = parseTimeToMinutes(rule.start);
+        const endMin = parseTimeToMinutes(rule.end);
+        if (startMin === null || endMin === null || endMin <= startMin) {
+            errors[key] = 'Horario final deve ser maior que o inicial';
+            continue;
+        }
+        if (!Array.isArray(rule.days) || rule.days.length === 0) {
+            errors[key] = 'Selecione ao menos 1 dia';
+        }
+    }
+
+    return errors;
+};
 
 export function AIAgentsView() {
     const { settings, stageConfigs, updateGlobalSettings, updateStageConfig, loading, restoreDefaultPrompt } = useAISettings();
@@ -44,6 +136,10 @@ export function AIAgentsView() {
     // Local state for Assistant Name to prevent auto-refresh/focus loss
     const [localAssistantName, setLocalAssistantName] = useState('');
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [windowConfigDraft, setWindowConfigDraft] = useState<AppointmentWindowConfig>(
+        cloneWindowConfig(DEFAULT_APPOINTMENT_WINDOW_CONFIG)
+    );
+    const [windowConfigDirty, setWindowConfigDirty] = useState(false);
 
     // Sync local state when settings load
     React.useEffect(() => {
@@ -51,6 +147,12 @@ export function AIAgentsView() {
             setLocalAssistantName(settings.assistant_identity_name);
         }
     }, [settings?.assistant_identity_name]);
+
+    React.useEffect(() => {
+        const incoming = normalizeWindowConfig(settings?.appointment_window_config || DEFAULT_APPOINTMENT_WINDOW_CONFIG);
+        setWindowConfigDraft(incoming);
+        setWindowConfigDirty(false);
+    }, [settings?.appointment_window_config]);
 
     const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setLocalAssistantName(e.target.value);
@@ -65,6 +167,53 @@ export function AIAgentsView() {
     const handleSaveNameChange = async () => {
         await updateGlobalSettings({ assistant_identity_name: localAssistantName });
         setHasUnsavedChanges(false);
+    };
+
+    const handleWindowConfigTimeChange = (
+        type: AppointmentWindowType,
+        field: 'start' | 'end',
+        value: string
+    ) => {
+        setWindowConfigDraft((prev) => ({
+            ...prev,
+            [type]: {
+                ...prev[type],
+                [field]: value,
+            },
+        }));
+        setWindowConfigDirty(true);
+    };
+
+    const handleWindowConfigDayToggle = (type: AppointmentWindowType, day: AppointmentDayKey) => {
+        setWindowConfigDraft((prev) => {
+            const currentDays = prev[type].days || [];
+            const nextDays = currentDays.includes(day)
+                ? currentDays.filter((d) => d !== day)
+                : [...currentDays, day];
+            return {
+                ...prev,
+                [type]: {
+                    ...prev[type],
+                    days: nextDays,
+                },
+            };
+        });
+        setWindowConfigDirty(true);
+    };
+
+    const handleWindowConfigCancel = () => {
+        setWindowConfigDraft(normalizeWindowConfig(settings?.appointment_window_config || DEFAULT_APPOINTMENT_WINDOW_CONFIG));
+        setWindowConfigDirty(false);
+    };
+
+    const handleWindowConfigSave = async () => {
+        const errors = validateWindowConfig(windowConfigDraft);
+        if (Object.values(errors).some(Boolean)) {
+            toast.error('Revise os horarios: fim deve ser maior que inicio e cada tipo precisa de ao menos 1 dia.');
+            return;
+        }
+        await updateGlobalSettings({ appointment_window_config: normalizeWindowConfig(windowConfigDraft) });
+        setWindowConfigDirty(false);
     };
 
     const handleEditClick = (agent: PipelineAgentDef, currentPrompt: string) => {
@@ -108,6 +257,8 @@ export function AIAgentsView() {
     const editingConfig = editingStage ? stageConfigs.find(c => c.status_pipeline === editingStage) : null;
     const editingPromptVersion = editingConfig?.prompt_override_version ?? 0;
     const promptLength = tempPrompt.length;
+    const windowConfigErrors = validateWindowConfig(windowConfigDraft);
+    const hasWindowConfigErrors = Object.values(windowConfigErrors).some(Boolean);
     const promptWarnings = [
         promptLength > 0 && promptLength < 50 ? `Prompt curto (${promptLength} < 50 caracteres)` : null,
         promptLength > 15000 ? `Prompt longo (${promptLength} > 15000 caracteres)` : null,
@@ -219,6 +370,86 @@ export function AIAgentsView() {
                             </CardContent>
                         </Card>
                     </div>
+
+                    <Card className="shadow-sm" data-testid="appointment-window-config-card">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm">Janela de Agendamento da IA</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {APPOINTMENT_WINDOW_TYPE_OPTIONS.map((item) => {
+                                const rule = windowConfigDraft[item.key];
+                                const error = windowConfigErrors[item.key];
+                                return (
+                                    <div key={item.key} className="rounded-md border bg-white p-3">
+                                        <div className="mb-2 flex items-center justify-between">
+                                            <Label className="text-xs font-semibold uppercase text-slate-500">{item.label}</Label>
+                                            {error && (
+                                                <span className="text-[11px] font-medium text-red-600">{error}</span>
+                                            )}
+                                        </div>
+
+                                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                            <div className="space-y-1">
+                                                <Label className="text-[11px] text-slate-500">Inicio</Label>
+                                                <Input
+                                                    type="time"
+                                                    value={rule.start}
+                                                    onChange={(e) => handleWindowConfigTimeChange(item.key, 'start', e.target.value)}
+                                                    disabled={!canEdit}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[11px] text-slate-500">Fim</Label>
+                                                <Input
+                                                    type="time"
+                                                    value={rule.end}
+                                                    onChange={(e) => handleWindowConfigTimeChange(item.key, 'end', e.target.value)}
+                                                    disabled={!canEdit}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-3 flex flex-wrap gap-1.5">
+                                            {APPOINTMENT_DAY_OPTIONS.map((day) => {
+                                                const active = rule.days.includes(day.key);
+                                                return (
+                                                    <Button
+                                                        key={`${item.key}-${day.key}`}
+                                                        type="button"
+                                                        size="sm"
+                                                        variant={active ? 'default' : 'outline'}
+                                                        className="h-7 px-2 text-[11px]"
+                                                        onClick={() => handleWindowConfigDayToggle(item.key, day.key)}
+                                                        disabled={!canEdit}
+                                                    >
+                                                        {day.label}
+                                                    </Button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+
+                            {canEdit && (
+                                <div className="flex items-center justify-end gap-2">
+                                    {windowConfigDirty && (
+                                        <Button variant="outline" onClick={handleWindowConfigCancel}>
+                                            Cancelar
+                                        </Button>
+                                    )}
+                                    <Button
+                                        onClick={handleWindowConfigSave}
+                                        disabled={!windowConfigDirty || hasWindowConfigErrors}
+                                        data-testid="appointment-window-config-save"
+                                    >
+                                        <Save className="mr-2 h-4 w-4" />
+                                        Salvar Janela
+                                    </Button>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
 
                     {/* Agente de Apoio Global */}
                     <Card className="shadow-sm border-l-4 border-l-blue-500" data-testid="support-ai-card">
