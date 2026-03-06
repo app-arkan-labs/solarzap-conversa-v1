@@ -1,6 +1,14 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
 import { buildEmailContent, type TemplateContext } from '../_shared/emailTemplates.ts'
 import { resolveNotificationRouting } from '../_shared/notificationRecipients.ts'
+import {
+  buildDispatchSuccessLookup,
+  countDeliveredRecipients,
+  markRecipientDelivered,
+  wasRecipientDelivered,
+  type DispatchChannel,
+  type DispatchLogLike,
+} from '../_shared/notificationDispatchState.ts'
 
 const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim()
 const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true'
@@ -494,6 +502,24 @@ async function logDispatch(
   })
 }
 
+async function fetchSuccessfulDispatches(
+  supabase: ReturnType<typeof createClient>,
+  event: NotificationEventRow,
+) {
+  const { data, error } = await supabase
+    .from('notification_dispatch_logs')
+    .select('channel, destination, status')
+    .eq('notification_event_id', event.id)
+    .eq('org_id', event.org_id)
+    .eq('status', 'success')
+
+  if (error) {
+    throw new Error(`dispatch_logs_error:${error.message}`)
+  }
+
+  return buildDispatchSuccessLookup((data || []) as DispatchLogLike[])
+}
+
 async function resolveLead(
   supabase: ReturnType<typeof createClient>,
   orgId: string,
@@ -593,17 +619,23 @@ async function processEvent(
   const emailContent = buildEmailContent(event.event_type, emailCtx)
 
   const failures: string[] = []
-  const skippedChannels: string[] = []
-  let sentCount = 0
+  const skippedChannels: DispatchChannel[] = []
+  const successfulDispatches = await fetchSuccessfulDispatches(supabase, event)
+  const targetWhatsappRecipients = routing.whatsappEnabled ? routing.whatsappRecipients : []
+  const targetEmailRecipients = routing.emailEnabled ? routing.emailRecipients : []
+  const totalTargets = targetWhatsappRecipients.length + targetEmailRecipients.length
 
   if (routing.whatsappEnabled) {
     if (!settings.whatsapp_instance_name) {
       failures.push('whatsapp_missing_instance')
       await logDispatch(supabase, event, 'whatsapp', '', 'failed', null, 'whatsapp_missing_instance')
-    } else if (routing.whatsappRecipients.length === 0) {
+    } else if (targetWhatsappRecipients.length === 0) {
       skippedChannels.push('whatsapp')
     } else {
-      for (const targetNumber of routing.whatsappRecipients) {
+      for (const targetNumber of targetWhatsappRecipients) {
+        if (wasRecipientDelivered('whatsapp', targetNumber, successfulDispatches)) {
+          continue
+        }
         try {
           const responsePayload = await sendWhatsAppViaProxy(
             supabaseUrl,
@@ -614,7 +646,7 @@ async function processEvent(
             targetNumber,
             text,
           )
-          sentCount += 1
+          markRecipientDelivered('whatsapp', targetNumber, successfulDispatches)
           await logDispatch(supabase, event, 'whatsapp', targetNumber, 'success', responsePayload, null)
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
@@ -626,10 +658,13 @@ async function processEvent(
   }
 
   if (routing.emailEnabled) {
-    if (routing.emailRecipients.length === 0) {
+    if (targetEmailRecipients.length === 0) {
       skippedChannels.push('email')
     }
-    for (const recipient of routing.emailRecipients) {
+    for (const recipient of targetEmailRecipients) {
+      if (wasRecipientDelivered('email', recipient, successfulDispatches)) {
+        continue
+      }
       try {
         const responsePayload = await sendEmailViaResend(
           recipient,
@@ -639,7 +674,7 @@ async function processEvent(
           settings.email_reply_to,
           emailContent.html,
         )
-        sentCount += 1
+        markRecipientDelivered('email', recipient, successfulDispatches)
         await logDispatch(supabase, event, 'email', recipient, 'success', responsePayload, null)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -649,7 +684,11 @@ async function processEvent(
     }
   }
 
-  if (sentCount === 0 && failures.length === 0) {
+  const deliveredWhatsappCount = countDeliveredRecipients('whatsapp', targetWhatsappRecipients, successfulDispatches)
+  const deliveredEmailCount = countDeliveredRecipients('email', targetEmailRecipients, successfulDispatches)
+  const deliveredTargets = deliveredWhatsappCount + deliveredEmailCount
+
+  if (totalTargets === 0 && failures.length === 0) {
     const canceledReason = skippedChannels.length > 0
       ? `no_channel_recipients:${skippedChannels.join(',')}`
       : 'no_dispatch_target'
@@ -666,7 +705,7 @@ async function processEvent(
     return
   }
 
-  if (sentCount > 0 && failures.length === 0) {
+  if (deliveredTargets === totalTargets && totalTargets > 0 && failures.length === 0) {
     await supabase
       .from('notification_events')
       .update({

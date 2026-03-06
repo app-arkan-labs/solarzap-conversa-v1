@@ -268,6 +268,7 @@ export function NotificationsPanel({
                 size="icon"
                 className={cn('h-8 w-8', showConfig && 'bg-primary/10 text-primary')}
                 onClick={() => setShowConfig(!showConfig)}
+                data-testid="notifications-open-settings"
                 title="Configurações de Notificações"
               >
                 <Settings2 className="h-4 w-4" />

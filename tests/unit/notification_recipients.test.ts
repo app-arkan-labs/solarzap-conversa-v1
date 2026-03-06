@@ -34,6 +34,11 @@ describe('notificationRecipients routing', () => {
     expect(recipients).toEqual(['5511999990000', '11977771111'])
   })
 
+  it('ignora valores invalidos de whatsapp quando nao for array', () => {
+    expect(normalizeWhatsappRecipients('5511999990000')).toEqual([])
+    expect(normalizeWhatsappRecipients(null)).toEqual([])
+  })
+
   it('normaliza e deduplica destinatarios de email', () => {
     const recipients = normalizeEmailRecipients([
       'Ops@Cliente.com ',
@@ -43,6 +48,11 @@ describe('notificationRecipients routing', () => {
     ])
 
     expect(recipients).toEqual(['ops@cliente.com', 'financeiro@cliente.com'])
+  })
+
+  it('ignora valores invalidos de email quando nao for array', () => {
+    expect(normalizeEmailRecipients('ops@cliente.com')).toEqual([])
+    expect(normalizeEmailRecipients(undefined)).toEqual([])
   })
 
   it('retorna somente destinatarios dos canais habilitados', () => {

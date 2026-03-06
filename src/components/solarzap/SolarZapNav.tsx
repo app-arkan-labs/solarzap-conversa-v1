@@ -98,6 +98,7 @@ export function SolarZapNav({
       <div className="mt-auto mb-2">
         <button
           onClick={onNotificationsClick}
+          data-testid="nav-notifications-trigger"
           className={cn(
             'w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 relative group',
             'hover:bg-primary/10 text-whatsapp-gray hover:text-primary'
