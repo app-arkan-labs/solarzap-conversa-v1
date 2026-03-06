@@ -97,7 +97,7 @@ export function IntegrationsView() {
       return;
     }
 
-    toast.error('InstÃ¢ncia criada, mas nenhum QR Code foi retornado. Tente atualizar o QR.');
+    toast.error('Instância criada, mas nenhum QR Code foi retornado. Tente atualizar o QR.');
   };
 
   const handleRefreshQR = async (instanceName: string) => {
@@ -107,7 +107,7 @@ export function IntegrationsView() {
       return;
     }
 
-    toast.error('NÃ£o foi possÃ­vel obter o QR Code desta instÃ¢ncia.');
+    toast.error('Não foi possível obter o QR Code desta instância.');
   };
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

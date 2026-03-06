@@ -126,7 +126,7 @@ export function WhatsAppInstancesManager() {
     }
 
     if (result?.instance && !result.qrCode) {
-      toast.error('InstÃ¢ncia criada, mas QR Code nÃ£o foi retornado. Tente reconectar para gerar um novo QR.');
+      toast.error('Instância criada, mas QR Code não foi retornado. Tente reconectar para gerar um novo QR.');
     }
   };
 

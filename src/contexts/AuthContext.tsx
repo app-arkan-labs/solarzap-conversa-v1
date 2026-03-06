@@ -782,9 +782,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         const { data, error } = await supabase
-          .from('organizations')
-          .select('status, suspension_reason')
-          .eq('id', orgId)
+          .rpc('get_org_status', { p_org_id: orgId })
           .maybeSingle();
 
         if (!mounted) return;

@@ -1,5 +1,5 @@
 ﻿/**
- * SolarZap â€” HTML Email Templates
+ * SolarZap - HTML Email Templates
  *
  * Shared module used by notification-worker and ai-digest-worker.
  * All templates use inline CSS for maximum email-client compatibility
@@ -9,7 +9,7 @@
  *  Primary  #16a34a (green-600)
  *  Dark     #14532d (green-950)
  *  Light BG #f0fdf4 (green-50)
- *  Accent   #eab308 (yellow-500) â€” for highlights
+ *  Accent   #eab308 (yellow-500) - for highlights
  */
 
 import {
@@ -20,7 +20,7 @@ import {
   getDigestTitle,
 } from './digestContract.ts'
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* -------- helpers -------- */
 
 function esc(val: unknown): string {
   return String(val ?? '')
@@ -37,7 +37,7 @@ function formatDateTimeBR(value: unknown): string {
   return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ base layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* -------- base layout -------- */
 
 function baseLayout(opts: {
   iconEmoji: string
@@ -109,7 +109,7 @@ function baseLayout(opts: {
     ${opts.footerExtra || ''}
     <p style="margin:0;font-size:11px;color:#a1a1aa;line-height:1.5;text-align:center;">
       Enviado por <strong style="color:#71717a;">${esc(brand)}</strong> via SolarZap CRM<br>
-      &copy; ${year} - Voce recebe este e-mail porque esta cadastrado como destinatario de notificacoes.
+      &copy; ${year} - Você recebe este e-mail porque está cadastrado como destinatário de notificações.
     </p>
   </td></tr>
 
@@ -124,7 +124,7 @@ function baseLayout(opts: {
 </html>`
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ info row helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* -------- info row helper -------- */
 
 function infoRow(label: string, value: string, color = '#18181b'): string {
   if (!value) return ''
@@ -139,19 +139,19 @@ function infoTable(rows: string): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ badge helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* -------- badge helper -------- */
 
 function badge(text: string, bg: string, fg: string): string {
   return `<span style="display:inline-block;padding:3px 10px;border-radius:20px;background-color:${bg};color:${fg};font-size:11px;font-weight:700;letter-spacing:0.3px;text-transform:uppercase;">${esc(text)}</span>`
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ stage pill â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* -------- stage pill -------- */
 
 function stagePill(stage: string, color: string): string {
   return `<span style="display:inline-block;padding:4px 12px;border-radius:8px;background-color:${color}15;color:${color};font-size:13px;font-weight:600;border:1px solid ${color}30;">${esc(stage)}</span>`
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• TEMPLATES â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* =============================== TEMPLATES =============================== */
 
 export interface TemplateContext {
   senderName?: string | null
@@ -181,45 +181,45 @@ function roleLabel(role?: 'owner' | 'admin' | 'user' | 'consultant' | string): s
   const normalized = String(role || '').trim().toLowerCase()
   switch (normalized) {
     case 'owner':
-      return 'ProprietÃ¡rio'
+      return 'Proprietário'
     case 'admin':
       return 'Administrador'
     case 'consultant':
       return 'Consultor'
     case 'user':
-      return 'UsuÃ¡rio'
+      return 'Usuário'
     default:
-      return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : 'UsuÃ¡rio'
+      return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : 'Usuário'
   }
 }
 
-/* â”€â”€ 1. NOVO LEAD â”€â”€ */
+/* -- 1. NOVO LEAD -- */
 
 export function novoLeadEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
-  const subject = `ðŸŸ¢ Novo lead: ${ctx.leadName}`
+  const subject = `🟢 Novo lead: ${ctx.leadName}`
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
-      Um novo lead acaba de entrar no seu CRM. Confira os detalhes e dÃª o primeiro retorno o mais rÃ¡pido possÃ­vel.
+      Um novo lead acaba de entrar no seu CRM. Confira os detalhes e dê o primeiro retorno o mais rápido possível.
     </p>
     ${infoTable(
       infoRow('Nome', ctx.leadName) +
-      infoRow('Telefone', ctx.leadPhone || 'NÃ£o informado') +
+      infoRow('Telefone', ctx.leadPhone || 'Não informado') +
       infoRow('Status', 'Novo lead')
     )}
     <div style="margin-top:20px;padding:14px 16px;border-radius:10px;background-color:#f0fdf4;border:1px solid #bbf7d0;">
       <p style="margin:0;font-size:13px;color:#166534;line-height:1.5;">
-        <strong>ðŸ’¡ Dica:</strong> Leads respondem atÃ© 7x mais quando contatados nos primeiros 5 minutos.
+        <strong>💡 Dica:</strong> Leads respondem até 7x mais quando contatados nos primeiros 5 minutos.
       </p>
     </div>`
 
   return {
     subject,
     html: baseLayout({
-      iconEmoji: 'ðŸ‘¤',
+      iconEmoji: '👤',
       iconBg: '#dcfce7',
       title: 'Novo Lead no CRM',
-      subtitle: `${ctx.leadName}${ctx.leadPhone ? ` â€¢ ${ctx.leadPhone}` : ''}`,
+      subtitle: `${ctx.leadName}${ctx.leadPhone ? ` • ${ctx.leadPhone}` : ''}`,
       bodyHtml,
       senderName: ctx.senderName,
     }),
@@ -227,35 +227,35 @@ export function novoLeadEmail(ctx: TemplateContext): { subject: string; html: st
   }
 }
 
-/* â”€â”€ 2. VISITA AGENDADA â”€â”€ */
+/* -- 2. VISITA AGENDADA -- */
 
 export function visitaAgendadaEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const dateStr = ctx.startAt ? formatDateTimeBR(ctx.startAt) : ''
-  const subject = `ðŸ“… Visita agendada: ${ctx.leadName}`
+  const subject = `📅 Visita agendada: ${ctx.leadName}`
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
-      Uma nova visita tÃ©cnica foi agendada. Certifique-se de que tudo esteja preparado para a data.
+      Uma nova visita técnica foi agendada. Certifique-se de que tudo esteja preparado para a data.
     </p>
     ${infoTable(
       infoRow('Lead', ctx.leadName) +
       infoRow('Telefone', ctx.leadPhone || '') +
       infoRow('Data/Hora', dateStr || 'A definir') +
-      infoRow('TÃ­tulo', ctx.title || '')
+      infoRow('Título', ctx.title || '')
     )}
     <div style="margin-top:20px;padding:14px 16px;border-radius:10px;background-color:#eff6ff;border:1px solid #bfdbfe;">
       <p style="margin:0;font-size:13px;color:#1e40af;line-height:1.5;">
-        <strong>ðŸ“‹ Checklist:</strong> Confirme endereÃ§o, documentos do cliente e ferramentas necessÃ¡rias antes da visita.
+        <strong>📋 Checklist:</strong> Confirme endereço, documentos do cliente e ferramentas necessárias antes da visita.
       </p>
     </div>`
 
   return {
     subject,
     html: baseLayout({
-      iconEmoji: 'ðŸ“…',
+      iconEmoji: '📅',
       iconBg: '#dbeafe',
       title: 'Visita Agendada',
-      subtitle: `${ctx.leadName}${dateStr ? ` â€¢ ${dateStr}` : ''}`,
+      subtitle: `${ctx.leadName}${dateStr ? ` • ${dateStr}` : ''}`,
       bodyHtml,
       senderName: ctx.senderName,
     }),
@@ -263,31 +263,31 @@ export function visitaAgendadaEmail(ctx: TemplateContext): { subject: string; ht
   }
 }
 
-/* â”€â”€ 3. VISITA REALIZADA â”€â”€ */
+/* -- 3. VISITA REALIZADA -- */
 
 export function visitaRealizadaEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
-  const subject = `âœ… Visita realizada: ${ctx.leadName}`
+  const subject = `✅ Visita realizada: ${ctx.leadName}`
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
-      A visita tÃ©cnica foi concluÃ­da com sucesso. Hora de registrar o resultado e avanÃ§ar com a proposta.
+      A visita técnica foi concluída com sucesso. Hora de registrar o resultado e avançar com a proposta.
     </p>
     ${infoTable(
       infoRow('Lead', ctx.leadName) +
       infoRow('Telefone', ctx.leadPhone || '') +
-      infoRow('TÃ­tulo', ctx.title || '') +
+      infoRow('Título', ctx.title || '') +
       infoRow('Status', 'Realizada')
     )}
     <div style="margin-top:20px;padding:14px 16px;border-radius:10px;background-color:#f0fdf4;border:1px solid #bbf7d0;">
       <p style="margin:0;font-size:13px;color:#166534;line-height:1.5;">
-        <strong>ðŸš€ PrÃ³ximo passo:</strong> Registre o resultado da visita e envie a proposta comercial.
+        <strong>🚀 Próximo passo:</strong> Registre o resultado da visita e envie a proposta comercial.
       </p>
     </div>`
 
   return {
     subject,
     html: baseLayout({
-      iconEmoji: 'âœ…',
+      iconEmoji: '✅',
       iconBg: '#dcfce7',
       title: 'Visita Realizada',
       subtitle: ctx.leadName,
@@ -298,35 +298,35 @@ export function visitaRealizadaEmail(ctx: TemplateContext): { subject: string; h
   }
 }
 
-/* â”€â”€ 4. CHAMADA AGENDADA â”€â”€ */
+/* -- 4. CHAMADA AGENDADA -- */
 
 export function chamadaAgendadaEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const dateStr = ctx.startAt ? formatDateTimeBR(ctx.startAt) : ''
-  const subject = `ðŸ“ž Chamada agendada: ${ctx.leadName}`
+  const subject = `📞 Chamada agendada: ${ctx.leadName}`
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
-      Uma chamada foi agendada com o lead. Prepare seus argumentos e tenha os dados do cliente em mÃ£os.
+      Uma chamada foi agendada com o lead. Prepare seus argumentos e tenha os dados do cliente em mãos.
     </p>
     ${infoTable(
       infoRow('Lead', ctx.leadName) +
       infoRow('Telefone', ctx.leadPhone || '') +
       infoRow('Data/Hora', dateStr || 'A definir') +
-      infoRow('TÃ­tulo', ctx.title || '')
+      infoRow('Título', ctx.title || '')
     )}
     <div style="margin-top:20px;padding:14px 16px;border-radius:10px;background-color:#faf5ff;border:1px solid #e9d5ff;">
       <p style="margin:0;font-size:13px;color:#6b21a8;line-height:1.5;">
-        <strong>ðŸŽ¯ Dica:</strong> Revise o histÃ³rico de conversas antes da ligaÃ§Ã£o para personalizar o atendimento.
+        <strong>🎯 Dica:</strong> Revise o histórico de conversas antes da ligação para personalizar o atendimento.
       </p>
     </div>`
 
   return {
     subject,
     html: baseLayout({
-      iconEmoji: 'ðŸ“ž',
+      iconEmoji: '📞',
       iconBg: '#f3e8ff',
       title: 'Chamada Agendada',
-      subtitle: `${ctx.leadName}${dateStr ? ` â€¢ ${dateStr}` : ''}`,
+      subtitle: `${ctx.leadName}${dateStr ? ` • ${dateStr}` : ''}`,
       bodyHtml,
       senderName: ctx.senderName,
     }),
@@ -334,31 +334,31 @@ export function chamadaAgendadaEmail(ctx: TemplateContext): { subject: string; h
   }
 }
 
-/* â”€â”€ 5. CHAMADA REALIZADA â”€â”€ */
+/* -- 5. CHAMADA REALIZADA -- */
 
 export function chamadaRealizadaEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
-  const subject = `âœ… Chamada realizada: ${ctx.leadName}`
+  const subject = `✅ Chamada realizada: ${ctx.leadName}`
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
-      A chamada com o lead foi concluÃ­da. Registre as informaÃ§Ãµes obtidas e defina os prÃ³ximos passos.
+      A chamada com o lead foi concluída. Registre as informações obtidas e defina os próximos passos.
     </p>
     ${infoTable(
       infoRow('Lead', ctx.leadName) +
       infoRow('Telefone', ctx.leadPhone || '') +
-      infoRow('TÃ­tulo', ctx.title || '') +
+      infoRow('Título', ctx.title || '') +
       infoRow('Status', 'Realizada')
     )}
     <div style="margin-top:20px;padding:14px 16px;border-radius:10px;background-color:#f0fdf4;border:1px solid #bbf7d0;">
       <p style="margin:0;font-size:13px;color:#166534;line-height:1.5;">
-        <strong>ðŸ“ Lembrete:</strong> Atualize o status do lead no pipeline e registre o resultado da chamada.
+        <strong>📝 Lembrete:</strong> Atualize o status do lead no pipeline e registre o resultado da chamada.
       </p>
     </div>`
 
   return {
     subject,
     html: baseLayout({
-      iconEmoji: 'âœ…',
+      iconEmoji: '✅',
       iconBg: '#dcfce7',
       title: 'Chamada Realizada',
       subtitle: ctx.leadName,
@@ -369,40 +369,40 @@ export function chamadaRealizadaEmail(ctx: TemplateContext): { subject: string; 
   }
 }
 
-/* â”€â”€ 6. MUDANÃ‡A DE ETAPA (STAGE CHANGED) â”€â”€ */
+/* -- 6. MUDANÇA DE ETAPA (STAGE CHANGED) -- */
 
 export function stageChangedEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const from = ctx.fromStage || 'origem'
   const to = ctx.toStage || 'destino'
-  const subject = `ðŸ”„ Pipeline: ${ctx.leadName} â†’ ${to}`
+  const subject = `🔄 Pipeline: ${ctx.leadName} → ${to}`
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
-      O lead avanÃ§ou no pipeline. Acompanhe a movimentaÃ§Ã£o e ajuste a estratÃ©gia comercial conforme a nova etapa.
+      O lead avançou no pipeline. Acompanhe a movimentação e ajuste a estratégia comercial conforme a nova etapa.
     </p>
     ${infoTable(infoRow('Lead', ctx.leadName) + infoRow('Telefone', ctx.leadPhone || ''))}
     <div style="margin-top:16px;text-align:center;">
       <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
         <tr>
           <td>${stagePill(from, '#71717a')}</td>
-          <td style="padding:0 12px;font-size:18px;color:#a1a1aa;">â†’</td>
+          <td style="padding:0 12px;font-size:18px;color:#a1a1aa;">→</td>
           <td>${stagePill(to, '#16a34a')}</td>
         </tr>
       </table>
     </div>
     <div style="margin-top:20px;padding:14px 16px;border-radius:10px;background-color:#eff6ff;border:1px solid #bfdbfe;">
       <p style="margin:0;font-size:13px;color:#1e40af;line-height:1.5;">
-        <strong>ðŸ“Š AÃ§Ã£o:</strong> Verifique se hÃ¡ tarefas pendentes para a etapa <strong>${esc(to)}</strong>.
+        <strong>📊 Ação:</strong> Verifique se há tarefas pendentes para a etapa <strong>${esc(to)}</strong>.
       </p>
     </div>`
 
   return {
     subject,
     html: baseLayout({
-      iconEmoji: 'ðŸ”„',
+      iconEmoji: '🔄',
       iconBg: '#dbeafe',
-      title: 'MudanÃ§a de Etapa',
-      subtitle: `${ctx.leadName} â€” ${from} â†’ ${to}`,
+      title: 'Mudança de Etapa',
+      subtitle: `${ctx.leadName} — ${from} → ${to}`,
       bodyHtml,
       senderName: ctx.senderName,
     }),
@@ -412,13 +412,13 @@ export function stageChangedEmail(ctx: TemplateContext): { subject: string; html
 
 export function installmentDueCheckEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const installmentLabel = ctx.installmentNo ? `Parcela #${ctx.installmentNo}` : 'Parcela'
-  const dueLabel = ctx.dueOn ? formatDateTimeBR(ctx.dueOn) : 'Data nao informada'
-  const amountLabel = ctx.amount || 'Valor nao informado'
+  const dueLabel = ctx.dueOn ? formatDateTimeBR(ctx.dueOn) : 'Data não informada'
+  const amountLabel = ctx.amount || 'Valor não informado'
   const subject = `Parcela pendente: ${ctx.leadName}`
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
-      Uma parcela venceu e esta aguardando confirmacao de pagamento no CRM.
+      Uma parcela venceu e está aguardando confirmação de pagamento no CRM.
     </p>
     ${infoTable(
       infoRow('Lead', ctx.leadName) +
@@ -429,7 +429,7 @@ export function installmentDueCheckEmail(ctx: TemplateContext): { subject: strin
     )}
     <div style="margin-top:20px;padding:14px 16px;border-radius:10px;background-color:#fefce8;border:1px solid #fde68a;">
       <p style="margin:0;font-size:13px;color:#854d0e;line-height:1.5;">
-        <strong>Acao requerida:</strong> confirme pagamento ou reagende a cobranca no CRM com nova data.
+        <strong>Ação requerida:</strong> confirme pagamento ou reagende a cobrança no CRM com nova data.
       </p>
     </div>`
 
@@ -438,7 +438,7 @@ export function installmentDueCheckEmail(ctx: TemplateContext): { subject: strin
     html: baseLayout({
       iconEmoji: '💸',
       iconBg: '#fef9c3',
-      title: 'Parcela Pendente de Confirmacao',
+      title: 'Parcela Pendente de Confirmação',
       subtitle: `${ctx.leadName} • ${installmentLabel}`,
       bodyHtml,
       senderName: ctx.senderName,
@@ -447,40 +447,40 @@ export function installmentDueCheckEmail(ctx: TemplateContext): { subject: strin
   }
 }
 
-/* â”€â”€ 7. FINANCIAMENTO UPDATE â”€â”€ */
+/* -- 7. FINANCIAMENTO UPDATE -- */
 
 export function financiamentoUpdateEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const from = ctx.fromStage || 'origem'
   const to = ctx.toStage || 'financiamento'
-  const subject = `ðŸ¦ Financiamento: ${ctx.leadName}`
+  const subject = `🏦 Financiamento: ${ctx.leadName}`
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
-      Houve uma atualizaÃ§Ã£o no processo de financiamento deste lead. Acompanhe o andamento junto Ã  instituiÃ§Ã£o financeira.
+      Houve uma atualização no processo de financiamento deste lead. Acompanhe o andamento junto à instituição financeira.
     </p>
     ${infoTable(infoRow('Lead', ctx.leadName) + infoRow('Telefone', ctx.leadPhone || ''))}
     <div style="margin-top:16px;text-align:center;">
       <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
         <tr>
           <td>${stagePill(from, '#71717a')}</td>
-          <td style="padding:0 12px;font-size:18px;color:#a1a1aa;">â†’</td>
+          <td style="padding:0 12px;font-size:18px;color:#a1a1aa;">→</td>
           <td>${stagePill(to, '#eab308')}</td>
         </tr>
       </table>
     </div>
     <div style="margin-top:20px;padding:14px 16px;border-radius:10px;background-color:#fefce8;border:1px solid #fde68a;">
       <p style="margin:0;font-size:13px;color:#854d0e;line-height:1.5;">
-        <strong>ðŸ¦ AtenÃ§Ã£o:</strong> Verifique documentaÃ§Ã£o pendente e prazos de aprovaÃ§Ã£o do financiamento.
+        <strong>🏦 Atenção:</strong> Verifique documentação pendente e prazos de aprovação do financiamento.
       </p>
     </div>`
 
   return {
     subject,
     html: baseLayout({
-      iconEmoji: 'ðŸ¦',
+      iconEmoji: '🏦',
       iconBg: '#fef9c3',
-      title: 'AtualizaÃ§Ã£o de Financiamento',
-      subtitle: `${ctx.leadName} â€” ${from} â†’ ${to}`,
+      title: 'Atualização de Financiamento',
+      subtitle: `${ctx.leadName} — ${from} → ${to}`,
       bodyHtml,
       senderName: ctx.senderName,
     }),
@@ -488,7 +488,7 @@ export function financiamentoUpdateEmail(ctx: TemplateContext): { subject: strin
   }
 }
 
-/* â”€â”€ 8. DIGEST (DAILY / WEEKLY) â”€â”€ */
+/* -- 8. DIGEST (DAILY / WEEKLY) -- */
 
 export interface DigestLeadSummary {
   leadName: string
@@ -572,7 +572,7 @@ export function digestEmail(opts: {
   return {
     subject,
     html: baseLayout({
-      iconEmoji: isWeekly ? 'ðŸ“ˆ' : 'ðŸ“Š',
+      iconEmoji: isWeekly ? '📈' : '📊',
       iconBg: isWeekly ? '#ede9fe' : '#dbeafe',
       title: titleText,
       subtitle: `${opts.leads.length} lead${opts.leads.length !== 1 ? 's' : ''} ${subtitleSuffix} - ${opts.dateBucket}`,
@@ -583,11 +583,11 @@ export function digestEmail(opts: {
   }
 }
 
-/* â”€â”€ SYSTEM AUTH: CONVITE DE ACESSO â”€â”€ */
+/* -- SYSTEM AUTH: CONVITE DE ACESSO -- */
 
 export function systemInviteEmail(ctx: SystemAccessTemplateContext): { subject: string; html: string; text: string } {
   const subject = '\uD83D\uDD10 Convite de acesso \u2014 SolarZap'
-  const org = ctx.orgName || 'Sua organizaÃ§Ã£o'
+  const org = ctx.orgName || 'Sua organização'
   const role = roleLabel(ctx.role)
   const accessLink = ctx.inviteLink || ctx.resetLink || ctx.loginUrl || ''
 
@@ -598,20 +598,20 @@ export function systemInviteEmail(ctx: SystemAccessTemplateContext): { subject: 
     </div>`
     : ''
 
-  const fallbackTitle = 'Se o botÃ£o nÃ£o funcionar, copie e cole o link abaixo no navegador:'
+  const fallbackTitle = 'Se o botão não funcionar, copie e cole o link abaixo no navegador:'
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
-      VocÃª recebeu um convite para acessar o <strong>SolarZap</strong>.
+      Você recebeu um convite para acessar o <strong>SolarZap</strong>.
     </p>
     ${infoTable(
-      infoRow('OrganizaÃ§Ã£o', org) +
+      infoRow('Organização', org) +
       infoRow('Perfil', role) +
-      infoRow('E-mail', ctx.recipientEmail || 'NÃ£o informado')
+      infoRow('E-mail', ctx.recipientEmail || 'Não informado')
     )}
     ${ctaHtml}
     <p style="margin:14px 0 0;font-size:12px;color:#71717a;line-height:1.5;">
-      Ao clicar em <strong>Acessar SolarZap</strong>, vocÃª irÃ¡ definir ou redefinir sua senha para concluir o acesso.
+      Ao clicar em <strong>Acessar SolarZap</strong>, você irá definir ou redefinir sua senha para concluir o acesso.
     </p>
     <p style="margin:18px 0 0;font-size:12px;color:#71717a;line-height:1.5;">
       ${fallbackTitle}<br>
@@ -619,13 +619,13 @@ export function systemInviteEmail(ctx: SystemAccessTemplateContext): { subject: 
     </p>`
 
   const textLines = [
-    'Convite de acesso â€” SolarZap',
-    `OrganizaÃ§Ã£o: ${org}`,
+    'Convite de acesso — SolarZap',
+    `Organização: ${org}`,
     `Perfil: ${role}`,
-    `E-mail: ${ctx.recipientEmail || 'NÃ£o informado'}`,
+    `E-mail: ${ctx.recipientEmail || 'Não informado'}`,
     '',
     'Use o link abaixo para definir/redefinir sua senha e concluir o acesso:',
-    accessLink || '(link nÃ£o informado)',
+    accessLink || '(link não informado)',
   ]
 
   return {
@@ -634,7 +634,7 @@ export function systemInviteEmail(ctx: SystemAccessTemplateContext): { subject: 
       iconEmoji: '\uD83D\uDD10',
       iconBg: '#dcfce7',
       title: 'Convite de Acesso',
-      subtitle: `${org} â€¢ ${role}`,
+      subtitle: `${org} • ${role}`,
       bodyHtml,
       senderName: ctx.senderName,
     }),
@@ -644,14 +644,14 @@ export function systemInviteEmail(ctx: SystemAccessTemplateContext): { subject: 
 
 export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { subject: string; html: string; text: string } {
   const subject = '\u2705 Conta criada \u2014 acesso ao SolarZap'
-  const org = ctx.orgName || 'Sua organizaÃ§Ã£o'
+  const org = ctx.orgName || 'Sua organização'
   const role = roleLabel(ctx.role)
   const actionUrl = ctx.resetLink || ctx.loginUrl || ''
 
   const passwordHtml = ctx.tempPassword
     ? `
     <div style="margin-top:16px;padding:12px 14px;border-radius:10px;background-color:#fefce8;border:1px solid #fde68a;">
-      <p style="margin:0 0 6px;font-size:12px;color:#854d0e;font-weight:700;">Senha temporÃ¡ria</p>
+      <p style="margin:0 0 6px;font-size:12px;color:#854d0e;font-weight:700;">Senha temporária</p>
       <p style="margin:0;font-size:16px;color:#18181b;font-weight:700;letter-spacing:0.2px;">${esc(ctx.tempPassword)}</p>
     </div>`
     : ''
@@ -660,7 +660,7 @@ export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { s
     ? `
     <div style="margin-top:16px;padding:12px 14px;border-radius:10px;background-color:#eff6ff;border:1px solid #bfdbfe;">
       <p style="margin:0;font-size:13px;color:#1d4ed8;line-height:1.5;">
-        Sua conta jÃ¡ existia. Use o botÃ£o abaixo para definir/redefinir sua senha antes do primeiro acesso nesta organizaÃ§Ã£o.
+        Sua conta já existia. Use o botão abaixo para definir/redefinir sua senha antes do primeiro acesso nesta organização.
       </p>
     </div>`
     : ''
@@ -677,35 +677,35 @@ export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { s
       Sua conta foi criada com sucesso para acesso ao <strong>SolarZap</strong>.
     </p>
     ${infoTable(
-      infoRow('OrganizaÃ§Ã£o', org) +
+      infoRow('Organização', org) +
       infoRow('Perfil', role) +
-      infoRow('E-mail', ctx.recipientEmail || 'NÃ£o informado')
+      infoRow('E-mail', ctx.recipientEmail || 'Não informado')
     )}
     ${passwordHtml}
     ${resetHintHtml}
     ${actionCtaHtml}
     <div style="margin-top:16px;padding:14px 16px;border-radius:10px;background-color:#fef2f2;border:1px solid #fecaca;">
       <p style="margin:0;font-size:13px;color:#991b1b;line-height:1.5;">
-        <strong>SeguranÃ§a:</strong> altere sua senha imediatamente apÃ³s o primeiro acesso.
+        <strong>Segurança:</strong> altere sua senha imediatamente após o primeiro acesso.
       </p>
     </div>
     <p style="margin:14px 0 0;font-size:12px;color:#71717a;line-height:1.5;">
-      Se o botÃ£o nÃ£o funcionar, use este link:<br>
+      Se o botão não funcionar, use este link:<br>
       <span style="word-break:break-all;color:#3f3f46;">${esc(actionUrl)}</span>
     </p>`
 
   const textLines = [
-    'Conta criada â€” acesso ao SolarZap',
-    `OrganizaÃ§Ã£o: ${org}`,
+    'Conta criada — acesso ao SolarZap',
+    `Organização: ${org}`,
     `Perfil: ${role}`,
-    `E-mail: ${ctx.recipientEmail || 'NÃ£o informado'}`,
-    ...(ctx.tempPassword ? [`Senha temporÃ¡ria: ${ctx.tempPassword}`] : []),
+    `E-mail: ${ctx.recipientEmail || 'Não informado'}`,
+    ...(ctx.tempPassword ? [`Senha temporária: ${ctx.tempPassword}`] : []),
     ...(!ctx.tempPassword && ctx.resetLink ? ['Defina/redefina sua senha pelo link enviado abaixo.'] : []),
     '',
     ctx.resetLink ? 'Defina/redefina sua senha:' : 'Acesse o sistema:',
-    actionUrl || '(link nÃ£o informado)',
+    actionUrl || '(link não informado)',
     '',
-    'SeguranÃ§a: altere sua senha imediatamente apÃ³s o primeiro acesso.',
+    'Segurança: altere sua senha imediatamente após o primeiro acesso.',
   ]
 
   return {
@@ -714,7 +714,7 @@ export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { s
       iconEmoji: '\u2705',
       iconBg: '#dcfce7',
       title: 'Conta Criada',
-      subtitle: `${org} â€¢ ${role}`,
+      subtitle: `${org} • ${role}`,
       bodyHtml,
       senderName: ctx.senderName,
     }),
@@ -723,11 +723,11 @@ export function systemAccountCreatedEmail(ctx: SystemAccessTemplateContext): { s
 }
 
 export function defaultEventEmail(ctx: TemplateContext & { eventType: string }): { subject: string; html: string; text: string } {
-  const subject = `ðŸ”” NotificaÃ§Ã£o: ${ctx.leadName}`
+  const subject = `🔔 Notificação: ${ctx.leadName}`
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
-      Uma nova notificaÃ§Ã£o foi gerada para o lead abaixo.
+      Uma nova notificação foi gerada para o lead abaixo.
     </p>
     ${infoTable(
       infoRow('Lead', ctx.leadName) +
@@ -738,9 +738,9 @@ export function defaultEventEmail(ctx: TemplateContext & { eventType: string }):
   return {
     subject,
     html: baseLayout({
-      iconEmoji: 'ðŸ””',
+      iconEmoji: '🔔',
       iconBg: '#fef3c7',
-      title: 'NotificaÃ§Ã£o CRM',
+      title: 'Notificação CRM',
       subtitle: ctx.leadName,
       bodyHtml,
       senderName: ctx.senderName,
@@ -749,7 +749,7 @@ export function defaultEventEmail(ctx: TemplateContext & { eventType: string }):
   }
 }
 
-/* â”€â”€ ROUTER â€” maps event_type to template â”€â”€ */
+/* -- ROUTER - maps event_type to template -- */
 
 export function buildEmailContent(
   eventType: string,

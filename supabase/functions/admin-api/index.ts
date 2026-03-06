@@ -33,6 +33,9 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   list_feature_flags: { minRole: 'read_only', requireMfa: true },
   create_feature_flag: { minRole: 'ops', requireMfa: true },
   set_org_feature: { minRole: 'ops', requireMfa: true },
+  delete_org: { minRole: 'super_admin', requireMfa: true },
+  list_subscription_plans: { minRole: 'read_only', requireMfa: true },
+  get_financial_summary: { minRole: 'billing', requireMfa: true },
 };
 
 const UUID_REGEX =
@@ -125,8 +128,50 @@ function corsForOrigin(origin: string): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-admin-authorization, x-client-info, apikey, content-type',
   };
+}
+
+function parseAllowedOrigins(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function tryParseOrigin(value: string): URL | null {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
+}
+
+function resolveAllowedOrigin(req: Request, allowed: string[]): string | null {
+  const requestOrigin = (req.headers.get('origin') || '').trim();
+  if (!requestOrigin) {
+    return allowed[0] ?? null;
+  }
+  if (allowed.includes(requestOrigin)) {
+    return requestOrigin;
+  }
+
+  const requestUrl = tryParseOrigin(requestOrigin);
+  if (!requestUrl || !isLoopbackHost(requestUrl.hostname)) {
+    return null;
+  }
+
+  const hasLoopbackAllowedOrigin = allowed.some((candidate) => {
+    const candidateUrl = tryParseOrigin(candidate);
+    if (!candidateUrl) return false;
+    return candidateUrl.protocol === requestUrl.protocol && isLoopbackHost(candidateUrl.hostname);
+  });
+
+  return hasLoopbackAllowedOrigin ? requestOrigin : null;
 }
 
 function toErrorCode(error: unknown, fallback = 'internal_error'): string {
@@ -141,6 +186,41 @@ function toErrorStatus(error: unknown, fallback = 500): number {
     return error.status;
   }
   return fallback;
+}
+
+function logAccessDecision(
+  level: 'info' | 'warn' | 'error',
+  details: {
+    action?: string | null;
+    origin?: string | null;
+    aal?: string | null;
+    resolved_user_id?: string | null;
+    decision_code: string;
+    request_id: string;
+    status?: number;
+    error?: unknown;
+  },
+) {
+  const payload = {
+    action: details.action ?? null,
+    origin: details.origin ?? null,
+    aal: details.aal ?? null,
+    resolved_user_id: details.resolved_user_id ?? null,
+    decision_code: details.decision_code,
+    request_id: details.request_id,
+    status: details.status ?? null,
+    error: details.error,
+  };
+
+  if (level === 'error') {
+    console.error('[admin-api] access_decision', payload);
+    return;
+  }
+  if (level === 'warn') {
+    console.warn('[admin-api] access_decision', payload);
+    return;
+  }
+  console.info('[admin-api] access_decision', payload);
 }
 
 async function enforcePolicy(
@@ -919,6 +999,204 @@ async function handleSetOrgFeature(
   };
 }
 
+async function handleDeleteOrg(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const orgId = payload.org_id;
+  if (!isUuid(orgId)) throw { status: 400, code: 'invalid_org_id' };
+
+  const reason = toReason(payload.reason);
+  if (!reason) throw { status: 400, code: 'reason_required' };
+
+  const confirmation = toTrimmedString(payload.confirmation);
+  if (confirmation !== 'EXCLUIR') {
+    throw { status: 400, code: 'confirmation_required' };
+  }
+
+  // Fetch full org state for audit
+  const { data: orgBefore, error: orgError } = await adminClient
+    .from('organizations')
+    .select('*')
+    .eq('id', orgId)
+    .maybeSingle();
+  if (orgError) throw { status: 500, code: 'org_state_fetch_failed' };
+  if (!orgBefore) throw { status: 404, code: 'org_not_found' };
+
+  // Fetch members for audit snapshot
+  const { data: membersBefore } = await adminClient
+    .from('organization_members')
+    .select('user_id, role')
+    .eq('org_id', orgId);
+
+  // Fetch counts for audit
+  const [leadsCount, proposalsCount, instancesCount] = await Promise.all([
+    adminClient.from('leads').select('id', { count: 'exact', head: true }).eq('org_id', orgId),
+    adminClient.from('propostas').select('id', { count: 'exact', head: true }).eq('org_id', orgId),
+    adminClient.from('whatsapp_instances').select('id', { count: 'exact', head: true }).eq('org_id', orgId),
+  ]);
+
+  const snapshot = {
+    org: orgBefore,
+    members: membersBefore ?? [],
+    counts: {
+      leads: leadsCount.count ?? 0,
+      proposals: proposalsCount.count ?? 0,
+      instances: instancesCount.count ?? 0,
+    },
+  };
+
+  // Delete related data first (cascade should handle most, but be explicit)
+  await adminClient.from('_admin_org_feature_overrides').delete().eq('org_id', orgId);
+  await adminClient.from('whatsapp_instances').delete().eq('org_id', orgId);
+  await adminClient.from('propostas').delete().eq('org_id', orgId);
+  await adminClient.from('leads').delete().eq('org_id', orgId);
+  await adminClient.from('organization_members').delete().eq('org_id', orgId);
+
+  // Delete the organization itself
+  const { error: deleteError } = await adminClient
+    .from('organizations')
+    .delete()
+    .eq('id', orgId);
+  if (deleteError) throw { status: 500, code: 'delete_org_failed' };
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'delete_org',
+    {
+      target_type: 'organization',
+      target_id: orgId,
+      org_id: orgId,
+      before: snapshot,
+      after: null,
+      reason,
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    deleted_org_id: orgId,
+  };
+}
+
+async function handleListSubscriptionPlans(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  req: Request,
+) {
+  const { data: plans, error } = await adminClient
+    .from('_admin_subscription_plans')
+    .select('*')
+    .order('sort_order', { ascending: true });
+
+  if (error) throw { status: 500, code: 'list_plans_failed' };
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'list_subscription_plans',
+    {
+      target_type: 'read',
+      target_id: 'subscription_plans',
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    plans: plans ?? [],
+  };
+}
+
+async function handleGetFinancialSummary(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  req: Request,
+) {
+  // Get all orgs with plan info
+  const { data: orgs, error: orgsError } = await adminClient
+    .from('organizations')
+    .select('id, plan, status, created_at, plan_started_at');
+  if (orgsError) throw { status: 500, code: 'financial_orgs_query_failed' };
+
+  // Get plans for price lookup
+  const { data: plans, error: plansError } = await adminClient
+    .from('_admin_subscription_plans')
+    .select('plan_key, price_cents, display_name');
+  if (plansError) throw { status: 500, code: 'financial_plans_query_failed' };
+
+  const priceMap: Record<string, number> = {};
+  for (const plan of plans ?? []) {
+    priceMap[plan.plan_key] = plan.price_cents;
+  }
+
+  const allOrgs = orgs ?? [];
+  const activeOrgs = allOrgs.filter((o) => o.status === 'active');
+  const suspendedOrgs = allOrgs.filter((o) => o.status === 'suspended');
+  const churnedOrgs = allOrgs.filter((o) => o.status === 'churned');
+
+  // Distribution by plan
+  const planDistribution: Record<string, number> = {};
+  for (const org of activeOrgs) {
+    const plan = org.plan || 'free';
+    planDistribution[plan] = (planDistribution[plan] || 0) + 1;
+  }
+
+  // MRR calculated from active orgs
+  let mrrCents = 0;
+  for (const org of activeOrgs) {
+    const plan = org.plan || 'free';
+    mrrCents += priceMap[plan] ?? 0;
+  }
+
+  // Paying customers (non-free active)
+  const payingOrgs = activeOrgs.filter((o) => (o.plan || 'free') !== 'free');
+  const avgTicketCents = payingOrgs.length > 0
+    ? Math.round(mrrCents / payingOrgs.length)
+    : 0;
+
+  // Simple churn rate: churned / (active + churned) in the last 30 days
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const recentChurned = churnedOrgs.filter(
+    (o) => o.created_at && o.created_at >= thirtyDaysAgo,
+  ).length;
+  const churnRate = (activeOrgs.length + recentChurned) > 0
+    ? Number(((recentChurned / (activeOrgs.length + recentChurned)) * 100).toFixed(2))
+    : 0;
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'get_financial_summary',
+    {
+      target_type: 'read',
+      target_id: 'financial_summary',
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    summary: {
+      mrr_cents: mrrCents,
+      arr_cents: mrrCents * 12,
+      total_orgs: allOrgs.length,
+      active_orgs: activeOrgs.length,
+      suspended_orgs: suspendedOrgs.length,
+      churned_orgs: churnedOrgs.length,
+      paying_orgs: payingOrgs.length,
+      free_orgs: activeOrgs.length - payingOrgs.length,
+      avg_ticket_cents: avgTicketCents,
+      churn_rate_percent: churnRate,
+      plan_distribution: planDistribution,
+    },
+  };
+}
+
 async function dispatchAction(
   action: string,
   adminClient: ReturnType<typeof createClient>,
@@ -952,49 +1230,113 @@ async function dispatchAction(
       return await handleCreateFeatureFlag(adminClient, admin, payload, req);
     case 'set_org_feature':
       return await handleSetOrgFeature(adminClient, admin, payload, req);
+    case 'delete_org':
+      return await handleDeleteOrg(adminClient, admin, payload, req);
+    case 'list_subscription_plans':
+      return await handleListSubscriptionPlans(adminClient, admin, req);
+    case 'get_financial_summary':
+      return await handleGetFinancialSummary(adminClient, admin, req);
     default:
       throw { status: 403, code: 'action_not_allowed' };
   }
 }
 
 Deno.serve(async (req) => {
-  const allowedOrigin = (Deno.env.get('ALLOWED_ORIGIN') || '').trim();
-  if (!allowedOrigin) {
-    return json(500, { ok: false, code: 'missing_allowed_origin' });
+  const requestId = req.headers.get('x-request-id')?.trim() || crypto.randomUUID();
+  const requestOrigin = req.headers.get('origin')?.trim() || null;
+  const allowedOrigins = parseAllowedOrigins((Deno.env.get('ALLOWED_ORIGIN') || '').trim());
+  if (allowedOrigins.length === 0) {
+    logAccessDecision('error', {
+      origin: requestOrigin,
+      decision_code: 'missing_allowed_origin',
+      request_id: requestId,
+      status: 500,
+    });
+    return json(500, { ok: false, code: 'missing_allowed_origin' }, { 'x-admin-request-id': requestId });
   }
 
-  const corsHeaders = corsForOrigin(allowedOrigin);
+  const allowedOrigin = resolveAllowedOrigin(req, allowedOrigins);
+  const corsHeaders = corsForOrigin(allowedOrigin ?? allowedOrigins[0]);
+  const responseHeaders = {
+    ...corsHeaders,
+    'x-admin-request-id': requestId,
+  };
+
+  if (!allowedOrigin) {
+    logAccessDecision('warn', {
+      origin: requestOrigin,
+      decision_code: 'forbidden_origin',
+      request_id: requestId,
+      status: 403,
+    });
+    return json(403, { ok: false, code: 'forbidden_origin' }, responseHeaders);
+  }
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: responseHeaders });
   }
   if (req.method !== 'POST') {
-    return json(405, { ok: false, code: 'method_not_allowed' }, corsHeaders);
+    return json(405, { ok: false, code: 'method_not_allowed' }, responseHeaders);
   }
 
   const supabaseUrl = (Deno.env.get('SUPABASE_URL') || '').trim();
   const serviceRoleKey = (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
   if (!supabaseUrl || !serviceRoleKey) {
-    return json(500, { ok: false, code: 'missing_env' }, corsHeaders);
+    logAccessDecision('error', {
+      origin: requestOrigin,
+      decision_code: 'missing_env',
+      request_id: requestId,
+      status: 500,
+    });
+    return json(500, { ok: false, code: 'missing_env' }, responseHeaders);
   }
-
-  const authHeader = req.headers.get('authorization') ?? '';
-  if (!/^Bearer\s+/i.test(authHeader)) {
-    return json(401, { ok: false, code: 'missing_auth' }, corsHeaders);
-  }
-
-  const aal = extractAalFromAuthHeader(authHeader);
 
   let payload: Record<string, unknown>;
   try {
     payload = toJsonBody(await req.json());
   } catch {
-    return json(400, { ok: false, code: 'invalid_json' }, corsHeaders);
+    logAccessDecision('warn', {
+      origin: requestOrigin,
+      decision_code: 'invalid_json',
+      request_id: requestId,
+      status: 400,
+    });
+    return json(400, { ok: false, code: 'invalid_json' }, responseHeaders);
   }
+
+  const bodyAccessToken = toTrimmedString(payload._admin_access_token);
+  delete payload._admin_access_token;
+
+  const authHeader =
+    (bodyAccessToken ? `Bearer ${bodyAccessToken}` : '') ||
+    req.headers.get('x-admin-authorization') ||
+    req.headers.get('authorization') ||
+    '';
+  if (!/^Bearer\s+/i.test(authHeader)) {
+    logAccessDecision('warn', {
+      origin: requestOrigin,
+      decision_code: 'missing_auth',
+      request_id: requestId,
+      status: 401,
+    });
+    return json(401, { ok: false, code: 'missing_auth' }, responseHeaders);
+  }
+
+  const aal = extractAalFromAuthHeader(authHeader);
 
   const action = typeof payload.action === 'string' ? payload.action.trim() : '';
   if (!action) {
-    return json(400, { ok: false, code: 'missing_action' }, corsHeaders);
+    logAccessDecision('warn', {
+      origin: requestOrigin,
+      aal,
+      decision_code: 'missing_action',
+      request_id: requestId,
+      status: 400,
+    });
+    return json(400, { ok: false, code: 'missing_action' }, responseHeaders);
   }
+
+  let resolvedUserId: string | null = null;
 
   try {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
@@ -1004,18 +1346,36 @@ Deno.serve(async (req) => {
 
     const { data: userData, error: userError } = await authClient.auth.getUser(stripBearer(authHeader));
     if (userError || !userData.user) {
-      return json(401, { ok: false, code: 'unauthorized' }, corsHeaders);
+      logAccessDecision('warn', {
+        action,
+        origin: requestOrigin,
+        aal,
+        decision_code: 'unauthorized',
+        request_id: requestId,
+        status: 401,
+        error: userError,
+      });
+      return json(401, { ok: false, code: 'unauthorized' }, responseHeaders);
     }
 
-    const admin = await enforcePolicy(adminClient, userData.user.id, action, aal);
+    resolvedUserId = userData.user.id;
+    const admin = await enforcePolicy(adminClient, resolvedUserId, action, aal);
     const result = await dispatchAction(action, adminClient, admin, payload, req, aal);
-    return json(200, result, corsHeaders);
+    return json(200, result, responseHeaders);
   } catch (error) {
     const status = toErrorStatus(error);
     const code = toErrorCode(error);
-    if (status >= 500) {
-      console.error('[admin-api] request failed', { action, error });
-    }
-    return json(status, { ok: false, code }, corsHeaders);
+    logAccessDecision(status >= 500 ? 'error' : 'warn', {
+      action,
+      origin: requestOrigin,
+      aal,
+      resolved_user_id:
+        resolvedUserId || (isRecord(error) && typeof error.user_id === 'string' ? error.user_id : null),
+      decision_code: code,
+      request_id: requestId,
+      status,
+      error: status >= 500 ? error : undefined,
+    });
+    return json(status, { ok: false, code }, responseHeaders);
   }
 });

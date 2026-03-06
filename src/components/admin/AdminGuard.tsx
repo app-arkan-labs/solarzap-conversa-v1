@@ -5,10 +5,11 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import AdminAccessErrorScreen from '@/components/admin/AdminAccessErrorScreen';
+import { resolveAdminGuardState } from '@/components/admin/adminGuardState';
 import {
   useAdminWhoAmI,
   type AdminWhoAmIResponse,
-  type SystemRole,
   isAdminApiError,
 } from '@/hooks/useAdminApi';
 
@@ -58,10 +59,6 @@ function LoadingScreen({ label }: { label: string }) {
   );
 }
 
-function isBlockedRole(role: SystemRole | undefined): boolean {
-  return !role;
-}
-
 export function useAdminGuardContext() {
   const context = useContext(AdminGuardContext);
   if (!context) {
@@ -75,7 +72,6 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
   const location = useLocation();
   const { toast } = useToast();
   const deniedToastShownRef = useRef(false);
-  const mfaErrorToastShownRef = useRef(false);
   const mfaRecoveredRef = useRef(false);
 
   const isMfaSetupRoute = location.pathname === '/admin/mfa-setup';
@@ -99,16 +95,21 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
 
   const isAal2 = mfaQuery.data?.currentLevel === 'aal2';
   const hasEnrolledFactor = mfaQuery.data?.hasEnrolledFactor === true;
-
-  useEffect(() => {
-    if (!mfaQuery.error || mfaErrorToastShownRef.current) return;
-    mfaErrorToastShownRef.current = true;
-    toast({
-      title: 'Falha no gate MFA',
-      description: 'Nao foi possivel validar o nivel de autenticacao MFA para o painel admin.',
-      variant: 'destructive',
-    });
-  }, [mfaQuery.error, toast]);
+  const mfaResolved = Boolean(mfaQuery.data) || mfaQuery.isError;
+  const adminError = whoamiQuery.error && isAdminApiError(whoamiQuery.error) ? whoamiQuery.error : null;
+  const guardState = resolveAdminGuardState({
+    authLoading: loading,
+    hasUser: Boolean(user),
+    whoamiLoading: whoamiQuery.isLoading || whoamiQuery.isFetching,
+    whoamiHasError: whoamiQuery.isError,
+    whoamiErrorCode,
+    systemRole: whoamiQuery.data?.system_role,
+    isAal2,
+    mfaResolved,
+    mfaLoading: mfaQuery.isLoading || mfaQuery.isFetching,
+    mfaError: mfaQuery.isError,
+    hasEnrolledFactor,
+  });
 
   useEffect(() => {
     if (!whoamiQuery.error || deniedToastShownRef.current) return;
@@ -144,66 +145,74 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
     [whoamiQuery.data],
   );
 
-  if (loading) {
+  const mfaContextValue = useMemo<AdminGuardContextValue>(() => ({ identity: null }), []);
+
+  const handleRetry = async () => {
+    if (requiresMfa || isMfaRoute) {
+      await mfaQuery.refetch();
+    }
+    await whoamiQuery.refetch();
+  };
+
+  const errorMessage =
+    adminError?.message ||
+    (mfaQuery.error instanceof Error && mfaQuery.error.message) ||
+    'Falha ao validar acesso ao painel admin.';
+  const errorCode =
+    adminError?.code ||
+    (guardState === 'origin_error' ? 'forbidden_origin' : 'unknown_admin_error');
+  const errorStatus = adminError?.status;
+  const errorRequestId = adminError?.requestId ?? null;
+
+  if (guardState === 'checking_access') {
     return <LoadingScreen label="Validando sessao..." />;
   }
 
-  if (!user) {
+  if (guardState === 'unauthenticated') {
     return <Navigate to="/login" replace />;
   }
 
-  if (whoamiQuery.isLoading || whoamiQuery.isFetching) {
-    return <LoadingScreen label="Validando acesso admin..." />;
-  }
-
-  if (whoamiQuery.isError) {
-    const err = whoamiQuery.error;
-    if (isAdminApiError(err) && (err.code === 'not_system_admin' || err.code === 'insufficient_role')) {
-      return <Navigate to="/" replace />;
-    }
-
-    if (isAdminApiError(err) && err.code === 'mfa_required') {
-      if (mfaQuery.isLoading || mfaQuery.isFetching) {
-        return <LoadingScreen label="Validando MFA..." />;
-      }
-
-      if (mfaQuery.isError) {
-        return <Navigate to="/" replace />;
-      }
-
-      if (!isAal2) {
-        if (!hasEnrolledFactor) {
-          if (!isMfaSetupRoute) {
-            return <Navigate to="/admin/mfa-setup" replace />;
-          }
-          return (
-            <AdminGuardContext.Provider value={{ identity: null }}>
-              {children}
-            </AdminGuardContext.Provider>
-          );
-        }
-
-        if (!isMfaVerifyRoute) {
-          return <Navigate to="/admin/mfa-verify" replace />;
-        }
-
-        return (
-          <AdminGuardContext.Provider value={{ identity: null }}>
-            {children}
-          </AdminGuardContext.Provider>
-        );
-      }
-    }
-
+  if (guardState === 'role_denied') {
     return <Navigate to="/" replace />;
   }
 
-  if (isMfaRoute) {
+  if (guardState === 'mfa_setup_required') {
+    if (!isMfaSetupRoute) {
+      return <Navigate to="/admin/mfa-setup" replace />;
+    }
+    return (
+      <AdminGuardContext.Provider value={mfaContextValue}>
+        {children}
+      </AdminGuardContext.Provider>
+    );
+  }
+
+  if (guardState === 'mfa_verify_required') {
+    if (!isMfaVerifyRoute) {
+      return <Navigate to="/admin/mfa-verify" replace />;
+    }
+    return (
+      <AdminGuardContext.Provider value={mfaContextValue}>
+        {children}
+      </AdminGuardContext.Provider>
+    );
+  }
+
+  if (guardState === 'session_error' || guardState === 'origin_error' || guardState === 'admin_api_error') {
+    return (
+      <AdminAccessErrorScreen
+        mode={guardState}
+        code={errorCode}
+        status={errorStatus}
+        requestId={errorRequestId}
+        message={errorMessage}
+        onRetry={handleRetry}
+      />
+    );
+  }
+
+  if (guardState === 'allowed' && isMfaRoute) {
     return <Navigate to="/admin" replace />;
-  }
-
-  if (isBlockedRole(whoamiQuery.data?.system_role)) {
-    return <Navigate to="/" replace />;
   }
 
   return (
