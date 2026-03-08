@@ -1,4 +1,3 @@
-import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,6 +17,7 @@ import CallQrRedirect from "./pages/CallQrRedirect";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import Pricing from "./pages/Pricing";
+import Admin from './pages/Admin';
 import { supabase } from "@/lib/supabase";
 import { extractAuthErrorMetadata, shouldAttemptAuthRecovery } from "@/lib/authSessionGuard";
 import { getPasswordRecoveryRedirectTarget } from "@/lib/passwordRecoveryRedirect";
@@ -113,8 +113,6 @@ const queryClient = new QueryClient({
   }),
 });
 
-const Admin = lazy(() => import('./pages/Admin'));
-
 const App = () => {
   if (typeof window !== 'undefined') {
     const recoveryRedirectTarget = getPasswordRecoveryRedirectTarget(window.location);
@@ -170,9 +168,7 @@ const App = () => {
                       path="/admin/*"
                       element={
                         <AdminGuard>
-                          <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando admin...</div>}>
-                            <Admin />
-                          </Suspense>
+                          <Admin />
                         </AdminGuard>
                       }
                     />
