@@ -1,0 +1,89 @@
+[functions.meta-webhook]
+verify_jwt = false
+
+# [functions.evolution-webhook]  # deprecated in favor of whatsapp-webhook
+# verify_jwt = false
+
+[functions.evolution-api]
+verify_jwt = false
+
+[functions.evolution-proxy]
+verify_jwt = false
+
+[functions.google-oauth]
+verify_jwt = false
+
+[functions.google-callback]
+verify_jwt = false
+
+[functions.google-ads-callback]
+verify_jwt = false
+
+[functions.meta-oauth]
+verify_jwt = false
+
+[functions.meta-callback]
+verify_jwt = false
+
+[functions.whatsapp-connect]
+verify_jwt = false
+
+[functions.integration-disconnect]
+verify_jwt = false
+
+[functions.proposal-copy-generator]
+verify_jwt = false
+
+[functions.proposal-context-engine]
+verify_jwt = false
+
+[functions.kb-ingest]
+verify_jwt = false
+
+[functions.proposal-composer]
+verify_jwt = false
+
+[functions.proposal-storage-intent]
+verify_jwt = false
+
+[functions.proposal-share-link]
+verify_jwt = false
+
+[functions.proposal-share]
+verify_jwt = false
+
+[functions.org-admin]
+verify_jwt = false
+
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+[functions.media-resolver]
+verify_jwt = false
+
+[functions.ai-pipeline-agent]
+verify_jwt = false
+
+[functions.solar-resource]
+verify_jwt = false
+
+[functions.notification-worker]
+verify_jwt = true
+
+[functions.ai-digest-worker]
+verify_jwt = true
+
+[functions.ai-reporter]
+verify_jwt = true
+
+[functions.attribution-webhook]
+verify_jwt = false
+
+[functions.conversion-dispatcher]
+verify_jwt = false
+
+[functions.tracking-credentials]
+verify_jwt = false
+
+[functions.admin-api]
+verify_jwt = false

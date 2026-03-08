@@ -1,6 +1,7 @@
 import OpenAI from "npm:openai";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveRequestCors } from "../_shared/cors.ts";
+import { checkLimit, recordUsage } from "../_shared/billing.ts";
 
 type VariantId = "a" | "b";
 type SectionSource = "manual" | "ai" | "hybrid";
@@ -261,12 +262,31 @@ Deno.serve(async (req) => {
 
     const { data: leadRow, error: leadErr } = await serviceClient
       .from("leads")
-      .select("id, nome, user_id, observacoes")
+      .select("id, nome, user_id, org_id, observacoes")
       .eq("id", leadId)
       .maybeSingle();
     if (leadErr || !leadRow || leadRow.user_id !== user.id) {
       return new Response(JSON.stringify({ error: "lead_not_found_or_forbidden" }), {
         status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const orgId = String((leadRow as any).org_id || "").trim();
+    if (!orgId) {
+      return new Response(JSON.stringify({ error: "lead_org_not_found" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const proposalLimit = await checkLimit(serviceClient, orgId, "proposals_monthly", 1);
+    if (!proposalLimit.allowed || proposalLimit.access_state === 'blocked') {
+      return new Response(JSON.stringify({
+        error: "billing_limit_reached",
+        billing: proposalLimit,
+      }), {
+        status: 402,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -420,6 +440,23 @@ Retorne SOMENTE JSON válido com esta estrutura:
     const recommendedVariant: VariantId =
       String(parsed?.recommended_variant || "a").toLowerCase() === "b" ? "b" : "a";
     const rationale = asString(parsed?.rationale, 280);
+
+    try {
+      await recordUsage(serviceClient, {
+        orgId,
+        userId: user.id,
+        leadId,
+        eventType: 'proposals_monthly',
+        quantity: 1,
+        source: 'proposal-composer',
+        metadata: {
+          model,
+          recommendedVariant,
+        },
+      });
+    } catch (usageError) {
+      console.warn('Failed to record proposal usage', usageError);
+    }
 
     return new Response(
       JSON.stringify({

@@ -251,10 +251,28 @@ export function useUserWhatsAppInstances() {
     if (!orgId) {
       toast.error('Organizacao nao vinculada ao usuario');
       return null;
-    }
+    }
+
 
     try {
       setCreating(true);
+
+      const { data: limitData, error: limitError } = await supabase.rpc('check_plan_limit', {
+        p_org_id: orgId,
+        p_limit_key: 'whatsapp_instances',
+        p_quantity: 1,
+      });
+
+      if (limitError) {
+        throw new Error(`Falha ao validar limite do plano: ${limitError.message}`);
+      }
+
+      const limitRow = Array.isArray(limitData) ? limitData[0] : limitData;
+      if (!limitRow?.allowed || limitRow?.access_state === 'blocked') {
+        toast.error('Limite do plano atingido para novas instâncias. Faça upgrade para continuar.');
+        return null;
+      }
+
       const normalizedDisplayName = displayName?.trim() || 'WhatsApp';
       const sanitizedName = normalizedDisplayName.toLowerCase().replace(/[^a-z0-9]/g, '');
       const timestamp = Date.now().toString().slice(-6); // last 6 digits for brevity but uniqueness

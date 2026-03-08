@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { type OrgRole } from '@/lib/orgAdminClient';
 import { Button } from '@/components/ui/button';
 import OrgSuspendedScreen from '@/components/admin/OrgSuspendedScreen';
+import { useOrgBillingInfo } from '@/hooks/useOrgBilling';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -33,6 +34,8 @@ const ORG_ERROR_DESCRIPTION_BY_KIND = {
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRoles }) => {
   const { user, loading, role, orgId, orgStatus, suspensionReason, signOut, orgResolutionStatus, orgResolutionError } = useAuth();
   const { toast } = useToast();
+  const location = useLocation();
+  const billingQuery = useOrgBillingInfo(Boolean(user && orgId));
   const hasShownAccessToastRef = useRef(false);
 
   const missingRequiredRole =
@@ -149,6 +152,12 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
 
   if (orgStatus === 'suspended') {
     return <OrgSuspendedScreen reason={suspensionReason} />;
+  }
+
+  const accessState = billingQuery.data?.access_state;
+  const isPricingRoute = location.pathname === '/pricing';
+  if (!billingQuery.isLoading && accessState === 'blocked' && !isPricingRoute) {
+    return <Navigate to="/pricing" replace />;
   }
 
   if (missingRequiredRole) {

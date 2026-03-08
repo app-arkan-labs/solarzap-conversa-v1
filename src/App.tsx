@@ -17,6 +17,7 @@ import NotFound from "./pages/NotFound";
 import CallQrRedirect from "./pages/CallQrRedirect";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
+import Pricing from "./pages/Pricing";
 import { supabase } from "@/lib/supabase";
 import { extractAuthErrorMetadata, shouldAttemptAuthRecovery } from "@/lib/authSessionGuard";
 import { getPasswordRecoveryRedirectTarget } from "@/lib/passwordRecoveryRedirect";
@@ -140,6 +141,14 @@ const App = () => {
                     <Route path="/qr/call" element={<CallQrRedirect />} />
                     <Route path="/privacidade" element={<PrivacyPolicy />} />
                     <Route path="/termos" element={<TermsOfService />} />
+                    <Route
+                      path="/pricing"
+                      element={
+                        <ProtectedRoute>
+                          <Pricing />
+                        </ProtectedRoute>
+                      }
+                    />
                     <Route
                       path="/"
                       element={

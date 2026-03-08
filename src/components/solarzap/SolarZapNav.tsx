@@ -28,6 +28,8 @@ interface SolarZapNavProps {
     banco_ia: boolean;
     minha_conta: boolean;
   };
+  lockedTabs?: Partial<Record<ActiveTab, string>>;
+  onLockedTabClick?: (tab: ActiveTab, reason?: string) => void;
 }
 
 const navItems: { id: ActiveTab; icon: typeof MessageCircle; label: string }[] = [
@@ -53,6 +55,8 @@ export function SolarZapNav({
   userAvatarUrl,
   userDisplayName,
   tabPermissions,
+  lockedTabs,
+  onLockedTabClick,
 }: SolarZapNavProps) {
   const tp = tabPermissions ?? { ia_agentes: true, automacoes: true, integracoes: true, tracking: true, banco_ia: true, minha_conta: true };
   const normalizedAvatarUrl = typeof userAvatarUrl === 'string' && userAvatarUrl.trim().length > 0
@@ -71,24 +75,37 @@ export function SolarZapNav({
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
+          const lockReason = lockedTabs?.[item.id];
+          const isLocked = typeof lockReason === 'string' && lockReason.length > 0;
 
           return (
             <button
               key={item.id}
-              onClick={() => onTabChange(item.id)}
+              onClick={() => {
+                if (isLocked) {
+                  onLockedTabClick?.(item.id, lockReason);
+                  return;
+                }
+                onTabChange(item.id);
+              }}
               className={cn(
                 'w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 relative group',
-                'hover:bg-primary/10',
+                isLocked ? 'opacity-60 cursor-not-allowed' : 'hover:bg-primary/10',
                 isActive
                   ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105'
                   : 'text-whatsapp-gray hover:text-primary'
               )}
-              title={item.label}
+              title={isLocked ? `${item.label} (bloqueado pelo plano)` : item.label}
             >
               <Icon className={cn(
                 "w-5 h-5 transition-transform duration-300",
                 isActive ? "scale-110" : "group-hover:scale-110"
               )} />
+              {isLocked ? (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-amber-500 text-white rounded-full shadow-sm">
+                  !
+                </span>
+              ) : null}
             </button>
           );
         })}

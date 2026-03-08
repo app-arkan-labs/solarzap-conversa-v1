@@ -1,6 +1,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { resolveRequestCors } from '../_shared/cors.ts'
+import { checkLimit, recordUsage } from '../_shared/billing.ts'
 
 // 1. Configuration
 const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL')
@@ -163,6 +164,22 @@ Deno.serve(async (req) => {
            ACTION: CREATE
            ========================== */
         if (action === 'create') {
+            const instanceLimit = await checkLimit(supabaseClient, orgId, 'whatsapp_instances', 1)
+            if (!instanceLimit.allowed || instanceLimit.access_state === 'blocked') {
+                return new Response(
+                    JSON.stringify({
+                        ok: false,
+                        code: 'billing_limit_reached',
+                        error: 'Limite do plano atingido para novas instancias de WhatsApp',
+                        billing: instanceLimit,
+                    }),
+                    {
+                        status: 402,
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    }
+                )
+            }
+
             const instanceName = `instance_${Date.now()}_${crypto.randomUUID()}`
             console.log(`Creating instance: ${instanceName}`)
 
@@ -213,6 +230,22 @@ Deno.serve(async (req) => {
                 .single()
 
             if (insertError) throw insertError
+
+            try {
+                await recordUsage(supabaseClient, {
+                    orgId,
+                    userId: user.id,
+                    eventType: 'whatsapp_instances',
+                    quantity: 1,
+                    source: 'whatsapp-connect.create',
+                    metadata: {
+                        instance_name: realInstanceName,
+                        instance_id: newInstance.id,
+                    },
+                })
+            } catch (usageErr) {
+                console.warn('Failed to record usage for whatsapp instance creation', usageErr)
+            }
 
             // 3. Set Webhook (Important!)
             // We need to tell Evolution where to send events for THIS instance.
@@ -460,9 +493,10 @@ Deno.serve(async (req) => {
         throw new Error(`Unknown action: ${action}`)
 
     } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         console.error('Error in whatsapp-connect:', error)
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: errorMessage }),
             {
                 status: 400,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }

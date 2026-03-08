@@ -395,6 +395,29 @@ async function bootstrapSelf(
     throw membershipUpsertError;
   }
 
+  await adminClient
+    .from('organizations')
+    .update({
+      subscription_status: 'trialing',
+      trial_starts_at: new Date().toISOString(),
+      trial_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      onboarding_state: 'pending_checkout',
+      trial_days: 7,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', orgId)
+    .is('trial_starts_at', null);
+
+  await adminClient.from('org_billing_timeline').insert({
+    org_id: orgId,
+    event_type: 'trial_started',
+    actor: 'org_admin',
+    payload: {
+      source: 'bootstrap_self',
+      days: 7,
+    },
+  });
+
   return {
     ok: true,
     action: 'bootstrap_self',
@@ -402,6 +425,93 @@ async function bootstrapSelf(
     org_id: orgId,
     role: 'owner',
   };
+}
+
+async function getBillingInfo(
+  adminClient: ReturnType<typeof createClient>,
+  callerMembership: CallerMembership,
+) {
+  const { data, error } = await adminClient.rpc('get_org_billing_info', {
+    p_org_id: callerMembership.org_id,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+
+  const { data: timeline } = await adminClient
+    .from('org_billing_timeline')
+    .select('id, event_type, actor, payload, created_at')
+    .eq('org_id', callerMembership.org_id)
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  return {
+    ok: true,
+    action: 'get_billing_info',
+    billing: row ?? null,
+    timeline: timeline ?? [],
+  };
+}
+
+async function billingAdminAction(
+  adminClient: ReturnType<typeof createClient>,
+  callerMembership: CallerMembership,
+  payload: Record<string, unknown>,
+  corsHeaders: Record<string, string>,
+) {
+  const operation = typeof payload.operation === 'string' ? payload.operation : '';
+
+  if (operation === 'migrate_legacy_to_trial') {
+    const trialDaysRaw = Number(payload.trial_days ?? 7);
+    const trialDays = Number.isFinite(trialDaysRaw) ? Math.max(1, Math.min(30, Math.round(trialDaysRaw))) : 7;
+
+    const { data, error } = await adminClient.rpc('migrate_legacy_org_to_trial', {
+      p_org_id: callerMembership.org_id,
+      p_days: trialDays,
+    });
+
+    if (error) {
+      return jsonResponse(corsHeaders, 400, {
+        ok: false,
+        code: 'migration_failed',
+        error: error.message,
+      });
+    }
+
+    return jsonResponse(corsHeaders, 200, {
+      ok: true,
+      action: 'billing_admin_action',
+      operation,
+      result: Array.isArray(data) ? data[0] : data,
+    });
+  }
+
+  if (operation === 'refresh_access_state') {
+    const { data, error } = await adminClient.rpc('sync_org_access_state');
+    if (error) {
+      return jsonResponse(corsHeaders, 400, {
+        ok: false,
+        code: 'refresh_failed',
+        error: error.message,
+      });
+    }
+
+    return jsonResponse(corsHeaders, 200, {
+      ok: true,
+      action: 'billing_admin_action',
+      operation,
+      affected: Number(data || 0),
+    });
+  }
+
+  return jsonResponse(corsHeaders, 400, {
+    ok: false,
+    code: 'invalid_operation',
+    error: `operation invalida: ${operation}`,
+  });
 }
 
 async function listMembers(
@@ -939,6 +1049,11 @@ Deno.serve(async (req) => {
       return jsonResponse(corsHeaders, 200, result);
     }
 
+    if (action === 'get_billing_info') {
+      const result = await getBillingInfo(adminClient, callerMembership);
+      return jsonResponse(corsHeaders, 200, result);
+    }
+
     if (!(callerMembership.role === 'owner' || callerMembership.role === 'admin')) {
       return jsonResponse(corsHeaders, 403, {
         ok: false,
@@ -957,6 +1072,10 @@ Deno.serve(async (req) => {
 
     if (action === 'remove_member') {
       return await removeMember(adminClient, callerMembership, payload, corsHeaders);
+    }
+
+    if (action === 'billing_admin_action') {
+      return await billingAdminAction(adminClient, callerMembership, payload, corsHeaders);
     }
 
     return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_action', error: `action invalida: ${action}` });

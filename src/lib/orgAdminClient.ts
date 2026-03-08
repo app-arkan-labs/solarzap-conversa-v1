@@ -29,6 +29,13 @@ type OrgAdminRequest =
   | { action: 'bootstrap_self' }
   | { action: 'list_user_orgs' }
   | { action: 'list_members'; org_id?: string }
+  | { action: 'get_billing_info'; org_id?: string }
+  | {
+    action: 'billing_admin_action';
+    org_id?: string;
+    operation: 'migrate_legacy_to_trial' | 'refresh_access_state';
+    trial_days?: number;
+  }
   | {
     action: 'invite_member';
     org_id?: string;
@@ -63,6 +70,19 @@ type OrgAdminSuccessResponse =
     ok: true;
     action: 'list_members';
     members: MemberDto[];
+  }
+  | {
+    ok: true;
+    action: 'get_billing_info';
+    billing: Record<string, unknown> | null;
+    timeline: Array<Record<string, unknown>>;
+  }
+  | {
+    ok: true;
+    action: 'billing_admin_action';
+    operation: string;
+    result?: Record<string, unknown> | null;
+    affected?: number;
   }
   | {
     ok: true;
@@ -359,6 +379,28 @@ export async function listMembers(orgId?: string, opts?: ListMembersOptions) {
 
   membersInFlightByOrg.set(cacheKey, pending);
   return pending;
+}
+
+export async function getBillingInfo(orgId?: string) {
+  return invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'get_billing_info' }>>({
+    ...withOrgId({ action: 'get_billing_info' }, orgId),
+  });
+}
+
+export async function runBillingAdminAction(
+  operation: 'migrate_legacy_to_trial' | 'refresh_access_state',
+  options?: { orgId?: string; trialDays?: number },
+) {
+  return invokeOrgAdmin<Extract<OrgAdminSuccessResponse, { action: 'billing_admin_action' }>>({
+    ...withOrgId(
+      {
+        action: 'billing_admin_action',
+        operation,
+        ...(typeof options?.trialDays === 'number' ? { trial_days: options.trialDays } : {}),
+      },
+      options?.orgId,
+    ),
+  });
 }
 
 export async function inviteMember(input: {

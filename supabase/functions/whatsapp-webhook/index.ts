@@ -10,6 +10,7 @@ import {
     extractCtwaFromWhatsAppMessage,
 } from '../_shared/trackingAttribution.ts'
 import { buildUpsertLeadCanonicalPayload } from '../_shared/leadCanonical.ts'
+import { recordUsage } from '../_shared/billing.ts'
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
 if (!ALLOWED_ORIGIN) {
@@ -744,6 +745,26 @@ Deno.serve(async (req: Request) => {
                 if (!inserted) {
                     const { data: insertedRow } = await supabase.from('interacoes').insert(interactionPayload).select('id').single()
                     inserted = insertedRow
+                }
+
+                try {
+                    await recordUsage(supabase, {
+                        orgId,
+                        userId,
+                        leadId: leadId ? Number(leadId) : null,
+                        eventType: 'messages_monthly',
+                        quantity: 1,
+                        source: 'whatsapp-webhook',
+                        metadata: {
+                            instance_name: instanceName,
+                            wa_message_id: waMessageId,
+                            message_type: msgType || null,
+                            direction: isFromMe ? 'outbound' : 'inbound',
+                            interaction_id: inserted?.id || null,
+                        },
+                    })
+                } catch (usageError) {
+                    console.warn('Failed to record message usage', usageError)
                 }
 
                 console.log('[WHATSAPP_WEBHOOK_LATENCY] insert_before_webhook_ms', {

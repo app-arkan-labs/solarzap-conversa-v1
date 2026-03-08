@@ -645,6 +645,20 @@ export function useBroadcasts() {
       throw new Error('Informe ao menos 1 mensagem para a campanha');
     }
 
+    const { data: limitData, error: limitError } = await supabase.rpc('check_plan_limit', {
+      p_org_id: orgId,
+      p_limit_key: 'broadcasts_monthly',
+      p_quantity: 1,
+    });
+    if (limitError) {
+      throw new Error(`Falha ao validar limite do plano: ${limitError.message}`);
+    }
+
+    const limitRow = Array.isArray(limitData) ? limitData[0] : limitData;
+    if (!limitRow?.allowed || limitRow?.access_state === 'blocked') {
+      throw new Error('Limite mensal de disparos atingido. Faça upgrade para continuar.');
+    }
+
     const campaignPayload = {
       org_id: orgId,
       user_id: user.id,

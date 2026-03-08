@@ -49,6 +49,7 @@ import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
 import { OrganizationSelectorPanel } from '@/components/organization/OrganizationSelectorPanel';
 import AdminMembersPage from '@/pages/AdminMembersPage';
 import type { UpdateLeadData } from './EditLeadModal';
+import { useOrgBillingInfo } from '@/hooks/useOrgBilling';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -114,6 +115,8 @@ export function SolarZapLayout() {
   }, [user]);
   const userDisplayName = useMemo(() => (user ? getAuthUserDisplayName(user) : ''), [user]);
   const { permissions: sellerPerms } = useSellerPermissions();
+  const billingQuery = useOrgBillingInfo(Boolean(orgId));
+  const accessState = billingQuery.data?.access_state ?? 'full';
   // Domain Hooks
   const {
     contacts,
@@ -249,6 +252,20 @@ export function SolarZapLayout() {
       navigate('/');
     }
   }, [location.pathname, navigate]);
+
+  const lockedTabs = useMemo<Partial<Record<ActiveTab, string>>>(() => {
+    if (accessState !== 'read_only') return {};
+    return {
+      disparos: 'Seu plano está em modo leitura. Faça upgrade para continuar enviando.',
+      propostas: 'Seu plano está em modo leitura. Faça upgrade para continuar gerando propostas.',
+      automacoes: 'Seu plano está em modo leitura. Faça upgrade para continuar automações.',
+    };
+  }, [accessState]);
+
+  const handleLockedTabClick = useCallback((_: ActiveTab, reason?: string) => {
+    console.warn('Locked tab by billing', reason || 'upgrade_required');
+    navigate('/pricing');
+  }, [navigate]);
 
   // Derivar a conversa ativa da lista atualizada de conversas para garantir que temos as mensagens mais recentes
   const activeConversation = useMemo(() => {
@@ -1071,6 +1088,8 @@ export function SolarZapLayout() {
           banco_ia: sellerPerms.tab_banco_ia,
           minha_conta: sellerPerms.tab_minha_conta,
         }}
+        lockedTabs={lockedTabs}
+        onLockedTabClick={handleLockedTabClick}
       />
 
       <Dialog
@@ -1136,6 +1155,12 @@ export function SolarZapLayout() {
           }
         }}
       />
+
+      {accessState === 'read_only' ? (
+        <div className="absolute top-0 left-[60px] right-0 z-20 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-900 text-sm">
+          Seu acesso está em modo leitura. Algumas ações estão bloqueadas até a regularização da assinatura.
+        </div>
+      ) : null}
 
       {activeTab === 'conversas' && (
         <>
