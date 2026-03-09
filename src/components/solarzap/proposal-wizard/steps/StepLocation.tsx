@@ -47,9 +47,7 @@ export function StepLocation({ form }: StepLocationProps) {
       cepAutofillRef.current = cepDigits;
       void (async () => {
         const cepData = await autofillAddressByCep(cepDigits);
-        if (cepData) {
-          await resolvePreciseLocation(cepData);
-        }
+        await resolvePreciseLocation(cepData ?? { cep: cepDigits });
       })();
     }, 350);
 
@@ -97,16 +95,29 @@ export function StepLocation({ form }: StepLocationProps) {
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>{isUsina ? 'Geracao estimada (kWh/mes)' : 'Conta de luz mensal (R$)'}</Label>
+          <Label>{isUsina ? 'Geracao estimada (kWh/mes)' : 'Consumo medio mensal (kWh/mes)'}</Label>
           <Input
             type="number"
             min={0}
             step="0.01"
-            value={isUsina ? (form.formData.consumoMensal || '') : (form.formData.contaLuzMensal || '')}
+            value={form.formData.consumoMensal || ''}
             onChange={(e) => form.handleChange('consumoMensal', parseFloat(e.target.value) || 0)}
           />
         </div>
       </div>
+
+      {!isUsina && (
+        <div className="space-y-1.5">
+          <Label>Conta media mensal (R$)</Label>
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            value={form.formData.contaLuzMensal || ''}
+            onChange={(e) => form.handleChange('contaLuzMensal', parseFloat(e.target.value) || 0)}
+          />
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <Label>Concessionaria de energia</Label>

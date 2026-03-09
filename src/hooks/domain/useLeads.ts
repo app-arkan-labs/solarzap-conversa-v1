@@ -26,6 +26,7 @@ interface ExtendedLeadFields {
     uf?: string;
     concessionaria?: string;
     tipo_ligacao?: 'monofasico' | 'bifasico' | 'trifasico';
+    conta_luz_mensal?: number;
     tarifa_kwh?: number;
     custo_disponibilidade_kwh?: number;
     performance_ratio?: number;
@@ -144,6 +145,7 @@ export const leadToContact = (lead: any): Contact => {
         zip: lead.cep || meta.cep, // Maps to 'cep' in UI usually
         energyDistributor: lead.concessionaria || meta.concessionaria,
         connectionType: (lead.tipo_ligacao || meta.tipo_ligacao) as Contact['connectionType'] | undefined,
+        averageMonthlyBill: toOptionalNumber(lead.conta_luz_mensal ?? meta.conta_luz_mensal),
         energyTariffKwh: toOptionalNumber(lead.tarifa_kwh ?? meta.tarifa_kwh),
         availabilityCostKwh: toOptionalNumber(lead.custo_disponibilidade_kwh ?? meta.custo_disponibilidade_kwh),
         performanceRatio: toOptionalNumber(lead.performance_ratio ?? meta.performance_ratio),
@@ -187,6 +189,7 @@ export interface LeadPatch {
     uf?: string;
     concessionaria?: string;
     tipo_ligacao?: 'monofasico' | 'bifasico' | 'trifasico';
+    conta_luz_mensal?: number;
     tarifa_kwh?: number;
     custo_disponibilidade_kwh?: number;
     performance_ratio?: number;
@@ -603,6 +606,7 @@ export function useLeads() {
                 uf: data.uf,
                 concessionaria: data.concessionaria,
                 tipo_ligacao: data.tipo_ligacao,
+                conta_luz_mensal: data.conta_luz_mensal,
                 tarifa_kwh: data.tarifa_kwh,
                 custo_disponibilidade_kwh: data.custo_disponibilidade_kwh,
                 performance_ratio: data.performance_ratio,
@@ -656,6 +660,7 @@ export function useLeads() {
             if (data.uf !== undefined) extendedPayload.uf = data.uf;
             if (data.concessionaria !== undefined) extendedPayload.concessionaria = data.concessionaria;
             if (data.tipo_ligacao !== undefined) extendedPayload.tipo_ligacao = data.tipo_ligacao;
+            if (data.conta_luz_mensal !== undefined) extendedPayload.conta_luz_mensal = data.conta_luz_mensal;
             if (data.tarifa_kwh !== undefined) extendedPayload.tarifa_kwh = data.tarifa_kwh;
             if (data.custo_disponibilidade_kwh !== undefined) extendedPayload.custo_disponibilidade_kwh = data.custo_disponibilidade_kwh;
             if (data.performance_ratio !== undefined) extendedPayload.performance_ratio = data.performance_ratio;

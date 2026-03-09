@@ -305,7 +305,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
   const [formData, setFormData] = useState({
     consumoMensal: contact?.consumption || 0,
-    contaLuzMensal: Math.max(0, (contact?.consumption || 0) * (contact?.energyTariffKwh || DEFAULT_TARIFF_FALLBACK)),
+    contaLuzMensal: (Number(contact?.averageMonthlyBill) || 0) > 0
+      ? Math.max(0, Number(contact?.averageMonthlyBill) || 0)
+      : undefined,
     potenciaSistema: 0,
     quantidadePaineis: 0,
     valorTotal: contact?.projectValue || 0,
@@ -335,7 +337,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     annualOmCostFixed: 0,
     teRatePerKwh: deriveTariffComponents(DEFAULT_TARIFF_FALLBACK).teRatePerKwh,
     tusdRatePerKwh: deriveTariffComponents(DEFAULT_TARIFF_FALLBACK).tusdRatePerKwh,
-    tusdCompensationPct: 0,
+    tusdCompensationPct: 100,
     financialInputs: undefined as FinancialInputs | undefined,
     financialOutputs: undefined as FinancialOutputs | undefined,
     financialModelVersion: FINANCIAL_MODEL_VERSION as typeof FINANCIAL_MODEL_VERSION,
@@ -367,7 +369,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     inversorMarca: '',
     inversorPotencia: 0,
     inversorTensao: 220,
-    inversorGarantia: 10,
+    inversorGarantia: 25,
     inversorQtd: 1,
     estruturaTipo: '',
   });
@@ -600,12 +602,19 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const rawRentabilityRatePerKwh = Number(next.rentabilityRatePerKwh);
     const rawTeRatePerKwh = Number(next.teRatePerKwh);
     const rawTusdRatePerKwh = Number(next.tusdRatePerKwh);
+    const contaLuzMensalReferencia = next.tipo_cliente === 'usina'
+      ? 0
+      : Math.max(0, Number(next.contaLuzMensal) || 0);
 
     const financialInputs: FinancialInputs = {
       tipoCliente: next.tipo_cliente,
       investimentoTotal: Math.max(0, Number(next.valorTotal) || 0),
       consumoMensalKwh: Math.max(0, Number(next.consumoMensal) || 0),
+      contaLuzMensalReferencia: contaLuzMensalReferencia > 0 ? contaLuzMensalReferencia : undefined,
       potenciaSistemaKwp: Math.max(0, Number(next.potenciaSistema) || 0),
+      avgDailyIrradiance: Math.max(0.01, Number(next.irradiancia) || 4.5),
+      performanceRatio: Math.max(0.01, Number(next.performanceRatio) || 0.8),
+      daysInMonth: next.irradianceSource === 'pvgis' ? 30.4375 : 30,
       rentabilityRatePerKwh: Math.max(
         0,
         Number.isFinite(rawRentabilityRatePerKwh) ? rawRentabilityRatePerKwh : DEFAULT_RENTABILITY_RATE,
@@ -631,6 +640,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       analysisYears: DEFAULT_ANALYSIS_YEARS,
       monthlyGenerationFactors: next.monthlyGenerationFactors,
       uf: next.estado,
+      irradianceSource: next.irradianceSource as FinancialInputs['irradianceSource'] | undefined,
+      latitude: Number.isFinite(Number(next.latitude)) ? Number(next.latitude) : undefined,
+      longitude: Number.isFinite(Number(next.longitude)) ? Number(next.longitude) : undefined,
     };
     const financialOutputs = calculateProposalFinancials(financialInputs);
     return { financialInputs, financialOutputs };
@@ -686,16 +698,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
   const normalizeCep = (value: string) => value.replace(/\D/g, '').slice(0, 8);
 
-  const resolveBillTariff = (next: typeof formData) => {
-    const rawTariff = Number(next.tarifaKwh);
-    return Math.max(0.01, Number.isFinite(rawTariff) && rawTariff > 0 ? rawTariff : DEFAULT_TARIFF_FALLBACK);
-  };
-
-  const billToConsumptionKwh = (billValue: number, tariffKwh: number) => {
-    const bill = Math.max(0, Number(billValue) || 0);
-    return bill / Math.max(0.01, Number(tariffKwh) || DEFAULT_TARIFF_FALLBACK);
-  };
-
   const buildConcessionariaPatch = useCallback((
     prev: typeof formData,
     location: { uf?: string; cidade?: string; cep?: string },
@@ -723,9 +725,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       patch.tarifaKwh = tariffFromInference;
       patch.teRatePerKwh = derivedTariffRates.teRatePerKwh;
       patch.tusdRatePerKwh = derivedTariffRates.tusdRatePerKwh;
-      if (prev.tipo_cliente !== 'usina') {
-        patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, tariffFromInference);
-      }
     }
 
     return patch;
@@ -948,6 +947,30 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     setLocationLoading(true);
     try {
+      const fetchJsonWithRetry = async (url: string, retries = 1, timeoutMs = 6000): Promise<Response | null> => {
+        for (let attempt = 0; attempt <= retries; attempt += 1) {
+          let timeout: number | undefined;
+          try {
+            const controller = new AbortController();
+            timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+            const response = await fetch(url, { signal: controller.signal });
+            if (response.ok) return response;
+            if (attempt === retries) return response;
+          } catch (error) {
+            if (attempt === retries) {
+              console.warn('CEP provider fetch failed after retries:', { url, error });
+              return null;
+            }
+          } finally {
+            if (timeout !== undefined) {
+              window.clearTimeout(timeout);
+            }
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 350 * (attempt + 1)));
+        }
+        return null;
+      };
+
       let uf = '';
       let cidade = '';
       let endereco = '';
@@ -955,8 +978,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       let longitude: number | undefined;
 
       try {
-        const brApiResponse = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`);
-        if (brApiResponse.ok) {
+        const brApiResponse = await fetchJsonWithRetry(`https://brasilapi.com.br/api/cep/v2/${cep}`, 1);
+        if (brApiResponse?.ok) {
           const brApiData = await brApiResponse.json();
           uf = normalizeUf(String(brApiData?.state || brApiData?.uf || '')) || uf;
           cidade = String(brApiData?.city || brApiData?.locality || '').trim() || cidade;
@@ -972,17 +995,26 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       }
 
       if (!uf || !cidade) {
-        const viaCepResponse = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-        if (!viaCepResponse.ok) throw new Error(`viacep_${viaCepResponse.status}`);
-        const viaCepData = await viaCepResponse.json();
-        if (viaCepData?.erro) throw new Error('cep_not_found');
-
-        uf = normalizeUf(String(viaCepData.uf || '')) || uf;
-        cidade = String(viaCepData.localidade || cidade || '').trim();
-        const logradouro = String(viaCepData.logradouro || '').trim();
-        const bairro = String(viaCepData.bairro || '').trim();
-        if (!endereco) {
-          endereco = [logradouro, bairro].filter(Boolean).join(', ');
+        try {
+          const viaCepResponse = await fetchJsonWithRetry(`https://viacep.com.br/ws/${cep}/json/`, 1);
+          if (!viaCepResponse?.ok) {
+            console.warn(`viacep CEP lookup failed: status ${viaCepResponse?.status ?? 'network_error'}`);
+          } else {
+            const viaCepData = await viaCepResponse.json();
+            if (viaCepData?.erro) {
+              console.warn(`viacep CEP lookup returned erro for cep=${cep}`);
+            } else {
+              uf = normalizeUf(String(viaCepData.uf || '')) || uf;
+              cidade = String(viaCepData.localidade || cidade || '').trim();
+              const logradouro = String(viaCepData.logradouro || '').trim();
+              const bairro = String(viaCepData.bairro || '').trim();
+              if (!endereco) {
+                endereco = [logradouro, bairro].filter(Boolean).join(', ');
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('viacep CEP lookup failed:', error);
         }
       }
 
@@ -991,8 +1023,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         estado: uf || currentFormData.estado || undefined,
         cidade: cidade || currentFormData.cidade || undefined,
         endereco: endereco || currentFormData.endereco || undefined,
-        latitude: undefined,
-        longitude: undefined,
+        latitude,
+        longitude,
       };
 
       setFormData((prev) => patchAndRecalculate(prev, {
@@ -1000,8 +1032,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         estado: nextOverride.estado || prev.estado,
         cidade: nextOverride.cidade || prev.cidade,
         endereco: nextOverride.endereco || prev.endereco,
-        latitude: undefined,
-        longitude: undefined,
+        latitude: nextOverride.latitude,
+        longitude: nextOverride.longitude,
         irradianceSource: undefined,
         irradianceRefAt: undefined,
         irradianceRequestId: undefined,
@@ -1016,11 +1048,16 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     } catch (error) {
       console.error('autofillAddressByCep error:', error);
       toast({
-        title: 'Falha ao buscar CEP',
-        description: 'Nao foi possivel localizar o CEP informado em nenhum provedor.',
+        title: 'Falha no autofill de CEP',
+        description: 'Vamos tentar calcular pela geocodificacao do backend.',
         variant: 'destructive',
       });
-      return null;
+      return {
+        cep,
+        estado: currentFormData.estado || undefined,
+        cidade: currentFormData.cidade || undefined,
+        endereco: currentFormData.endereco || undefined,
+      };
     } finally {
       setLocationLoading(false);
     }
@@ -1030,21 +1067,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
 
   const calculateSystem = useCallback((consumoInput: number) => {
-    setFormData((prev) => {
-      if (prev.tipo_cliente === 'usina') {
-        return patchAndRecalculate(prev, {
-          consumoMensal: Math.max(0, Number(consumoInput) || 0),
-          contaLuzMensal: undefined,
-        });
-      }
-
-      const contaLuzMensal = Math.max(0, Number(consumoInput) || 0);
-      const consumoMensal = billToConsumptionKwh(contaLuzMensal, resolveBillTariff(prev));
-      return patchAndRecalculate(prev, {
-        contaLuzMensal,
-        consumoMensal,
-      });
-    });
+    setFormData((prev) => patchAndRecalculate(prev, {
+      consumoMensal: Math.max(0, Number(consumoInput) || 0),
+    }));
   }, [patchAndRecalculate]);
 
   const handleChange = (field: keyof typeof formData, value: number | string | boolean) => {
@@ -1053,22 +1078,20 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       return;
     }
 
+    if (field === 'contaLuzMensal') {
+      const contaLuzMensal = Math.max(0, Number(value) || 0);
+      setFormData((prev) => ({
+        ...prev,
+        contaLuzMensal: contaLuzMensal > 0 ? contaLuzMensal : undefined,
+      }));
+      return;
+    }
+
     if (field === 'tipo_cliente') {
       const nextTipo = value as ClientType;
       // Pre-fetch cover gallery for the selected segment
       void prefetchCoverImages(nextTipo, 3);
-      setFormData(prev => {
-        const patch: Partial<typeof formData> = {
-          tipo_cliente: nextTipo,
-        };
-        if (nextTipo === 'usina') {
-          patch.contaLuzMensal = undefined;
-        } else {
-          const tarifa = resolveBillTariff(prev);
-          patch.contaLuzMensal = Math.max(0, Number(prev.consumoMensal) || 0) * tarifa;
-        }
-        return patchAndRecalculate(prev, patch);
-      });
+      setFormData(prev => patchAndRecalculate(prev, { tipo_cliente: nextTipo }));
       return;
     }
 
@@ -1122,9 +1145,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           teRatePerKwh: derivedTariffRates.teRatePerKwh,
           tusdRatePerKwh: derivedTariffRates.tusdRatePerKwh,
         };
-        if (prev.tipo_cliente !== 'usina') {
-          patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, Math.max(0.01, rate || DEFAULT_TARIFF_FALLBACK));
-        }
         return patchAndRecalculate(prev, patch);
       });
       return;
@@ -1154,9 +1174,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           patch.tarifaKwh = tariffFromInference;
           patch.teRatePerKwh = derivedTariffRates.teRatePerKwh;
           patch.tusdRatePerKwh = derivedTariffRates.tusdRatePerKwh;
-          if (prev.tipo_cliente !== 'usina') {
-            patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, tariffFromInference);
-          }
         }
         return patchAndRecalculate(prev, patch);
       });
@@ -1182,9 +1199,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           patch.tarifaKwh = inferredTariff;
           patch.teRatePerKwh = derivedTariffRates.teRatePerKwh;
           patch.tusdRatePerKwh = derivedTariffRates.tusdRatePerKwh;
-          if (prev.tipo_cliente !== 'usina') {
-            patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, inferredTariff);
-          }
         }
         return patchAndRecalculate(prev, patch);
       });
@@ -1345,7 +1359,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   // ── Build heuristic content ──
   const buildHeuristic = (contextData: Record<string, unknown> | null): PremiumProposalContent => {
     const metrics: ProposalMetrics = {
-      consumoMensal: formData.consumoMensal, potenciaSistema: formData.potenciaSistema,
+      consumoMensal: formData.consumoMensal,
+      contaLuzMensal: formData.contaLuzMensal,
+      potenciaSistema: formData.potenciaSistema,
       quantidadePaineis: formData.quantidadePaineis, valorTotal: formData.valorTotal,
       economiaAnual: formData.economiaAnual, paybackMeses: formData.paybackMeses, garantiaAnos: formData.garantiaAnos,
     };
@@ -1377,7 +1393,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           city: formData.cidade || contact.city || undefined,
           observacoes: formData.observacoes || undefined,
           metrics: {
-            consumoMensal: formData.consumoMensal, potenciaSistema: formData.potenciaSistema,
+            consumoMensal: formData.consumoMensal,
+            contaLuzMensal: formData.contaLuzMensal,
+            potenciaSistema: formData.potenciaSistema,
             quantidadePaineis: formData.quantidadePaineis, valorTotal: formData.valorTotal,
             economiaAnual: formData.economiaAnual, paybackMeses: formData.paybackMeses,
             garantiaAnos: formData.garantiaAnos,
@@ -1595,6 +1613,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           uf: formData.estado,
           concessionaria: formData.concessionaria,
           tipo_ligacao: formData.tipoLigacao,
+          conta_luz_mensal: formData.contaLuzMensal,
           tarifa_kwh: effectiveTariffKwh,
           custo_disponibilidade_kwh: formData.custoDisponibilidadeKwh,
           performance_ratio: formData.performanceRatio,
@@ -1868,7 +1887,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       {
         ...prev,
         consumoMensal: currentContact.consumption || 500,
-        contaLuzMensal: Math.max(0, (currentContact.consumption || 500) * initialTariff),
+        contaLuzMensal: (Number(currentContact.averageMonthlyBill) || 0) > 0
+          ? Math.max(0, Number(currentContact.averageMonthlyBill) || 0)
+          : undefined,
         valorTotal: currentContact.projectValue || 0,
         tipo_cliente: (currentContact.clientType || 'residencial') as ClientType,
         observacoes: '',
@@ -1894,7 +1915,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         annualOmCostFixed: 0,
         teRatePerKwh: initialTariffRates.teRatePerKwh,
         tusdRatePerKwh: initialTariffRates.tusdRatePerKwh,
-        tusdCompensationPct: 0,
+        tusdCompensationPct: 100,
         estado: uf,
         irradiancia: uf ? getIrradianceByUF(uf) : 4.5,
         posicaoTelhado: 'nao_definido',
@@ -1914,7 +1935,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         precoPorKwp: currentContact.pricePerKwp ?? 4500,
         abaterCustoDisponibilidadeNoDimensionamento: currentContact.subtractAvailabilityInSizing ?? false,
         moduloGarantia: 25,
-        inversorGarantia: 10,
+        inversorGarantia: 25,
       },
       { preserveValorTotal: preserveInitialValor },
     ));

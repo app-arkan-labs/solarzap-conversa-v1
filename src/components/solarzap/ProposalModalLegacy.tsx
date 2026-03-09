@@ -262,7 +262,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
     annualOmCostFixed: 0,
     teRatePerKwh: DEFAULT_TARIFF_FALLBACK,
     tusdRatePerKwh: 0,
-    tusdCompensationPct: 0,
+    tusdCompensationPct: 100,
     financialInputs: undefined as FinancialInputs | undefined,
     financialOutputs: undefined as FinancialOutputs | undefined,
     financialModelVersion: FINANCIAL_MODEL_VERSION as typeof FINANCIAL_MODEL_VERSION,
@@ -291,7 +291,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
     inversorMarca: '',
     inversorPotencia: 0,
     inversorTensao: 220,
-    inversorGarantia: 10,
+    inversorGarantia: 25,
     inversorQtd: 1,
     estruturaTipo: '',
   });
@@ -391,6 +391,9 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
       investimentoTotal: Math.max(0, Number(next.valorTotal) || 0),
       consumoMensalKwh: Math.max(0, Number(next.consumoMensal) || 0),
       potenciaSistemaKwp: Math.max(0, Number(next.potenciaSistema) || 0),
+      avgDailyIrradiance: Math.max(0.01, Number(next.irradiancia) || 4.5),
+      performanceRatio: Math.max(0.01, Number(next.performanceRatio) || 0.8),
+      daysInMonth: next.irradianceSource === 'pvgis' ? 30.4375 : 30,
       rentabilityRatePerKwh: tariffResolved.tariffKwh,
       tarifaKwh: tariffResolved.tariffKwh,
       rentabilitySource: tariffResolved.source,
@@ -413,6 +416,9 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
       analysisYears: DEFAULT_ANALYSIS_YEARS,
       monthlyGenerationFactors: next.monthlyGenerationFactors,
       uf: next.estado,
+      irradianceSource: next.irradianceSource as FinancialInputs['irradianceSource'] | undefined,
+      latitude: Number.isFinite(Number(next.latitude)) ? Number(next.latitude) : undefined,
+      longitude: Number.isFinite(Number(next.longitude)) ? Number(next.longitude) : undefined,
     };
     const financialOutputs = calculateProposalFinancials(financialInputs);
     return { financialInputs, financialOutputs };
@@ -1188,7 +1194,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
           annualOmCostFixed: 0,
           teRatePerKwh: initialRentability,
           tusdRatePerKwh: 0,
-          tusdCompensationPct: 0,
+          tusdCompensationPct: 100,
           estado: uf,
           irradiancia: uf ? getIrradianceByUF(uf) : 4.5,
           monthlyGenerationFactors: undefined,
@@ -1205,7 +1211,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
           precoPorKwp: contact.pricePerKwp ?? 4500,
           abaterCustoDisponibilidadeNoDimensionamento: contact.subtractAvailabilityInSizing ?? false,
           moduloGarantia: 25,
-          inversorGarantia: 10,
+          inversorGarantia: 25,
         },
         { preserveValorTotal: preserveInitialValor },
       ));

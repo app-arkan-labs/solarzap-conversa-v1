@@ -5,6 +5,7 @@
 // ══════════════════════════════════════════════════════════
 import jsPDF from 'jspdf';
 import { isSolarResourceApiEnabled } from '@/config/featureFlags';
+import { calcEnvironmentalImpactFromAnnualKwh } from '@/utils/environmentalImpact';
 import {
   BRAZIL_MONTHLY_IRRADIATION_FACTOR,
   getRegionalMonthlyGenerationFactorsByUf,
@@ -584,14 +585,7 @@ export function calcEnvironmentalImpact(
   econAnualKwh: number,
   years: number = 25,
 ): EnvironmentalData {
-  // Brazilian SIN emission factor: ~0.0817 tCO2/MWh (EPE/ANEEL 2024)
-  const totalKwh = econAnualKwh * years;
-  const co2Tons = (totalKwh / 1000) * 0.0817;
-  // 1 tree absorbs ~22 kg CO2/year → over lifespan
-  const trees = Math.round((co2Tons * 1000) / (22 * years));
-  // 1 liter gasoline ≈ 2.3 kg CO2, avg car ≈ 12 km/l
-  const carKm = Math.round((co2Tons * 1000) / 2.3 * 12);
-  return { co2Tons: Math.round(co2Tons * 10) / 10, trees, carKm };
+  return calcEnvironmentalImpactFromAnnualKwh(econAnualKwh, years);
 }
 
 export function drawEnvironmentalImpact(
@@ -619,7 +613,7 @@ export function drawEnvironmentalImpact(
   const colW = w / 3;
   const items = [
     {
-      value: `${data.co2Tons.toFixed(1)} t`,
+      value: `${data.co2Tons.toFixed(2).replace('.', ',')} t`,
       label: 'CO2 evitado',
       sub: `${(data.co2Tons * 1000).toFixed(0)} kg de gas carbonico`,
       color: theme.primary,
@@ -718,23 +712,30 @@ export function calcMonthlyGeneration(
   options?: {
     monthlyGenerationFactors?: number[] | null;
     uf?: string | null;
+    avgDailyIrradiance?: number | null;
+    performanceRatio?: number | null;
+    daysInMonth?: number | null;
   },
 ): number[] {
   const regionalFallback = getRegionalMonthlyGenerationFactorsByUf(options?.uf);
   const defaultFactors = regionalFallback || BRAZIL_MONTHLY_IRRADIATION_FACTOR;
   const seasonalFactors = normalizeGenerationFactors(options?.monthlyGenerationFactors || defaultFactors, defaultFactors);
+  const potenciaBase = Math.max(Number(potenciaKwp) || 0, 0);
+  if (potenciaBase > 0) {
+    const avgDaily = Math.max(0.01, Number(options?.avgDailyIrradiance) || 4.5);
+    const pr = Math.max(0.01, Number(options?.performanceRatio) || 0.8);
+    const daysInMonth = Math.max(1, Number(options?.daysInMonth) || (isSolarResourceApiEnabled() ? 30.4375 : 30));
+    const monthlyAvg = potenciaBase * avgDaily * daysInMonth * pr;
+    return seasonalFactors.map((factor) => Math.round(monthlyAvg * factor));
+  }
+
+  // Fallback from informed monthly consumption/generation when power is missing.
   const consumoBase = Number(consumoMensal);
   if (Number.isFinite(consumoBase) && consumoBase > 0) {
     return seasonalFactors.map((factor) => Math.round(consumoBase * factor));
   }
 
-  // Fallback from installed power
-  const avgDaily = 4.5;
-  const pr = 0.80;
-  const daysInMonth = isSolarResourceApiEnabled() ? 30.4375 : 30;
-  const potenciaBase = Math.max(Number(potenciaKwp) || 0, 0);
-  const monthlyAvg = potenciaBase * avgDaily * daysInMonth * pr;
-  return seasonalFactors.map((factor) => Math.round(monthlyAvg * factor));
+  return new Array(12).fill(0);
 }
 
 export function drawMonthlyGenerationChart(

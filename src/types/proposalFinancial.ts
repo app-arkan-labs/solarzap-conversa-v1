@@ -4,6 +4,7 @@ export interface FinancialInputs {
   tipoCliente?: string;
   investimentoTotal: number;
   consumoMensalKwh: number;
+  contaLuzMensalReferencia?: number;
   potenciaSistemaKwp: number;
   rentabilityRatePerKwh?: number;
   tarifaKwh: number;
@@ -16,6 +17,9 @@ export interface FinancialInputs {
   analysisYears?: number;
   monthlyGenerationFactors?: number[];
   uf?: string;
+  avgDailyIrradiance?: number;
+  performanceRatio?: number;
+  daysInMonth?: number;
   annualOmCostPct?: number;
   annualOmCostFixed?: number;
   teRatePerKwh?: number;

@@ -4,11 +4,13 @@ import {
   type FinancingCondition,
   type PaymentConditionOptionId,
 } from '@/types/proposalFinancing';
+import { calcEnvironmentalImpactFromAnnualKwh } from '@/utils/environmentalImpact';
 
 export type ProposalSegment = 'residencial' | 'empresarial' | 'agronegocio' | 'usina' | 'indefinido';
 
 export interface ProposalMetrics {
   consumoMensal: number;
+  contaLuzMensal?: number;
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
@@ -439,10 +441,7 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
 
   // ── Environmental Impact ──
   const econAnualKwh = (input.metrics.consumoMensal || 0) * 12;
-  const totalKwh25 = econAnualKwh * 25;
-  const co2Tons = Math.round(((totalKwh25 / 1000) * 0.0817) * 10) / 10;
-  const trees = Math.round((co2Tons * 1000) / (22 * 25));
-  const carKm = Math.round((co2Tons * 1000) / 2.3 * 12);
+  const { co2Tons, trees, carKm } = calcEnvironmentalImpactFromAnnualKwh(econAnualKwh, 25);
   const environmentalImpact: EnvironmentalImpact = { co2Tons, trees, carKm };
 
   // ── Monthly Generation Estimate ──
@@ -463,8 +462,11 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
   ];
 
   // ── Before/After Comparison ──
-  const contaAtual = monthlySavings * 1.15; // estimate: savings ≈ 87% of bill
-  const contaComSolar = contaAtual - monthlySavings;
+  const contaLuzMensalReferencia = Math.max(0, Number(input.metrics.contaLuzMensal) || 0);
+  const contaAtual = contaLuzMensalReferencia > 0
+    ? contaLuzMensalReferencia
+    : monthlySavings * 1.15; // estimate: savings ≈ 87% of bill
+  const contaComSolar = Math.max(contaAtual - monthlySavings, 0);
   const custo25SemSolar = contaAtual * 12 * 25;
   const custo25ComSolar = contaComSolar * 12 * 25 + input.metrics.valorTotal;
   const beforeAfter: BeforeAfterRow[] = [

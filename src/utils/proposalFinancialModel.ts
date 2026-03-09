@@ -8,8 +8,8 @@ import {
 import {
   isDegradationAllClientsEnabled,
   isOmCostModelEnabled,
+  isSolarResourceApiEnabled,
   isTusdTeSimplifiedEnabled,
-  isUnifiedGenerationEnabled,
 } from '@/config/featureFlags';
 import { calcMonthlyGeneration } from '@/utils/proposalCharts';
 
@@ -62,6 +62,7 @@ function buildNonUsinaBillSnapshot(
   custoDisponibilidadeKwh: number,
   rentabilityRatePerKwh: number,
   options?: {
+    contaLuzMensalReferencia?: number;
     tusdTeSimplifiedEnabled?: boolean;
     teRatePerKwh?: number;
     tusdRatePerKwh?: number;
@@ -78,19 +79,42 @@ function buildNonUsinaBillSnapshot(
   const fallbackTotalRate = teRatePerKwh > 0 || tusdRatePerKwh > 0
     ? (teRatePerKwh + tusdRatePerKwh)
     : rentabilityRatePerKwh;
+  const contaLuzMensalReferencia = clampNonNegative(toFinite(options?.contaLuzMensalReferencia, 0));
   const tusdCompensationFactor = tusdTeSimplifiedEnabled
     ? Math.max(0, Math.min(1, clampNonNegative(toFinite(options?.tusdCompensationPct, 0)) / 100))
     : 1;
 
   const availabilityKwhUsed = clampNonNegative(Math.min(consumoMensalKwh, custoDisponibilidadeKwh));
   const compensableKwh = clampNonNegative(consumoMensalKwh - availabilityKwhUsed);
-  const billBeforeMonthly = clampNonNegative(consumoMensalKwh * fallbackTotalRate);
-  const billAfterMonthly = clampNonNegative(availabilityKwhUsed * fallbackTotalRate);
-  const teSavingsMonthly = clampNonNegative(compensableKwh * teRatePerKwh);
-  const tusdSavingsMonthly = clampNonNegative(compensableKwh * tusdRatePerKwh * tusdCompensationFactor);
-  const savingsMonthly = tusdTeSimplifiedEnabled
+  const billBeforeFromConsumption = clampNonNegative(consumoMensalKwh * fallbackTotalRate);
+  const billBeforeMonthly = contaLuzMensalReferencia > 0
+    ? contaLuzMensalReferencia
+    : billBeforeFromConsumption;
+  const technicalBillAfterMonthly = clampNonNegative(availabilityKwhUsed * fallbackTotalRate);
+  let teSavingsMonthly = clampNonNegative(compensableKwh * teRatePerKwh);
+  let tusdSavingsMonthly = clampNonNegative(compensableKwh * tusdRatePerKwh * tusdCompensationFactor);
+  const maxSavingsByBillDelta = clampNonNegative(billBeforeMonthly - technicalBillAfterMonthly);
+  let savingsMonthly = tusdTeSimplifiedEnabled
     ? clampNonNegative(teSavingsMonthly + tusdSavingsMonthly)
-    : clampNonNegative(billBeforeMonthly - billAfterMonthly);
+    : maxSavingsByBillDelta;
+
+  if (tusdTeSimplifiedEnabled && contaLuzMensalReferencia > 0) {
+    // With explicit reference bill, anchor before/after comparison on the technical floor.
+    // This avoids under-reporting savings when TE/TUSD split inputs are conservative.
+    const targetSavingsByReference = maxSavingsByBillDelta;
+    const rawSavings = savingsMonthly;
+    const scale = rawSavings > 0 ? (targetSavingsByReference / rawSavings) : 0;
+    teSavingsMonthly = clampNonNegative(rawSavings > 0 ? teSavingsMonthly * scale : targetSavingsByReference);
+    tusdSavingsMonthly = clampNonNegative(rawSavings > 0 ? tusdSavingsMonthly * scale : 0);
+    savingsMonthly = targetSavingsByReference;
+  } else if (tusdTeSimplifiedEnabled && savingsMonthly > maxSavingsByBillDelta) {
+    const scale = savingsMonthly > 0 ? (maxSavingsByBillDelta / savingsMonthly) : 0;
+    teSavingsMonthly = clampNonNegative(teSavingsMonthly * scale);
+    tusdSavingsMonthly = clampNonNegative(tusdSavingsMonthly * scale);
+    savingsMonthly = maxSavingsByBillDelta;
+  }
+
+  const billAfterMonthly = clampNonNegative(billBeforeMonthly - savingsMonthly);
   const savingsAnnual = savingsMonthly * 12;
   const savingsPct = billBeforeMonthly > 0 ? (savingsMonthly / billBeforeMonthly) * 100 : 0;
 
@@ -148,32 +172,37 @@ export function calculateProposalFinancials(
     : rentabilityRatePerKwh;
   const annualEnergyIncrease = annualEnergyIncreasePct / 100;
   const moduleDegradation = Math.min(0.95, moduleDegradationPct / 100);
-  const unifiedGenerationEnabled = typeof overrides?.unifiedGenerationEnabled === 'boolean'
-    ? overrides.unifiedGenerationEnabled
-    : isUnifiedGenerationEnabled();
+  const avgDailyIrradiance = Math.max(0.01, toFinite(input.avgDailyIrradiance, 4.5));
+  const performanceRatio = Math.max(0.01, toFinite(input.performanceRatio, 0.8));
+  const daysInMonth = Math.max(1, toFinite(input.daysInMonth, isSolarResourceApiEnabled() ? 30.4375 : 30));
+  const contaLuzMensalReferencia = clampNonNegative(toFinite(input.contaLuzMensalReferencia, 0));
   const nonUsinaSnapshot = isUsina
     ? null
     : buildNonUsinaBillSnapshot(consumoMensalKwh, custoDisponibilidadeKwh, rentabilityRatePerKwh, {
+      contaLuzMensalReferencia,
       tusdTeSimplifiedEnabled,
       teRatePerKwh,
       tusdRatePerKwh,
       tusdCompensationPct,
     });
 
-  const unifiedMonthlyGeneration = unifiedGenerationEnabled
-    ? calcMonthlyGeneration(potenciaSistemaKwp, consumoMensalKwh, {
-      monthlyGenerationFactors: input.monthlyGenerationFactors,
-      uf: input.uf,
-    })
-    : null;
-  const legacyAnnualGenerationKwhYear1 = clampNonNegative(consumoMensalKwh * 12);
-  const annualGenerationKwhYear1 = unifiedMonthlyGeneration
-    ? clampNonNegative(unifiedMonthlyGeneration.reduce((acc, value) => acc + Math.max(0, Number(value) || 0), 0))
-    : legacyAnnualGenerationKwhYear1;
+  const monthlyGeneration = calcMonthlyGeneration(potenciaSistemaKwp, consumoMensalKwh, {
+    monthlyGenerationFactors: input.monthlyGenerationFactors,
+    uf: input.uf,
+    avgDailyIrradiance,
+    performanceRatio,
+    daysInMonth,
+  });
+  const annualGenerationFromSizing = clampNonNegative(
+    monthlyGeneration.reduce((acc, value) => acc + Math.max(0, Number(value) || 0), 0),
+  );
+  const annualGenerationFromInput = clampNonNegative(consumoMensalKwh * 12);
+  // For usina, monthly input already represents estimated generation (kWh/mes).
+  const annualGenerationKwhYear1 = isUsina ? annualGenerationFromInput : annualGenerationFromSizing;
   const monthlyGenerationAvgKwhYear1 = annualGenerationKwhYear1 / 12;
 
   const annualRevenueYear1Gross = isUsina
-    ? legacyAnnualGenerationKwhYear1 * effectiveRevenueRatePerKwh
+    ? annualGenerationKwhYear1 * effectiveRevenueRatePerKwh
     : (nonUsinaSnapshot?.savingsAnnual || 0);
   const annualOmCostYear1 = omCostModelEnabled
     ? ((investimentoTotal * annualOmCostPct) / 100) + annualOmCostFixed
@@ -259,6 +288,9 @@ export function calculateProposalFinancials(
       annualOmCostFixed,
       annualEnergyIncreasePct,
       moduleDegradationPct,
+      avgDailyIrradiance,
+      performanceRatio,
+      daysInMonth,
     },
   };
 }

@@ -49,6 +49,7 @@ export interface Contact {
   zip?: string;
   energyDistributor?: string;
   connectionType?: 'monofasico' | 'bifasico' | 'trifasico';
+  averageMonthlyBill?: number;
   energyTariffKwh?: number;
   availabilityCostKwh?: number;
   performanceRatio?: number;

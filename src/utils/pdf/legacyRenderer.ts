@@ -39,8 +39,6 @@ import {
   isOmCostModelEnabled,
   isSolarResourceApiEnabled,
   isTusdTeSimplifiedEnabled,
-  isUnifiedGenerationEnabled,
-  isChartFixedSeasonalProfileEnabled,
 } from '@/config/featureFlags';
 import {
   DEFAULT_ANALYSIS_YEARS,
@@ -78,6 +76,7 @@ const buildSellerScriptFileName = pdfShared.buildSellerScriptFileName ?? fallbac
 export interface ProposalPDFData {
   contact: Contact;
   consumoMensal: number;
+  contaLuzMensal?: number;
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
@@ -146,6 +145,7 @@ export interface ProposalPDFData {
 export interface SellerScriptPDFData {
   contact: Contact;
   consumoMensal: number;
+  contaLuzMensal?: number;
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
@@ -426,7 +426,7 @@ function buildTermsConditionsFromSelection(params: {
     params.isUsina
       ? 'A receita projetada considera a tarifa vigente e pode variar conforme reajustes tarifarios e condicoes contratuais.'
       : 'A economia projetada considera a tarifa vigente e pode variar conforme reajustes tarifarios.',
-    `Garantia dos equipamentos e servicos: modulo (${params.moduloGarantia || 25} anos), inversor (${params.inversorGarantia || 10} anos) e servicos (${params.garantiaServicos || 25} anos).`,
+    `Garantia dos equipamentos e servicos: modulo (${params.moduloGarantia || 25} anos), inversor (${params.inversorGarantia || 25} anos) e servicos (${params.garantiaServicos || 25} anos).`,
     'A instalacao inclui projeto eletrico, instalacao mecanica e eletrica, comissionamento e solicitacao de vistoria junto a concessionaria.',
     'Prazo estimado de instalacao: 7 a 15 dias uteis apos aprovacao do projeto e disponibilidade de materiais.',
     paymentText,
@@ -604,6 +604,10 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     tipoCliente: data.tipo_cliente,
     investimentoTotal: Math.max(0, Number(data.valorTotal) || 0),
     consumoMensalKwh: Math.max(0, Number(data.consumoMensal) || 0),
+    contaLuzMensalReferencia: Math.max(
+      0,
+      Number(data.contaLuzMensal ?? data.financialInputs?.contaLuzMensalReferencia ?? 0) || 0,
+    ),
     potenciaSistemaKwp: Math.max(0, Number(data.potenciaSistema) || 0),
     rentabilityRatePerKwh: resolvedRentabilityRate,
     tarifaKwh: Math.max(
@@ -638,6 +642,31 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
       Number(data.financialInputs?.analysisYears || DEFAULT_ANALYSIS_YEARS) || DEFAULT_ANALYSIS_YEARS,
     ),
     uf: data.financialInputs?.uf || data.contact?.state,
+    avgDailyIrradiance: Math.max(
+      0.01,
+      Number(data.financialInputs?.avgDailyIrradiance ?? data.irradiancia ?? 4.5) || 4.5,
+    ),
+    performanceRatio: Math.max(
+      0.01,
+      Number(data.financialInputs?.performanceRatio ?? data.performanceRatio ?? 0.8) || 0.8,
+    ),
+    daysInMonth: Math.max(
+      1,
+      Number(
+        data.financialInputs?.daysInMonth
+        ?? ((data.irradianceSource || data.financialInputs?.irradianceSource) === 'pvgis' ? 30.4375 : 30),
+      ) || 30,
+    ),
+    monthlyGenerationFactors: data.financialInputs?.monthlyGenerationFactors || data.monthlyGenerationFactors,
+    irradianceSource: (
+      data.financialInputs?.irradianceSource || data.irradianceSource
+    ) as FinancialInputs['irradianceSource'] | undefined,
+    latitude: Number.isFinite(Number(data.financialInputs?.latitude ?? data.latitude))
+      ? Number(data.financialInputs?.latitude ?? data.latitude)
+      : undefined,
+    longitude: Number.isFinite(Number(data.financialInputs?.longitude ?? data.longitude))
+      ? Number(data.financialInputs?.longitude ?? data.longitude)
+      : undefined,
   };
   const financialOutputs: FinancialOutputs = data.financialOutputs
     ? (data.financialOutputs as FinancialOutputs)
@@ -707,39 +736,24 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   // logoDataUrl should always be a valid data:image/... string from useProposalLogo
   const logoSrc = data.logoDataUrl || null;
-  const envImpact: EnvironmentalImpact = premium?.environmentalImpact
-    || calcEnvironmentalImpact(data.consumoMensal * 12, 25);
-  const unifiedGenerationEnabled = isUnifiedGenerationEnabled();
-  const chartFixedSeasonalProfileEnabled = isChartFixedSeasonalProfileEnabled();
-  const fallbackMonthlyGen = calcMonthlyGeneration(data.potenciaSistema, data.consumoMensal, {
-    monthlyGenerationFactors: data.monthlyGenerationFactors || data.financialInputs?.monthlyGenerationFactors,
-    uf: data.contact?.state || data.financialInputs?.uf,
-  });
-  const premiumMonthlyGen = Array.isArray(premium?.monthlyGeneration)
-    ? premium.monthlyGeneration.slice(0, 12).map((v) => {
-      const n = Number(v);
-      return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
-    })
-    : null;
-  const monthlySpread = premiumMonthlyGen && premiumMonthlyGen.length === 12
-    ? (Math.max(...premiumMonthlyGen) - Math.min(...premiumMonthlyGen))
-      / Math.max(1, premiumMonthlyGen.reduce((acc, v) => acc + v, 0) / premiumMonthlyGen.length)
-    : 0;
-  const monthlyGen: number[] = unifiedGenerationEnabled
-    ? fallbackMonthlyGen
-    : (premiumMonthlyGen && monthlySpread >= 0.25
-      ? premiumMonthlyGen
-      : fallbackMonthlyGen);
-  const annualGenerationFromMonthly = monthlyGen.reduce((acc, value) => acc + Math.max(0, Number(value) || 0), 0);
-  const annualGenerationKwh = unifiedGenerationEnabled && Number.isFinite(financialOutputs?.annualGenerationKwhYear1)
-    ? Math.max(0, Number(financialOutputs.annualGenerationKwhYear1) || 0)
-    : annualGenerationFromMonthly;
-  const annualBaseForChart = Number.isFinite(financialOutputs?.annualGenerationKwhYear1)
-    ? Math.max(0, Number(financialOutputs?.annualGenerationKwhYear1) || 0)
-    : annualGenerationFromMonthly;
-  const monthlyGenChart = chartFixedSeasonalProfileEnabled
-    ? buildMonthlyChartSeriesFromAnnual(annualBaseForChart)
-    : monthlyGen;
+  const envImpact: EnvironmentalImpact = calcEnvironmentalImpact(data.consumoMensal * 12, 25);
+  const fallbackMonthlyGen = calcMonthlyGeneration(
+    resolvedFinancialInputs.potenciaSistemaKwp,
+    resolvedFinancialInputs.consumoMensalKwh,
+    {
+      monthlyGenerationFactors: resolvedFinancialInputs.monthlyGenerationFactors,
+      uf: resolvedFinancialInputs.uf,
+      avgDailyIrradiance: resolvedFinancialInputs.avgDailyIrradiance,
+      performanceRatio: resolvedFinancialInputs.performanceRatio,
+      daysInMonth: resolvedFinancialInputs.daysInMonth,
+    },
+  );
+  const annualGenerationFromModel = Number(financialOutputs?.annualGenerationKwhYear1);
+  const annualGenerationKwh = Number.isFinite(annualGenerationFromModel) && annualGenerationFromModel > 0
+    ? Math.max(0, annualGenerationFromModel || 0)
+    : fallbackMonthlyGen.reduce((acc, value) => acc + Math.max(0, Number(value) || 0), 0);
+  const annualBaseForChart = annualGenerationKwh;
+  const monthlyGenChart = buildMonthlyChartSeriesFromAnnual(annualBaseForChart);
   const avgMonthlyGenerationKwh = annualGenerationKwh / 12;
   const daysInMonthAssumption = solarResourceApiEnabled ? 30.4375 : 30;
   const resolvedPerformanceRatio = Math.max(0, Number(data.performanceRatio ?? 0.8) || 0.8);
@@ -780,7 +794,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     : (annualGenerationKwh > 0 ? (econAnual / annualGenerationKwh) : 0);
   const equipSpecs: EquipmentSpec[] = premium?.equipmentSpecs || [
     { item: 'Modulos Fotovoltaicos', spec: 'Monocristalino 550W+ Tier 1', qty: data.quantidadePaineis, warranty: '12 anos produto / 25 anos performance' },
-    { item: 'Inversor', spec: 'On-Grid alta eficiencia (>97%)', qty: 1, warranty: '10 anos' },
+    { item: 'Inversor', spec: 'On-Grid alta eficiencia (>97%)', qty: 1, warranty: '25 anos' },
     { item: 'Estrutura de Fixacao', spec: 'Aluminio anodizado', qty: `${data.quantidadePaineis} conjuntos`, warranty: '15 anos' },
     { item: 'Cabos e Conectores', spec: 'Solar CC 6mm\u00B2 + MC4', qty: 'Kit completo', warranty: '10 anos' },
     { item: 'String Box / Protecao', spec: 'DPS + chave seccionadora CC/CA', qty: 1, warranty: '5 anos' },
@@ -788,10 +802,16 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   // Monthly bill comparison for before/after chart.
   const billBeforeFromModel = Number(financialOutputs.billBeforeMonthly);
   const billAfterFromModel = Number(financialOutputs.billAfterMonthly);
+  const contaLuzMensalReferencia = Math.max(
+    0,
+    Number(data.contaLuzMensal ?? resolvedFinancialInputs.contaLuzMensalReferencia ?? 0) || 0,
+  );
   const fallbackBillBefore = data.consumoMensal * effectiveTotalRate;
   const fallbackBillAfter = Math.min(data.consumoMensal, resolvedFinancialInputs.custoDisponibilidadeKwh || 0) * effectiveTotalRate;
   const contaEstimada = !isUsina
-    ? (Number.isFinite(billBeforeFromModel) ? billBeforeFromModel : fallbackBillBefore)
+    ? (contaLuzMensalReferencia > 0
+      ? contaLuzMensalReferencia
+      : (Number.isFinite(billBeforeFromModel) ? billBeforeFromModel : fallbackBillBefore))
     : 0;
   const contaComSolar = !isUsina
     ? (Number.isFinite(billAfterFromModel) ? billAfterFromModel : fallbackBillAfter)
@@ -1209,7 +1229,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   //  "Por que confiar" 
   const trustItems = [
     ...(premium?.proofPoints || []),
-    `Garantias comerciais: modulo ${data.moduloGarantia || 25} anos, inversor ${data.inversorGarantia || 10} anos e servicos ${data.garantiaAnos} anos.`,
+    `Garantias comerciais: modulo ${data.moduloGarantia || 25} anos, inversor ${data.inversorGarantia || 25} anos e servicos ${data.garantiaAnos} anos.`,
     'Dimensionamento alinhado ao consumo informado e as regras vigentes de geracao distribuida.',
   ];
   sectionTitle('Por que confiar');
@@ -1248,14 +1268,6 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
         ['Investimento Total', fmtCurrency(data.valorTotal)],
         ['Receita Mensal Estimada', fmtCurrency(econMensal)],
         ['Receita Anual Estimada', fmtCurrency(econAnual)],
-        ['Rentabilidade aplicada', `R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh`],
-        ...(tusdTeSimplifiedEnabled
-          ? [
-            ['Tarifa TE', `R$ ${fmtDecimal(effectiveTeRate, 2, 4)} / kWh`],
-            ['Tarifa TUSD', `R$ ${fmtDecimal(effectiveTusdRate, 2, 4)} / kWh`],
-            ['Compensacao TUSD', `${fmtDecimal(effectiveTusdCompensationPct, 0, 2)}%`],
-          ]
-          : []),
         ['Receita Acumulada (5 anos)', fmtCurrency(receita5Anos)],
         ['Receita Acumulada (15 anos)', fmtCurrency(receita15Anos)],
         ['Payback Estimado', paybackYearsDetailed],
@@ -1386,7 +1398,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const invMarca = data.inversorMarca || '';
   const invPot = data.inversorPotencia || data.potenciaSistema;
   const invTensao = data.inversorTensao || 220;
-  const invGar = data.inversorGarantia || 10;
+  const invGar = data.inversorGarantia || 25;
   const invQtd = data.inversorQtd || 1;
   const estrutura = data.estruturaTipo || (isUsina ? 'Solo' : 'Telhado');
 
@@ -1435,14 +1447,6 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
       ['Investimento Total', fmtCurrency(data.valorTotal)],
       [isUsina ? 'Receita Mensal Estimada' : 'Economia Mensal Estimada', fmtCurrency(econMensal)],
       [isUsina ? 'Receita Anual Estimada' : 'Economia Anual Estimada', fmtCurrency(econAnual)],
-      ['Rentabilidade aplicada', `R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh`],
-      ...(tusdTeSimplifiedEnabled
-        ? [
-          ['Tarifa TE', `R$ ${fmtDecimal(effectiveTeRate, 2, 4)} / kWh`],
-          ['Tarifa TUSD', `R$ ${fmtDecimal(effectiveTusdRate, 2, 4)} / kWh`],
-          ['Compensacao TUSD', `${fmtDecimal(effectiveTusdCompensationPct, 0, 2)}%`],
-        ]
-        : []),
       ['Tempo de Retorno (Payback)', paybackYearsDetailed],
       [isUsina ? 'Receita em 25 anos' : 'Economia em 25 anos', fmtCurrency(longTermSavings)],
       ['ROI em 25 anos', roi25],
@@ -1522,48 +1526,8 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   const assumptionsFromPremium = premium?.assumptions || [];
   const assumptionsSnapshot = (financialOutputs?.assumptionsSnapshot || {}) as Record<string, unknown>;
-  const resolvedSnapshotOmEnabled = typeof assumptionsSnapshot.omCostModelEnabled === 'boolean'
-    ? Boolean(assumptionsSnapshot.omCostModelEnabled)
-    : omCostModelEnabled;
-  const resolvedSnapshotDegradationAllClients = typeof assumptionsSnapshot.degradationAllClientsEnabled === 'boolean'
-    ? Boolean(assumptionsSnapshot.degradationAllClientsEnabled)
-    : degradationAllClientsEnabled;
-  const resolvedSnapshotTusdTeEnabled = typeof assumptionsSnapshot.tusdTeSimplifiedEnabled === 'boolean'
-    ? Boolean(assumptionsSnapshot.tusdTeSimplifiedEnabled)
-    : tusdTeSimplifiedEnabled;
-  const transparencyAssumptions: string[] = showExtendedAssumptions
-    ? [
-      `Fonte de irradiancia: ${mapIrradianceSourceLabel(resolvedIrradianceSource)}.`,
-      ...(Number.isFinite(resolvedLat) && Number.isFinite(resolvedLon)
-        ? [`Coordenadas de referencia: lat ${fmtDecimal(resolvedLat, 4, 4)} | lon ${fmtDecimal(resolvedLon, 4, 4)}.`]
-        : []),
-      ...(resolvedIrradiance > 0
-        ? [`Irradiancia media utilizada: ${fmtDecimal(resolvedIrradiance, 2, 4)} kWh/m2/dia.`]
-        : []),
-      `Dias medios por mes no dimensionamento: ${fmtDecimal(daysInMonthAssumption, 3, 4)}.`,
-      `Performance ratio (PR) aplicado: ${fmtDecimal(resolvedPerformanceRatio * 100, 1, 3)}%.`,
-      ...(resolvedSnapshotTusdTeEnabled
-        ? [
-          `Tarifa TE: R$ ${fmtDecimal(effectiveTeRate, 2, 4)} / kWh.`,
-          `Tarifa TUSD: R$ ${fmtDecimal(effectiveTusdRate, 2, 4)} / kWh.`,
-          `Compensacao de TUSD aplicada: ${fmtDecimal(effectiveTusdCompensationPct, 0, 2)}%.`,
-          `Rentabilidade efetiva (TE + TUSD compensada): R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh.`,
-        ]
-        : [`Tarifa de referencia aplicada: R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh.`]),
-      ...(resolvedSnapshotOmEnabled
-        ? [
-          `O&M anual considerado: ${fmtDecimal(effectiveOmCostPct, 1, 3)}% do CAPEX + R$ ${fmtDecimal(effectiveOmCostFixed)} por ano.`,
-        ]
-        : ['O&M anual nao aplicado neste calculo.']),
-      `Degradacao anual de modulos: ${fmtDecimal(effectiveModuleDegradationPct, 1, 3)}%.`,
-      resolvedSnapshotDegradationAllClients
-        ? 'Degradacao aplicada para todos os segmentos habilitados.'
-        : 'Degradacao aplicada apenas ao segmento usina (comportamento legado).',
-      `Reajuste anual projetado de energia/tarifa: ${fmtDecimal(effectiveAnnualIncreasePct, 1, 3)}%.`,
-      `Horizonte de analise: ${resolvedHorizonYears} anos.`,
-      `Versao do modelo financeiro: ${data.financialModelVersion || 'nao informada'}.`,
-    ]
-    : [];
+  // Hidden in client-facing proposal by request.
+  const transparencyAssumptions: string[] = [];
 
   // Assumptions
   if (assumptionsFromPremium.length > 0 || transparencyAssumptions.length > 0) {
@@ -1576,25 +1540,6 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
       const lines = doc.splitTextToSize(a, W - 2 * M - 8);
       doc.text(lines, M + 6, y); y += lines.length * 4 + 3;
     });
-    if (transparencyAssumptions.length > 0) {
-      if (assumptionsFromPremium.length > 0) y += 1;
-      checkPageBreak(8);
-      doc.setTextColor(C.header[0], C.header[1], C.header[2]);
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Premissas tecnicas e financeiras aplicadas', M, y);
-      y += 5;
-      doc.setTextColor(100, 100, 100);
-      doc.setFont('helvetica', 'normal');
-      transparencyAssumptions.forEach((item) => {
-        checkPageBreak(10);
-        doc.setFillColor(120, 120, 120);
-        doc.circle(M + 2, y - 1, 1, 'F');
-        const lines = doc.splitTextToSize(item, W - 2 * M - 8);
-        doc.text(lines, M + 6, y);
-        y += lines.length * 4 + 2.5;
-      });
-    }
     y += 4;
   }
 

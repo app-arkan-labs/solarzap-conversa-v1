@@ -65,14 +65,22 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
           </div>
           <div>
             <p className="text-xs text-muted-foreground">
-              {form.isUsina ? 'Geracao estimada' : 'Conta de luz mensal'}
+              {form.isUsina ? 'Geracao estimada' : 'Consumo medio mensal'}
             </p>
             <p className="font-medium">
-              {form.isUsina
-                ? `${form.formData.consumoMensal || 0} kWh/mes`
-                : form.formatCurrency(form.formData.contaLuzMensal || 0)}
+              {`${form.formData.consumoMensal || 0} kWh/mes`}
             </p>
           </div>
+          {!form.isUsina && (
+            <div>
+              <p className="text-xs text-muted-foreground">Conta media mensal (referencia)</p>
+              <p className="font-medium">
+                {(form.formData.contaLuzMensal || 0) > 0
+                  ? form.formatCurrency(form.formData.contaLuzMensal || 0)
+                  : 'Nao informada'}
+              </p>
+            </div>
+          )}
           <div>
             <p className="text-xs text-muted-foreground">Potencia e paineis</p>
             <p className="font-medium">

@@ -35,6 +35,7 @@ export interface LeadDB {
   cep?: string | null;
   concessionaria?: string | null;
   tipo_ligacao?: 'monofasico' | 'bifasico' | 'trifasico' | null;
+  conta_luz_mensal?: number | null;
   tarifa_kwh?: number | null;
   custo_disponibilidade_kwh?: number | null;
   performance_ratio?: number | null;

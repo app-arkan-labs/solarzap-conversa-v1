@@ -58,8 +58,15 @@ describe('calculateProposalFinancials', () => {
       tusdTeSimplifiedEnabled: false,
     });
 
-    expect(result.annualGenerationKwhYear1).toBe(4200);
-    expect(result.monthlyGenerationAvgKwhYear1).toBe(350);
+    const expectedMonthlyGeneration = calcMonthlyGeneration(3.3, 350, {
+      avgDailyIrradiance: 4.5,
+      performanceRatio: 0.8,
+      daysInMonth: Number(result.assumptionsSnapshot?.daysInMonth) || 30,
+    });
+    const expectedAnnualGeneration = expectedMonthlyGeneration.reduce((acc, value) => acc + value, 0);
+
+    expect(result.annualGenerationKwhYear1).toBe(expectedAnnualGeneration);
+    expect(result.monthlyGenerationAvgKwhYear1).toBeCloseTo(expectedAnnualGeneration / 12, 6);
     expect(result.annualRevenueYear1).toBe(3060);
     expect(result.monthlyRevenueYear1).toBe(255);
     expect(result.annualRevenueSeries).toHaveLength(25);
@@ -260,6 +267,41 @@ describe('calculateProposalFinancials', () => {
     expect(result.savingsMonthly).toBeCloseTo(225, 4);
   });
 
+  it('usa contaLuzMensalReferencia para recalibrar comparativo e payback no nao-usina', () => {
+    const withoutReference = calculateProposalFinancials({
+      tipoCliente: 'residencial',
+      investimentoTotal: 14850,
+      consumoMensalKwh: 350,
+      potenciaSistemaKwp: 3.3,
+      rentabilityRatePerKwh: 0.85,
+      tarifaKwh: 0.85,
+      custoDisponibilidadeKwh: 50,
+      analysisYears: 25,
+    }, {
+      tusdTeSimplifiedEnabled: false,
+    });
+
+    const withReference = calculateProposalFinancials({
+      tipoCliente: 'residencial',
+      investimentoTotal: 14850,
+      consumoMensalKwh: 350,
+      contaLuzMensalReferencia: 266,
+      potenciaSistemaKwp: 3.3,
+      rentabilityRatePerKwh: 0.85,
+      tarifaKwh: 0.85,
+      custoDisponibilidadeKwh: 50,
+      analysisYears: 25,
+    }, {
+      tusdTeSimplifiedEnabled: false,
+    });
+
+    expect(withReference.billBeforeMonthly).toBeCloseTo(266, 4);
+    expect(withReference.billAfterMonthly).toBeCloseTo(42.5, 4);
+    expect(withReference.savingsMonthly).toBeCloseTo(223.5, 4);
+    expect(withReference.savingsAnnual).toBeCloseTo(2682, 4);
+    expect(withReference.paybackMonths).toBeGreaterThan(withoutReference.paybackMonths);
+  });
+
   it('aplica compensacao TUSD parcial de 50%', () => {
     const result = calculateProposalFinancials({
       tipoCliente: 'residencial',
@@ -300,6 +342,55 @@ describe('calculateProposalFinancials', () => {
 
     expect(result.tusdSavingsMonthly).toBeCloseTo(67.2, 4);
     expect(result.savingsMonthly).toBeCloseTo(240, 4);
+  });
+
+  it('limita savings no modo TUSD simplificado quando conta de referencia e menor que o ganho tecnico', () => {
+    const result = calculateProposalFinancials({
+      tipoCliente: 'residencial',
+      investimentoTotal: 14850,
+      consumoMensalKwh: 350,
+      contaLuzMensalReferencia: 180,
+      potenciaSistemaKwp: 3.3,
+      rentabilityRatePerKwh: 0.85,
+      tarifaKwh: 0.85,
+      teRatePerKwh: 0.65,
+      tusdRatePerKwh: 0.20,
+      tusdCompensationPct: 100,
+      custoDisponibilidadeKwh: 50,
+      analysisYears: 25,
+    }, {
+      tusdTeSimplifiedEnabled: true,
+    });
+
+    expect(result.billBeforeMonthly).toBeCloseTo(180, 4);
+    expect(result.billAfterMonthly).toBeCloseTo(42.5, 4);
+    expect(result.savingsMonthly).toBeCloseTo(137.5, 4);
+    expect((result.savingsMonthly || 0)).toBeLessThanOrEqual(
+      (result.billBeforeMonthly || 0) - (result.billAfterMonthly || 0),
+    );
+  });
+
+  it('ancora comparativo na conta de referencia quando modo TUSD simplificado subestima economia', () => {
+    const result = calculateProposalFinancials({
+      tipoCliente: 'residencial',
+      investimentoTotal: 14850,
+      consumoMensalKwh: 300,
+      contaLuzMensalReferencia: 266,
+      potenciaSistemaKwp: 3.3,
+      rentabilityRatePerKwh: 0.67,
+      tarifaKwh: 0.67,
+      teRatePerKwh: 0.4824,
+      tusdRatePerKwh: 0.1876,
+      tusdCompensationPct: 0,
+      custoDisponibilidadeKwh: 50,
+      analysisYears: 25,
+    }, {
+      tusdTeSimplifiedEnabled: true,
+    });
+
+    expect(result.billBeforeMonthly).toBeCloseTo(266, 4);
+    expect(result.billAfterMonthly).toBeCloseTo(33.5, 4);
+    expect(result.savingsMonthly).toBeCloseTo(232.5, 4);
   });
 
   it('permite overrides de flags para shadow mode', () => {

@@ -464,6 +464,11 @@ export function ProposalsView() {
     }
 
     const payload = (row.premium_payload as any) || {};
+    const contaLuzMensal = Number(
+      payload?.technicalInputs?.contaLuzMensal
+      ?? payload?.financialInputs?.contaLuzMensalReferencia
+      ?? 0,
+    ) || undefined;
     // Pre-fetch cover image for the segment (best-effort)
     const tipoClienteCover = row.tipo_cliente || payload?.segment || 'residencial';
     const coverImageDataUrls = await prefetchCoverImages(tipoClienteCover, 3).catch(() => [] as string[]);
@@ -489,6 +494,7 @@ export function ProposalsView() {
     generateProposalPDF({
       contact: buildContactFromRow(row),
       consumoMensal: Number(row.consumo_kwh || 0),
+      contaLuzMensal,
       potenciaSistema: Number(row.potencia_kw || 0),
       quantidadePaineis: Number(row.paineis_qtd || 0),
       valorTotal: Number(row.valor_projeto || 0),
@@ -536,6 +542,11 @@ export function ProposalsView() {
     }
 
     const payload = (row.premium_payload as any) || {};
+    const contaLuzMensal = Number(
+      payload?.technicalInputs?.contaLuzMensal
+      ?? payload?.financialInputs?.contaLuzMensalReferencia
+      ?? 0,
+    ) || undefined;
     const payloadRentabilityRate = Number(
       payload?.financialInputs?.rentabilityRatePerKwh
       ?? payload?.rentabilityRatePerKwh
@@ -550,6 +561,7 @@ export function ProposalsView() {
     generateSellerScriptPDF({
       contact: buildContactFromRow(row),
       consumoMensal: Number(row.consumo_kwh || 0),
+      contaLuzMensal,
       potenciaSistema: Number(row.potencia_kw || 0),
       quantidadePaineis: Number(row.paineis_qtd || 0),
       valorTotal: Number(row.valor_projeto || 0),

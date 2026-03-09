@@ -12,5 +12,6 @@ interface ProposalModalProps {
 export type { ProposalData };
 
 export function ProposalModal(props: ProposalModalProps) {
-  return <ProposalWizardModal {...props} />;
+  const wizardKey = `${props.isOpen ? 'open' : 'closed'}-${props.contact?.id ?? 'no-contact'}`;
+  return <ProposalWizardModal key={wizardKey} {...props} />;
 }
