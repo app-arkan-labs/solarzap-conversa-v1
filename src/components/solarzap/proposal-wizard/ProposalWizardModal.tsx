@@ -44,8 +44,7 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
     if (currentStep === 2) {
       const hasCoordinates = Number.isFinite(Number(form.formData.latitude))
         && Number.isFinite(Number(form.formData.longitude));
-      const hasStrictPvgis = form.formData.irradianceSource === 'pvgis'
-        || form.formData.irradianceSource === 'pvgis_cache_degraded';
+      const hasStrictPvgis = form.formData.irradianceSource === 'pvgis';
       const hasManualLocation = Boolean(form.formData.cidade) && Boolean(form.formData.estado);
       return (
         Boolean(form.formData.estado)

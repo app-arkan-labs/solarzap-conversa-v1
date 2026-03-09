@@ -26,9 +26,7 @@ export function StepLocation({ form }: StepLocationProps) {
   const resolvePreciseLocation = form.resolvePreciseLocation;
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
-    : form.formData.irradianceSource === 'pvgis_cache_degraded'
-      ? 'PVGIS (cache degradado)'
-      : 'nao resolvida';
+    : 'nao resolvida';
 
   const ufDistributorOptions = useMemo(() => {
     return form.options.getEnergyDistributorOptionsByUf(form.formData.estado || null);
@@ -164,6 +162,7 @@ export function StepLocation({ form }: StepLocationProps) {
             : 'Coordenadas: nao resolvidas'}
           {' | '}Fonte: {sourceLabel}
           {' | '}Ref: {form.formData.irradianceRefAt ? new Date(form.formData.irradianceRefAt).toLocaleString('pt-BR') : '-'}
+          {' | '}Req: {form.formData.irradianceRequestId || '-'}
         </p>
       </div>
     </div>

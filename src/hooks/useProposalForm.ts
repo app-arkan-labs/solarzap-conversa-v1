@@ -106,13 +106,14 @@ const fallbackTriggerBlobDownload = (blob: Blob, rawFileName: string): void => {
 const buildProposalFileNameSafe = pdfShared.buildProposalFileName ?? fallbackBuildProposalFileName;
 const triggerBlobDownloadSafe = pdfShared.triggerBlobDownload ?? fallbackTriggerBlobDownload;
 
-const isPvgisBasedSource = (source: string | undefined | null): boolean =>
-  source === 'pvgis' || source === 'pvgis_cache_degraded';
+const isStrictPvgisSource = (source: string | undefined | null): boolean => source === 'pvgis';
 
 const normalizeSolarResourceErrorCode = (value: unknown): SolarResourceErrorCode | null => {
   switch (String(value || '').trim()) {
     case 'unauthorized':
     case 'geocode_failed':
+    case 'geocode_provider_unavailable':
+    case 'geocode_low_confidence':
     case 'pvgis_unavailable':
     case 'upstream_rate_limited':
     case 'upstream_timeout':
@@ -128,6 +129,7 @@ type ResolveSolarResourceResult = {
   resource: SolarResourceResponse | null;
   errorCode?: SolarResourceErrorCode;
   debug?: SolarResourceDebug;
+  requestId?: string;
 };
 
 const deriveTariffComponents = (tariffRaw: number | null | undefined) => {
@@ -194,6 +196,7 @@ export interface ProposalData {
   latitude?: number;
   longitude?: number;
   irradianceRefAt?: string;
+  irradianceRequestId?: string;
   premiumPayload?: Record<string, unknown>;
   contextEngine?: unknown;
   // Sprint 3: Pass theme/logo for seller script
@@ -354,6 +357,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     latitude: undefined as number | undefined,
     longitude: undefined as number | undefined,
     irradianceRefAt: undefined as string | undefined,
+    irradianceRequestId: undefined as string | undefined,
     moduloNome: '',
     moduloMarca: '',
     moduloPotencia: 550,
@@ -432,7 +436,12 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       if (!obj || typeof obj !== 'object') return null;
       const code = normalizeSolarResourceErrorCode(obj.errorCode ?? obj.error ?? obj.code);
       if (!code) return null;
-      return { error: code, errorCode: code, debug: obj.debug as SolarResourceDebug | undefined };
+      return {
+        error: code,
+        errorCode: code,
+        debug: obj.debug as SolarResourceDebug | undefined,
+        requestId: typeof obj.requestId === 'string' ? obj.requestId : undefined,
+      };
     };
 
     // Strategy 1: supabase-js FunctionsHttpError — context is a Response object
@@ -505,6 +514,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           resource: null,
           errorCode: parsedError?.errorCode ?? 'unexpected_error',
           debug: parsedError?.debug,
+          requestId: parsedError?.requestId,
         };
       }
 
@@ -519,15 +529,17 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           resource: null,
           errorCode: payloadErrorCode,
           debug: payload.debug as SolarResourceDebug | undefined,
+          requestId: typeof payload.requestId === 'string' ? payload.requestId : undefined,
         };
       }
 
       const source = String(payload.source || '').toLowerCase();
-      if (!isPvgisBasedSource(source)) {
+      if (!isStrictPvgisSource(source)) {
         return {
           resource: null,
           errorCode: 'pvgis_unavailable',
           debug: payload.debug as SolarResourceDebug | undefined,
+          requestId: typeof payload.requestId === 'string' ? payload.requestId : undefined,
         };
       }
 
@@ -559,7 +571,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           degraded: Boolean(payload.degraded),
           errorCode: normalizeSolarResourceErrorCode(payload.errorCode),
           debug: payload.debug as SolarResourceDebug | undefined,
+          requestId: typeof payload.requestId === 'string' ? payload.requestId : undefined,
         },
+        requestId: typeof payload.requestId === 'string' ? payload.requestId : undefined,
       };
     } catch (err) {
       const parsedError = await parseSolarResourceErrorPayload(err);
@@ -568,6 +582,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         resource: null,
         errorCode: parsedError?.errorCode ?? 'unexpected_error',
         debug: parsedError?.debug,
+        requestId: parsedError?.requestId,
       };
     }
   }, [parseSolarResourceErrorPayload]);
@@ -731,12 +746,54 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   };
 
   const resolveLocationRequestSeqRef = React.useRef(0);
+  const inFlightLocationRequestsRef = React.useRef<Map<string, Promise<ResolveSolarResourceResult>>>(new Map());
 
-  const showSolarResourceErrorToast = useCallback((errorCode?: SolarResourceErrorCode, debug?: SolarResourceDebug) => {
+  const buildLocationRequestKey = useCallback((params: {
+    uf?: string;
+    cidade?: string;
+    endereco?: string;
+    cep?: string;
+    latitude?: number;
+    longitude?: number;
+  }) => {
+    const normalizedUf = String(params.uf || '').trim().toUpperCase();
+    const normalizedCity = String(params.cidade || '').trim().toLowerCase();
+    const normalizedAddress = String(params.endereco || '').trim().toLowerCase();
+    const normalizedCep = normalizeCep(String(params.cep || ''));
+    const normalizedLat = Number.isFinite(Number(params.latitude)) ? Number(params.latitude).toFixed(6) : '';
+    const normalizedLon = Number.isFinite(Number(params.longitude)) ? Number(params.longitude).toFixed(6) : '';
+    return [normalizedUf, normalizedCity, normalizedAddress, normalizedCep, normalizedLat, normalizedLon].join('|');
+  }, []);
+
+  const showSolarResourceErrorToast = useCallback((
+    errorCode?: SolarResourceErrorCode,
+    debug?: SolarResourceDebug,
+    requestId?: string,
+  ) => {
+    const requestSuffix = requestId ? ` Ref: ${requestId}` : '';
+
     if (errorCode === 'unauthorized') {
       toast({
         title: 'Sessao invalida',
-        description: 'Sua sessao expirou. Faca login novamente para calcular irradiancia.',
+        description: `Sua sessao expirou. Faca login novamente para calcular irradiancia.${requestSuffix}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (errorCode === 'geocode_provider_unavailable') {
+      toast({
+        title: 'Geocodificacao indisponivel',
+        description: `Servico de geocodificacao indisponivel. Verifique a chave Google e tente novamente.${requestSuffix}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (errorCode === 'geocode_low_confidence') {
+      toast({
+        title: 'Endereco com baixa confianca',
+        description: `Nao foi possivel validar coordenadas com confianca para esse CEP/endereco.${requestSuffix}`,
         variant: 'destructive',
       });
       return;
@@ -745,7 +802,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     if (errorCode === 'geocode_failed') {
       toast({
         title: 'Falha na geocodificacao',
-        description: 'Nao foi possivel converter a localizacao em coordenadas validas.',
+        description: `Nao foi possivel converter a localizacao em coordenadas validas.${requestSuffix}`,
         variant: 'destructive',
       });
       return;
@@ -762,7 +819,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         : '';
       toast({
         title: 'PVGIS indisponivel',
-        description: `PVGIS indisponivel no momento${statusHint}. Tente novamente em alguns segundos.`,
+        description: `PVGIS indisponivel no momento${statusHint}. Tente novamente em alguns segundos.${requestSuffix}`,
         variant: 'destructive',
       });
       return;
@@ -770,7 +827,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     toast({
       title: 'Falha ao buscar dados solares',
-      description: 'Tente novamente em alguns segundos.',
+      description: `Tente novamente em alguns segundos.${requestSuffix}`,
       variant: 'destructive',
     });
   }, [toast]);
@@ -803,20 +860,40 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const longitude = hasOverrideCoordinates
       ? overrideLongitude
       : (!hasTextualLocation ? currentLongitude : undefined);
+    const requestKey = buildLocationRequestKey({
+      uf,
+      cidade,
+      endereco,
+      cep,
+      latitude,
+      longitude,
+    });
 
     setLocationLoading(true);
     try {
-      const { resource: solarResource, errorCode, debug } = await resolveSolarResource({
-        city: cidade || undefined,
-        uf: uf || undefined,
-        addressLine: endereco || undefined,
-        zip: cep || undefined,
-        lat: latitude,
-        lon: longitude,
-      });
+      let inFlight = inFlightLocationRequestsRef.current.get(requestKey);
+      if (!inFlight) {
+        const currentPromise = resolveSolarResource({
+          city: cidade || undefined,
+          uf: uf || undefined,
+          addressLine: endereco || undefined,
+          zip: cep || undefined,
+          lat: latitude,
+          lon: longitude,
+        });
+        inFlightLocationRequestsRef.current.set(requestKey, currentPromise);
+        void currentPromise.finally(() => {
+          if (inFlightLocationRequestsRef.current.get(requestKey) === currentPromise) {
+            inFlightLocationRequestsRef.current.delete(requestKey);
+          }
+        });
+        inFlight = currentPromise;
+      }
+
+      const { resource: solarResource, errorCode, debug, requestId } = await inFlight;
       if (!solarResource) {
         if (requestSeq === resolveLocationRequestSeqRef.current) {
-          showSolarResourceErrorToast(errorCode, debug);
+          showSolarResourceErrorToast(errorCode, debug, requestId);
         }
         return null;
       }
@@ -835,6 +912,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         latitude: solarResource.lat ?? latitude ?? prev.latitude,
         longitude: solarResource.lon ?? longitude ?? prev.longitude,
         irradianceRefAt: new Date().toISOString(),
+        irradianceRequestId: solarResource.requestId ?? requestId ?? prev.irradianceRequestId,
         ...buildConcessionariaPatch(prev, {
           uf: uf || prev.estado,
           cidade: cidade || prev.cidade,
@@ -854,7 +932,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         setLocationLoading(false);
       }
     }
-  }, [buildConcessionariaPatch, patchAndRecalculate, resolveSolarResource, showSolarResourceErrorToast]);
+  }, [buildConcessionariaPatch, buildLocationRequestKey, patchAndRecalculate, resolveSolarResource, showSolarResourceErrorToast]);
 
   const autofillAddressByCep = useCallback(async (rawCep?: string) => {
     const currentFormData = formDataRef.current;
@@ -926,6 +1004,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         longitude: undefined,
         irradianceSource: undefined,
         irradianceRefAt: undefined,
+        irradianceRequestId: undefined,
         ...buildConcessionariaPatch(prev, {
           uf: nextOverride.estado || prev.estado,
           cidade: nextOverride.cidade || prev.cidade,
@@ -1144,6 +1223,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         longitude: undefined,
         irradianceSource: undefined,
         irradianceRefAt: undefined,
+        irradianceRequestId: undefined,
       }));
       return;
     }
@@ -1363,7 +1443,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     e.preventDefault();
     if (!contact) return;
 
-    if (!isPvgisBasedSource(formData.irradianceSource) || !Number.isFinite(Number(formData.latitude)) || !Number.isFinite(Number(formData.longitude))) {
+    if (!isStrictPvgisSource(formData.irradianceSource) || !Number.isFinite(Number(formData.latitude)) || !Number.isFinite(Number(formData.longitude))) {
       toast({
         title: 'Irradiancia obrigatoria via PVGIS',
         description: 'Calcule o local exato ate obter fonte PVGIS antes de gerar a proposta.',
@@ -1619,6 +1699,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           latitude: formData.latitude,
           longitude: formData.longitude,
           irradianceRefAt: formData.irradianceRefAt,
+          irradianceRequestId: formData.irradianceRequestId,
           moduloNome: formData.moduloNome,
           moduloMarca: formData.moduloMarca,
           moduloTipo: formData.moduloTipo,
@@ -1666,6 +1747,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         latitude: formData.latitude,
         longitude: formData.longitude,
         irradianceRefAt: formData.irradianceRefAt,
+        irradianceRequestId: formData.irradianceRequestId,
         rentabilityRatePerKwh: effectiveRentabilityRate,
         secondaryColorHex: secondaryColorHex || null,
         branding: brandingSnapshot,
@@ -1703,6 +1785,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         latitude: formData.latitude,
         longitude: formData.longitude,
         irradianceRefAt: formData.irradianceRefAt,
+        irradianceRequestId: formData.irradianceRequestId,
         secondaryColorHex: secondaryColorHex || null,
         proposalThemeId: themeId,
         premiumPayload,
@@ -1817,10 +1900,11 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         posicaoTelhado: 'nao_definido',
         sombreamentoPct: ROOF_POSITION_LOSS_MAP.nao_definido,
         monthlyGenerationFactors: undefined,
-        irradianceSource: isPvgisBasedSource(currentContact.irradianceSource) ? currentContact.irradianceSource : undefined,
+        irradianceSource: isStrictPvgisSource(currentContact.irradianceSource) ? currentContact.irradianceSource : undefined,
         latitude: currentContact.latitude,
         longitude: currentContact.longitude,
         irradianceRefAt: currentContact.irradianceRefAt || undefined,
+        irradianceRequestId: undefined,
         concessionaria: inferredDistributor,
         tipoLigacao,
         rentabilityRatePerKwh: initialRentability,
@@ -1835,30 +1919,15 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       { preserveValorTotal: preserveInitialValor },
     ));
 
-    void (async () => {
-      const { resource: solarResource } = await resolveSolarResource({
-        city: currentContact.city || null,
-        uf,
-        addressLine: currentContact.address || null,
-        zip: currentContact.zip || null,
-        lat: currentContact.latitude,
-        lon: currentContact.longitude,
-      });
-      if (!solarResource) return;
-      setFormData(prev => recalculateSizing(
-        {
-          ...prev,
-          irradiancia: solarResource.annualIrradianceKwhM2Day,
-          monthlyGenerationFactors: solarResource.monthlyGenerationFactors,
-          irradianceSource: solarResource.source,
-          latitude: solarResource.lat ?? undefined,
-          longitude: solarResource.lon ?? undefined,
-          irradianceRefAt: new Date().toISOString(),
-        },
-        { preserveValorTotal: preserveInitialValor },
-      ));
-    })();
-  }, [contact?.id, isOpen, recalculateSizing, resolveSolarResource]);
+    void resolvePreciseLocation({
+      estado: uf || undefined,
+      cidade: currentContact.city || undefined,
+      endereco: currentContact.address || undefined,
+      cep: currentContact.zip || undefined,
+      latitude: toFiniteOrUndefined(currentContact.latitude),
+      longitude: toFiniteOrUndefined(currentContact.longitude),
+    });
+  }, [contact?.id, isOpen, recalculateSizing, resolvePreciseLocation]);
 
   const isUsina = formData.tipo_cliente === 'usina';
   const hasFinancingSelected = formData.paymentConditions.includes('financiamento_bancario');

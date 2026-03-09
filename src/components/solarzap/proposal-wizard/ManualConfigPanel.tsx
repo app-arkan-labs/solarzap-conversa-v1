@@ -19,9 +19,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
     && Number.isFinite(Number(form.formData.longitude));
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
-    : form.formData.irradianceSource === 'pvgis_cache_degraded'
-      ? 'PVGIS (cache degradado)'
-      : 'nao resolvida';
+    : 'nao resolvida';
 
   return (
     <div className="space-y-5 rounded-lg border bg-muted/20 p-4">
@@ -118,6 +116,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
                 : 'Coordenadas nao resolvidas'}
               {' | '}Fonte: {sourceLabel}
               {' | '}Ref: {form.formData.irradianceRefAt ? new Date(form.formData.irradianceRefAt).toLocaleString('pt-BR') : '-'}
+              {' | '}Req: {form.formData.irradianceRequestId || '-'}
             </div>
           </div>
         </div>

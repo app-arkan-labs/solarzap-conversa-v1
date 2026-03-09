@@ -14,10 +14,9 @@ const buildCorsHeaders = (req: Request) => {
   };
 };
 
-const CACHE_TTL_DAYS = 30;
 const FETCH_TIMEOUT_MS = 15_000;
-const PVGIS_TIMEOUT_MS = 15_000;
-const MAX_PVGIS_ATTEMPTS_PER_BASE = 2;
+const PVGIS_TIMEOUT_MS = 25_000;
+const MAX_PVGIS_ATTEMPTS_PER_BASE = 3;
 const HANDLER_DEADLINE_MS = 120_000;
 
 const DAYS_IN_MONTH = [31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -59,6 +58,7 @@ const toFinite = (value: unknown, fallback = 0): number => {
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const normalizeZip = (value: unknown): string => String(value || "").replace(/\D/g, "").slice(0, 8);
 const normalizeText = (value: string): string =>
   String(value || "")
     .normalize("NFD")
@@ -73,11 +73,21 @@ const normalizeFactors = (factors: number[]): number[] => {
   return safe.map((v) => v / avg);
 };
 
-type SolarResourceSource = "pvgis" | "pvgis_cache_degraded";
+const isValidCoordinatePair = (lat: number, lon: number): boolean =>
+  Number.isFinite(lat)
+  && Number.isFinite(lon)
+  && lat >= -90
+  && lat <= 90
+  && lon >= -180
+  && lon <= 180;
+
+type SolarResourceSource = "pvgis";
 
 type SolarResourceErrorCode =
   | "unauthorized"
   | "geocode_failed"
+  | "geocode_provider_unavailable"
+  | "geocode_low_confidence"
   | "pvgis_unavailable"
   | "upstream_rate_limited"
   | "upstream_timeout"
@@ -87,7 +97,9 @@ type SolarResourceErrorCode =
 type SolarResourceDebug = {
   phase?: "auth" | "geocode" | "pvgis" | "cache" | "unexpected";
   upstreamStatus?: number | null;
-  attempts?: number;
+  pvgisBaseTried?: string[];
+  totalAttempts?: number;
+  latencyMs?: number;
   lat?: number | null;
   lon?: number | null;
   cacheKeyTried?: string[];
@@ -108,7 +120,97 @@ type SolarResourcePayload = {
   debug?: SolarResourceDebug;
 };
 
-// jsonResponse and errorResponse are defined inside the handler to access dynamic CORS headers
+type GeocodeErrorCode = Extract<SolarResourceErrorCode, "geocode_failed" | "geocode_provider_unavailable" | "geocode_low_confidence">;
+
+type ResolveCoordinatesResult =
+  | {
+    ok: true;
+    lat: number;
+    lon: number;
+    city: string;
+    uf: string;
+    message?: string;
+  }
+  | {
+    ok: false;
+    errorCode: GeocodeErrorCode;
+    upstreamStatus: number | null;
+    message?: string;
+    lat?: number;
+    lon?: number;
+  };
+
+type ViaCepResult = {
+  zip: string;
+  city: string;
+  uf: string;
+  street: string;
+  neighborhood: string;
+};
+
+type PvgisFetchErrorCode = Extract<
+  SolarResourceErrorCode,
+  "pvgis_unavailable" | "upstream_rate_limited" | "upstream_timeout" | "upstream_http_error"
+>;
+
+type PvgisFetchResult =
+  | {
+    ok: true;
+    annual: number;
+    monthlyDaily: number[];
+    referenceYear: number | null;
+    totalAttempts: number;
+    latencyMs: number;
+    pvgisBaseTried: string[];
+  }
+  | {
+    ok: false;
+    errorCode: PvgisFetchErrorCode;
+    totalAttempts: number;
+    upstreamStatus: number | null;
+    latencyMs: number;
+    pvgisBaseTried: string[];
+    message?: string;
+  };
+
+type SolarResourceEventPayload = {
+  requestId: string;
+  leadId: number | null;
+  orgId: string | null;
+  errorCode: SolarResourceErrorCode | null;
+  phase: "auth" | "geocode" | "pvgis" | "cache" | "unexpected";
+  zip: string | null;
+  city: string | null;
+  uf: string | null;
+  lat: number | null;
+  lon: number | null;
+  pvgisBase: string | null;
+  upstreamStatus: number | null;
+  latencyMs: number | null;
+};
+
+type GoogleGeocodeOutcome =
+  | {
+    kind: "success";
+    lat: number;
+    lon: number;
+    city: string;
+    uf: string;
+    zip: string;
+    partialMatch: boolean;
+    locationType: string;
+    upstreamStatus: number | null;
+  }
+  | {
+    kind: "not_found";
+    upstreamStatus: number | null;
+    message?: string;
+  }
+  | {
+    kind: "provider_unavailable";
+    upstreamStatus: number | null;
+    message?: string;
+  };
 
 async function fetchWithTimeout(
   url: string,
@@ -124,282 +226,376 @@ async function fetchWithTimeout(
   }
 }
 
-async function geocodeCity(
-  city: string,
-  uf: string,
-  addressLine = "",
-  zip = "",
-  googleApiKeyOverride = "",
-): Promise<{ lat: number; lon: number } | null> {
-  const name = city.trim();
-  const normalizedAddress = String(addressLine || "").trim();
-  if (!name && !normalizedAddress) return null;
-  const normalizedUf = uf.trim().toUpperCase();
-  const normalizedZip = String(zip || "").replace(/\D/g, "").slice(0, 8);
+const resolveGoogleApiKey = (override = ""): string =>
+  String(
+    override
+    || Deno.env.get("GEOCODING_API_KEY")
+    || Deno.env.get("GOOGLE_GEOCODING_API_KEY")
+    || Deno.env.get("GOOGLE_MAPS_API_KEY")
+    || "",
+  ).trim();
 
-  const extractUfFromGoogleResult = (result: any): string => {
-    const components = Array.isArray(result?.address_components) ? result.address_components : [];
-    const stateComponent = components.find((component: any) =>
-      Array.isArray(component?.types) && component.types.includes("administrative_area_level_1"));
+const extractAddressComponent = (result: any, type: string): any | null => {
+  const components = Array.isArray(result?.address_components) ? result.address_components : [];
+  return components.find((component: any) =>
+    Array.isArray(component?.types) && component.types.includes(type)) || null;
+};
 
-    const shortName = String(stateComponent?.short_name || "").trim().toUpperCase();
-    if (shortName.length === 2) return shortName;
+const extractUfFromGoogleResult = (result: any): string => {
+  const stateComponent = extractAddressComponent(result, "administrative_area_level_1");
+  const shortName = String(stateComponent?.short_name || "").trim().toUpperCase();
+  if (shortName.length === 2) return shortName;
 
-    const longNameNormalized = normalizeText(String(stateComponent?.long_name || ""));
-    if (!longNameNormalized) return "";
-    const byLongName = Object.entries(UF_TO_STATE_NAME).find(([, state]) =>
-      normalizeText(state) === longNameNormalized);
-    return byLongName?.[0] || "";
-  };
+  const longName = normalizeText(String(stateComponent?.long_name || ""));
+  if (!longName) return "";
+  const match = Object.entries(UF_TO_STATE_NAME).find(([, stateName]) => normalizeText(stateName) === longName);
+  return match?.[0] || "";
+};
 
-  const geocodeWithGoogle = async (apiKey: string): Promise<{ lat: number; lon: number } | null> => {
-    if (!apiKey) return null;
-    const stateLabel = UF_TO_STATE_NAME[normalizedUf] || normalizedUf;
-    const address = [
-      normalizedAddress,
-      name,
-      stateLabel,
-      normalizedZip || undefined,
-      "Brasil",
-    ].filter(Boolean).join(", ");
+const extractCityFromGoogleResult = (result: any): string => {
+  const locality = extractAddressComponent(result, "locality");
+  if (locality) {
+    return String(locality.long_name || locality.short_name || "").trim();
+  }
+  const level2 = extractAddressComponent(result, "administrative_area_level_2");
+  if (level2) {
+    return String(level2.long_name || level2.short_name || "").trim();
+  }
+  const sublocality = extractAddressComponent(result, "sublocality");
+  if (sublocality) {
+    return String(sublocality.long_name || sublocality.short_name || "").trim();
+  }
+  return "";
+};
+
+const extractZipFromGoogleResult = (result: any): string => {
+  const zipComponent = extractAddressComponent(result, "postal_code");
+  return normalizeZip(zipComponent?.long_name || zipComponent?.short_name || "");
+};
+
+async function geocodeWithGoogle(
+  address: string,
+  components: string | null,
+  apiKey: string,
+): Promise<GoogleGeocodeOutcome> {
+  if (!apiKey) {
+    return {
+      kind: "provider_unavailable",
+      upstreamStatus: null,
+      message: "missing_google_api_key",
+    };
+  }
+
+  try {
     const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
     url.searchParams.set("address", address);
-    url.searchParams.set("components", "country:BR");
+    if (components) {
+      url.searchParams.set("components", components);
+    }
     url.searchParams.set("region", "br");
     url.searchParams.set("language", "pt-BR");
     url.searchParams.set("key", apiKey);
 
-    const response = await fetchWithTimeout(url.toString());
-    if (!response.ok) return null;
+    const response = await fetchWithTimeout(url.toString(), FETCH_TIMEOUT_MS);
+    if (!response.ok) {
+      return {
+        kind: "provider_unavailable",
+        upstreamStatus: response.status,
+        message: `google_http_${response.status}`,
+      };
+    }
 
     const data = await response.json().catch(() => null);
-    if ((data as any)?.status !== "OK") return null;
+    const googleStatus = String((data as any)?.status || "").toUpperCase();
+
+    if (googleStatus === "ZERO_RESULTS") {
+      return {
+        kind: "not_found",
+        upstreamStatus: response.status,
+        message: "zero_results",
+      };
+    }
+
+    if (googleStatus !== "OK") {
+      return {
+        kind: "provider_unavailable",
+        upstreamStatus: response.status,
+        message: `google_status_${googleStatus || "unknown"}`,
+      };
+    }
+
     const results = Array.isArray((data as any)?.results) ? (data as any).results : [];
-    if (results.length === 0) return null;
+    if (results.length === 0) {
+      return {
+        kind: "not_found",
+        upstreamStatus: response.status,
+        message: "no_results",
+      };
+    }
 
-    const ufMatch = normalizedUf
-      ? results.find((row: any) => extractUfFromGoogleResult(row) === normalizedUf)
-      : null;
-    const selected = ufMatch || results[0];
-
+    const selected = results[0];
     const lat = toFinite(selected?.geometry?.location?.lat, NaN);
     const lon = toFinite(selected?.geometry?.location?.lng, NaN);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    return { lat, lon };
-  };
-
-  const googleApiKey = String(
-    googleApiKeyOverride
-    || Deno.env.get("GEOCODING_API_KEY")
-    || Deno.env.get("GOOGLE_GEOCODING_API_KEY")
-    || Deno.env.get("GOOGLE_MAPS_API_KEY")
-    || "",
-  ).trim();
-  if (googleApiKey) {
-    const googleResult = await geocodeWithGoogle(googleApiKey).catch(() => null);
-    if (googleResult) return googleResult;
-  }
-
-  if (normalizedAddress) {
-    const nominatimUrl = new URL("https://nominatim.openstreetmap.org/search");
-    nominatimUrl.searchParams.set(
-      "q",
-      [
-        normalizedAddress,
-        name || undefined,
-        UF_TO_STATE_NAME[normalizedUf] || normalizedUf || undefined,
-        normalizedZip || undefined,
-        "Brasil",
-      ].filter(Boolean).join(", "),
-    );
-    nominatimUrl.searchParams.set("format", "jsonv2");
-    nominatimUrl.searchParams.set("limit", "5");
-    nominatimUrl.searchParams.set("countrycodes", "br");
-    nominatimUrl.searchParams.set("addressdetails", "1");
-
-    const nominatimResponse = await fetchWithTimeout(
-      nominatimUrl.toString(),
-      FETCH_TIMEOUT_MS,
-      {
-        headers: {
-          "User-Agent": "SolarZap/1.0 (contact@arkanlabs.com.br)",
-          "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-        },
-      },
-    );
-    if (nominatimResponse.ok) {
-      const nominatimData = await nominatimResponse.json().catch(() => null);
-      const nominatimRows = Array.isArray(nominatimData) ? nominatimData : [];
-      const ufMatch = normalizedUf
-        ? nominatimRows.find((row: any) => {
-          const stateCode = String((row as any)?.address?.state_code || "").trim().toUpperCase();
-          if (stateCode.length === 2) return stateCode === normalizedUf;
-          const stateName = normalizeText(String((row as any)?.address?.state || ""));
-          const expected = normalizeText(UF_TO_STATE_NAME[normalizedUf] || "");
-          return stateName.length > 0 && stateName === expected;
-        })
-        : null;
-      const selected = ufMatch || nominatimRows[0];
-      if (selected) {
-        const lat = toFinite((selected as any)?.lat, NaN);
-        const lon = toFinite((selected as any)?.lon, NaN);
-        if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
-      }
+    if (!isValidCoordinatePair(lat, lon)) {
+      return {
+        kind: "not_found",
+        upstreamStatus: response.status,
+        message: "invalid_coordinates",
+      };
     }
+
+    return {
+      kind: "success",
+      lat,
+      lon,
+      city: extractCityFromGoogleResult(selected),
+      uf: extractUfFromGoogleResult(selected),
+      zip: extractZipFromGoogleResult(selected),
+      partialMatch: Boolean(selected?.partial_match),
+      locationType: String(selected?.geometry?.location_type || ""),
+      upstreamStatus: response.status,
+    };
+  } catch (error) {
+    const isAbort = error instanceof Error && error.name === "AbortError";
+    return {
+      kind: "provider_unavailable",
+      upstreamStatus: null,
+      message: isAbort ? "google_timeout" : `google_fetch_error_${String(error)}`,
+    };
   }
-
-  const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
-  url.searchParams.set("name", name || normalizedAddress);
-  url.searchParams.set("count", "5");
-  url.searchParams.set("language", "pt");
-  url.searchParams.set("format", "json");
-  url.searchParams.set("countryCode", "BR");
-  const openMeteoApiKey = (Deno.env.get("OPEN_METEO_API_KEY") || "").trim();
-  if (openMeteoApiKey) {
-    url.searchParams.set("apikey", openMeteoApiKey);
-  }
-
-  const response = await fetchWithTimeout(url.toString());
-  if (!response.ok) return null;
-  const data = await response.json().catch(() => null);
-  const results = Array.isArray((data as any)?.results) ? (data as any).results : [];
-  if (results.length === 0) return null;
-
-  const withUf = normalizedUf
-    ? results.find((row: any) => String(row?.admin1 || "").toUpperCase().includes(normalizedUf))
-    : null;
-  const selected = withUf || results[0];
-
-  const lat = toFinite(selected?.latitude, NaN);
-  const lon = toFinite(selected?.longitude, NaN);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  return { lat, lon };
 }
 
-async function geocodeZip(zipRaw: string, googleApiKeyOverride = ""): Promise<{ lat: number; lon: number } | null> {
-  const zip = String(zipRaw || "").replace(/\D/g, "").slice(0, 8);
-  if (zip.length !== 8) return null;
-
-  const googleApiKey = String(
-    googleApiKeyOverride
-    || Deno.env.get("GEOCODING_API_KEY")
-    || Deno.env.get("GOOGLE_GEOCODING_API_KEY")
-    || Deno.env.get("GOOGLE_MAPS_API_KEY")
-    || "",
-  ).trim();
-
-  if (googleApiKey) {
-    try {
-      const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
-      url.searchParams.set("address", `${zip}, Brasil`);
-      url.searchParams.set("components", `postal_code:${zip}|country:BR`);
-      url.searchParams.set("region", "br");
-      url.searchParams.set("language", "pt-BR");
-      url.searchParams.set("key", googleApiKey);
-
-      const googleResponse = await fetchWithTimeout(url.toString());
-      if (googleResponse.ok) {
-        const data = await googleResponse.json().catch(() => null);
-        if ((data as any)?.status === "OK") {
-          const result = Array.isArray((data as any)?.results) ? (data as any).results[0] : null;
-          const lat = toFinite(result?.geometry?.location?.lat, NaN);
-          const lon = toFinite(result?.geometry?.location?.lng, NaN);
-          if (Number.isFinite(lat) && Number.isFinite(lon)) {
-            return { lat, lon };
-          }
-        }
-      }
-    } catch {
-      // continue on fallback providers
-    }
-  }
-
+async function fetchViaCep(zip: string): Promise<ViaCepResult | null> {
+  const normalizedZip = normalizeZip(zip);
+  if (normalizedZip.length !== 8) return null;
   try {
-    const brasilApiResponse = await fetchWithTimeout(`https://brasilapi.com.br/api/cep/v2/${zip}`);
-    if (brasilApiResponse.ok) {
-      const brasilApiData = await brasilApiResponse.json().catch(() => null);
-      const lat = toFinite((brasilApiData as any)?.location?.coordinates?.latitude, NaN);
-      const lon = toFinite((brasilApiData as any)?.location?.coordinates?.longitude, NaN);
-      if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
-    }
+    const response = await fetchWithTimeout(`https://viacep.com.br/ws/${normalizedZip}/json/`, FETCH_TIMEOUT_MS);
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => null);
+    if ((payload as any)?.erro) return null;
+
+    const uf = String((payload as any)?.uf || "").trim().toUpperCase();
+    const city = String((payload as any)?.localidade || "").trim();
+    if (!uf || !city) return null;
+
+    return {
+      zip: normalizedZip,
+      uf,
+      city,
+      street: String((payload as any)?.logradouro || "").trim(),
+      neighborhood: String((payload as any)?.bairro || "").trim(),
+    };
   } catch {
-    // non-blocking fallback to other geocoders
+    return null;
   }
-
-  const nominatimUrl = new URL("https://nominatim.openstreetmap.org/search");
-  nominatimUrl.searchParams.set("q", `${zip}, Brasil`);
-  nominatimUrl.searchParams.set("format", "jsonv2");
-  nominatimUrl.searchParams.set("limit", "1");
-  nominatimUrl.searchParams.set("countrycodes", "br");
-  const nominatimResponse = await fetchWithTimeout(
-    nominatimUrl.toString(),
-    FETCH_TIMEOUT_MS,
-    {
-      headers: {
-        "User-Agent": "SolarZap/1.0 (contact@arkanlabs.com.br)",
-        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-      },
-    },
-  ).catch(() => null);
-
-  if (nominatimResponse?.ok) {
-    const nominatimData = await nominatimResponse.json().catch(() => null);
-    const first = Array.isArray(nominatimData) ? nominatimData[0] : null;
-    if (first) {
-      const lat = toFinite((first as any)?.lat, NaN);
-      const lon = toFinite((first as any)?.lon, NaN);
-      if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
-    }
-  }
-
-  return null;
 }
 
-type PvgisFetchErrorCode = Extract<
-  SolarResourceErrorCode,
-  "pvgis_unavailable" | "upstream_rate_limited" | "upstream_timeout" | "upstream_http_error"
->;
+const cityMatches = (expectedCity: string, geocodedCity: string): boolean => {
+  const expected = normalizeText(expectedCity);
+  const actual = normalizeText(geocodedCity);
+  if (!expected || !actual) return true;
+  return expected === actual || expected.includes(actual) || actual.includes(expected);
+};
 
-type PvgisFetchResult =
-  | {
-    ok: true;
-    annual: number;
-    monthlyDaily: number[];
-    referenceYear: number | null;
-    attempts: number;
+async function resolveCoordinatesWithGoogle(params: {
+  city: string;
+  uf: string;
+  addressLine: string;
+  zip: string;
+  googleApiKey: string;
+}): Promise<ResolveCoordinatesResult> {
+  const normalizedZip = normalizeZip(params.zip);
+  let city = String(params.city || "").trim();
+  let uf = String(params.uf || "").trim().toUpperCase();
+  let addressLine = String(params.addressLine || "").trim();
+  const googleApiKey = resolveGoogleApiKey(params.googleApiKey);
+
+  if (!googleApiKey) {
+    return {
+      ok: false,
+      errorCode: "geocode_provider_unavailable",
+      upstreamStatus: null,
+      message: "missing_google_api_key",
+    };
   }
-  | {
-    ok: false;
-    errorCode: PvgisFetchErrorCode;
-    attempts: number;
-    upstreamStatus: number | null;
-    message?: string;
+
+  const viaCep = normalizedZip.length === 8 ? await fetchViaCep(normalizedZip) : null;
+  if (viaCep) {
+    city = city || viaCep.city;
+    uf = uf || viaCep.uf;
+    if (!addressLine) {
+      addressLine = [viaCep.street, viaCep.neighborhood].filter(Boolean).join(", ");
+    }
+  }
+
+  const queries: Array<{ address: string; components: string | null; label: string }> = [];
+  if (normalizedZip.length === 8) {
+    queries.push({
+      address: `${normalizedZip}, Brasil`,
+      components: `postal_code:${normalizedZip}|country:BR`,
+      label: "zip_only",
+    });
+  }
+
+  const stateLabel = UF_TO_STATE_NAME[uf] || uf;
+  const fullAddress = [addressLine, city, stateLabel, normalizedZip || undefined, "Brasil"]
+    .filter(Boolean)
+    .join(", ");
+  if (fullAddress) {
+    queries.push({
+      address: fullAddress,
+      components: "country:BR",
+      label: "address_full",
+    });
+  }
+
+  if (queries.length === 0) {
+    return {
+      ok: false,
+      errorCode: "geocode_failed",
+      upstreamStatus: null,
+      message: "missing_location_fields",
+    };
+  }
+
+  let lastNotFoundMessage = "";
+  for (const query of queries) {
+    const geocode = await geocodeWithGoogle(query.address, query.components, googleApiKey);
+    if (geocode.kind === "provider_unavailable") {
+      return {
+        ok: false,
+        errorCode: "geocode_provider_unavailable",
+        upstreamStatus: geocode.upstreamStatus,
+        message: geocode.message || `google_unavailable_${query.label}`,
+      };
+    }
+
+    if (geocode.kind === "not_found") {
+      lastNotFoundMessage = geocode.message || `not_found_${query.label}`;
+      continue;
+    }
+
+    const expectedUf = String(uf || "").trim().toUpperCase();
+    if (expectedUf && geocode.uf && geocode.uf !== expectedUf) {
+      return {
+        ok: false,
+        errorCode: "geocode_low_confidence",
+        upstreamStatus: geocode.upstreamStatus,
+        message: `uf_mismatch_expected_${expectedUf}_got_${geocode.uf}`,
+        lat: geocode.lat,
+        lon: geocode.lon,
+      };
+    }
+
+    if (city && geocode.city && !cityMatches(city, geocode.city)) {
+      return {
+        ok: false,
+        errorCode: "geocode_low_confidence",
+        upstreamStatus: geocode.upstreamStatus,
+        message: `city_mismatch_expected_${normalizeText(city)}_got_${normalizeText(geocode.city)}`,
+        lat: geocode.lat,
+        lon: geocode.lon,
+      };
+    }
+
+    return {
+      ok: true,
+      lat: geocode.lat,
+      lon: geocode.lon,
+      city: city || geocode.city,
+      uf: uf || geocode.uf,
+      message: geocode.partialMatch
+        ? `partial_match_location_type_${geocode.locationType || "unknown"}`
+        : undefined,
+    };
+  }
+
+  return {
+    ok: false,
+    errorCode: "geocode_failed",
+    upstreamStatus: null,
+    message: lastNotFoundMessage || "google_zero_results",
   };
+}
+
+const isAmericasCoordinate = (lat: number, lon: number): boolean =>
+  lat >= -60
+  && lat <= 85
+  && lon >= -170
+  && lon <= -30;
+
+type PvgisBasePlan = {
+  baseUrl: string;
+  label: string;
+  raddatabase?: string;
+};
+
+const buildPvgisBasePlans = (lat: number, lon: number): PvgisBasePlan[] => {
+  if (isAmericasCoordinate(lat, lon)) {
+    return [
+      {
+        baseUrl: "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
+        label: "v5_2/PVcalc",
+        raddatabase: "PVGIS-NSRDB",
+      },
+      {
+        baseUrl: "https://re.jrc.ec.europa.eu/api/v5_3/PVcalc",
+        label: "v5_3/PVcalc",
+      },
+      {
+        baseUrl: "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
+        label: "v5_2/PVcalc_default_db",
+      },
+    ];
+  }
+
+  return [
+    {
+      baseUrl: "https://re.jrc.ec.europa.eu/api/v5_3/PVcalc",
+      label: "v5_3/PVcalc",
+    },
+    {
+      baseUrl: "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
+      label: "v5_2/PVcalc",
+    },
+  ];
+};
+
+const computeRetryDelayMs = (attempt: number): number => {
+  const baseDelay = Math.min(4_000, 400 * (2 ** attempt));
+  const jitter = Math.floor(Math.random() * 250);
+  return baseDelay + jitter;
+};
 
 async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number): Promise<PvgisFetchResult> {
-  const pvgisBases = [
-    "https://re.jrc.ec.europa.eu/api/v5_3/PVcalc",
-    "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
-  ];
+  const startedAt = Date.now();
+  const pvgisBasePlans = buildPvgisBasePlans(lat, lon);
+  const pvgisBaseTried: string[] = [];
 
   let data: any = null;
-  let attempts = 0;
+  let totalAttempts = 0;
   let sawRateLimit = false;
   let sawTimeout = false;
   let sawHttpError = false;
   let upstreamStatus: number | null = null;
   let lastMessage = "";
 
-  for (const base of pvgisBases) {
+  for (const basePlan of pvgisBasePlans) {
+    const planLabel = basePlan.raddatabase
+      ? `${basePlan.label}?raddatabase=${basePlan.raddatabase}`
+      : basePlan.label;
+    pvgisBaseTried.push(planLabel);
+
     for (let attempt = 0; attempt < MAX_PVGIS_ATTEMPTS_PER_BASE; attempt += 1) {
-      // Bail out early if running out of handler time
       if (deadlineMs !== undefined && Date.now() > deadlineMs - 15_000) {
         sawTimeout = true;
         lastMessage = "handler_deadline_approaching";
         break;
       }
-      attempts += 1;
-      const url = new URL(base);
+
+      totalAttempts += 1;
+
+      const url = new URL(basePlan.baseUrl);
       url.searchParams.set("lat", String(lat));
       url.searchParams.set("lon", String(lon));
       url.searchParams.set("peakpower", "1");
@@ -407,6 +603,9 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
       url.searchParams.set("optimalangles", "1");
       url.searchParams.set("outputformat", "json");
       url.searchParams.set("browser", "0");
+      if (basePlan.raddatabase) {
+        url.searchParams.set("raddatabase", basePlan.raddatabase);
+      }
 
       let response: Response | null = null;
       let fetchError: unknown = null;
@@ -424,7 +623,7 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
         } else {
           lastMessage = fetchError ? String(fetchError) : "network_error";
         }
-        await sleep(250 + (attempt * 250));
+        await sleep(computeRetryDelayMs(attempt));
         continue;
       }
 
@@ -436,11 +635,13 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
           } else {
             sawHttpError = true;
           }
-          await sleep(300 + (attempt * 300));
+          lastMessage = `retryable_http_${response.status}`;
+          await sleep(computeRetryDelayMs(attempt));
           continue;
         }
+
         sawHttpError = true;
-        console.error(`PVGIS PVcalc non-retryable HTTP ${response.status} for lat=${lat}, lon=${lon} base=${base}`);
+        lastMessage = `non_retryable_http_${response.status}`;
         break;
       }
 
@@ -455,11 +656,13 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
 
       sawHttpError = true;
       lastMessage = "invalid_monthly_payload";
-      await sleep(200 + (attempt * 200));
+      await sleep(computeRetryDelayMs(attempt));
     }
 
     if (data) break;
   }
+
+  const latencyMs = Date.now() - startedAt;
 
   if (!data) {
     const errorCode: PvgisFetchErrorCode = sawRateLimit
@@ -470,14 +673,13 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
           ? "upstream_http_error"
           : "pvgis_unavailable";
 
-    console.error(
-      `PVGIS PVcalc unavailable for lat=${lat}, lon=${lon}, code=${errorCode}, status=${upstreamStatus ?? "none"}, attempts=${attempts}, msg=${lastMessage || "n/a"}`,
-    );
     return {
       ok: false,
       errorCode,
-      attempts,
+      totalAttempts,
       upstreamStatus,
+      latencyMs,
+      pvgisBaseTried,
       ...(lastMessage ? { message: lastMessage } : {}),
     };
   }
@@ -486,17 +688,17 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
     ? (data as any).outputs.monthly.fixed
     : [];
   if (monthlyRows.length === 0) {
-    console.error("PVGIS PVcalc: no monthly rows in response");
     return {
       ok: false,
       errorCode: "upstream_http_error",
-      attempts,
+      totalAttempts,
       upstreamStatus,
+      latencyMs,
+      pvgisBaseTried,
       message: "no_monthly_rows",
     };
   }
 
-  // Extract H(i)_d (daily irradiance on tilted plane, kWh/m²/day) for each month
   const monthlyDaily: number[] = new Array(12).fill(0);
   for (const row of monthlyRows) {
     const monthIndex = clamp(Math.round(toFinite((row as any)?.month, 0)) - 1, 0, 11);
@@ -506,12 +708,13 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
 
   const validCount = monthlyDaily.filter((value) => value > 0.01).length;
   if (validCount < 8) {
-    console.error(`PVGIS PVcalc: only ${validCount}/12 valid months`);
     return {
       ok: false,
       errorCode: "upstream_http_error",
-      attempts,
+      totalAttempts,
       upstreamStatus,
+      latencyMs,
+      pvgisBaseTried,
       message: `insufficient_valid_months_${validCount}`,
     };
   }
@@ -519,7 +722,6 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
   const knownAvg = monthlyDaily.filter((v) => v > 0).reduce((acc, v) => acc + v, 0) / validCount;
   const patchedMonthlyDaily = monthlyDaily.map((value) => (value > 0 ? value : knownAvg));
 
-  // Annual average: use the totals H(i)_d if available, otherwise compute weighted average
   const totalsHiD = toFinite((data as any)?.outputs?.totals?.fixed?.["H(i)_d"], 0);
   const annual = totalsHiD > 0
     ? totalsHiD
@@ -534,17 +736,62 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
     annual: Number(annual.toFixed(4)),
     monthlyDaily: patchedMonthlyDaily.map((value) => Number(value.toFixed(4))),
     referenceYear,
-    attempts,
+    totalAttempts,
+    latencyMs,
+    pvgisBaseTried,
   };
+}
+
+async function logSolarResourceEvent(client: ReturnType<typeof createClient>, payload: SolarResourceEventPayload): Promise<void> {
+  try {
+    await client.from("solar_resource_events").insert({
+      request_id: payload.requestId,
+      lead_id: payload.leadId,
+      org_id: payload.orgId,
+      error_code: payload.errorCode,
+      phase: payload.phase,
+      zip: payload.zip,
+      city: payload.city,
+      uf: payload.uf,
+      lat: payload.lat,
+      lon: payload.lon,
+      pvgis_base: payload.pvgisBase,
+      upstream_status: payload.upstreamStatus,
+      latency_ms: payload.latencyMs,
+      created_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error(`[solar-resource] EVENT_LOG_FAIL requestId=${payload.requestId} err=${String(error)}`);
+  }
 }
 
 Deno.serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
+  const requestId = crypto.randomUUID();
+  const requestStartedAt = Date.now();
+
+  const toResponseBody = (body: unknown): Record<string, unknown> => {
+    if (body && typeof body === "object" && !Array.isArray(body)) {
+      return {
+        requestId,
+        ...(body as Record<string, unknown>),
+      };
+    }
+    return {
+      requestId,
+      data: body,
+    };
+  };
 
   const jsonResponse = (body: unknown, status = 200, extraHeaders?: Record<string, string>): Response =>
-    new Response(JSON.stringify(body), {
+    new Response(JSON.stringify(toResponseBody(body)), {
       status,
-      headers: { ...corsHeaders, "Content-Type": "application/json", ...(extraHeaders || {}) },
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+        "X-Request-Id": requestId,
+        ...(extraHeaders || {}),
+      },
     });
 
   const errorResponse = (
@@ -558,7 +805,12 @@ Deno.serve(async (req) => {
   }, status);
 
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", {
+      headers: {
+        ...corsHeaders,
+        "X-Request-Id": requestId,
+      },
+    });
   }
 
   try {
@@ -572,172 +824,212 @@ Deno.serve(async (req) => {
       });
     }
 
+    const serviceClient = createClient(supabaseUrl, supabaseServiceRole);
+    const bodyRaw = await req.json().catch(() => ({}));
+    const body = (bodyRaw && typeof bodyRaw === "object" && !Array.isArray(bodyRaw))
+      ? bodyRaw as Record<string, unknown>
+      : {};
+
+    const leadIdRaw = Number(body.leadId);
+    const leadId = Number.isFinite(leadIdRaw) ? Math.trunc(leadIdRaw) : null;
+    const orgIdValue = String(body.orgId || "").trim();
+    const orgId = orgIdValue || null;
+
     const authHeader = req.headers.get("Authorization") || "";
     const authClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: authData, error: authError } = await authClient.auth.getUser();
     if (authError || !authData?.user) {
+      await logSolarResourceEvent(serviceClient, {
+        requestId,
+        leadId,
+        orgId,
+        errorCode: "unauthorized",
+        phase: "auth",
+        zip: normalizeZip(body.zip),
+        city: String(body.city || "").trim() || null,
+        uf: String(body.uf || "").trim().toUpperCase() || null,
+        lat: null,
+        lon: null,
+        pvgisBase: null,
+        upstreamStatus: null,
+        latencyMs: Date.now() - requestStartedAt,
+      });
       return errorResponse(401, "unauthorized", {
         phase: "auth",
         message: authError?.message || "missing_user",
       });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const city = String((body as any)?.city || "").trim();
-    const uf = String((body as any)?.uf || "").trim().toUpperCase();
-    const addressLine = String((body as any)?.addressLine || "").trim();
-    const zip = String((body as any)?.zip || "").trim();
-    const geocodingApiKey = String((body as any)?.geocodingApiKey || "").trim();
-    const strictPvgisOnly = Boolean((body as any)?.strictPvgisOnly ?? true);
-    const normalizedZip = String(zip || "").replace(/\D/g, "").slice(0, 8);
+    let city = String(body.city || "").trim();
+    let uf = String(body.uf || "").trim().toUpperCase();
+    let addressLine = String(body.addressLine || "").trim();
+    const zip = normalizeZip(body.zip);
+    const geocodingApiKey = String(body.geocodingApiKey || "").trim();
 
-    console.log(`[solar-resource] REQ zip=${normalizedZip} city=${city} uf=${uf} addr=${addressLine.slice(0, 30)} strictPvgis=${strictPvgisOnly}`);
-    let lat = toFinite((body as any)?.lat, NaN);
-    let lon = toFinite((body as any)?.lon, NaN);
+    let lat = toFinite(body.lat, NaN);
+    let lon = toFinite(body.lon, NaN);
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      const geocodedFromZip = await geocodeZip(normalizedZip, geocodingApiKey).catch(() => null);
-      if (geocodedFromZip) {
-        lat = geocodedFromZip.lat;
-        lon = geocodedFromZip.lon;
+    console.log(`[solar-resource] REQ requestId=${requestId} zip=${zip} city=${city} uf=${uf} addr=${addressLine.slice(0, 40)}`);
+
+    if (!isValidCoordinatePair(lat, lon)) {
+      const geocode = await resolveCoordinatesWithGoogle({
+        city,
+        uf,
+        addressLine,
+        zip,
+        googleApiKey: geocodingApiKey,
+      });
+
+      if (!geocode.ok) {
+        const geocodeDebug: SolarResourceDebug = {
+          phase: "geocode",
+          upstreamStatus: geocode.upstreamStatus,
+          totalAttempts: 1,
+          latencyMs: Date.now() - requestStartedAt,
+          lat: Number.isFinite(geocode.lat) ? geocode.lat : null,
+          lon: Number.isFinite(geocode.lon) ? geocode.lon : null,
+          message: geocode.message,
+        };
+        await logSolarResourceEvent(serviceClient, {
+          requestId,
+          leadId,
+          orgId,
+          errorCode: geocode.errorCode,
+          phase: "geocode",
+          zip: zip || null,
+          city: city || null,
+          uf: uf || null,
+          lat: Number.isFinite(geocode.lat) ? geocode.lat : null,
+          lon: Number.isFinite(geocode.lon) ? geocode.lon : null,
+          pvgisBase: null,
+          upstreamStatus: geocode.upstreamStatus,
+          latencyMs: Date.now() - requestStartedAt,
+        });
+        const status = geocode.errorCode === "geocode_provider_unavailable" ? 503 : 422;
+        return errorResponse(status, geocode.errorCode, geocodeDebug);
       }
+
+      lat = geocode.lat;
+      lon = geocode.lon;
+      city = city || geocode.city;
+      uf = uf || geocode.uf;
     }
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      const geocoded = await geocodeCity(city, uf, addressLine, zip, geocodingApiKey).catch(() => null);
-      if (geocoded) {
-        lat = geocoded.lat;
-        lon = geocoded.lon;
-      }
-    }
-
-    const serviceClient = createClient(supabaseUrl, supabaseServiceRole);
-
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      console.error(`[solar-resource] GEOCODE_FAILED zip=${normalizedZip} city=${city} uf=${uf}`);
+    if (!isValidCoordinatePair(lat, lon)) {
+      await logSolarResourceEvent(serviceClient, {
+        requestId,
+        leadId,
+        orgId,
+        errorCode: "geocode_failed",
+        phase: "geocode",
+        zip: zip || null,
+        city: city || null,
+        uf: uf || null,
+        lat: null,
+        lon: null,
+        pvgisBase: null,
+        upstreamStatus: null,
+        latencyMs: Date.now() - requestStartedAt,
+      });
       return errorResponse(422, "geocode_failed", {
         phase: "geocode",
-        lat: Number.isFinite(lat) ? lat : null,
-        lon: Number.isFinite(lon) ? lon : null,
-        cacheKeyTried: [],
+        message: "invalid_coordinate_pair_after_geocode",
       });
     }
 
-    console.log(`[solar-resource] GEOCODE_OK lat=${lat} lon=${lon}`);
-
     const latRounded = Number(lat.toFixed(5));
     const lonRounded = Number(lon.toFixed(5));
-    const legacyLatRounded = Number(lat.toFixed(4));
-    const legacyLonRounded = Number(lon.toFixed(4));
-    const primaryCacheKey = `${latRounded}:${lonRounded}`;
-    const legacyCacheKey = `${legacyLatRounded}:${legacyLonRounded}`;
-    const cacheKeys = Array.from(new Set([primaryCacheKey, legacyCacheKey]));
-    const minFetchedAtIso = new Date(Date.now() - CACHE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
-    const buildCachePayload = (cacheRow: any): SolarResourcePayload | null => {
-      const cachedMonthlyIrr = Array.isArray((cacheRow as any).monthly_irradiance_kwh_m2_day)
-        ? ((cacheRow as any).monthly_irradiance_kwh_m2_day as unknown[]).slice(0, 12).map((v) => Math.max(0, toFinite(v, 0)))
-        : [];
-      const cachedFactors = Array.isArray((cacheRow as any).monthly_generation_factors)
-        ? ((cacheRow as any).monthly_generation_factors as unknown[]).slice(0, 12).map((v) => Math.max(0, toFinite(v, 0)))
-        : [];
-      if (cachedMonthlyIrr.length !== 12 || cachedFactors.length !== 12) return null;
-
-      return {
-        source: "pvgis",
-        lat: toFinite((cacheRow as any).latitude, latRounded),
-        lon: toFinite((cacheRow as any).longitude, lonRounded),
-        annualIrradianceKwhM2Day: Math.max(0.01, toFinite((cacheRow as any).annual_irradiance_kwh_m2_day, 4.5)),
-        monthlyIrradianceKwhM2Day: cachedMonthlyIrr,
-        monthlyGenerationFactors: cachedFactors,
-        referenceYear: Number.isFinite(Number((cacheRow as any).reference_year)) ? Number((cacheRow as any).reference_year) : null,
-        cached: true,
-      };
-    };
-
-    const getCachePayload = async (allowStale: boolean): Promise<SolarResourcePayload | null> => {
-      let query = serviceClient
-        .from("solar_resource_cache")
-        .select("cache_key,latitude,longitude,annual_irradiance_kwh_m2_day,monthly_irradiance_kwh_m2_day,monthly_generation_factors,reference_year,fetched_at")
-        .in("cache_key", cacheKeys)
-        .order("fetched_at", { ascending: false })
-        .limit(1);
-
-      if (!allowStale) {
-        query = query.gte("fetched_at", minFetchedAtIso);
-      }
-
-      const { data: cacheRow } = await query.maybeSingle();
-      if (!cacheRow) return null;
-      return buildCachePayload(cacheRow);
-    };
-
+    const cacheKey = `${latRounded}:${lonRounded}`;
     const handlerDeadline = Date.now() + HANDLER_DEADLINE_MS;
+
     const pvgis = await fetchPvgisMonthly(latRounded, lonRounded, handlerDeadline);
-    if (pvgis.ok) {
-      const factors = normalizeFactors(pvgis.monthlyDaily);
-      const payload: SolarResourcePayload = {
-        source: "pvgis",
+    if (!pvgis.ok) {
+      const pvgisDebug: SolarResourceDebug = {
+        phase: "pvgis",
+        upstreamStatus: pvgis.upstreamStatus,
+        pvgisBaseTried: pvgis.pvgisBaseTried,
+        totalAttempts: pvgis.totalAttempts,
+        latencyMs: pvgis.latencyMs,
         lat: latRounded,
         lon: lonRounded,
-        annualIrradianceKwhM2Day: pvgis.annual,
-        monthlyIrradianceKwhM2Day: pvgis.monthlyDaily,
-        monthlyGenerationFactors: factors.map((factor) => Number(factor.toFixed(6))),
-        referenceYear: pvgis.referenceYear,
-        cached: false,
+        cacheKeyTried: [cacheKey],
+        ...(pvgis.message ? { message: pvgis.message } : {}),
       };
-      await serviceClient.from("solar_resource_cache").upsert({
-        cache_key: primaryCacheKey,
+
+      await logSolarResourceEvent(serviceClient, {
+        requestId,
+        leadId,
+        orgId,
+        errorCode: pvgis.errorCode,
+        phase: "pvgis",
+        zip: zip || null,
         city: city || null,
         uf: uf || null,
-        latitude: latRounded,
-        longitude: lonRounded,
-        source: "pvgis",
-        annual_irradiance_kwh_m2_day: payload.annualIrradianceKwhM2Day,
-        monthly_irradiance_kwh_m2_day: payload.monthlyIrradianceKwhM2Day,
-        monthly_generation_factors: payload.monthlyGenerationFactors,
-        reference_year: payload.referenceYear,
-        fetched_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "cache_key" });
+        lat: latRounded,
+        lon: lonRounded,
+        pvgisBase: pvgis.pvgisBaseTried.join(" -> ") || null,
+        upstreamStatus: pvgis.upstreamStatus,
+        latencyMs: pvgis.latencyMs,
+      });
 
-      console.log(`[solar-resource] PVGIS_OK lat=${latRounded} lon=${lonRounded} annual=${pvgis.annual} attempts=${pvgis.attempts}`);
-      return jsonResponse(payload, 200, { "X-Solar-Source": "pvgis" });
+      const status = pvgis.errorCode === "upstream_http_error" ? 502 : 503;
+      return errorResponse(status, pvgis.errorCode, pvgisDebug);
     }
 
-    const pvgisDebug: SolarResourceDebug = {
-      phase: "pvgis",
-      upstreamStatus: pvgis.upstreamStatus,
-      attempts: pvgis.attempts,
+    const factors = normalizeFactors(pvgis.monthlyDaily);
+    const payload: SolarResourcePayload = {
+      source: "pvgis",
       lat: latRounded,
       lon: lonRounded,
-      cacheKeyTried: cacheKeys,
-      ...(pvgis.message ? { message: pvgis.message } : {}),
+      annualIrradianceKwhM2Day: pvgis.annual,
+      monthlyIrradianceKwhM2Day: pvgis.monthlyDaily,
+      monthlyGenerationFactors: factors.map((factor) => Number(factor.toFixed(6))),
+      referenceYear: pvgis.referenceYear,
+      cached: false,
     };
 
-    // Try stale cache fallback for ANY PVGIS failure
-    const staleCache = await getCachePayload(true);
-    if (staleCache) {
-      const degradedPayload: SolarResourcePayload = {
-        ...staleCache,
-        source: "pvgis_cache_degraded",
-        cached: true,
-        degraded: true,
-        errorCode: pvgis.errorCode,
-        debug: pvgisDebug,
-      };
-      console.log(`[solar-resource] PVGIS_DEGRADED lat=${latRounded} lon=${lonRounded} code=${pvgis.errorCode} using_stale_cache=true`);
-      return jsonResponse(degradedPayload, 200);
-    }
+    await serviceClient.from("solar_resource_cache").upsert({
+      cache_key: cacheKey,
+      city: city || null,
+      uf: uf || null,
+      latitude: latRounded,
+      longitude: lonRounded,
+      source: "pvgis",
+      annual_irradiance_kwh_m2_day: payload.annualIrradianceKwhM2Day,
+      monthly_irradiance_kwh_m2_day: payload.monthlyIrradianceKwhM2Day,
+      monthly_generation_factors: payload.monthlyGenerationFactors,
+      reference_year: payload.referenceYear,
+      fetched_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "cache_key" });
 
-    const status = pvgis.errorCode === "upstream_http_error" ? 502 : 503;
-    return errorResponse(status, pvgis.errorCode, pvgisDebug);
+    await logSolarResourceEvent(serviceClient, {
+      requestId,
+      leadId,
+      orgId,
+      errorCode: null,
+      phase: "pvgis",
+      zip: zip || null,
+      city: city || null,
+      uf: uf || null,
+      lat: latRounded,
+      lon: lonRounded,
+      pvgisBase: pvgis.pvgisBaseTried.join(" -> ") || null,
+      upstreamStatus: null,
+      latencyMs: pvgis.latencyMs,
+    });
+
+    console.log(
+      `[solar-resource] PVGIS_OK requestId=${requestId} lat=${latRounded} lon=${lonRounded} annual=${pvgis.annual} attempts=${pvgis.totalAttempts} latencyMs=${pvgis.latencyMs}`,
+    );
+    return jsonResponse(payload, 200, { "X-Solar-Source": "pvgis" });
   } catch (error) {
     return errorResponse(500, "unexpected_error", {
       phase: "unexpected",
       message: String(error),
+      latencyMs: Date.now() - requestStartedAt,
     });
   }
 });

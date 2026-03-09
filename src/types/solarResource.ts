@@ -8,6 +8,8 @@ export type SolarResourceSource =
 export type SolarResourceErrorCode =
   | 'unauthorized'
   | 'geocode_failed'
+  | 'geocode_provider_unavailable'
+  | 'geocode_low_confidence'
   | 'pvgis_unavailable'
   | 'upstream_rate_limited'
   | 'upstream_timeout'
@@ -17,7 +19,9 @@ export type SolarResourceErrorCode =
 export interface SolarResourceDebug {
   phase?: 'auth' | 'geocode' | 'pvgis' | 'cache' | 'unexpected';
   upstreamStatus?: number | null;
-  attempts?: number;
+  pvgisBaseTried?: string[];
+  totalAttempts?: number;
+  latencyMs?: number;
   lat?: number | null;
   lon?: number | null;
   cacheKeyTried?: string[];
@@ -43,10 +47,12 @@ export interface SolarResourceResponse {
   degraded?: boolean;
   errorCode?: SolarResourceErrorCode;
   debug?: SolarResourceDebug;
+  requestId?: string;
 }
 
 export interface SolarResourceErrorPayload {
   error: string;
   errorCode: SolarResourceErrorCode;
   debug?: SolarResourceDebug;
+  requestId?: string;
 }
