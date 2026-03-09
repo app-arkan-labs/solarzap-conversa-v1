@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
 
     const { data: addon } = await serviceClient
       .from('_admin_addon_catalog')
-      .select('addon_key, display_name, unit_price_cents, grant_value, is_active')
+      .select('addon_key, display_name, price_cents, credit_amount, is_active')
       .eq('addon_key', addonKey)
       .eq('is_active', true)
       .maybeSingle();
@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
     const successUrl = payload.success_url || `${appUrl}/pricing?pack=success`;
     const cancelUrl = payload.cancel_url || `${appUrl}/pricing?pack=cancel`;
 
-    const grantValue = Number(addon.grant_value || 0);
+    const grantValue = Number(addon.credit_amount || 0);
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer: stripeCustomerId,
@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
         {
           price_data: {
             currency: 'brl',
-            unit_amount: Number(addon.unit_price_cents || 0),
+            unit_amount: Number(addon.price_cents || 0),
             product_data: {
               name: String(addon.display_name || addon.addon_key),
               metadata: {

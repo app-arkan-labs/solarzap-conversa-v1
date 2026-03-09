@@ -423,43 +423,56 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   };
 
   const parseSolarResourceErrorPayload = useCallback(async (rawError: unknown): Promise<SolarResourceErrorPayload | null> => {
-    const readContextPayload = async (context: unknown): Promise<any | null> => {
-      if (!context || typeof context !== 'object') return null;
-      try {
-        if (typeof (context as any).clone === 'function') {
-          const cloned = (context as any).clone();
-          if (cloned && typeof cloned.json === 'function') {
-            return await cloned.json();
-          }
-        }
-        if (typeof (context as any).json === 'function') {
-          return await (context as any).json();
-        }
-      } catch {
-        return null;
-      }
-      return null;
+    const tryParseJson = (raw: unknown): any | null => {
+      if (!raw || typeof raw !== 'string') return null;
+      try { return JSON.parse(raw); } catch { return null; }
     };
 
-    const contextPayload = await readContextPayload((rawError as any)?.context);
-    const contextCode = normalizeSolarResourceErrorCode(contextPayload?.errorCode ?? contextPayload?.error);
-    if (contextCode) {
-      return {
-        error: contextCode,
-        errorCode: contextCode,
-        debug: contextPayload?.debug as SolarResourceDebug | undefined,
-      };
+    const extractCode = (obj: any): SolarResourceErrorPayload | null => {
+      if (!obj || typeof obj !== 'object') return null;
+      const code = normalizeSolarResourceErrorCode(obj.errorCode ?? obj.error ?? obj.code);
+      if (!code) return null;
+      return { error: code, errorCode: code, debug: obj.debug as SolarResourceDebug | undefined };
+    };
+
+    // Strategy 1: supabase-js FunctionsHttpError — context is a Response object
+    const ctx = (rawError as any)?.context;
+    if (ctx && typeof ctx === 'object') {
+      try {
+        const resp = typeof ctx.clone === 'function' ? ctx.clone() : ctx;
+        if (typeof resp.json === 'function') {
+          const payload = await resp.json();
+          const result = extractCode(payload);
+          if (result) return result;
+        }
+      } catch { /* response may be consumed or invalid */ }
+
+      // Strategy 2: context is already a parsed object (some SDK versions)
+      const directCtx = extractCode(ctx);
+      if (directCtx) return directCtx;
+
+      // Strategy 3: context is a string containing JSON
+      if (typeof ctx === 'string') {
+        const parsed = tryParseJson(ctx);
+        const result = extractCode(parsed);
+        if (result) return result;
+      }
     }
 
-    const directCode = normalizeSolarResourceErrorCode(
-      (rawError as any)?.errorCode
-      ?? (rawError as any)?.error
-      ?? (rawError as any)?.code,
-    );
-    if (directCode) {
-      return { error: directCode, errorCode: directCode };
-    }
+    // Strategy 4: error itself carries the code (e.g. relay errors)
+    const directCode = extractCode(rawError as any);
+    if (directCode) return directCode;
 
+    // Strategy 5: error.message may contain the JSON body
+    const msgParsed = tryParseJson((rawError as any)?.message);
+    const msgResult = extractCode(msgParsed);
+    if (msgResult) return msgResult;
+
+    // Strategy 6: error.body (some SDK versions attach parsed body)
+    const bodyResult = extractCode((rawError as any)?.body);
+    if (bodyResult) return bodyResult;
+
+    console.error('[solar-resource] could not parse error payload:', rawError);
     return null;
   }, []);
 

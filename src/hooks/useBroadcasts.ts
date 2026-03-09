@@ -527,6 +527,22 @@ export function useBroadcasts() {
         sent_at: new Date().toISOString(),
         error_message: null,
       });
+
+      if (orgId) {
+        void supabase.rpc('record_usage', {
+          p_org_id: orgId,
+          p_event_type: 'broadcast_credit_consumed',
+          p_quantity: 1,
+          p_metadata: {
+            campaign_id: campaign.id,
+            recipient_id: recipient.id,
+          },
+        }).then(({ error: usageError }) => {
+          if (usageError) {
+            console.warn('Broadcast usage metering failed:', usageError.message || usageError);
+          }
+        });
+      }
     } catch (dispatchError) {
       const message = dispatchError instanceof Error ? dispatchError.message : 'Erro desconhecido no disparo';
       await markRecipientStatus(recipient.id, {
@@ -647,7 +663,7 @@ export function useBroadcasts() {
 
     const { data: limitData, error: limitError } = await supabase.rpc('check_plan_limit', {
       p_org_id: orgId,
-      p_limit_key: 'broadcasts_monthly',
+      p_limit_key: 'max_campaigns_month',
       p_quantity: 1,
     });
     if (limitError) {
@@ -657,6 +673,24 @@ export function useBroadcasts() {
     const limitRow = Array.isArray(limitData) ? limitData[0] : limitData;
     if (!limitRow?.allowed || limitRow?.access_state === 'blocked') {
       throw new Error('Limite mensal de disparos atingido. Faça upgrade para continuar.');
+    }
+
+    const recipientCount = Array.isArray(input.recipients) ? input.recipients.length : 0;
+    if (recipientCount > 0) {
+      const { data: creditsData, error: creditsError } = await supabase.rpc('check_plan_limit', {
+        p_org_id: orgId,
+        p_limit_key: 'monthly_broadcast_credits',
+        p_quantity: recipientCount,
+      });
+
+      if (creditsError) {
+        throw new Error(`Falha ao validar créditos de disparo: ${creditsError.message}`);
+      }
+
+      const creditsRow = Array.isArray(creditsData) ? creditsData[0] : creditsData;
+      if (!creditsRow?.allowed || creditsRow?.access_state === 'blocked') {
+        throw new Error('Créditos de disparo insuficientes para a quantidade de destinatários.');
+      }
     }
 
     const campaignPayload = {

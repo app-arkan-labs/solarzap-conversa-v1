@@ -13,10 +13,9 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
-const PLAN_ORDER = ['free', 'start', 'pro', 'scale'];
+const PLAN_ORDER = ['start', 'pro', 'scale'];
 
 const PLAN_DISPLAY: Record<string, { label: string; description: string }> = {
-  free: { label: 'Free', description: 'Plano de entrada para começar' },
   start: { label: 'Start', description: 'Para operação inicial de vendas' },
   pro: { label: 'Pro', description: 'Para operação em crescimento' },
   scale: { label: 'Scale', description: 'Para time de alta escala' },
@@ -32,7 +31,7 @@ function formatCurrency(cents: number) {
 export default function Pricing() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { orgId } = useAuth();
+  const { user, orgId } = useAuth();
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
   const [busyPack, setBusyPack] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
@@ -74,9 +73,19 @@ export default function Pricing() {
   }, []);
 
   const handleUpgrade = async (planKey: string) => {
+    if (!user) {
+      navigate(`/login?plan=${encodeURIComponent(planKey)}`);
+      return;
+    }
+
     try {
       setBusyPlan(planKey);
-      const url = await createPlanCheckoutSession(planKey, orgId);
+      const url = await createPlanCheckoutSession({
+        planKey,
+        orgId,
+        successUrl: `${window.location.origin}/welcome?checkout=success`,
+        cancelUrl: `${window.location.origin}/pricing?checkout=cancel`,
+      });
       window.location.href = url;
     } catch (error) {
       toast({
@@ -92,7 +101,7 @@ export default function Pricing() {
   const handleBuyMessagePack = async () => {
     try {
       setBusyPack(true);
-      const url = await createPackCheckoutSession('extra_messages', 1, orgId);
+      const url = await createPackCheckoutSession('disparo_pack_1k', 1, orgId);
       window.location.href = url;
     } catch (error) {
       toast({
@@ -138,7 +147,7 @@ export default function Pricing() {
             <CardDescription>Controle de acesso baseado no billing da organização ativa.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center gap-3 text-sm">
-            <Badge variant="secondary">Plano: {billing?.plan_key || 'free'}</Badge>
+            <Badge variant="secondary">Plano: {billing?.plan_key || 'sem plano'}</Badge>
             <Badge variant="secondary">Status: {billing?.subscription_status || 'desconhecido'}</Badge>
             <Badge variant="secondary">Acesso: {billing?.access_state || 'full'}</Badge>
             <Button variant="outline" onClick={handleOpenPortal} disabled={openingPortal}>

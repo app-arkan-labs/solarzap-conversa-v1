@@ -9,8 +9,8 @@ import {
     applyLeadAttribution,
     extractCtwaFromWhatsAppMessage,
 } from '../_shared/trackingAttribution.ts'
-import { buildUpsertLeadCanonicalPayload } from '../_shared/leadCanonical.ts'
-import { recordUsage } from '../_shared/billing.ts'
+import { resolveLeadCanonicalId } from '../_shared/leadCanonical.ts'
+import { checkLimit, recordUsage } from '../_shared/billing.ts'
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
 if (!ALLOWED_ORIGIN) {
@@ -610,39 +610,75 @@ Deno.serve(async (req: Request) => {
                 }
                 const leadTelefone = explicitPhoneCandidate || rawRemoteJid
 
-                let leadId = null
-                const upsertLeadStartedAt = perfNowMs()
-                const { data: leadData, error: upsertLeadError } = await supabase.rpc(
-                    'upsert_lead_canonical',
-                    buildUpsertLeadCanonicalPayload({
-                        userId,
+                const leadLimit = await checkLimit(supabase, orgId, 'max_leads', 1)
+                if (!leadLimit.allowed || leadLimit.access_state === 'blocked') {
+                    console.warn('lead_limit_reached: skipping lead resolution', {
                         orgId,
                         instanceName,
-                        phoneE164,
-                        telefone: leadTelefone,
-                        name: pushName,
-                        pushName,
-                        source: 'whatsapp'
+                        waMessageId,
+                        billing: leadLimit,
                     })
-                ).single()
-                if (upsertLeadError) {
-                    console.error('❌ upsert_lead_canonical failed in whatsapp-webhook', {
-                        userId,
-                        instanceName,
-                        phoneE164,
-                        rawRemoteJid,
-                        leadTelefone,
-                        error: upsertLeadError.message
-                    })
-                } else if (leadData) {
-                    leadId = leadData.id
+                    break
+                }
+
+                let leadId: number | null = null
+                const upsertLeadStartedAt = perfNowMs()
+                const leadResolution = await resolveLeadCanonicalId({
+                    supabase,
+                    userId,
+                    orgId,
+                    instanceName,
+                    phoneE164,
+                    telefone: leadTelefone,
+                    name: pushName,
+                    pushName,
+                    source: 'whatsapp',
+                    channel: 'whatsapp',
+                })
+                if (leadResolution.leadId) {
+                    leadId = Number(leadResolution.leadId)
                 }
                 console.log('[WHATSAPP_WEBHOOK_LATENCY] upsert_lead_canonical_ms', {
                     event,
                     instanceName,
                     waMessageId,
+                    method: leadResolution.method,
+                    leadId,
+                    error: leadResolution.error,
                     ms: Math.round(perfNowMs() - upsertLeadStartedAt)
                 })
+                if (!leadId) {
+                    console.error('[ERROR] Unable to resolve lead for whatsapp message, skipping interaction insert', {
+                        orgId,
+                        userId,
+                        instanceName,
+                        phoneE164,
+                        rawRemoteJid,
+                        leadTelefone,
+                        waMessageId,
+                        resolutionMethod: leadResolution.method,
+                        resolutionError: leadResolution.error,
+                    })
+                    break
+                }
+
+                try {
+                    await recordUsage(supabase, {
+                        orgId,
+                        userId,
+                        leadId,
+                        eventType: 'lead_created',
+                        quantity: 1,
+                        source: 'whatsapp-webhook.lead-resolution',
+                        metadata: {
+                            instance_name: instanceName,
+                            wa_message_id: waMessageId,
+                            resolution_method: leadResolution.method,
+                        },
+                    })
+                } catch (usageError) {
+                    console.warn('Failed to record lead_created usage', usageError)
+                }
 
                 if (leadId) {
                     try {
@@ -706,7 +742,7 @@ Deno.serve(async (req: Request) => {
                 const interactionPayload = {
                     org_id: orgId,
                     user_id: userId,
-                    lead_id: leadId,
+                    lead_id: Number(leadId),
                     mensagem: text,
                     tipo: isFromMe ? 'mensagem_vendedor' : 'mensagem_cliente',
                     instance_name: instanceName,
@@ -725,17 +761,28 @@ Deno.serve(async (req: Request) => {
                 if (waMessageId) {
                     const { data: existingInteraction } = await supabase
                         .from('interacoes')
-                        .select('id, attachment_ready')
+                        .select('id, attachment_ready, lead_id')
                         .eq('instance_name', instanceName)
                         .eq('wa_message_id', waMessageId)
                         .maybeSingle()
 
                     if (existingInteraction?.id) {
-                        // Avoid clobbering resolver-populated attachment fields on duplicate media webhooks.
-                        if (!isMediaMessage || existingInteraction.attachment_ready !== true) {
+                        if (existingInteraction.lead_id == null) {
                             await supabase
                                 .from('interacoes')
-                                .update(interactionPayload)
+                                .update({ lead_id: Number(leadId) })
+                                .eq('id', existingInteraction.id)
+                                .is('lead_id', null)
+                        }
+
+                        // Avoid clobbering resolver-populated attachment fields on duplicate media webhooks.
+                        if (!isMediaMessage || existingInteraction.attachment_ready !== true) {
+                            const updatePayload = existingInteraction.lead_id == null
+                                ? interactionPayload
+                                : { ...interactionPayload, lead_id: existingInteraction.lead_id }
+                            await supabase
+                                .from('interacoes')
+                                .update(updatePayload)
                                 .eq('id', existingInteraction.id)
                         }
                         inserted = { id: Number(existingInteraction.id) }
@@ -747,24 +794,26 @@ Deno.serve(async (req: Request) => {
                     inserted = insertedRow
                 }
 
-                try {
-                    await recordUsage(supabase, {
-                        orgId,
-                        userId,
-                        leadId: leadId ? Number(leadId) : null,
-                        eventType: 'messages_monthly',
-                        quantity: 1,
-                        source: 'whatsapp-webhook',
-                        metadata: {
-                            instance_name: instanceName,
-                            wa_message_id: waMessageId,
-                            message_type: msgType || null,
-                            direction: isFromMe ? 'outbound' : 'inbound',
-                            interaction_id: inserted?.id || null,
-                        },
-                    })
-                } catch (usageError) {
-                    console.warn('Failed to record message usage', usageError)
+                if (isFromMe) {
+                    try {
+                        await recordUsage(supabase, {
+                            orgId,
+                            userId,
+                            leadId: leadId ? Number(leadId) : null,
+                            eventType: 'whatsapp_message_sent',
+                            quantity: 1,
+                            source: 'whatsapp-webhook',
+                            metadata: {
+                                instance_name: instanceName,
+                                wa_message_id: waMessageId,
+                                message_type: msgType || null,
+                                direction: 'outbound',
+                                interaction_id: inserted?.id || null,
+                            },
+                        })
+                    } catch (usageError) {
+                        console.warn('Failed to record message usage', usageError)
+                    }
                 }
 
                 console.log('[WHATSAPP_WEBHOOK_LATENCY] insert_before_webhook_ms', {
@@ -991,12 +1040,41 @@ Deno.serve(async (req: Request) => {
 
                 // AI Trigger
                 if (!isFromMe && leadId && inserted?.id) {
+                    const aiLimit = await checkLimit(supabase, orgId, 'included_ai_requests_month', 1)
+                    if (!aiLimit.allowed || aiLimit.access_state === 'blocked') {
+                        console.warn('ai_quota_exhausted: skipping ai pipeline invoke', {
+                            orgId,
+                            leadId,
+                            interactionId: inserted.id,
+                            billing: aiLimit,
+                        })
+                        break
+                    }
+
                     supabase.functions
                         .invoke('ai-pipeline-agent', {
                             body: { leadId, triggerType: 'incoming_message', interactionId: inserted.id, instanceName }
                         })
-                        .then(async ({ error: invokeError }) => {
-                            if (!invokeError) return
+                        .then(async ({ error: invokeError }: { error: { message: string } | null }) => {
+                            if (!invokeError) {
+                                try {
+                                    await recordUsage(supabase, {
+                                        orgId,
+                                        userId,
+                                        leadId: Number(leadId),
+                                        eventType: 'ai_request',
+                                        quantity: 1,
+                                        source: 'whatsapp-webhook.ai-pipeline-agent',
+                                        metadata: {
+                                            instance_name: instanceName,
+                                            interaction_id: inserted.id,
+                                        },
+                                    })
+                                } catch (usageError) {
+                                    console.warn('Failed to record ai_request usage', usageError)
+                                }
+                                return
+                            }
                             console.error('❌ Failed to invoke ai-pipeline-agent from whatsapp-webhook', {
                                 leadId,
                                 interactionId: inserted.id,
@@ -1021,12 +1099,13 @@ Deno.serve(async (req: Request) => {
                                 console.warn('Failed to log agent_invoke_failed (whatsapp-webhook):', logErr)
                             }
                         })
-                        .catch(async (invokeErr) => {
+                        .catch(async (invokeErr: unknown) => {
+                            const invokeErrorMessage = invokeErr instanceof Error ? invokeErr.message : String(invokeErr)
                             console.error('❌ Exception invoking ai-pipeline-agent from whatsapp-webhook', {
                                 leadId,
                                 interactionId: inserted.id,
                                 instanceName,
-                                error: invokeErr?.message || String(invokeErr)
+                                error: invokeErrorMessage
                             })
                             try {
                                 await supabase.from('ai_action_logs').insert({
@@ -1038,7 +1117,7 @@ Deno.serve(async (req: Request) => {
                                         triggerType: 'incoming_message',
                                         interactionId: inserted.id,
                                         instanceName,
-                                        error: invokeErr?.message || String(invokeErr)
+                                        error: invokeErrorMessage
                                     }),
                                     success: false
                                 })

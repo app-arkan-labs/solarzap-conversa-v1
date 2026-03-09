@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Loader2, Trash2 } from 'lucide-react';
+import { AlertTriangle, Loader2, Trash2, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +45,22 @@ export default function OrgActions({ orgId, status, plan, planLimits, onUpdated 
 
   const plansQuery = useAdminSubscriptionPlans();
   const availablePlans = plansQuery.data?.plans ?? [];
+  const isUnlimited = plan === 'unlimited';
+
+  const unlimitedMutation = useAdminMutation<{ ok: true; org: unknown }>({
+    invalidate: [adminQueryKeys.orgDetails(orgId), ['admin', 'orgs']],
+    onSuccess: async () => {
+      await onUpdated?.();
+      toast({ title: 'Plano ilimitado ativado com sucesso' });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Falha ao definir plano ilimitado',
+        description: isAdminApiError(error) ? error.message : 'Erro desconhecido',
+        variant: 'destructive',
+      });
+    },
+  });
 
   const suspendMutation = useAdminMutation<{ ok: true; org: unknown }>({
     invalidate: [adminQueryKeys.orgDetails(orgId), ['admin', 'orgs']],
@@ -138,7 +155,7 @@ export default function OrgActions({ orgId, status, plan, planLimits, onUpdated 
       toast({ title: 'JSON inválido', description: 'Informe um JSON válido para os limites.', variant: 'destructive' });
       return;
     }
-    planMutation.mutate({ action: 'update_org_plan', org_id: orgId, plan: planValue.trim(), limits: parsedLimits, reason: planReason.trim() });
+    planMutation.mutate({ action: 'update_org_plan', org_id: orgId, plan: planValue.trim(), limits: parsedLimits, subscription_status: 'active', reason: planReason.trim() });
   };
 
   const handleDelete = () => {
@@ -165,6 +182,29 @@ export default function OrgActions({ orgId, status, plan, planLimits, onUpdated 
     if (selectedPlan) {
       setLimitsText(JSON.stringify(selectedPlan.limits ?? {}, null, 2));
     }
+  };
+
+  const handleSetUnlimited = () => {
+    const unlimitedPlan = availablePlans.find((p) => p.plan_key === 'unlimited');
+    const limits = unlimitedPlan?.limits ?? {
+      max_leads: -1,
+      max_whatsapp_instances: -1,
+      monthly_broadcast_credits: -1,
+      max_campaigns_month: -1,
+      max_proposals_month: -1,
+      max_members: -1,
+      max_proposal_themes: -1,
+      max_automations_month: -1,
+      included_ai_requests_month: -1,
+    };
+    unlimitedMutation.mutate({
+      action: 'update_org_plan',
+      org_id: orgId,
+      plan: 'unlimited',
+      limits,
+      subscription_status: 'active',
+      reason: 'Ativação de plano ilimitado (cliente de prestação de serviço)',
+    });
   };
 
   return (
@@ -201,6 +241,35 @@ export default function OrgActions({ orgId, status, plan, planLimits, onUpdated 
               </Button>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Set Unlimited Plan (quick action) */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+            Plano Ilimitado (Serviço)
+          </CardTitle>
+          <CardDescription>
+            {isUnlimited
+              ? 'Esta organização já está no plano ilimitado.'
+              : 'Ativa plano ilimitado com subscription_status=active. Ideal para clientes de prestação de serviço que não passam por billing.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            onClick={handleSetUnlimited}
+            disabled={unlimitedMutation.isPending || isUnlimited}
+            className="bg-emerald-600 hover:bg-emerald-700"
+          >
+            {unlimitedMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <ShieldCheck className="h-4 w-4 mr-2" />
+            )}
+            {isUnlimited ? 'Plano ilimitado ativo' : 'Ativar plano ilimitado'}
+          </Button>
         </CardContent>
       </Card>
 

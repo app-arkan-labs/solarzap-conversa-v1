@@ -12,6 +12,8 @@ import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
 import { PageHeader } from './PageHeader';
 import { createBillingPortalSession, createPlanCheckoutSession, useOrgBillingInfo } from '@/hooks/useOrgBilling';
 import { runBillingAdminAction } from '@/lib/orgAdminClient';
+import PlanBadge from '@/components/billing/PlanBadge';
+import UsageBar from '@/components/billing/UsageBar';
 
 export function ConfiguracoesContaView() {
     const { user, role, signOut } = useAuth();
@@ -177,7 +179,11 @@ export function ConfiguracoesContaView() {
         try {
             setBillingBusy(true);
             const targetPlan = billing?.plan_key === 'free' ? 'start' : 'pro';
-            const checkoutUrl = await createPlanCheckoutSession(targetPlan);
+            const checkoutUrl = await createPlanCheckoutSession({
+                planKey: targetPlan,
+                successUrl: `${window.location.origin}/welcome?checkout=success`,
+                cancelUrl: `${window.location.origin}/pricing?checkout=cancel`,
+            });
             window.location.href = checkoutUrl;
         } catch (err: any) {
             toast({ title: 'Falha ao abrir checkout', description: err?.message || 'Tente novamente.', variant: 'destructive' });
@@ -315,6 +321,7 @@ export function ConfiguracoesContaView() {
                             <CardDescription>Resumo do billing da organização ativa.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3 text-sm">
+                            <PlanBadge billing={billing} />
                             <div className="grid gap-2 sm:grid-cols-3">
                                 <div className="rounded-md border border-border bg-muted/20 p-3">
                                     <p className="text-muted-foreground">Plano</p>
@@ -328,6 +335,23 @@ export function ConfiguracoesContaView() {
                                     <p className="text-muted-foreground">Acesso</p>
                                     <p className="font-semibold uppercase">{billing?.access_state || 'full'}</p>
                                 </div>
+                            </div>
+                            <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+                                <UsageBar
+                                    label="Propostas no ciclo"
+                                    used={Number((billing?.usage?.proposals_generated as number) || 0)}
+                                    limit={Number((billing?.effective_limits?.max_proposals_month as number) || (billing?.plan_limits?.max_proposals_month as number) || 0)}
+                                />
+                                <UsageBar
+                                    label="Campanhas no ciclo"
+                                    used={Number((billing?.usage?.campaigns_created as number) || 0)}
+                                    limit={Number((billing?.effective_limits?.max_campaigns_month as number) || (billing?.plan_limits?.max_campaigns_month as number) || 0)}
+                                />
+                                <UsageBar
+                                    label="Créditos de disparo no ciclo"
+                                    used={Number((billing?.usage?.broadcast_credits_used as number) || 0)}
+                                    limit={Number((billing?.effective_limits?.monthly_broadcast_credits as number) || (billing?.plan_limits?.monthly_broadcast_credits as number) || 0)}
+                                />
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <Button type="button" onClick={handleUpgradePlan} disabled={billingBusy}>

@@ -6,7 +6,7 @@ import {
   type OrgTrackingSettingsRow,
   type RateLimitResult,
 } from '../_shared/attributionWebhookService.ts';
-import { buildUpsertLeadCanonicalPayload } from '../_shared/leadCanonical.ts';
+import { resolveLeadCanonicalId } from '../_shared/leadCanonical.ts';
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
 if (!ALLOWED_ORIGIN) {
@@ -24,12 +24,6 @@ if (!SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-function isMissingColumnError(error: unknown): boolean {
-  const errorCode = typeof error === 'object' && error ? (error as Record<string, unknown>).code : null;
-  const message = typeof error === 'object' && error ? String((error as Record<string, unknown>).message || '') : '';
-  return errorCode === '42703' || errorCode === 'PGRST204' || /schema cache/i.test(message);
-}
 
 function toRateLimitResult(raw: unknown): RateLimitResult | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -129,93 +123,39 @@ const repo: AttributionWebhookRepo = {
   async createLead(input) {
     const { orgId, userId, phoneE164, email, name } = input;
 
-    const rpcResult = await supabase
-      .rpc('upsert_lead_canonical', buildUpsertLeadCanonicalPayload({
-        userId,
-        orgId,
-        instanceName: 'attribution-webhook',
-        phoneE164,
-        telefone: phoneE164,
-        name,
-        pushName: name,
-        source: 'webhook',
-      }))
-      .maybeSingle();
-
-    if (!rpcResult.error && rpcResult.data) {
-      const rpcLeadId = Number((rpcResult.data as Record<string, unknown>).id || 0);
-      if (rpcLeadId > 0) {
-        const { data: rpcLead } = await supabase
-          .from('leads')
-          .select('id, org_id')
-          .eq('id', rpcLeadId)
-          .maybeSingle();
-
-        if (rpcLead?.id && (rpcLead.org_id === orgId || rpcLead.org_id === null)) {
-          if (rpcLead.org_id === null) {
-            await supabase
-              .from('leads')
-              .update({
-                org_id: orgId,
-                assigned_to_user_id: userId,
-              })
-              .eq('id', rpcLeadId);
-          }
-
-          if (email) {
-            await supabase
-              .from('leads')
-              .update({ email })
-              .eq('id', rpcLeadId)
-              .eq('org_id', orgId);
-          }
-
-          return { id: rpcLeadId };
-        }
-      }
-    }
-
-    const insertPayload: Record<string, unknown> = {
-      org_id: orgId,
-      user_id: userId,
-      assigned_to_user_id: userId,
-      nome: name || phoneE164,
+    const resolvedLead = await resolveLeadCanonicalId({
+      supabase,
+      userId,
+      orgId,
+      instanceName: 'attribution-webhook',
+      phoneE164,
       telefone: phoneE164,
-      phone_e164: phoneE164,
-      email,
-      canal: 'other',
-      status_pipeline: 'novo_lead',
-      consumo_kwh: 0,
-      valor_estimado: 0,
-      observacoes: '',
+      name,
+      pushName: name,
       source: 'webhook',
-      instance_name: 'attribution-webhook',
-    };
+      channel: 'other',
+    });
 
-    let insertResult = await supabase.from('leads').insert(insertPayload).select('id').single();
-
-    if (insertResult.error && isMissingColumnError(insertResult.error)) {
-      insertResult = await supabase
-        .from('leads')
-        .insert({
-          org_id: orgId,
-          user_id: userId,
-          assigned_to_user_id: userId,
-          nome: name || phoneE164,
-          telefone: phoneE164,
-          email,
-          canal: 'other',
-          status_pipeline: 'novo_lead',
-          consumo_kwh: 0,
-          valor_estimado: 0,
-          observacoes: '',
-        })
-        .select('id')
-        .single();
+    if (!resolvedLead.leadId) {
+      console.error('[attribution-webhook] failed to resolve lead for payload', {
+        orgId,
+        userId,
+        phoneE164,
+        method: resolvedLead.method,
+        error: resolvedLead.error,
+      });
+      return null;
     }
 
-    if (insertResult.error || !insertResult.data?.id) return null;
-    return { id: Number(insertResult.data.id) };
+    if (email) {
+      await supabase
+        .from('leads')
+        .update({ email })
+        .eq('id', resolvedLead.leadId)
+        .eq('org_id', orgId);
+    }
+
+    return { id: resolvedLead.leadId };
   },
 
   async patchLead(orgId, leadId, patch) {

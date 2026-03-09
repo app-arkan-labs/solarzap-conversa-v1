@@ -15,6 +15,13 @@ function toIso(ts?: number | null): string | null {
   return new Date(ts * 1000).toISOString();
 }
 
+function creditTypeFromAddonLimit(limitKey: string): string | null {
+  if (limitKey === 'broadcast_credits') return 'broadcast_credits';
+  if (limitKey === 'ai_requests') return 'ai_requests';
+  if (limitKey === 'automations') return 'automations';
+  return null;
+}
+
 async function resolveOrgIdFromEvent(
   serviceClient: ReturnType<typeof getServiceClient>,
   event: Stripe.Event,
@@ -70,6 +77,35 @@ Deno.serve(async (req) => {
       return json(corsHeaders, 200, { ok: true, ignored: true, reason: 'org_not_resolved' });
     }
 
+    const { data: existingStripeEvent } = await serviceClient
+      .from('billing_events')
+      .select('id')
+      .eq('stripe_event_id', event.id)
+      .maybeSingle();
+
+    if (existingStripeEvent?.id) {
+      return json(corsHeaders, 200, { ok: true, duplicate: true });
+    }
+
+    const { error: idempotencyInsertError } = await serviceClient
+      .from('billing_events')
+      .insert({
+        org_id: orgId,
+        event_type: 'stripe_webhook_received',
+        stripe_event_id: event.id,
+        payload: {
+          stripe_event_type: event.type,
+          livemode: event.livemode,
+        },
+      });
+
+    if (idempotencyInsertError) {
+      if (idempotencyInsertError.code === '23505') {
+        return json(corsHeaders, 200, { ok: true, duplicate: true });
+      }
+      throw new Error(`idempotency_insert_failed:${idempotencyInsertError.message}`);
+    }
+
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
       const mode = session.mode;
@@ -81,22 +117,35 @@ Deno.serve(async (req) => {
         const customerId = typeof session.customer === 'string' ? session.customer : null;
 
         let periodEnd: string | null = null;
+        let trialEnd: string | null = null;
         if (subscriptionId) {
           const sub = await stripe.subscriptions.retrieve(subscriptionId);
           periodEnd = toIso(sub.current_period_end);
+          trialEnd = toIso(sub.trial_end);
         }
+
+        const { data: planRow } = await serviceClient
+          .from('_admin_subscription_plans')
+          .select('plan_key, limits, features')
+          .eq('plan_key', planKey)
+          .maybeSingle();
+
+        const trialStartedAt = new Date().toISOString();
+        const fallbackTrialEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
         await serviceClient
           .from('organizations')
           .update({
             plan: planKey,
-            subscription_status: 'active',
+            plan_limits: (planRow?.limits ?? {}) as Record<string, unknown>,
+            subscription_status: 'trialing',
             onboarding_state: 'active',
             stripe_subscription_id: subscriptionId,
             stripe_customer_id: customerId,
             current_period_end: periodEnd,
             grace_ends_at: null,
-            trial_ends_at: null,
+            trial_started_at: trialStartedAt,
+            trial_ends_at: trialEnd ?? fallbackTrialEnd,
             updated_at: new Date().toISOString(),
           })
           .eq('id', orgId);
@@ -114,6 +163,11 @@ Deno.serve(async (req) => {
           stripe_subscription_id: subscriptionId,
           stripe_customer_id: customerId,
         }, 'stripe_webhook');
+
+        await appendBillingTimeline(serviceClient, orgId, 'trial_started', {
+          plan_key: planKey,
+          trial_ends_at: trialEnd ?? fallbackTrialEnd,
+        }, 'stripe_webhook');
       }
 
       if (mode === 'payment') {
@@ -123,24 +177,35 @@ Deno.serve(async (req) => {
         const credits = quantity * grantValue;
 
         if (addonKey && credits > 0) {
-          const expiresAt = new Date();
-          expiresAt.setMonth(expiresAt.getMonth() + 12);
+          const { data: addonRow } = await serviceClient
+            .from('_admin_addon_catalog')
+            .select('limit_key')
+            .eq('addon_key', addonKey)
+            .maybeSingle();
 
-          await serviceClient.from('credit_balances').insert({
-            org_id: orgId,
-            addon_key: addonKey,
-            source: 'purchase',
-            purchased_credits: credits,
-            remaining_credits: credits,
-            expires_at: expiresAt.toISOString(),
-            metadata: {
-              stripe_checkout_session_id: session.id,
-              quantity,
-            },
-          });
+          const creditType = creditTypeFromAddonLimit(String(addonRow?.limit_key || ''));
+          if (creditType) {
+            const { data: existingBalance } = await serviceClient
+              .from('credit_balances')
+              .select('balance')
+              .eq('org_id', orgId)
+              .eq('credit_type', creditType)
+              .maybeSingle();
+
+            const currentBalance = Number(existingBalance?.balance || 0);
+            await serviceClient
+              .from('credit_balances')
+              .upsert({
+                org_id: orgId,
+                credit_type: creditType,
+                balance: currentBalance + credits,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'org_id,credit_type' });
+          }
 
           await appendBillingTimeline(serviceClient, orgId, 'pack_purchase_completed', {
             addon_key: addonKey,
+            credit_type: creditType,
             quantity,
             credits,
             stripe_checkout_session_id: session.id,

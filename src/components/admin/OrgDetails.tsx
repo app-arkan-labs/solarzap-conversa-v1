@@ -19,9 +19,12 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
 
 const PLAN_CONFIG: Record<string, { label: string; className: string }> = {
   free: { label: 'Grátis', className: 'bg-slate-50 text-slate-600 border-slate-200' },
+  start: { label: 'Start', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   starter: { label: 'Starter', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   pro: { label: 'Pro', className: 'bg-purple-50 text-purple-700 border-purple-200' },
+  scale: { label: 'Scale', className: 'bg-amber-50 text-amber-700 border-amber-200' },
   business: { label: 'Business', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  unlimited: { label: 'Ilimitado', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
 };
 
 function StatBox({ label, value }: { label: string; value: number | string }) {
@@ -58,12 +61,17 @@ function PlanLimitsList({ limits }: { limits: Record<string, unknown> | null }) 
     max_leads: 'Leads',
     max_proposals_month: 'Propostas/mês',
     max_whatsapp_instances: 'Instâncias WhatsApp',
+    monthly_broadcast_credits: 'Créditos de disparo/mês',
+    max_campaigns_month: 'Campanhas de disparo/mês',
     max_broadcasts_month: 'Broadcasts/mês',
     max_proposal_themes: 'Temas de proposta',
+    max_automations_month: 'Automações/mês',
+    included_ai_requests_month: 'Requests IA/mês',
     ai_enabled: 'IA habilitada',
     google_integration_enabled: 'Google integrado',
     appointments_enabled: 'Agendamentos',
     advanced_reports_enabled: 'Relatórios avançados',
+    advanced_tracking_enabled: 'Tracking avançado',
   };
 
   return (

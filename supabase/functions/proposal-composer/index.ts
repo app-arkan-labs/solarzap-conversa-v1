@@ -280,8 +280,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const proposalLimit = await checkLimit(serviceClient, orgId, "proposals_monthly", 1);
-    if (!proposalLimit.allowed || proposalLimit.access_state === 'blocked') {
+    const proposalLimit = await checkLimit(serviceClient, orgId, "max_proposals_month", 1);
+    if (!proposalLimit.allowed || proposalLimit.access_state === 'blocked' || proposalLimit.access_state === 'read_only') {
       return new Response(JSON.stringify({
         error: "billing_limit_reached",
         billing: proposalLimit,
@@ -446,7 +446,7 @@ Retorne SOMENTE JSON válido com esta estrutura:
         orgId,
         userId: user.id,
         leadId,
-        eventType: 'proposals_monthly',
+        eventType: 'proposal_generated',
         quantity: 1,
         source: 'proposal-composer',
         metadata: {

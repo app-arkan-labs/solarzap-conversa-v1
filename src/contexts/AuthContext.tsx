@@ -2,8 +2,6 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import {
-  bootstrapSelf,
-  isOrgAdminInvokeError,
   listUserOrgs,
   type OrgRole,
   type UserOrganizationOption,
@@ -61,6 +59,11 @@ type MembershipQueryRow = {
   role: OrgRole;
   can_view_team_leads: boolean;
   created_at: string | null;
+};
+
+type OrgStatusRpcRow = {
+  status: string | null;
+  suspension_reason: string | null;
 };
 
 type MembershipResolution =
@@ -144,26 +147,6 @@ const toMembershipQueryOrgError = (error: unknown): OrgResolutionErrorInfo => {
     message: getErrorMessage(error, 'Falha ao ler organization_members.'),
     ...(typeof status === 'number' ? { status } : {}),
     ...(code ? { code } : {}),
-  };
-};
-
-const toBootstrapOrgError = (error: unknown): OrgResolutionErrorInfo => {
-  const message = getErrorMessage(error, 'Falha ao executar bootstrap_self.');
-  if (isOrgAdminInvokeError(error)) {
-    return {
-      kind: 'bootstrap_failed',
-      message,
-      ...(typeof error.status === 'number' ? { status: error.status } : {}),
-      ...(error.code ? { code: error.code } : {}),
-      requestId: error.requestId,
-    };
-  }
-
-  return {
-    kind: 'bootstrap_failed',
-    message,
-    ...(typeof getErrorStatus(error) === 'number' ? { status: getErrorStatus(error) } : {}),
-    ...(getErrorCode(error) ? { code: getErrorCode(error) } : {}),
   };
 };
 
@@ -566,87 +549,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const cachedMembership = getLastGoodMembership(nextUser.id);
 
-      const applyBootstrapMembership = async (bootstrapSource: string, queryError?: OrgResolutionErrorInfo) => {
-        let bootstrapResult: Awaited<ReturnType<typeof bootstrapSelf>>;
-        try {
-          bootstrapResult = await bootstrapSelf();
-        } catch (bootstrapError) {
-          if (!isCurrent()) return;
-          markOrgError(queryError?.kind === 'forbidden_rls' ? queryError : toBootstrapOrgError(bootstrapError));
-          return;
-        }
-
-        if (!isCurrent()) return;
-
-        const bootstrapRole = isValidOrgRole(bootstrapResult.role) ? bootstrapResult.role : null;
-        const bootstrapMembership: MembershipState = {
-          orgId: bootstrapResult.org_id,
-          role: bootstrapRole,
-          canViewTeamLeads: canRoleViewTeamLeads(bootstrapRole),
-        };
-
-        if (bootstrapMembership.orgId) {
-          setActiveOrgId(bootstrapMembership.orgId);
-        }
-        rememberLastGoodMembership(nextUser.id, bootstrapMembership);
-        setMembershipState(bootstrapMembership);
-        setOrganizations(sortOrgOptions([
-          {
-            org_id: bootstrapMembership.orgId || bootstrapResult.org_id,
-            role: bootstrapRole || 'owner',
-            can_view_team_leads: bootstrapMembership.canViewTeamLeads,
-            joined_at: new Date().toISOString(),
-            company_name: null,
-            organization_name: null,
-            display_name: `Organizacao ${bootstrapResult.org_id.slice(0, 8)}`,
-          },
-        ]));
-        markOrgReady();
-
-        void (async () => {
-          const postBootstrap = await resolveMembershipsWithRetry(nextUser.id, `${bootstrapSource}:post_bootstrap`);
-          if (!isCurrent()) return;
-
-          if (postBootstrap.status === 'memberships_encontradas') {
-            const hydratedOrganizations = await hydrateOrganizations(postBootstrap.memberships);
-            if (!isCurrent()) return;
-            setOrganizations(hydratedOrganizations);
-
-            const selected = resolveSelectedMembership(postBootstrap.memberships, 'init', orgHint);
-            if (selected?.orgId) {
-              setActiveOrgId(selected.orgId);
-              rememberLastGoodMembership(nextUser.id, selected);
-              setMembershipState(selected);
-              markOrgReady();
-              return;
-            }
-
-            clearActiveOrgId();
-            setMembershipState(EMPTY_MEMBERSHIP);
-            markOrgSelectionRequired();
-            return;
-          }
-
-          if (postBootstrap.status === 'erro_transitorio/query') {
-            console.warn(`[AuthContext] [${bootstrapSource}] post-bootstrap membership query failed; keeping bootstrap state`, {
-              userId: nextUser.id,
-              kind: postBootstrap.orgResolutionError.kind,
-              status: postBootstrap.orgResolutionError.status,
-              code: postBootstrap.orgResolutionError.code,
-            });
-            return;
-          }
-
-          setMembershipState(EMPTY_MEMBERSHIP);
-          setOrganizations([]);
-          clearActiveOrgId();
-          markOrgError({
-            kind: 'missing_after_bootstrap',
-            message: 'Membership ainda ausente apos bootstrap_self.',
-          });
-        })();
-      };
-
       const resolution = await resolveMembershipsWithRetry(nextUser.id, source);
       if (!isCurrent()) return;
 
@@ -706,7 +608,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (resolution.status === 'membership_ausente_confirmada') {
-        await applyBootstrapMembership(source);
+        setMembershipState(EMPTY_MEMBERSHIP);
+        setOrganizations([]);
+        clearActiveOrgId();
+        markOrgSelectionRequired();
         return;
       }
 
@@ -781,9 +686,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       try {
-        const { data, error } = await supabase
+        const { data: rawData, error } = await supabase
           .rpc('get_org_status', { p_org_id: orgId })
           .maybeSingle();
+        const data = (rawData ?? null) as OrgStatusRpcRow | null;
 
         if (!mounted) return;
         if (error || !data) {

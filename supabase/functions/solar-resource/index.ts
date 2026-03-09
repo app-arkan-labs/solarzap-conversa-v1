@@ -16,7 +16,9 @@ const buildCorsHeaders = (req: Request) => {
 
 const CACHE_TTL_DAYS = 30;
 const FETCH_TIMEOUT_MS = 15_000;
-const PVGIS_TIMEOUT_MS = 25_000;
+const PVGIS_TIMEOUT_MS = 15_000;
+const MAX_PVGIS_ATTEMPTS_PER_BASE = 2;
+const HANDLER_DEADLINE_MS = 120_000;
 
 const DAYS_IN_MONTH = [31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -374,7 +376,7 @@ type PvgisFetchResult =
     message?: string;
   };
 
-async function fetchPvgisMonthly(lat: number, lon: number): Promise<PvgisFetchResult> {
+async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number): Promise<PvgisFetchResult> {
   const pvgisBases = [
     "https://re.jrc.ec.europa.eu/api/v5_3/PVcalc",
     "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
@@ -389,7 +391,13 @@ async function fetchPvgisMonthly(lat: number, lon: number): Promise<PvgisFetchRe
   let lastMessage = "";
 
   for (const base of pvgisBases) {
-    for (let attempt = 0; attempt < 4; attempt += 1) {
+    for (let attempt = 0; attempt < MAX_PVGIS_ATTEMPTS_PER_BASE; attempt += 1) {
+      // Bail out early if running out of handler time
+      if (deadlineMs !== undefined && Date.now() > deadlineMs - 15_000) {
+        sawTimeout = true;
+        lastMessage = "handler_deadline_approaching";
+        break;
+      }
       attempts += 1;
       const url = new URL(base);
       url.searchParams.set("lat", String(lat));
@@ -666,7 +674,8 @@ Deno.serve(async (req) => {
       return buildCachePayload(cacheRow);
     };
 
-    const pvgis = await fetchPvgisMonthly(latRounded, lonRounded);
+    const handlerDeadline = Date.now() + HANDLER_DEADLINE_MS;
+    const pvgis = await fetchPvgisMonthly(latRounded, lonRounded, handlerDeadline);
     if (pvgis.ok) {
       const factors = normalizeFactors(pvgis.monthlyDaily);
       const payload: SolarResourcePayload = {
@@ -708,26 +717,22 @@ Deno.serve(async (req) => {
       ...(pvgis.message ? { message: pvgis.message } : {}),
     };
 
-    if (pvgis.errorCode === "upstream_rate_limited" || pvgis.errorCode === "upstream_timeout") {
-      const staleCache = await getCachePayload(true);
-      if (staleCache) {
-        const degradedPayload: SolarResourcePayload = {
-          ...staleCache,
-          source: "pvgis_cache_degraded",
-          cached: true,
-          degraded: true,
-          errorCode: pvgis.errorCode,
-          debug: pvgisDebug,
-        };
-        return jsonResponse(degradedPayload, 200);
-      }
+    // Try stale cache fallback for ANY PVGIS failure
+    const staleCache = await getCachePayload(true);
+    if (staleCache) {
+      const degradedPayload: SolarResourcePayload = {
+        ...staleCache,
+        source: "pvgis_cache_degraded",
+        cached: true,
+        degraded: true,
+        errorCode: pvgis.errorCode,
+        debug: pvgisDebug,
+      };
+      console.log(`[solar-resource] PVGIS_DEGRADED lat=${latRounded} lon=${lonRounded} code=${pvgis.errorCode} using_stale_cache=true`);
+      return jsonResponse(degradedPayload, 200);
     }
 
     const status = pvgis.errorCode === "upstream_http_error" ? 502 : 503;
-    if (strictPvgisOnly) {
-      return errorResponse(status, pvgis.errorCode, pvgisDebug);
-    }
-
     return errorResponse(status, pvgis.errorCode, pvgisDebug);
   } catch (error) {
     return errorResponse(500, "unexpected_error", {

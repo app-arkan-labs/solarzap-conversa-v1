@@ -7,12 +7,16 @@ export type BillingAccessState = 'full' | 'read_only' | 'blocked';
 export type OrgBillingInfo = {
   org_id: string;
   plan_key: string;
+  plan_limits?: Record<string, unknown>;
+  features?: Record<string, unknown>;
   subscription_status: string;
   trial_ends_at: string | null;
+  trial_started_at?: string | null;
   grace_ends_at: string | null;
   current_period_end: string | null;
   onboarding_state: string | null;
   access_state: BillingAccessState;
+  effective_limits?: Record<string, unknown>;
   limits: Record<string, unknown>;
   usage: Record<string, unknown>;
   packs: Array<Record<string, unknown>>;
@@ -40,11 +44,20 @@ export function useOrgBillingInfo(enabled = true) {
   });
 }
 
-export async function createPlanCheckoutSession(planKey: string, orgId?: string | null) {
+export async function createPlanCheckoutSession(input: {
+  planKey: string;
+  orgId?: string | null;
+  orgName?: string;
+  successUrl?: string;
+  cancelUrl?: string;
+}) {
   const { data, error } = await supabase.functions.invoke('stripe-checkout', {
     body: {
-      plan_key: planKey,
-      ...(orgId ? { org_id: orgId } : {}),
+      plan_key: input.planKey,
+      ...(input.orgId ? { org_id: input.orgId } : {}),
+      ...(input.orgName ? { org_name: input.orgName } : {}),
+      ...(input.successUrl ? { success_url: input.successUrl } : {}),
+      ...(input.cancelUrl ? { cancel_url: input.cancelUrl } : {}),
     },
   });
 

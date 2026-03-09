@@ -50,6 +50,7 @@ import { OrganizationSelectorPanel } from '@/components/organization/Organizatio
 import AdminMembersPage from '@/pages/AdminMembersPage';
 import type { UpdateLeadData } from './EditLeadModal';
 import { useOrgBillingInfo } from '@/hooks/useOrgBilling';
+import FeatureSoftWall from '@/components/billing/FeatureSoftWall';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -117,6 +118,9 @@ export function SolarZapLayout() {
   const { permissions: sellerPerms } = useSellerPermissions();
   const billingQuery = useOrgBillingInfo(Boolean(orgId));
   const accessState = billingQuery.data?.access_state ?? 'full';
+  const billingFeatures = billingQuery.data?.features ?? {};
+  const isGoogleIntegrationEnabled = billingFeatures.google_integration_enabled === true;
+  const isAdvancedTrackingEnabled = billingFeatures.advanced_tracking_enabled === true;
   // Domain Hooks
   const {
     contacts,
@@ -254,18 +258,52 @@ export function SolarZapLayout() {
   }, [location.pathname, navigate]);
 
   const lockedTabs = useMemo<Partial<Record<ActiveTab, string>>>(() => {
-    if (accessState !== 'read_only') return {};
-    return {
-      disparos: 'Seu plano está em modo leitura. Faça upgrade para continuar enviando.',
-      propostas: 'Seu plano está em modo leitura. Faça upgrade para continuar gerando propostas.',
-      automacoes: 'Seu plano está em modo leitura. Faça upgrade para continuar automações.',
-    };
-  }, [accessState]);
+    const next: Partial<Record<ActiveTab, string>> = {};
 
-  const handleLockedTabClick = useCallback((_: ActiveTab, reason?: string) => {
+    if (accessState === 'read_only') {
+      next.disparos = 'Seu plano está em modo leitura. Faça upgrade para continuar enviando.';
+      next.propostas = 'Seu plano está em modo leitura. Faça upgrade para continuar gerando propostas.';
+      next.automacoes = 'Seu plano está em modo leitura. Faça upgrade para continuar automações.';
+    }
+
+    if (!isGoogleIntegrationEnabled) {
+      next.integracoes = 'Disponível no plano Pro';
+    }
+
+    if (!isAdvancedTrackingEnabled) {
+      next.tracking = 'Disponível no plano Scale';
+    }
+
+    return next;
+  }, [accessState, isAdvancedTrackingEnabled, isGoogleIntegrationEnabled]);
+
+  const handleLockedTabClick = useCallback((tab: ActiveTab, reason?: string) => {
     console.warn('Locked tab by billing', reason || 'upgrade_required');
-    navigate('/pricing');
-  }, [navigate]);
+    setActiveTab(tab);
+    if (location.pathname !== '/') {
+      navigate('/');
+    }
+  }, [location.pathname, navigate]);
+
+  const activeFeatureSoftWall = useMemo(() => {
+    if (activeTab === 'integracoes' && !isGoogleIntegrationEnabled) {
+      return {
+        featureName: 'Integrações com Google',
+        requiredPlan: 'Pro',
+        description: 'Conecte Google Ads, calendário e relatórios avançados para ganhar performance operacional.',
+      };
+    }
+
+    if (activeTab === 'tracking' && !isAdvancedTrackingEnabled) {
+      return {
+        featureName: 'Tracking Avançado',
+        requiredPlan: 'Scale',
+        description: 'Acompanhe conversões e eventos com maior profundidade para otimizar suas campanhas.',
+      };
+    }
+
+    return null;
+  }, [activeTab, isAdvancedTrackingEnabled, isGoogleIntegrationEnabled]);
 
   // Derivar a conversa ativa da lista atualizada de conversas para garantir que temos as mensagens mais recentes
   const activeConversation = useMemo(() => {
@@ -1430,13 +1468,31 @@ export function SolarZapLayout() {
 
       {activeTab === 'integracoes' && (
         <div className="flex-1 flex flex-col h-full overflow-hidden">
-          <IntegrationsView />
+          {activeFeatureSoftWall ? (
+            <FeatureSoftWall
+              featureName={activeFeatureSoftWall.featureName}
+              requiredPlan={activeFeatureSoftWall.requiredPlan}
+              description={activeFeatureSoftWall.description}
+              onUpgrade={() => navigate('/pricing')}
+            />
+          ) : (
+            <IntegrationsView />
+          )}
         </div>
       )}
 
       {activeTab === 'tracking' && (
         <div className="flex-1 flex flex-col h-full overflow-hidden">
-          <TrackingView />
+          {activeFeatureSoftWall ? (
+            <FeatureSoftWall
+              featureName={activeFeatureSoftWall.featureName}
+              requiredPlan={activeFeatureSoftWall.requiredPlan}
+              description={activeFeatureSoftWall.description}
+              onUpgrade={() => navigate('/pricing')}
+            />
+          ) : (
+            <TrackingView />
+          )}
         </div>
       )}
 

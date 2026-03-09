@@ -78,8 +78,8 @@ Deno.serve(async (req) => {
 
                 orgId = membership?.org_id || null
                 if (orgId) {
-                    const limit = await checkLimit(supabase, orgId, 'messages_monthly', 1)
-                    if (!limit.allowed || limit.access_state === 'blocked') {
+                    const limit = await checkLimit(supabase, orgId, 'max_automations_month', 1)
+                    if (!limit.allowed || limit.access_state === 'blocked' || limit.access_state === 'read_only') {
                         throw new Error('billing_limit_reached_for_reminder')
                     }
                 }
@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
                         await recordUsage(supabase, {
                             orgId,
                             userId: r.user_id,
-                            eventType: 'messages_monthly',
+                            eventType: 'automation_execution',
                             quantity: 1,
                             source: 'process-reminders',
                             metadata: {

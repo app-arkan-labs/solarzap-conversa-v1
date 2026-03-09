@@ -775,15 +775,24 @@ async function handleUpdateOrgPlan(
     throw { status: 400, code: 'invalid_limits' };
   }
 
+  const VALID_SUB_STATUSES = ['none', 'pending_checkout', 'trialing', 'active', 'past_due', 'canceled', 'unpaid'];
+  const rawSubStatus = toTrimmedString(payload.subscription_status);
+  const subscriptionStatus = rawSubStatus && VALID_SUB_STATUSES.includes(rawSubStatus) ? rawSubStatus : null;
+
+  const updatePayload: Record<string, unknown> = {
+    plan,
+    plan_limits: limits,
+  };
+  if (subscriptionStatus) {
+    updatePayload.subscription_status = subscriptionStatus;
+  }
+
   const before = await fetchOrganizationState(adminClient, orgId);
   const { data: updated, error: updateError } = await adminClient
     .from('organizations')
-    .update({
-      plan,
-      plan_limits: limits,
-    })
+    .update(updatePayload)
     .eq('id', orgId)
-    .select('id, status, suspended_at, suspended_by, suspension_reason, plan, plan_limits')
+    .select('id, status, suspended_at, suspended_by, suspension_reason, plan, plan_limits, subscription_status')
     .single();
 
   if (updateError) throw { status: 500, code: 'update_org_plan_failed' };

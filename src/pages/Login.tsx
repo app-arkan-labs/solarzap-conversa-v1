@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ const Login = () => {
   const [view, setView] = useState<ViewMode>('login');
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -27,7 +28,8 @@ const Login = () => {
     try {
       const error = await signIn(email, password);
       if (!error) {
-        navigate('/');
+        const planHint = searchParams.get('plan');
+        navigate(planHint ? `/?plan=${encodeURIComponent(planHint)}` : '/');
       } else {
         toast({
           title: 'Erro ao entrar',

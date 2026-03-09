@@ -3,12 +3,12 @@ import {
   appendBillingTimeline,
   getAuthenticatedUser,
   getServiceClient,
-  resolveOrgMembership,
 } from '../_shared/billing.ts';
 import { getStripeClient, resolveAppUrl } from '../_shared/stripe.ts';
 
 type CheckoutPayload = {
   org_id?: string;
+  org_name?: string;
   plan_key?: string;
   success_url?: string;
   cancel_url?: string;
@@ -42,7 +42,6 @@ Deno.serve(async (req) => {
     const serviceClient = getServiceClient();
     const stripe = getStripeClient();
 
-    const membership = await resolveOrgMembership(serviceClient, user.id, payload.org_id ?? null);
     const planKey = String(payload.plan_key || '').trim();
     if (!planKey) {
       return json(corsHeaders, 400, { ok: false, error: 'missing_plan_key' });
@@ -50,7 +49,7 @@ Deno.serve(async (req) => {
 
     const { data: plan, error: planError } = await serviceClient
       .from('_admin_subscription_plans')
-      .select('plan_key, display_name, price_cents, billing_cycle, is_active')
+      .select('plan_key, display_name, price_cents, billing_cycle, stripe_price_id, is_active')
       .eq('plan_key', planKey)
       .eq('is_active', true)
       .maybeSingle();
@@ -63,29 +62,90 @@ Deno.serve(async (req) => {
       return json(corsHeaders, 400, { ok: false, error: 'plan_not_billable' });
     }
 
+    const stripePriceId = String(plan.stripe_price_id || '').trim();
+    if (!stripePriceId) {
+      return json(corsHeaders, 400, { ok: false, error: 'plan_missing_stripe_price_id' });
+    }
+
+    let orgId = typeof payload.org_id === 'string' ? payload.org_id.trim() : '';
+    let userRole = 'owner';
+
+    if (orgId) {
+      const { data: membership } = await serviceClient
+        .from('organization_members')
+        .select('org_id, role')
+        .eq('user_id', user.id)
+        .eq('org_id', orgId)
+        .maybeSingle();
+
+      if (!membership?.org_id) {
+        return json(corsHeaders, 403, { ok: false, error: 'membership_not_found' });
+      }
+
+      userRole = String(membership.role || 'owner');
+    } else {
+      const providedName = String(payload.org_name || '').trim();
+      const fallbackName = user.email ? `Organizacao ${user.email}` : `Organizacao ${user.id.slice(0, 8)}`;
+      const orgName = providedName || fallbackName;
+
+      const { data: createdOrg, error: createOrgError } = await serviceClient
+        .from('organizations')
+        .insert({
+          name: orgName,
+          owner_id: user.id,
+          plan: planKey,
+          subscription_status: 'pending_checkout',
+          onboarding_state: 'pending_checkout',
+        })
+        .select('id')
+        .single();
+
+      if (createOrgError || !createdOrg?.id) {
+        return json(corsHeaders, 500, { ok: false, error: createOrgError?.message || 'org_create_failed' });
+      }
+
+      orgId = String(createdOrg.id);
+
+      const { error: membershipError } = await serviceClient
+        .from('organization_members')
+        .upsert(
+          {
+            org_id: orgId,
+            user_id: user.id,
+            role: 'owner',
+            can_view_team_leads: true,
+          },
+          { onConflict: 'org_id,user_id' },
+        );
+
+      if (membershipError) {
+        return json(corsHeaders, 500, { ok: false, error: `membership_create_failed:${membershipError.message}` });
+      }
+    }
+
     const { data: org } = await serviceClient
       .from('organizations')
       .select('id, name, stripe_subscription_id, stripe_checkout_session_id')
-      .eq('id', membership.orgId)
+      .eq('id', orgId)
       .single();
 
     const { data: stripeCustomerRow } = await serviceClient
       .from('stripe_customers')
       .select('stripe_customer_id')
-      .eq('org_id', membership.orgId)
+      .eq('org_id', orgId)
       .maybeSingle();
 
     let stripeCustomerId = stripeCustomerRow?.stripe_customer_id ?? null;
     if (!stripeCustomerId) {
       const createdCustomer = await stripe.customers.create({
         email: user.email ?? undefined,
-        metadata: { org_id: membership.orgId },
+        metadata: { org_id: orgId },
         name: org?.name || undefined,
       });
       stripeCustomerId = createdCustomer.id;
 
       await serviceClient.from('stripe_customers').upsert({
-        org_id: membership.orgId,
+        org_id: orgId,
         stripe_customer_id: stripeCustomerId,
         email: user.email ?? null,
         updated_at: new Date().toISOString(),
@@ -93,7 +153,7 @@ Deno.serve(async (req) => {
     }
 
     const appUrl = resolveAppUrl();
-    const successUrl = payload.success_url || `${appUrl}/pricing?checkout=success`;
+    const successUrl = payload.success_url || `${appUrl}/welcome?checkout=success`;
     const cancelUrl = payload.cancel_url || `${appUrl}/pricing?checkout=cancel`;
 
     const session = await stripe.checkout.sessions.create({
@@ -103,30 +163,22 @@ Deno.serve(async (req) => {
       cancel_url: cancelUrl,
       line_items: [
         {
-          price_data: {
-            currency: 'brl',
-            recurring: { interval: plan.billing_cycle === 'yearly' ? 'year' : 'month' },
-            product_data: {
-              name: String(plan.display_name || plan.plan_key),
-              metadata: {
-                org_id: membership.orgId,
-                plan_key: String(plan.plan_key),
-              },
-            },
-            unit_amount: Number(plan.price_cents || 0),
-          },
+          price: stripePriceId,
           quantity: 1,
         },
       ],
       metadata: {
-        org_id: membership.orgId,
+        org_id: orgId,
         plan_key: String(plan.plan_key),
         user_id: user.id,
+        role: userRole,
       },
+      payment_method_collection: 'always',
       allow_promotion_codes: true,
       subscription_data: {
+        trial_period_days: 7,
         metadata: {
-          org_id: membership.orgId,
+          org_id: orgId,
           plan_key: String(plan.plan_key),
         },
       },
@@ -135,14 +187,17 @@ Deno.serve(async (req) => {
     await serviceClient
       .from('organizations')
       .update({
+        plan: planKey,
+        subscription_status: 'pending_checkout',
         stripe_checkout_session_id: session.id,
         onboarding_state: 'pending_checkout',
+        updated_at: new Date().toISOString(),
       })
-      .eq('id', membership.orgId);
+      .eq('id', orgId);
 
     await appendBillingTimeline(
       serviceClient,
-      membership.orgId,
+      orgId,
       'checkout_session_created',
       {
         plan_key: plan.plan_key,
@@ -153,6 +208,7 @@ Deno.serve(async (req) => {
 
     return json(corsHeaders, 200, {
       ok: true,
+      org_id: orgId,
       checkout_url: session.url,
       checkout_session_id: session.id,
     });

@@ -114,14 +114,18 @@ export async function recordUsage(
     source?: string;
   },
 ) {
+  const mergedMetadata = {
+    ...(params.metadata ?? {}),
+    ...(params.userId ? { user_id: params.userId } : {}),
+    ...(params.leadId != null ? { lead_id: params.leadId } : {}),
+    ...(params.source ? { source: params.source } : {}),
+  };
+
   const { error } = await serviceClient.rpc('record_usage', {
     p_org_id: params.orgId,
-    p_user_id: params.userId ?? null,
-    p_lead_id: params.leadId ?? null,
     p_event_type: params.eventType,
     p_quantity: params.quantity ?? 1,
-    p_metadata: params.metadata ?? {},
-    p_source: params.source ?? 'edge_function',
+    p_metadata: mergedMetadata,
   });
 
   if (error) {

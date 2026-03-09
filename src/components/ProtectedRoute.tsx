@@ -7,6 +7,9 @@ import { type OrgRole } from '@/lib/orgAdminClient';
 import { Button } from '@/components/ui/button';
 import OrgSuspendedScreen from '@/components/admin/OrgSuspendedScreen';
 import { useOrgBillingInfo } from '@/hooks/useOrgBilling';
+import BillingSetupWizard from '@/components/billing/BillingSetupWizard';
+import SubscriptionRequiredScreen from '@/components/billing/SubscriptionRequiredScreen';
+import BillingBanner from '@/components/billing/BillingBanner';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -32,7 +35,7 @@ const ORG_ERROR_DESCRIPTION_BY_KIND = {
 } as const;
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRoles }) => {
-  const { user, loading, role, orgId, orgStatus, suspensionReason, signOut, orgResolutionStatus, orgResolutionError } = useAuth();
+  const { user, loading, role, orgId, orgStatus, suspensionReason, signOut, orgResolutionStatus, orgResolutionError, organizations } = useAuth();
   const { toast } = useToast();
   const location = useLocation();
   const billingQuery = useOrgBillingInfo(Boolean(user && orgId));
@@ -79,23 +82,14 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   }
 
   if (orgResolutionStatus === 'selection_required') {
-    return <Navigate to="/select-organization" replace />;
+    if (organizations.length > 1) {
+      return <Navigate to="/select-organization" replace />;
+    }
+    return <BillingSetupWizard />;
   }
 
   if (!orgId) {
-    if (orgResolutionStatus !== 'error') {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-green-50">
-          <div className="flex flex-col items-center gap-4 text-center px-6">
-            <Loader2 className="w-8 h-8 animate-spin text-green-600" />
-            <p className="text-green-700">Carregando organizacao...</p>
-            <p className="text-sm text-green-900/70 max-w-md">
-              A sessao foi validada, mas o vinculo da organizacao ainda esta sendo recuperado.
-            </p>
-          </div>
-        </div>
-      );
-    }
+    if (orgResolutionStatus !== 'error') return <BillingSetupWizard />;
 
     const errorKind = orgResolutionError?.kind ?? 'transient';
     const errorTitle = ORG_ERROR_TITLE_BY_KIND[errorKind];
@@ -155,13 +149,29 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   }
 
   const accessState = billingQuery.data?.access_state;
+  const subscriptionStatus = String(billingQuery.data?.subscription_status || '').toLowerCase();
   const isPricingRoute = location.pathname === '/pricing';
-  if (!billingQuery.isLoading && accessState === 'blocked' && !isPricingRoute) {
-    return <Navigate to="/pricing" replace />;
+  const isWelcomeRoute = location.pathname === '/welcome';
+
+  if (!billingQuery.isLoading && subscriptionStatus === 'pending_checkout' && !isPricingRoute) {
+    return <BillingSetupWizard />;
+  }
+
+  if (!billingQuery.isLoading && accessState === 'blocked' && !isPricingRoute && !isWelcomeRoute) {
+    return <SubscriptionRequiredScreen />;
   }
 
   if (missingRequiredRole) {
     return <Navigate to="/" replace />;
+  }
+
+  if (accessState === 'read_only') {
+    return (
+      <div className="space-y-2 p-2">
+        <BillingBanner billing={billingQuery.data} />
+        {children}
+      </div>
+    );
   }
 
   return <>{children}</>;

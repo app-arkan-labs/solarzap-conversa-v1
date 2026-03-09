@@ -259,7 +259,7 @@ export function useUserWhatsAppInstances() {
 
       const { data: limitData, error: limitError } = await supabase.rpc('check_plan_limit', {
         p_org_id: orgId,
-        p_limit_key: 'whatsapp_instances',
+        p_limit_key: 'max_whatsapp_instances',
         p_quantity: 1,
       });
 

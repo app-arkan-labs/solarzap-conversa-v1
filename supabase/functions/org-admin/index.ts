@@ -568,6 +568,30 @@ async function inviteMember(
   payload: Record<string, unknown>,
   corsHeaders: Record<string, string>,
 ) {
+  const { data: limitData, error: limitError } = await adminClient.rpc('check_plan_limit', {
+    p_org_id: callerMembership.org_id,
+    p_limit_key: 'max_members',
+    p_quantity: 1,
+  });
+
+  if (limitError) {
+    return jsonResponse(corsHeaders, 400, {
+      ok: false,
+      code: 'billing_limit_check_failed',
+      error: limitError.message,
+    });
+  }
+
+  const limitRow = Array.isArray(limitData) ? limitData[0] : limitData;
+  if (!limitRow?.allowed || limitRow?.access_state === 'blocked' || limitRow?.access_state === 'read_only') {
+    return jsonResponse(corsHeaders, 402, {
+      ok: false,
+      code: 'plan_limit_reached',
+      error: 'Limite de membros do plano atingido.',
+      billing: limitRow,
+    });
+  }
+
   const rawEmail = typeof payload.email === 'string' ? payload.email : '';
   const email = normalizeEmail(rawEmail);
   const rawRole = typeof payload.role === 'string' ? payload.role : '';
