@@ -5,7 +5,7 @@ export const EXPECTED_PROPOSAL_PDF_HASHES = {
 } as const;
 
 export const EXPECTED_PROPOSAL_PDF_HASHES_ADVANCED_FLAGS = {
-  residencialA: '695d6cebd779d181ce903d789712c2fbfa32b61376a0ad540e9288cea37ab672',
+  residencialA: 'da02fff1f57e43ba8ff66e4e300fcf625713d73afc847be8f6b50265fe7d15e0',
   usinaB: '8624a5b27698231b083786642defc5465f5e3960697cacdaae117d34744eed5c',
 } as const;
 

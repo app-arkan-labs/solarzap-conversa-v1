@@ -835,13 +835,19 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
       ? contaLuzMensalReferencia
       : (Number.isFinite(billBeforeFromModel) ? billBeforeFromModel : fallbackBillBefore))
     : 0;
-  const contaComSolar = !isUsina
+  const contaComSolarRaw = !isUsina
     ? (Number.isFinite(billAfterFromModel) ? billAfterFromModel : fallbackBillAfter)
     : 0;
-  if (!isUsina) {
-    const comparableSavingsMonthly = Number.isFinite(financialOutputs.savingsMonthly as number)
+  const billSavingsMonthly = !isUsina
+    ? (Number.isFinite(financialOutputs.savingsMonthly as number)
       ? Math.max(0, Number(financialOutputs.savingsMonthly) || 0)
-      : econMensal;
+      : Math.max(0, contaEstimada - contaComSolarRaw))
+    : 0;
+  const contaComSolar = !isUsina
+    ? Math.max(0, contaEstimada - billSavingsMonthly)
+    : contaComSolarRaw;
+  if (!isUsina) {
+    const comparableSavingsMonthly = billSavingsMonthly;
     const diff = Math.abs((contaEstimada - contaComSolar) - comparableSavingsMonthly);
     if (diff > 0.01) {
       console.warn('[proposal-pdf] Incoerencia financeira detectada no comparativo.', { diff });
@@ -1268,13 +1274,15 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   // Before/After comparison table (only for non-usina)
   if (!isUsina) {
     sectionTitle('Comparativo: Sem Solar vs Com Solar');
+    const custo25AnosSem = contaEstimada * 12 * 25;
     const baData = {
       contaAtual: contaEstimada,
       contaComSolar,
-      economiaMensal: econMensal,
+      economiaMensal: billSavingsMonthly,
       econAnual,
-      custo25AnosSem: contaEstimada * 12 * 25,
-      custo25AnosCom: contaComSolar * 12 * 25,
+      custo25AnosSem,
+      custo25AnosCom: Math.max(0, custo25AnosSem - longTermSavings),
+      economia25Anos: longTermSavings,
     };
     const baH = drawBeforeAfterComparison(doc, M, y, W - 2 * M, baData, chartTheme, false);
     y += baH + TABLE_GAP;
@@ -1358,7 +1366,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     drawSavingsBarChart(doc, M, y, chartRowW, topChartsCardH, {
       contaAtual: contaEstimada,
       contaComSolar,
-      economiaMensal: econMensal,
+      economiaMensal: billSavingsMonthly,
     }, chartTheme);
   }
 
