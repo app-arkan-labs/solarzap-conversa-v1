@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import { Contact, ClientType } from '@/types/solarzap';
 import { generateProposalPDF } from '@/utils/generateProposalPDF';
 import { useToast } from '@/hooks/use-toast';
@@ -47,15 +47,11 @@ import {
   type GracePeriodUnit,
   type PaymentConditionOptionId,
 } from '@/types/proposalFinancing';
+import { resolveCashDiscountSnapshot } from '@/utils/proposalCashDiscount';
 import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
 import { FINANCIAL_MODEL_VERSION } from '@/types/proposalFinancial';
 import { calculateProposalFinancials, resolveTariffByPriority } from '@/utils/proposalFinancialModel';
-import type {
-  SolarResourceDebug,
-  SolarResourceErrorCode,
-  SolarResourceErrorPayload,
-  SolarResourceResponse,
-} from '@/types/solarResource';
+import { useSolarResource, isStrictPvgisSource } from '@/hooks/useSolarResource';
 import * as pdfShared from '@/utils/pdf/shared';
 
 const ENERGY_DISTRIBUTOR_OPTIONS = energyDistributors.ENERGY_DISTRIBUTOR_OPTIONS;
@@ -106,32 +102,6 @@ const fallbackTriggerBlobDownload = (blob: Blob, rawFileName: string): void => {
 const buildProposalFileNameSafe = pdfShared.buildProposalFileName ?? fallbackBuildProposalFileName;
 const triggerBlobDownloadSafe = pdfShared.triggerBlobDownload ?? fallbackTriggerBlobDownload;
 
-const isStrictPvgisSource = (source: string | undefined | null): boolean => source === 'pvgis';
-
-const normalizeSolarResourceErrorCode = (value: unknown): SolarResourceErrorCode | null => {
-  switch (String(value || '').trim()) {
-    case 'unauthorized':
-    case 'geocode_failed':
-    case 'geocode_provider_unavailable':
-    case 'geocode_low_confidence':
-    case 'pvgis_unavailable':
-    case 'upstream_rate_limited':
-    case 'upstream_timeout':
-    case 'upstream_http_error':
-    case 'unexpected_error':
-      return String(value) as SolarResourceErrorCode;
-    default:
-      return null;
-  }
-};
-
-type ResolveSolarResourceResult = {
-  resource: SolarResourceResponse | null;
-  errorCode?: SolarResourceErrorCode;
-  debug?: SolarResourceDebug;
-  requestId?: string;
-};
-
 const deriveTariffComponents = (tariffRaw: number | null | undefined) => {
   const tariff = Math.max(0, Number(tariffRaw) || 0);
   return {
@@ -154,6 +124,9 @@ export interface ProposalData {
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
+  descontoAvistaValor?: number;
+  valorAvistaLiquido?: number;
+  investimentoBaseMetricas?: number;
   economiaAnual: number;
   paybackMeses: number;
   garantiaAnos: number;
@@ -224,20 +197,20 @@ export const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'usina', label: 'Usina Solar' },
 ];
 
-// ── PMT calc — uses shared utility ──
+// â”€â”€ PMT calc â€” uses shared utility â”€â”€
 
 export const RATE_SHORTCUTS = [
   { label: 'Otimista 1,30%', rate: 1.3 },
-  { label: 'Padrão 1,50%', rate: 1.5 },
+  { label: 'PadrÃ£o 1,50%', rate: 1.5 },
   { label: 'Conservador 1,90%', rate: 1.9 },
 ];
 
 export type TipoLigacao = 'monofasico' | 'bifasico' | 'trifasico';
 
 export const TIPOS_LIGACAO: { value: TipoLigacao; label: string }[] = [
-  { value: 'monofasico', label: 'Monofásico (30 kWh)' },
-  { value: 'bifasico', label: 'Bifásico (50 kWh)' },
-  { value: 'trifasico', label: 'Trifásico (100 kWh)' },
+  { value: 'monofasico', label: 'MonofÃ¡sico (30 kWh)' },
+  { value: 'bifasico', label: 'BifÃ¡sico (50 kWh)' },
+  { value: 'trifasico', label: 'TrifÃ¡sico (100 kWh)' },
 ];
 
 export const CUSTO_DISPONIBILIDADE_POR_LIGACAO: Record<TipoLigacao, number> = {
@@ -286,7 +259,6 @@ export function createDefaultFinancingCondition(): FinancingCondition {
 
 export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UseProposalFormOptions) {
   const [isLoading, setIsLoading] = useState(false);
-  const [locationLoading, setLocationLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiContent, setAiContent] = useState<PremiumProposalContent | null>(null);
   const [aiHeadline, setAiHeadline] = useState('');
@@ -302,6 +274,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     initialized: logoInitialized,
     ensureLogoDataUrl,
   } = useProposalLogo();
+  const solarResource = useSolarResource();
 
   const [formData, setFormData] = useState({
     consumoMensal: contact?.consumption || 0,
@@ -311,6 +284,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     potenciaSistema: 0,
     quantidadePaineis: 0,
     valorTotal: contact?.projectValue || 0,
+    descontoAvistaValor: 0,
+    valorAvistaLiquido: Math.max(0, Number(contact?.projectValue) || 0),
+    investimentoBaseMetricas: Math.max(0, Number(contact?.projectValue) || 0),
     economiaAnual: 0,
     paybackMeses: 0,
     garantiaAnos: 25,
@@ -394,7 +370,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     tariffManuallyEditedRef.current = tariffManuallyEdited;
   }, [tariffManuallyEdited]);
 
-  // ── Storage Upload (best-effort) ──
+  // â”€â”€ Storage Upload (best-effort) â”€â”€
   const uploadPdfToStorage = async (blob: Blob, leadId: string, fileName: string): Promise<{ bucket: string; path: string } | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('proposal-storage-intent', {
@@ -407,7 +383,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     } catch { return null; }
   };
 
-  // ── Share Link (best-effort) ──
+  // â”€â”€ Share Link (best-effort) â”€â”€
   const generateShareLink = async (versionId: string): Promise<{ url: string; token: string; exp: number } | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('proposal-share-link', { body: { proposalVersionId: versionId } });
@@ -416,7 +392,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     } catch { return null; }
   };
 
-  // ── Track Download (best-effort) ──
+  // â”€â”€ Track Download (best-effort) â”€â”€
   const trackDownloadEvent = async (versionId: string, propostaId: number, leadId: number, kind: string) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -428,166 +404,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     } catch { /* non-blocking */ }
   };
 
-  const parseSolarResourceErrorPayload = useCallback(async (rawError: unknown): Promise<SolarResourceErrorPayload | null> => {
-    const tryParseJson = (raw: unknown): any | null => {
-      if (!raw || typeof raw !== 'string') return null;
-      try { return JSON.parse(raw); } catch { return null; }
-    };
 
-    const extractCode = (obj: any): SolarResourceErrorPayload | null => {
-      if (!obj || typeof obj !== 'object') return null;
-      const code = normalizeSolarResourceErrorCode(obj.errorCode ?? obj.error ?? obj.code);
-      if (!code) return null;
-      return {
-        error: code,
-        errorCode: code,
-        debug: obj.debug as SolarResourceDebug | undefined,
-        requestId: typeof obj.requestId === 'string' ? obj.requestId : undefined,
-      };
-    };
-
-    // Strategy 1: supabase-js FunctionsHttpError — context is a Response object
-    const ctx = (rawError as any)?.context;
-    if (ctx && typeof ctx === 'object') {
-      try {
-        const resp = typeof ctx.clone === 'function' ? ctx.clone() : ctx;
-        if (typeof resp.json === 'function') {
-          const payload = await resp.json();
-          const result = extractCode(payload);
-          if (result) return result;
-        }
-      } catch { /* response may be consumed or invalid */ }
-
-      // Strategy 2: context is already a parsed object (some SDK versions)
-      const directCtx = extractCode(ctx);
-      if (directCtx) return directCtx;
-
-      // Strategy 3: context is a string containing JSON
-      if (typeof ctx === 'string') {
-        const parsed = tryParseJson(ctx);
-        const result = extractCode(parsed);
-        if (result) return result;
-      }
-    }
-
-    // Strategy 4: error itself carries the code (e.g. relay errors)
-    const directCode = extractCode(rawError as any);
-    if (directCode) return directCode;
-
-    // Strategy 5: error.message may contain the JSON body
-    const msgParsed = tryParseJson((rawError as any)?.message);
-    const msgResult = extractCode(msgParsed);
-    if (msgResult) return msgResult;
-
-    // Strategy 6: error.body (some SDK versions attach parsed body)
-    const bodyResult = extractCode((rawError as any)?.body);
-    if (bodyResult) return bodyResult;
-
-    console.error('[solar-resource] could not parse error payload:', rawError);
-    return null;
-  }, []);
-
-  const resolveSolarResource = useCallback(async (params: {
-    city?: string | null;
-    uf?: string | null;
-    addressLine?: string | null;
-    zip?: string | null;
-    lat?: number;
-    lon?: number;
-  }): Promise<ResolveSolarResourceResult> => {
-    try {
-      const geocodingApiKey = String((import.meta as any)?.env?.VITE_GOOGLE_GEOCODING_API_KEY || '').trim() || undefined;
-      const { data, error } = await supabase.functions.invoke('solar-resource', {
-        body: {
-          city: params.city || undefined,
-          uf: params.uf || undefined,
-          addressLine: params.addressLine || undefined,
-          zip: params.zip || undefined,
-          lat: params.lat,
-          lon: params.lon,
-          strictPvgisOnly: true,
-          geocodingApiKey,
-        },
-      });
-
-      if (error) {
-        const parsedError = await parseSolarResourceErrorPayload(error);
-        return {
-          resource: null,
-          errorCode: parsedError?.errorCode ?? 'unexpected_error',
-          debug: parsedError?.debug,
-          requestId: parsedError?.requestId,
-        };
-      }
-
-      if (!data || typeof data !== 'object') {
-        return { resource: null, errorCode: 'unexpected_error' };
-      }
-
-      const payload = data as Record<string, unknown>;
-      const payloadErrorCode = normalizeSolarResourceErrorCode(payload.errorCode ?? payload.error);
-      if (payloadErrorCode) {
-        return {
-          resource: null,
-          errorCode: payloadErrorCode,
-          debug: payload.debug as SolarResourceDebug | undefined,
-          requestId: typeof payload.requestId === 'string' ? payload.requestId : undefined,
-        };
-      }
-
-      const source = String(payload.source || '').toLowerCase();
-      if (!isStrictPvgisSource(source)) {
-        return {
-          resource: null,
-          errorCode: 'pvgis_unavailable',
-          debug: payload.debug as SolarResourceDebug | undefined,
-          requestId: typeof payload.requestId === 'string' ? payload.requestId : undefined,
-        };
-      }
-
-      const monthlyFactors = Array.isArray(payload.monthlyGenerationFactors)
-        ? (payload.monthlyGenerationFactors as unknown[])
-          .slice(0, 12)
-          .map((value) => Math.max(0, Number(value) || 0))
-        : [];
-      const monthlyIrradiance = Array.isArray(payload.monthlyIrradianceKwhM2Day)
-        ? (payload.monthlyIrradianceKwhM2Day as unknown[])
-          .slice(0, 12)
-          .map((value) => Math.max(0, Number(value) || 0))
-        : [];
-
-      if (monthlyFactors.length !== 12 || monthlyIrradiance.length !== 12) {
-        return { resource: null, errorCode: 'unexpected_error' };
-      }
-
-      return {
-        resource: {
-          source: source as SolarResourceResponse['source'],
-          lat: Number.isFinite(Number(payload.lat)) ? Number(payload.lat) : null,
-          lon: Number.isFinite(Number(payload.lon)) ? Number(payload.lon) : null,
-          annualIrradianceKwhM2Day: Math.max(0.01, Number(payload.annualIrradianceKwhM2Day) || 4.5),
-          monthlyIrradianceKwhM2Day: monthlyIrradiance,
-          monthlyGenerationFactors: monthlyFactors,
-          referenceYear: Number.isFinite(Number(payload.referenceYear)) ? Number(payload.referenceYear) : null,
-          cached: Boolean(payload.cached),
-          degraded: Boolean(payload.degraded),
-          errorCode: normalizeSolarResourceErrorCode(payload.errorCode),
-          debug: payload.debug as SolarResourceDebug | undefined,
-          requestId: typeof payload.requestId === 'string' ? payload.requestId : undefined,
-        },
-        requestId: typeof payload.requestId === 'string' ? payload.requestId : undefined,
-      };
-    } catch (err) {
-      const parsedError = await parseSolarResourceErrorPayload(err);
-      console.warn('solar-resource strict PVGIS request failed:', err);
-      return {
-        resource: null,
-        errorCode: parsedError?.errorCode ?? 'unexpected_error',
-        debug: parsedError?.debug,
-        requestId: parsedError?.requestId,
-      };
-    }
-  }, [parseSolarResourceErrorPayload]);
 
   const buildFinancialSnapshot = useCallback((next: typeof formData) => {
     const currentContact = contactRef.current;
@@ -605,10 +422,15 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const contaLuzMensalReferencia = next.tipo_cliente === 'usina'
       ? 0
       : Math.max(0, Number(next.contaLuzMensal) || 0);
+    const cashDiscountSnapshot = resolveCashDiscountSnapshot({
+      valorTotal: next.valorTotal,
+      descontoAvistaValor: next.descontoAvistaValor,
+      paymentConditions: next.paymentConditions,
+    });
 
     const financialInputs: FinancialInputs = {
       tipoCliente: next.tipo_cliente,
-      investimentoTotal: Math.max(0, Number(next.valorTotal) || 0),
+      investimentoTotal: cashDiscountSnapshot.investimentoBaseMetricas,
       consumoMensalKwh: Math.max(0, Number(next.consumoMensal) || 0),
       contaLuzMensalReferencia: contaLuzMensalReferencia > 0 ? contaLuzMensalReferencia : undefined,
       potenciaSistemaKwp: Math.max(0, Number(next.potenciaSistema) || 0),
@@ -645,7 +467,13 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       longitude: Number.isFinite(Number(next.longitude)) ? Number(next.longitude) : undefined,
     };
     const financialOutputs = calculateProposalFinancials(financialInputs);
-    return { financialInputs, financialOutputs };
+    return {
+      financialInputs,
+      financialOutputs,
+      descontoAvistaValor: cashDiscountSnapshot.descontoAvistaValor,
+      valorAvistaLiquido: cashDiscountSnapshot.valorAvistaLiquido,
+      investimentoBaseMetricas: cashDiscountSnapshot.investimentoBaseMetricas,
+    };
   }, []);
 
   const recalculateSizing = useCallback((
@@ -671,10 +499,19 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       potenciaSistema: sizing.potenciaSistemaKwp,
       valorTotal: options?.preserveValorTotal ? manualValorTotal : (autoValorTotal || manualValorTotal),
     };
-    const { financialInputs, financialOutputs } = buildFinancialSnapshot(nextWithSizing);
+    const {
+      financialInputs,
+      financialOutputs,
+      descontoAvistaValor,
+      valorAvistaLiquido,
+      investimentoBaseMetricas,
+    } = buildFinancialSnapshot(nextWithSizing);
 
     return {
       ...nextWithSizing,
+      descontoAvistaValor,
+      valorAvistaLiquido,
+      investimentoBaseMetricas,
       economiaAnual: Math.max(0, Number(financialOutputs.annualRevenueYear1) || 0),
       paybackMeses: Math.max(0, Number(financialOutputs.paybackMonths) || 0),
       rentabilityRatePerKwh: financialInputs.rentabilityRatePerKwh,
@@ -744,97 +581,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     longitude?: number;
   };
 
-  const resolveLocationRequestSeqRef = React.useRef(0);
-  const inFlightLocationRequestsRef = React.useRef<Map<string, Promise<ResolveSolarResourceResult>>>(new Map());
-
-  const buildLocationRequestKey = useCallback((params: {
-    uf?: string;
-    cidade?: string;
-    endereco?: string;
-    cep?: string;
-    latitude?: number;
-    longitude?: number;
-  }) => {
-    const normalizedUf = String(params.uf || '').trim().toUpperCase();
-    const normalizedCity = String(params.cidade || '').trim().toLowerCase();
-    const normalizedAddress = String(params.endereco || '').trim().toLowerCase();
-    const normalizedCep = normalizeCep(String(params.cep || ''));
-    const normalizedLat = Number.isFinite(Number(params.latitude)) ? Number(params.latitude).toFixed(6) : '';
-    const normalizedLon = Number.isFinite(Number(params.longitude)) ? Number(params.longitude).toFixed(6) : '';
-    return [normalizedUf, normalizedCity, normalizedAddress, normalizedCep, normalizedLat, normalizedLon].join('|');
-  }, []);
-
-  const showSolarResourceErrorToast = useCallback((
-    errorCode?: SolarResourceErrorCode,
-    debug?: SolarResourceDebug,
-    requestId?: string,
-  ) => {
-    const requestSuffix = requestId ? ` Ref: ${requestId}` : '';
-
-    if (errorCode === 'unauthorized') {
-      toast({
-        title: 'Sessao invalida',
-        description: `Sua sessao expirou. Faca login novamente para calcular irradiancia.${requestSuffix}`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (errorCode === 'geocode_provider_unavailable') {
-      toast({
-        title: 'Geocodificacao indisponivel',
-        description: `Servico de geocodificacao indisponivel. Verifique a chave Google e tente novamente.${requestSuffix}`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (errorCode === 'geocode_low_confidence') {
-      toast({
-        title: 'Endereco com baixa confianca',
-        description: `Nao foi possivel validar coordenadas com confianca para esse CEP/endereco.${requestSuffix}`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (errorCode === 'geocode_failed') {
-      toast({
-        title: 'Falha na geocodificacao',
-        description: `Nao foi possivel converter a localizacao em coordenadas validas.${requestSuffix}`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (
-      errorCode === 'pvgis_unavailable'
-      || errorCode === 'upstream_rate_limited'
-      || errorCode === 'upstream_timeout'
-      || errorCode === 'upstream_http_error'
-    ) {
-      const statusHint = Number.isFinite(Number(debug?.upstreamStatus))
-        ? ` (HTTP ${Number(debug?.upstreamStatus)})`
-        : '';
-      toast({
-        title: 'PVGIS indisponivel',
-        description: `PVGIS indisponivel no momento${statusHint}. Tente novamente em alguns segundos.${requestSuffix}`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    toast({
-      title: 'Falha ao buscar dados solares',
-      description: `Tente novamente em alguns segundos.${requestSuffix}`,
-      variant: 'destructive',
-    });
-  }, [toast]);
-
   const resolvePreciseLocation = useCallback(async (override?: LocationOverride) => {
     const currentFormData = formDataRef.current;
     const currentContact = contactRef.current;
-    const requestSeq = ++resolveLocationRequestSeqRef.current;
     const uf = String(
       override?.estado
       || currentFormData.estado
@@ -845,93 +594,39 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const cidade = String(override?.cidade || currentFormData.cidade || currentContact?.city || '').trim();
     const endereco = String(override?.endereco || currentFormData.endereco || currentContact?.address || '').trim();
     const cep = normalizeCep(String(override?.cep || currentFormData.cep || currentContact?.zip || ''));
-    const hasTextualLocation = Boolean(cidade || endereco || cep);
-    const overrideLatitude = toFiniteOrUndefined(override?.latitude);
-    const overrideLongitude = toFiniteOrUndefined(override?.longitude);
-    const hasOverrideCoordinates = overrideLatitude !== undefined && overrideLongitude !== undefined;
-    const currentLatitude = toFiniteOrUndefined(currentFormData.latitude ?? currentContact?.latitude);
-    const currentLongitude = toFiniteOrUndefined(currentFormData.longitude ?? currentContact?.longitude);
 
-    // Force fresh geocoding from textual location when available.
-    const latitude = hasOverrideCoordinates
-      ? overrideLatitude
-      : (!hasTextualLocation ? currentLatitude : undefined);
-    const longitude = hasOverrideCoordinates
-      ? overrideLongitude
-      : (!hasTextualLocation ? currentLongitude : undefined);
-    const requestKey = buildLocationRequestKey({
-      uf,
+    const result = await solarResource.resolve({
+      estado: uf,
       cidade,
       endereco,
       cep,
-      latitude,
-      longitude,
+      latitude: toFiniteOrUndefined(override?.latitude),
+      longitude: toFiniteOrUndefined(override?.longitude),
     });
 
-    setLocationLoading(true);
-    try {
-      let inFlight = inFlightLocationRequestsRef.current.get(requestKey);
-      if (!inFlight) {
-        const currentPromise = resolveSolarResource({
-          city: cidade || undefined,
-          uf: uf || undefined,
-          addressLine: endereco || undefined,
-          zip: cep || undefined,
-          lat: latitude,
-          lon: longitude,
-        });
-        inFlightLocationRequestsRef.current.set(requestKey, currentPromise);
-        void currentPromise.finally(() => {
-          if (inFlightLocationRequestsRef.current.get(requestKey) === currentPromise) {
-            inFlightLocationRequestsRef.current.delete(requestKey);
-          }
-        });
-        inFlight = currentPromise;
-      }
-
-      const { resource: solarResource, errorCode, debug, requestId } = await inFlight;
-      if (!solarResource) {
-        if (requestSeq === resolveLocationRequestSeqRef.current) {
-          showSolarResourceErrorToast(errorCode, debug, requestId);
-        }
-        return null;
-      }
-      if (requestSeq !== resolveLocationRequestSeqRef.current) {
-        return null;
-      }
-
+    if (result) {
       setFormData((prev) => patchAndRecalculate(prev, {
         estado: uf || prev.estado,
         cidade: cidade || prev.cidade,
         endereco: endereco || prev.endereco,
         cep: cep || prev.cep,
-        irradiancia: solarResource.annualIrradianceKwhM2Day,
-        monthlyGenerationFactors: solarResource.monthlyGenerationFactors,
-        irradianceSource: solarResource.source,
-        latitude: solarResource.lat ?? latitude ?? prev.latitude,
-        longitude: solarResource.lon ?? longitude ?? prev.longitude,
+        irradiancia: result.annualIrradianceKwhM2Day,
+        monthlyGenerationFactors: result.monthlyGenerationFactors,
+        irradianceSource: result.source,
+        latitude: result.lat ?? toFiniteOrUndefined(override?.latitude) ?? prev.latitude,
+        longitude: result.lon ?? toFiniteOrUndefined(override?.longitude) ?? prev.longitude,
         irradianceRefAt: new Date().toISOString(),
-        irradianceRequestId: solarResource.requestId ?? requestId ?? prev.irradianceRequestId,
+        irradianceRequestId: result.requestId ?? prev.irradianceRequestId,
         ...buildConcessionariaPatch(prev, {
           uf: uf || prev.estado,
           cidade: cidade || prev.cidade,
           cep: cep || prev.cep,
         }),
       }, { preserveValorTotal: true }));
-
-      return solarResource;
-    } catch (error) {
-      console.error('resolvePreciseLocation error:', error);
-      if (requestSeq === resolveLocationRequestSeqRef.current) {
-        showSolarResourceErrorToast('unexpected_error');
-      }
-      return null;
-    } finally {
-      if (requestSeq === resolveLocationRequestSeqRef.current) {
-        setLocationLoading(false);
-      }
     }
-  }, [buildConcessionariaPatch, buildLocationRequestKey, patchAndRecalculate, resolveSolarResource, showSolarResourceErrorToast]);
+
+    return result;
+  }, [buildConcessionariaPatch, patchAndRecalculate, solarResource]);
 
   const autofillAddressByCep = useCallback(async (rawCep?: string) => {
     const currentFormData = formDataRef.current;
@@ -945,7 +640,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       return null;
     }
 
-    setLocationLoading(true);
     try {
       const fetchJsonWithRetry = async (url: string, retries = 1, timeoutMs = 6000): Promise<Response | null> => {
         for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -1034,9 +728,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         endereco: nextOverride.endereco || prev.endereco,
         latitude: nextOverride.latitude,
         longitude: nextOverride.longitude,
-        irradianceSource: undefined,
-        irradianceRefAt: undefined,
-        irradianceRequestId: undefined,
         ...buildConcessionariaPatch(prev, {
           uf: nextOverride.estado || prev.estado,
           cidade: nextOverride.cidade || prev.cidade,
@@ -1058,12 +749,10 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         cidade: currentFormData.cidade || undefined,
         endereco: currentFormData.endereco || undefined,
       };
-    } finally {
-      setLocationLoading(false);
     }
   }, [patchAndRecalculate, toast]);
 
-  // ── Auto-calculate system for ALL types using Kit equipment data ──
+  // â”€â”€ Auto-calculate system for ALL types using Kit equipment data â”€â”€
 
 
   const calculateSystem = useCallback((consumoInput: number) => {
@@ -1108,6 +797,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       || field === 'teRatePerKwh'
       || field === 'tusdRatePerKwh'
       || field === 'tusdCompensationPct'
+      || field === 'descontoAvistaValor'
       || field === 'abaterCustoDisponibilidadeNoDimensionamento'
     ) {
       setFormData(prev => patchAndRecalculate(prev, { [field]: value } as Partial<typeof formData>));
@@ -1251,9 +941,18 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     if (field === 'potenciaSistema' || field === 'quantidadePaineis') {
       setFormData(prev => {
         const next = { ...prev, [field]: value } as typeof formData;
-        const { financialInputs, financialOutputs } = buildFinancialSnapshot(next);
+        const {
+          financialInputs,
+          financialOutputs,
+          descontoAvistaValor,
+          valorAvistaLiquido,
+          investimentoBaseMetricas,
+        } = buildFinancialSnapshot(next);
         return {
           ...next,
+          descontoAvistaValor,
+          valorAvistaLiquido,
+          investimentoBaseMetricas,
           economiaAnual: Math.max(0, Number(financialOutputs.annualRevenueYear1) || 0),
           paybackMeses: Math.max(0, Number(financialOutputs.paybackMonths) || 0),
           financialInputs,
@@ -1274,11 +973,10 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         ? prev.paymentConditions.filter((value) => value !== id)
         : [...prev.paymentConditions, id];
       const financingStillSelected = next.includes('financiamento_bancario');
-      return {
-        ...prev,
+      return patchAndRecalculate(prev, {
         paymentConditions: next,
         showFinancingSimulation: financingStillSelected ? prev.showFinancingSimulation : false,
-      };
+      });
     });
   };
 
@@ -1344,7 +1042,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-  // ── Fetch context (shared between AI and generation) ──
+  // â”€â”€ Fetch context (shared between AI and generation) â”€â”€
   const fetchContext = async (): Promise<Record<string, unknown> | null> => {
     if (!contact) return null;
     try {
@@ -1356,7 +1054,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     return null;
   };
 
-  // ── Build heuristic content ──
+  // â”€â”€ Build heuristic content â”€â”€
   const buildHeuristic = (contextData: Record<string, unknown> | null): PremiumProposalContent => {
     const metrics: ProposalMetrics = {
       consumoMensal: formData.consumoMensal,
@@ -1376,7 +1074,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     });
   };
 
-  // ══════════ AI PERSONALIZATION ══════════
+  // â•â•â•â•â•â•â•â•â•â• AI PERSONALIZATION â•â•â•â•â•â•â•â•â•â•
   const handleAiPersonalize = async () => {
     if (!contact) return;
     setAiLoading(true);
@@ -1442,21 +1140,21 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
       setAiContent(content);
       setAiHeadline(content.headline);
-      toast({ title: '✨ IA aplicada', description: 'Proposta personalizada com base no contexto do cliente.' });
+      toast({ title: 'âœ¨ IA aplicada', description: 'Proposta personalizada com base no contexto do cliente.' });
     } catch (err) {
-      console.error('AI personalização falhou, usando heurística:', err);
+      console.error('AI personalizaÃ§Ã£o falhou, usando heurÃ­stica:', err);
       // Fallback to heuristic
       const contextData = await fetchContext();
       const heuristic = buildHeuristic(contextData);
       setAiContent(heuristic);
       setAiHeadline(heuristic.headline);
-      toast({ title: 'Personalização aplicada', description: 'Heurística local utilizada (IA indisponível).' });
+      toast({ title: 'PersonalizaÃ§Ã£o aplicada', description: 'HeurÃ­stica local utilizada (IA indisponÃ­vel).' });
     } finally {
       setAiLoading(false);
     }
   };
 
-  // ══════════ SINGLE GENERATION FLOW ══════════
+  // â•â•â•â•â•â•â•â•â•â• SINGLE GENERATION FLOW â•â•â•â•â•â•â•â•â•â•
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contact) return;
@@ -1472,12 +1170,12 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     // Sprint 10: block generation when critical numeric values are zero/negative
     if (formData.consumoMensal <= 0 || formData.potenciaSistema <= 0 || formData.quantidadePaineis <= 0 || formData.valorTotal <= 0) {
-      toast({ title: 'Dados incompletos', description: formData.tipo_cliente === 'usina' ? 'Geração estimada, potência, módulos e investimento total devem ser maiores que zero.' : 'Consumo, potência, painéis e valor total devem ser maiores que zero.', variant: 'destructive' });
+      toast({ title: 'Dados incompletos', description: formData.tipo_cliente === 'usina' ? 'GeraÃ§Ã£o estimada, potÃªncia, mÃ³dulos e investimento total devem ser maiores que zero.' : 'Consumo, potÃªncia, painÃ©is e valor total devem ser maiores que zero.', variant: 'destructive' });
       return;
     }
 
     if (!Array.isArray(formData.paymentConditions) || formData.paymentConditions.length === 0) {
-      toast({ title: 'Condições de pagamento', description: 'Selecione pelo menos uma condição de pagamento.', variant: 'destructive' });
+      toast({ title: 'CondiÃ§Ãµes de pagamento', description: 'Selecione pelo menos uma condiÃ§Ã£o de pagamento.', variant: 'destructive' });
       return;
     }
 
@@ -1498,8 +1196,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const showFinancingSimulation = hasFinancingSelected && Boolean(formData.showFinancingSimulation);
     if (showFinancingSimulation && normalizedFinancingConditions.length === 0) {
       toast({
-        title: 'Condições de financiamento',
-        description: 'Para financiar, adicione ao menos 1 instituição com taxa e parcelas.',
+        title: 'CondiÃ§Ãµes de financiamento',
+        description: 'Para financiar, adicione ao menos 1 instituiÃ§Ã£o com taxa e parcelas.',
         variant: 'destructive',
       });
       return;
@@ -1520,7 +1218,13 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const legacyParcela60 = showFinancingSimulation && primaryCondition?.installments.includes(60)
       ? Math.round(calcPMT(legacyRate, 60, formData.valorTotal) * 100) / 100
       : 0;
-    const { financialInputs, financialOutputs } = buildFinancialSnapshot(formData);
+    const {
+      financialInputs,
+      financialOutputs,
+      descontoAvistaValor,
+      valorAvistaLiquido,
+      investimentoBaseMetricas,
+    } = buildFinancialSnapshot(formData);
     const effectiveEconomiaAnual = Math.max(0, Number(financialOutputs.annualRevenueYear1) || 0);
     const effectivePaybackMeses = Math.max(0, Number(financialOutputs.paybackMonths) || 0);
     const effectiveRentabilityRate = financialInputs.rentabilityRatePerKwh ?? financialInputs.tarifaKwh;
@@ -1576,8 +1280,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       || await prefetchCoverImage(formData.tipo_cliente || 'residencial');
     if (logoUrl && !resolvedLogoDataUrl) {
       toast({
-        title: 'Logo indisponível',
-        description: 'Não foi possível carregar a logo da empresa para o PDF. Reenvie a logo e tente novamente.',
+        title: 'Logo indisponÃ­vel',
+        description: 'NÃ£o foi possÃ­vel carregar a logo da empresa para o PDF. Reenvie a logo e tente novamente.',
         variant: 'destructive',
       });
       return;
@@ -1641,6 +1345,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       const pdfBlob = generateProposalPDF({
         contact: contactForPdf,
         ...formData,
+        descontoAvistaValor,
+        valorAvistaLiquido,
+        investimentoBaseMetricas,
         economiaAnual: effectiveEconomiaAnual,
         paybackMeses: effectivePaybackMeses,
         rentabilityRatePerKwh: effectiveRentabilityRate,
@@ -1746,6 +1453,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         validadeDias: formData.validadeDias,
         parcela36x: legacyParcela36,
         parcela60x: legacyParcela60,
+        descontoAvistaValor,
+        valorAvistaLiquido,
+        investimentoBaseMetricas,
         paymentConditions: formData.paymentConditions,
         paymentConditionLabels: formData.paymentConditions.map((id) => PAYMENT_CONDITION_LABEL_BY_ID[id]),
         financingConditions: effectiveFinancingConditions,
@@ -1778,6 +1488,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       const saveResult = await onGenerate({
         contactId: contact.id,
         ...formData,
+        descontoAvistaValor,
+        valorAvistaLiquido,
+        investimentoBaseMetricas,
         economiaAnual: effectiveEconomiaAnual,
         paybackMeses: effectivePaybackMeses,
         rentabilityRatePerKwh: effectiveRentabilityRate,
@@ -1838,7 +1551,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       }
       if (versionId && propostaId) await trackDownloadEvent(versionId, propostaId, Number(contact.id), 'client_proposal');
 
-      toast({ title: "Proposta gerada!", description: "PDF baixado. Baixe o Roteiro do Vendedor na próxima tela." });
+      toast({ title: "Proposta gerada!", description: "PDF baixado. Baixe o Roteiro do Vendedor na prÃ³xima tela." });
       onClose();
     } catch (error: any) {
       console.error('Error generating proposal:', error);
@@ -1849,14 +1562,13 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     }
   };
 
-  // ── Computed financing preview ──
-  // ── Reset on open ──
+  // â”€â”€ Computed financing preview â”€â”€
+  // â”€â”€ Reset on open â”€â”€
   React.useEffect(() => {
     const currentContact = contactRef.current;
     if (!currentContact || !isOpen) return;
 
     setIsLoading(false);
-    setLocationLoading(false);
     setAiLoading(false);
     setAiContent(null);
     setAiHeadline('');
@@ -1891,6 +1603,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           ? Math.max(0, Number(currentContact.averageMonthlyBill) || 0)
           : undefined,
         valorTotal: currentContact.projectValue || 0,
+        descontoAvistaValor: 0,
+        valorAvistaLiquido: Math.max(0, Number(currentContact.projectValue) || 0),
+        investimentoBaseMetricas: Math.max(0, Number(currentContact.projectValue) || 0),
         tipo_cliente: (currentContact.clientType || 'residencial') as ClientType,
         observacoes: '',
         endereco: currentContact.address || '',
@@ -1969,7 +1684,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     formData,
     setFormData,
     isLoading,
-    locationLoading,
+    locationLoading: solarResource.loading,
+    solarResourceStatus: solarResource.status,
     aiLoading,
     aiContent,
     aiHeadline,

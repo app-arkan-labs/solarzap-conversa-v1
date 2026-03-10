@@ -39,6 +39,8 @@ type InstallmentCardProps = {
   onRemove?: () => void;
 };
 
+const RETROACTIVE_PAYMENT_DATE_MIN = '1900-01-01';
+
 function InstallmentCard({
   title,
   installment,
@@ -82,6 +84,7 @@ function InstallmentCard({
             <Label>Vencimento</Label>
             <Input
               type="date"
+              min={RETROACTIVE_PAYMENT_DATE_MIN}
               disabled={disabled}
               value={installment.due_on}
               onChange={(event) => onChange({ due_on: event.target.value })}

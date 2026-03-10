@@ -59,7 +59,11 @@ const STEP_COPY: Record<FinanceWizardStep, { title: string; description: string 
 };
 
 const toDateInput = (value?: string | Date): string => {
-  if (!value) return new Date().toISOString().slice(0, 10);
+  if (!value) {
+    const now = new Date();
+    const timezoneOffsetMs = now.getTimezoneOffset() * 60 * 1000;
+    return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 10);
+  }
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return String(value).slice(0, 10);
 };

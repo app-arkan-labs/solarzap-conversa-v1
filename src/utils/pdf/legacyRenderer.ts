@@ -32,6 +32,7 @@ import {
   type FinancingCondition,
   type PaymentConditionOptionId,
 } from '@/types/proposalFinancing';
+import { resolveCashDiscountSnapshot } from '@/utils/proposalCashDiscount';
 import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
 import { calculateProposalFinancials } from '@/utils/proposalFinancialModel';
 import {
@@ -80,6 +81,9 @@ export interface ProposalPDFData {
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
+  descontoAvistaValor?: number;
+  valorAvistaLiquido?: number;
+  investimentoBaseMetricas?: number;
   economiaAnual: number;
   paybackMeses: number;
   garantiaAnos: number;
@@ -149,6 +153,9 @@ export interface SellerScriptPDFData {
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
+  descontoAvistaValor?: number;
+  valorAvistaLiquido?: number;
+  investimentoBaseMetricas?: number;
   economiaAnual: number;
   paybackMeses: number;
   garantiaAnos: number;
@@ -491,12 +498,12 @@ function buildChartTheme(P: Palette): ChartTheme {
 //  Accent sanitisation for Helvetica (standard 14 font  no Unicode glyphs) 
 /** Transliterate common Portuguese/Spanish accented chars so Helvetica can render them. */
 function repairMojibake(text: string): string {
-  if (!/[ÃÂâ]/.test(text)) return text;
+  if (!/[ÃƒÃ‚Ã¢]/.test(text)) return text;
   try {
     const bytes = Uint8Array.from(text, (char) => char.charCodeAt(0) & 0xff);
     const decoded = new TextDecoder('utf-8').decode(bytes);
-    const badOriginal = (text.match(/[ÃÂâ]/g) || []).length;
-    const badDecoded = (decoded.match(/[ÃÂâ]/g) || []).length;
+    const badOriginal = (text.match(/[ÃƒÃ‚Ã¢]/g) || []).length;
+    const badDecoded = (decoded.match(/[ÃƒÃ‚Ã¢]/g) || []).length;
     return badDecoded < badOriginal ? decoded : text;
   } catch {
     return text;
@@ -602,7 +609,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   );
   const resolvedFinancialInputs: FinancialInputs = {
     tipoCliente: data.tipo_cliente,
-    investimentoTotal: Math.max(0, Number(data.valorTotal) || 0),
+    investimentoTotal: Math.max(0, Number(data.investimentoBaseMetricas ?? data.valorTotal) || 0),
     consumoMensalKwh: Math.max(0, Number(data.consumoMensal) || 0),
     contaLuzMensalReferencia: Math.max(
       0,
@@ -668,6 +675,21 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
       ? Number(data.financialInputs?.longitude ?? data.longitude)
       : undefined,
   };
+  const cashDiscountSnapshot = resolveCashDiscountSnapshot({
+    valorTotal: data.valorTotal,
+    descontoAvistaValor: data.descontoAvistaValor,
+    paymentConditions: data.paymentConditions,
+  });
+  const descontoAvistaValor = cashDiscountSnapshot.descontoAvistaValor;
+  const valorAvistaLiquido = Number.isFinite(Number(data.valorAvistaLiquido))
+    ? Math.max(0, Number(data.valorAvistaLiquido) || 0)
+    : cashDiscountSnapshot.valorAvistaLiquido;
+  const investimentoBaseMetricas = Number.isFinite(Number(data.investimentoBaseMetricas))
+    ? Math.max(0, Number(data.investimentoBaseMetricas) || 0)
+    : cashDiscountSnapshot.investimentoBaseMetricas;
+  const showCashDiscountBreakdown = descontoAvistaValor > 0
+    || Math.abs(investimentoBaseMetricas - Math.max(0, Number(data.valorTotal) || 0)) > 0.009;
+  resolvedFinancialInputs.investimentoTotal = investimentoBaseMetricas;
   const financialOutputs: FinancialOutputs = data.financialOutputs
     ? (data.financialOutputs as FinancialOutputs)
     : calculateProposalFinancials(resolvedFinancialInputs);
@@ -712,10 +734,10 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const paybackYearsNumber = (financialOutputs?.paybackYearsDecimal ?? 0) > 0
     ? (financialOutputs?.paybackYearsDecimal || 0)
     : (paybackMonths > 0 ? paybackMonths / 12 : 0);
-  const roi25Pct = data.valorTotal > 0
-    ? (((longTermSavings - data.valorTotal) / data.valorTotal) * 100)
+  const roi25Pct = investimentoBaseMetricas > 0
+    ? (((longTermSavings - investimentoBaseMetricas) / investimentoBaseMetricas) * 100)
     : 0;
-  const roi25 = data.valorTotal > 0 ? `${roi25Pct.toFixed(1)}%` : '-';
+  const roi25 = investimentoBaseMetricas > 0 ? `${roi25Pct.toFixed(1)}%` : '-';
   const cumulativeSeries = Array.isArray(financialOutputs?.cumulativeRevenueSeries)
     ? financialOutputs!.cumulativeRevenueSeries
     : [];
@@ -726,10 +748,10 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   };
   const receita5Anos = cumulativeAtYear(5);
   const receita15Anos = cumulativeAtYear(15);
-  const retornoPorReal = data.valorTotal > 0
+  const retornoPorReal = investimentoBaseMetricas > 0
     ? ((financialOutputs?.retornoPorReal ?? 0) > 0
       ? (financialOutputs?.retornoPorReal || 0)
-      : (longTermSavings / data.valorTotal))
+      : (longTermSavings / investimentoBaseMetricas))
     : 0;
   const segLabel = (data.tipo_cliente || 'residencial').charAt(0).toUpperCase() + (data.tipo_cliente || 'residencial').slice(1);
   const today = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -939,7 +961,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   };
 
 // ---
-  // PAGE 0  COVER (clean modern layout — white bg, brand stripe, partial photo)
+  // PAGE 0  COVER (clean modern layout â€” white bg, brand stripe, partial photo)
 // ---
   const coverImageSrc = data.coverImageDataUrl || null;
   const coverImageList = Array.isArray(data.coverImageDataUrls)
@@ -1040,7 +1062,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   doc.setLineWidth(0.6);
   doc.line(txL, 66, txL + 35, 66);
 
-  // 8. Title block — strong typographic hierarchy
+  // 8. Title block â€” strong typographic hierarchy
   doc.setTextColor(35, 35, 35);
   doc.setFontSize(30);
   doc.setFont('helvetica', 'bold');
@@ -1084,7 +1106,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     doc.text(data.contact.city, txL, 252);
   }
 
-  // Segment label — pure typography, no badge
+  // Segment label â€” pure typography, no badge
   doc.setTextColor(C.header[0], C.header[1], C.header[2]);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
@@ -1163,7 +1185,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const cardWidth = (W - 2 * M - 8) / 3;
   const metricH = 20;
   const metricsArr = [
-    { label: 'INVESTIMENTO ESTIMADO', value: fmtCurrency(data.valorTotal) },
+    { label: 'INVESTIMENTO ESTIMADO', value: fmtCurrency(investimentoBaseMetricas) },
     { label: isUsina ? 'RECEITA MENSAL ESTIMADA' : 'ECONOMIA MENSAL ESTIMADA', value: fmtCurrency(econMensal) },
     { label: 'PAYBACK ESTIMADO', value: paybackYears },
   ];
@@ -1198,8 +1220,8 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   }
 
   const narrative = isUsina
-    ? `${fmtCurrency(data.valorTotal)} de investimento estimado para gerar receita de cerca de ${fmtCurrency(econMensal)}/mes (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Receita acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulacao).`
-    : `${fmtCurrency(data.valorTotal)} de investimento estimado para economizar cerca de ${fmtCurrency(econMensal)}/mes (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Economia acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulacao).`;
+    ? `${fmtCurrency(investimentoBaseMetricas)} de investimento estimado para gerar receita de cerca de ${fmtCurrency(econMensal)}/mes (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Receita acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulacao).`
+    : `${fmtCurrency(investimentoBaseMetricas)} de investimento estimado para economizar cerca de ${fmtCurrency(econMensal)}/mes (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Economia acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulacao).`;
   doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
   doc.setFontSize(9.6); doc.setFont('helvetica', 'normal');
   const narLines = doc.splitTextToSize(narrative, W - 2 * M);
@@ -1259,13 +1281,20 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   } else {
     // Usina: Revenue projection table
     sectionTitle('Projecao de Receita e Retorno');
-    const retPerReal = data.valorTotal > 0 ? retornoPorReal.toFixed(1) : '-';
+    const retPerReal = investimentoBaseMetricas > 0 ? retornoPorReal.toFixed(1) : '-';
     autoTable(doc, {
       startY: y,
       margin: { left: M, right: M },
       head: [['Indicador', 'Valor']],
       body: [
-        ['Investimento Total', fmtCurrency(data.valorTotal)],
+        ...(showCashDiscountBreakdown
+          ? [
+            ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
+            ['Desconto a Vista', fmtCurrency(descontoAvistaValor)],
+            ['Valor a Vista Liquido', fmtCurrency(valorAvistaLiquido)],
+            ['Investimento Base (Metricas)', fmtCurrency(investimentoBaseMetricas)],
+          ]
+          : [['Investimento Total', fmtCurrency(investimentoBaseMetricas)]]),
         ['Receita Mensal Estimada', fmtCurrency(econMensal)],
         ['Receita Anual Estimada', fmtCurrency(econAnual)],
         ['Receita Acumulada (5 anos)', fmtCurrency(receita5Anos)],
@@ -1318,7 +1347,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   if (isUsina) {
     drawRevenueBarChart(doc, M, y, chartRowW, topChartsCardH, {
-      investimento: data.valorTotal,
+      investimento: investimentoBaseMetricas,
       receitaAnual: econAnual,
       receita5Anos,
       receita15Anos,
@@ -1334,15 +1363,15 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   }
 
   drawROIPieChart(doc, M + chartRowW + 6, y, chartRowW, topChartsCardH, {
-    valorTotal: data.valorTotal,
-    retornoLiquido: longTermSavings - data.valorTotal,
+    valorTotal: investimentoBaseMetricas,
+    retornoLiquido: longTermSavings - investimentoBaseMetricas,
   }, chartTheme);
   y += topChartsStep;
 
   // Cumulative chart (full width)
   if (!isUsina) checkPageBreak(65);
   drawCumulativeSavingsChart(doc, M, y, W - 2 * M, cumulativeCardH, {
-    valorTotal: data.valorTotal,
+    valorTotal: investimentoBaseMetricas,
     economiaMensal: econMensal,
     paybackMeses: paybackMonths,
     cumulativeRevenueSeries: financialOutputs?.cumulativeRevenueSeries,
@@ -1353,7 +1382,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   if (showProjectionSummary && y + 20 < H - 28) {
     doc.setTextColor(C.header[0], C.header[1], C.header[2]);
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-    const retPerReal = data.valorTotal > 0 ? retornoPorReal.toFixed(1) : '-';
+    const retPerReal = investimentoBaseMetricas > 0 ? retornoPorReal.toFixed(1) : '-';
     doc.text(
       `Para cada R$ 1,00 investido, voce recupera R$ ${retPerReal} ao longo de 25 anos.`,
       W / 2, y, { align: 'center' }
@@ -1444,7 +1473,14 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     startY: y,
     head: [['Descricao', 'Valor']],
     body: [
-      ['Investimento Total', fmtCurrency(data.valorTotal)],
+      ...(showCashDiscountBreakdown
+        ? [
+          ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
+          ['Desconto a Vista', fmtCurrency(descontoAvistaValor)],
+          ['Valor a Vista Liquido', fmtCurrency(valorAvistaLiquido)],
+          ['Investimento Base (Metricas)', fmtCurrency(investimentoBaseMetricas)],
+        ]
+        : [['Investimento Total', fmtCurrency(investimentoBaseMetricas)]]),
       [isUsina ? 'Receita Mensal Estimada' : 'Economia Mensal Estimada', fmtCurrency(econMensal)],
       [isUsina ? 'Receita Anual Estimada' : 'Economia Anual Estimada', fmtCurrency(econAnual)],
       ['Tempo de Retorno (Payback)', paybackYearsDetailed],
@@ -1716,12 +1752,26 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
       ?? data.financialOutputs?.cumulativeRevenueSeries?.[data.financialOutputs.cumulativeRevenueSeries.length - 1]
       ?? (econAnual * 25))
     : (econAnual * 25);
+  const cashDiscountSnapshot = resolveCashDiscountSnapshot({
+    valorTotal: data.valorTotal,
+    descontoAvistaValor: data.descontoAvistaValor,
+    paymentConditions: data.paymentConditions,
+  });
+  const descontoAvistaValor = cashDiscountSnapshot.descontoAvistaValor;
+  const valorAvistaLiquido = Number.isFinite(Number(data.valorAvistaLiquido))
+    ? Math.max(0, Number(data.valorAvistaLiquido) || 0)
+    : cashDiscountSnapshot.valorAvistaLiquido;
+  const investimentoBaseMetricas = Number.isFinite(Number(data.investimentoBaseMetricas))
+    ? Math.max(0, Number(data.investimentoBaseMetricas) || 0)
+    : cashDiscountSnapshot.investimentoBaseMetricas;
+  const showCashDiscountBreakdown = descontoAvistaValor > 0
+    || Math.abs(investimentoBaseMetricas - Math.max(0, Number(data.valorTotal) || 0)) > 0.009;
   const paybackMonths = (data.financialOutputs?.paybackMonths ?? 0) > 0
     ? (data.financialOutputs?.paybackMonths || 0)
     : data.paybackMeses;
   const paybackYears = fmtYears(paybackMonths);
-  const roi25 = data.valorTotal > 0
-    ? `${(((longTermSavings - data.valorTotal) / data.valorTotal) * 100).toFixed(1)}%`
+  const roi25 = investimentoBaseMetricas > 0
+    ? `${(((longTermSavings - investimentoBaseMetricas) / investimentoBaseMetricas) * 100).toFixed(1)}%`
     : '-';
   const hasLegacyFinancingData = (Number(data.taxaFinanciamento) || 0) > 0
     || (Number(data.parcela36x) || 0) > 0
@@ -1848,7 +1898,14 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
     startY: y,
     head: [['Indicador', 'Valor']],
     body: [
-      ['Investimento', fmtCurrency(data.valorTotal)],
+      ...(showCashDiscountBreakdown
+        ? [
+          ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
+          ['Desconto a Vista', fmtCurrency(descontoAvistaValor)],
+          ['Valor a Vista Liquido', fmtCurrency(valorAvistaLiquido)],
+          ['Investimento Base (Metricas)', fmtCurrency(investimentoBaseMetricas)],
+        ]
+        : [['Investimento', fmtCurrency(investimentoBaseMetricas)]]),
       ['Economia mensal estimada', fmtCurrency(econMensal)],
       ['Economia anual estimada', fmtCurrency(econAnual)],
       ['Payback estimado', paybackYears],
