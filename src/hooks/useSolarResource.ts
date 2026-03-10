@@ -217,7 +217,23 @@ async function invokeSolarResource(params: {
     });
 
     if (error) {
+      // Diagnostic logging: capture everything for debugging
+      const ctx = (error as any)?.context;
+      let rawBodyText = '(no body)';
+      try {
+        if (ctx && typeof ctx.clone === 'function') {
+          rawBodyText = await ctx.clone().text();
+        }
+      } catch { /* consumed or unavailable */ }
+      console.error('[solar-resource] invoke error:', {
+        name: error?.name,
+        message: error?.message,
+        status: ctx?.status,
+        statusText: ctx?.statusText,
+        rawBody: rawBodyText,
+      });
       const parsedError = await parseSolarResourceErrorPayload(error);
+      console.error('[solar-resource] parsed error:', parsedError);
       return {
         resource: null,
         errorCode: parsedError?.errorCode ?? 'unexpected_error',
@@ -227,10 +243,12 @@ async function invokeSolarResource(params: {
     }
 
     if (!data || typeof data !== 'object') {
+      console.error('[solar-resource] empty or non-object data:', data);
       return { resource: null, errorCode: 'unexpected_error' };
     }
 
     const payload = data as Record<string, unknown>;
+    console.info('[solar-resource] response payload keys:', Object.keys(payload), 'source:', payload.source, 'errorCode:', payload.errorCode);
     const payloadErrorCode = normalizeSolarResourceErrorCode(
       payload.errorCode ?? payload.error,
     );
@@ -429,7 +447,10 @@ export function useSolarResource(): UseSolarResourceReturn {
         const result = await inFlight;
 
         // Stale response guard
-        if (seq !== requestSeqRef.current) return null;
+        if (seq !== requestSeqRef.current) {
+          console.warn('[solar-resource] stale response discarded', { seq, current: requestSeqRef.current });
+          return null;
+        }
 
         if (!result.resource) {
           setStatus('error');

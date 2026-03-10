@@ -626,7 +626,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     }
 
     return result;
-  }, [buildConcessionariaPatch, patchAndRecalculate, solarResource]);
+  }, [buildConcessionariaPatch, patchAndRecalculate, solarResource.resolve]);
 
   const autofillAddressByCep = useCallback(async (rawCep?: string) => {
     const currentFormData = formDataRef.current;
