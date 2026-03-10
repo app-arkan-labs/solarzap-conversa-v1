@@ -89,6 +89,31 @@ export type AdminOrgDetailsResponse = {
     proposal_count: number;
     instance_count: number;
   };
+  billing: {
+    subscription_status: string;
+    stripe_subscription_id: string | null;
+    stripe_checkout_session_id: string | null;
+    stripe_price_id: string | null;
+    trial_ends_at: string | null;
+    grace_ends_at: string | null;
+    current_period_end: string | null;
+    stripe_customer_id: string | null;
+    timeline: {
+      id: number;
+      event_type: string;
+      actor: string;
+      payload: Record<string, unknown>;
+      created_at: string;
+    }[];
+    timeline_total: number;
+    timeline_page: number;
+    timeline_per_page: number;
+    credit_balances: {
+      credit_type: string;
+      balance: number;
+      updated_at: string;
+    }[];
+  };
 };
 
 export type AdminOrgMembersResponse = {
@@ -570,10 +595,23 @@ export function useAdminOrgs(params: {
   });
 }
 
-export function useAdminOrgDetails(orgId: string | null) {
+export function useAdminOrgDetails(
+  orgId: string | null,
+  params?: {
+    timeline_page?: number;
+    timeline_per_page?: number;
+    timeline_event_type?: string;
+  },
+) {
+  const effectiveParams = params || {};
+
   return useQuery({
-    queryKey: adminQueryKeys.orgDetails(orgId ?? 'missing'),
-    queryFn: () => invokeAdminApi<AdminOrgDetailsResponse>({ action: 'get_org_details', org_id: orgId }),
+    queryKey: [...adminQueryKeys.orgDetails(orgId ?? 'missing'), effectiveParams],
+    queryFn: () => invokeAdminApi<AdminOrgDetailsResponse>({
+      action: 'get_org_details',
+      org_id: orgId,
+      ...effectiveParams,
+    }),
     enabled: Boolean(orgId),
   });
 }

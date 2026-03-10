@@ -19,9 +19,11 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
 
 const PLAN_BADGE: Record<string, { label: string; className: string }> = {
   free: { label: 'Grátis', className: 'bg-slate-50 text-slate-600 border-slate-200' },
-  starter: { label: 'Starter', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  start: { label: 'Start', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  starter: { label: 'Start', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   pro: { label: 'Pro', className: 'bg-purple-50 text-purple-700 border-purple-200' },
-  business: { label: 'Business', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  scale: { label: 'Scale', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  business: { label: 'Scale', className: 'bg-amber-50 text-amber-700 border-amber-200' },
 };
 
 function OrgAvatar({ name }: { name: string }) {

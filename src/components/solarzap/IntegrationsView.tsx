@@ -5,14 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import {
-  Calendar,
-  Mail,
-  Video,
   MessageCircle,
-  Instagram,
-  Check,
   X,
-  Settings,
   ExternalLink,
   Loader2,
   Plus,
@@ -22,13 +16,10 @@ import {
   QrCode,
   Wifi,
   WifiOff,
-  Zap,
-  Shield,
   CheckCircle2,
   AlertCircle,
   ChevronRight,
   LogOut,
-  Palette,
   Plug
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -62,13 +53,7 @@ export function IntegrationsView() {
   const [updatingColor, setUpdatingColor] = useState<string | null>(null);
 
   const {
-    isConnected,
-    getIntegration,
     loading: integrationsLoading,
-    connecting,
-    connectGoogle,
-    connectMeta,
-    disconnect
   } = useIntegrationsContext();
 
   const {
@@ -147,85 +132,6 @@ export function IntegrationsView() {
     }
   };
 
-  const connections = {
-    google: isConnected('google'),
-    whatsapp: whatsappConnectedCount > 0,
-    messenger: isConnected('meta_messenger'),
-    instagram: isConnected('meta_instagram'),
-  };
-
-  const connectedCount = Object.values(connections).filter(Boolean).length;
-
-  const platforms = [
-    {
-      id: 'google',
-      provider: 'google',
-      name: 'Google Workspace',
-      description: 'Calendar, Gmail e Meet integrados',
-      logo: (
-        <svg viewBox="0 0 24 24" className="w-7 h-7">
-          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-        </svg>
-      ),
-      connected: connections.google,
-      accountInfo: getIntegration('google')?.account_email,
-      services: [
-        { id: 'calendar', name: 'Calendar', icon: <Calendar className="w-4 h-4" />, connected: connections.google },
-        { id: 'gmail', name: 'Gmail', icon: <Mail className="w-4 h-4" />, connected: connections.google },
-        { id: 'meet', name: 'Meet', icon: <Video className="w-4 h-4" />, connected: connections.google },
-      ],
-    },
-    {
-      id: 'meta-messenger',
-      provider: 'meta_messenger',
-      name: 'Messenger',
-      description: 'Mensagens do Facebook',
-      logo: (
-        <div className="w-7 h-7 rounded-full bg-gradient-to-b from-[#00B2FF] to-[#006AFF] flex items-center justify-center">
-          <MessageCircle className="w-4 h-4 text-white" />
-        </div>
-      ),
-      connected: connections.messenger,
-      accountInfo: getIntegration('meta_messenger')?.page_name,
-      services: [
-        { id: 'messenger', name: 'Messenger', icon: <MessageCircle className="w-4 h-4" />, connected: connections.messenger },
-      ],
-    },
-    {
-      id: 'meta-instagram',
-      provider: 'meta_instagram',
-      name: 'Instagram',
-      description: 'Direct Messages',
-      logo: (
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#833AB4] via-[#FD1D1D] to-[#F77737] flex items-center justify-center">
-          <Instagram className="w-4 h-4 text-white" />
-        </div>
-      ),
-      connected: connections.instagram,
-      accountInfo: getIntegration('meta_instagram')?.page_name,
-      services: [
-        { id: 'instagram-dm', name: 'Instagram DM', icon: <Instagram className="w-4 h-4" />, connected: connections.instagram },
-      ],
-    },
-  ];
-
-  const handleConnect = (platformId: string) => {
-    if (platformId === 'google') {
-      connectGoogle();
-    } else if (platformId === 'meta-messenger') {
-      connectMeta('messenger');
-    } else if (platformId === 'meta-instagram') {
-      connectMeta('instagram');
-    }
-  };
-
-  const handleDisconnect = (provider: string) => {
-    disconnect(provider);
-  };
-
   if (integrationsLoading) {
     return (
       <div className="flex-1 bg-background p-6 flex items-center justify-center">
@@ -241,94 +147,24 @@ export function IntegrationsView() {
     <ScrollArea className="flex-1 h-full">
       <div className="bg-muted/30 min-h-full">
         <PageHeader
-          title="Central de Integrações"
-          subtitle="Conecte suas plataformas e centralize todas as comunicações"
+          title="WhatsApp Business"
+          subtitle="Gerencie suas conexões WhatsApp e centralize todas as comunicações"
           icon={Plug}
           actionContent={
             <div className="flex items-center gap-4 bg-background/50 glass px-4 py-2 rounded-xl border border-border/50">
               <div className="text-right">
-                <div className="text-xl font-bold text-foreground leading-none">{connectedCount}/4</div>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 font-semibold">Plataformas ativas</div>
+                <div className="text-xl font-bold text-foreground leading-none">{whatsappConnectedCount}/{whatsappInstances.length}</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 font-semibold">{whatsappConnectedCount === 1 ? 'Instância ativa' : 'Instâncias ativas'}</div>
               </div>
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <Shield className="w-5 h-5 text-primary" />
+              <div className="w-10 h-10 rounded-full bg-[#25D366]/10 flex items-center justify-center">
+                <CheckCircle2 className="w-5 h-5 text-[#25D366]" />
               </div>
             </div>
           }
         />
 
         <div className="w-full px-6 py-6 space-y-6">
-          {/* Status Cards Premium */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              {
-                name: 'Google',
-                connected: connections.google,
-                icon: (
-                  <svg viewBox="0 0 24 24" className="w-5 h-5">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                  </svg>
-                ),
-                gradient: 'from-blue-500/10 to-red-500/10'
-              },
-              {
-                name: 'WhatsApp',
-                connected: connections.whatsapp,
-                count: whatsappConnectedCount,
-                total: whatsappInstances.length,
-                icon: <MessageCircle className="w-5 h-5 text-[#25D366]" />,
-                gradient: 'from-[#25D366]/20 to-[#128C7E]/10'
-              },
-              {
-                name: 'Messenger',
-                connected: connections.messenger,
-                icon: <MessageCircle className="w-5 h-5 text-[#006AFF]" />,
-                gradient: 'from-[#00B2FF]/10 to-[#006AFF]/10'
-              },
-              {
-                name: 'Instagram',
-                connected: connections.instagram,
-                icon: <Instagram className="w-5 h-5 text-[#E4405F]" />,
-                gradient: 'from-[#833AB4]/10 via-[#FD1D1D]/10 to-[#F77737]/10'
-              },
-            ].map((item) => (
-              <Card
-                key={item.name}
-                className={cn(
-                  "relative overflow-hidden border-0 shadow-sm transition-all duration-300 hover:shadow-md",
-                  item.connected ? "ring-2 ring-primary/20" : ""
-                )}
-              >
-                <div className={cn("absolute inset-0 bg-gradient-to-br opacity-50", item.gradient)} />
-                <CardContent className="p-4 relative">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-background/80 backdrop-blur flex items-center justify-center shadow-sm">
-                      {item.icon}
-                    </div>
-                    {item.connected ? (
-                      <CheckCircle2 className="w-5 h-5 text-primary" />
-                    ) : (
-                      <AlertCircle className="w-5 h-5 text-muted-foreground/50" />
-                    )}
-                  </div>
-                  <h3 className="font-semibold text-foreground">{item.name}</h3>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    {item.connected
-                      ? item.count !== undefined
-                        ? `${item.count}/${item.total} conectado${item.count !== 1 ? 's' : ''}`
-                        : 'Conectado'
-                      : 'Desconectado'
-                    }
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* WhatsApp Premium Section */}
+          {/* WhatsApp Section */}
           <Card className="border-0 shadow-sm overflow-hidden">
             <div className="bg-gradient-to-r from-[#25D366]/10 to-[#128C7E]/5">
               <CardHeader className="pb-4">
@@ -627,112 +463,7 @@ export function IntegrationsView() {
             </CardContent>
           </Card>
 
-          {/* Other Platforms */}
-          <div className="grid lg:grid-cols-3 gap-4">
-            {platforms.map((platform) => (
-              <Card
-                key={platform.id}
-                className={cn(
-                  "border-0 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md",
-                  platform.connected && "ring-2 ring-primary/20"
-                )}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-muted/50 flex items-center justify-center">
-                        {platform.logo}
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">{platform.name}</CardTitle>
-                        <CardDescription className="text-xs mt-0.5">
-                          {platform.connected && platform.accountInfo
-                            ? platform.accountInfo
-                            : platform.description
-                          }
-                        </CardDescription>
-                      </div>
-                    </div>
-                  </div>
-                </CardHeader>
 
-                <CardContent className="pt-0 pb-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    {platform.services.map((service) => (
-                      <div
-                        key={service.id}
-                        className={cn(
-                          "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs",
-                          service.connected
-                            ? "bg-primary/10 text-primary"
-                            : "bg-muted text-muted-foreground"
-                        )}
-                      >
-                        {service.icon}
-                        {service.name}
-                      </div>
-                    ))}
-                  </div>
-
-                  {platform.connected ? (
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="flex-1 h-9">
-                        <Settings className="w-3.5 h-3.5 mr-1.5" />
-                        Configurar
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDisconnect(platform.provider)}
-                        disabled={connecting === platform.provider}
-                        className="h-9 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      >
-                        {connecting === platform.provider ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <X className="w-3.5 h-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      onClick={() => handleConnect(platform.id)}
-                      disabled={connecting === platform.provider}
-                      className="w-full h-9 gap-2"
-                    >
-                      {connecting === platform.provider ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      )}
-                      Conectar
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* Help Card */}
-          <Card className="border-0 shadow-sm bg-gradient-to-r from-muted/50 to-muted/30">
-            <CardContent className="p-6 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
-                  <ExternalLink className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">Precisa de ajuda?</h3>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    Consulte nossa documentação ou fale com o suporte
-                  </p>
-                </div>
-              </div>
-              <Button variant="outline" className="gap-2">
-                Ver Documentação
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-            </CardContent>
-          </Card>
         </div>
 
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

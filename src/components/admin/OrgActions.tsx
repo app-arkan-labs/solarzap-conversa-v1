@@ -293,9 +293,9 @@ export default function OrgActions({ orgId, status, plan, planLimits, onUpdated 
                 {!availablePlans.length && (
                   <>
                     <SelectItem value="free">Grátis</SelectItem>
-                    <SelectItem value="starter">Starter</SelectItem>
+                    <SelectItem value="start">Start</SelectItem>
                     <SelectItem value="pro">Pro</SelectItem>
-                    <SelectItem value="business">Business</SelectItem>
+                    <SelectItem value="scale">Scale</SelectItem>
                   </>
                 )}
               </SelectContent>

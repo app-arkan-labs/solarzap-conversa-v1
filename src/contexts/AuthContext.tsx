@@ -43,6 +43,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthError | null>;
   signUp: (email: string, password: string) => Promise<AuthError | null>;
+  resendSignUpConfirmation: (email: string) => Promise<AuthError | null>;
   signOut: () => Promise<void>;
   selectOrganization: (orgId: string, opts?: SelectOrganizationOptions) => Promise<void>;
   clearOrganizationSelection: () => void;
@@ -759,8 +760,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Explicit login must not inherit organization from a previous user/session.
       clearActiveOrgId();
+      const normalizedEmail = email.trim().toLowerCase();
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
       return error;
@@ -773,17 +775,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp = async (email: string, password: string): Promise<AuthError | null> => {
     try {
       const redirectUrl = window.location.origin;
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: redirectUrl,
         },
       });
-      return error;
+      if (error) return error;
+
+      // Supabase can return a synthetic user with empty identities for already-registered emails.
+      const identities = data?.user?.identities;
+      if (Array.isArray(identities) && identities.length === 0) {
+        return {
+          name: 'AuthError',
+          message: 'Este email ja possui cadastro.',
+          status: 409,
+          code: 'user_already_registered',
+        } as AuthError;
+      }
+
+      return null;
     } catch (error) {
       console.error('Sign up error:', error);
       return { message: 'Erro ao criar conta', name: 'AuthError', status: 500 } as AuthError;
+    }
+  };
+
+  const resendSignUpConfirmation = async (email: string): Promise<AuthError | null> => {
+    try {
+      const redirectUrl = window.location.origin;
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: redirectUrl,
+        },
+      });
+      return error;
+    } catch (error) {
+      console.error('Resend sign up confirmation error:', error);
+      return { message: 'Erro ao reenviar confirmacao de conta', name: 'AuthError', status: 500 } as AuthError;
     }
   };
 
@@ -817,6 +849,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loading,
     signIn,
     signUp,
+    resendSignUpConfirmation,
     signOut,
     selectOrganization,
     clearOrganizationSelection,

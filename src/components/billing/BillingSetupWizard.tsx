@@ -43,7 +43,7 @@ export default function BillingSetupWizard() {
         orgId,
         orgName: orgId ? undefined : orgName.trim(),
         successUrl: `${window.location.origin}/welcome?checkout=success`,
-        cancelUrl: `${window.location.origin}/pricing?checkout=cancel`,
+        cancelUrl: `${window.location.origin}/billing?checkout=cancel`,
       });
 
       window.location.href = checkoutUrl;

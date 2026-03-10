@@ -2,7 +2,7 @@
 import type { LeadStageData } from './ai';
 
 
-export type ActiveTab = 'conversas' | 'pipelines' | 'calendario' | 'contatos' | 'propostas' | 'dashboard' | 'integracoes' | 'tracking' | 'automacoes' | 'banco_ia' | 'ia_agentes' | 'admin_members' | 'minha_conta' | 'disparos';
+export type ActiveTab = 'conversas' | 'pipelines' | 'calendario' | 'contatos' | 'propostas' | 'dashboard' | 'integracoes' | 'tracking' | 'automacoes' | 'banco_ia' | 'ia_agentes' | 'admin_members' | 'minha_conta' | 'meu_plano' | 'disparos';
 
 
 

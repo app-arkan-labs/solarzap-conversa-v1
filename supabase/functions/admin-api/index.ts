@@ -460,6 +460,18 @@ async function handleGetOrgDetails(
   payload: Record<string, unknown>,
   req: Request,
 ) {
+    const timelinePageInput = Number(payload.timeline_page);
+    const timelinePerPageInput = Number(payload.timeline_per_page);
+    const timelinePage = Number.isFinite(timelinePageInput)
+      ? Math.min(1000, Math.max(1, Math.floor(timelinePageInput)))
+      : 1;
+    const timelinePerPage = Number.isFinite(timelinePerPageInput)
+      ? Math.min(100, Math.max(5, Math.floor(timelinePerPageInput)))
+      : 10;
+    const timelineEventType = toTrimmedString(payload.timeline_event_type);
+    const timelineFrom = (timelinePage - 1) * timelinePerPage;
+    const timelineTo = timelineFrom + timelinePerPage - 1;
+
   const orgId = payload.org_id;
   if (!isUuid(orgId)) {
     throw { status: 400, code: 'invalid_org_id' };
@@ -486,6 +498,72 @@ async function handleGetOrgDetails(
     instance_count: Number((org as Record<string, unknown>).instance_count ?? 0),
   };
 
+  const { data: orgBillingData, error: orgBillingError } = await adminClient
+    .from('organizations')
+    .select(
+      'subscription_status, stripe_subscription_id, stripe_checkout_session_id, stripe_price_id, trial_ends_at, grace_ends_at, current_period_end',
+    )
+    .eq('id', orgId)
+    .maybeSingle();
+
+  if (orgBillingError) {
+    throw { status: 500, code: 'org_billing_lookup_failed' };
+  }
+
+  const { data: stripeCustomerData, error: stripeCustomerError } = await adminClient
+    .from('stripe_customers')
+    .select('stripe_customer_id')
+    .eq('org_id', orgId)
+    .maybeSingle();
+
+  if (stripeCustomerError) {
+    throw { status: 500, code: 'stripe_customer_lookup_failed' };
+  }
+
+  let timelineQuery = adminClient
+    .from('org_billing_timeline')
+    .select('id, event_type, actor, payload, created_at', { count: 'exact' })
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false });
+
+  if (timelineEventType) {
+    timelineQuery = timelineQuery.eq('event_type', timelineEventType);
+  }
+
+  const {
+    data: timelineData,
+    error: timelineError,
+    count: timelineTotal,
+  } = await timelineQuery.range(timelineFrom, timelineTo);
+
+  if (timelineError) {
+    throw { status: 500, code: 'billing_timeline_lookup_failed' };
+  }
+
+  const { data: creditBalancesData, error: creditBalancesError } = await adminClient
+    .from('credit_balances')
+    .select('credit_type, balance, updated_at')
+    .eq('org_id', orgId)
+    .order('credit_type', { ascending: true });
+
+  if (creditBalancesError) {
+    throw { status: 500, code: 'credit_balances_lookup_failed' };
+  }
+
+  const orgBilling = isRecord(orgBillingData) ? orgBillingData : {};
+  const timeline = (timelineData ?? []).map((entry) => ({
+    id: Number(entry.id ?? 0),
+    event_type: String(entry.event_type ?? 'unknown_event'),
+    actor: String(entry.actor ?? 'system'),
+    payload: isRecord(entry.payload) ? entry.payload : {},
+    created_at: String(entry.created_at ?? new Date().toISOString()),
+  }));
+  const creditBalances = (creditBalancesData ?? []).map((balanceRow) => ({
+    credit_type: String(balanceRow.credit_type ?? 'unknown'),
+    balance: Number(balanceRow.balance ?? 0),
+    updated_at: String(balanceRow.updated_at ?? new Date().toISOString()),
+  }));
+
   await writeAuditLog(
     adminClient,
     admin,
@@ -503,6 +581,21 @@ async function handleGetOrgDetails(
     org,
     members,
     stats,
+    billing: {
+      subscription_status: String(orgBilling.subscription_status ?? 'none'),
+      stripe_subscription_id: toTrimmedString(orgBilling.stripe_subscription_id),
+      stripe_checkout_session_id: toTrimmedString(orgBilling.stripe_checkout_session_id),
+      stripe_price_id: toTrimmedString(orgBilling.stripe_price_id),
+      trial_ends_at: toTrimmedString(orgBilling.trial_ends_at),
+      grace_ends_at: toTrimmedString(orgBilling.grace_ends_at),
+      current_period_end: toTrimmedString(orgBilling.current_period_end),
+      stripe_customer_id: toTrimmedString(stripeCustomerData?.stripe_customer_id),
+      timeline,
+      timeline_total: Number(timelineTotal ?? 0),
+      timeline_page: timelinePage,
+      timeline_per_page: timelinePerPage,
+      credit_balances: creditBalances,
+    },
   };
 }
 

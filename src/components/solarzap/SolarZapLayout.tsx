@@ -21,6 +21,7 @@ import { KnowledgeBaseView } from './KnowledgeBaseView';
 import { ProposalsView } from './ProposalsView';
 import { BroadcastView } from './BroadcastView';
 import { ConfiguracoesContaView } from './ConfiguracoesContaView';
+import { MeuPlanoView } from './MeuPlanoView';
 import { NotificationsPanel } from './NotificationsPanel';
 import { CreateLeadModal, CreateLeadData } from './CreateLeadModal';
 import { AppointmentModal } from './AppointmentModal';
@@ -51,6 +52,7 @@ import AdminMembersPage from '@/pages/AdminMembersPage';
 import type { UpdateLeadData } from './EditLeadModal';
 import { useOrgBillingInfo } from '@/hooks/useOrgBilling';
 import FeatureSoftWall from '@/components/billing/FeatureSoftWall';
+import BillingBanner from '@/components/billing/BillingBanner';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -286,14 +288,6 @@ export function SolarZapLayout() {
   }, [location.pathname, navigate]);
 
   const activeFeatureSoftWall = useMemo(() => {
-    if (activeTab === 'integracoes' && !isGoogleIntegrationEnabled) {
-      return {
-        featureName: 'Integrações com Google',
-        requiredPlan: 'Pro',
-        description: 'Conecte Google Ads, calendário e relatórios avançados para ganhar performance operacional.',
-      };
-    }
-
     if (activeTab === 'tracking' && !isAdvancedTrackingEnabled) {
       return {
         featureName: 'Tracking Avançado',
@@ -1125,9 +1119,11 @@ export function SolarZapLayout() {
           tracking: sellerPerms.tab_integracoes,
           banco_ia: sellerPerms.tab_banco_ia,
           minha_conta: sellerPerms.tab_minha_conta,
+          meu_plano: canAccessAdmin,
         }}
         lockedTabs={lockedTabs}
         onLockedTabClick={handleLockedTabClick}
+        currentPlanKey={billingQuery.data?.plan_key ?? null}
       />
 
       <Dialog
@@ -1194,8 +1190,14 @@ export function SolarZapLayout() {
         }}
       />
 
+      <div className="absolute top-0 left-[60px] right-0 z-20 px-4 py-2 space-y-2 pointer-events-none">
+        <div className="pointer-events-auto">
+          <BillingBanner billing={billingQuery.data} />
+        </div>
+      </div>
+
       {accessState === 'read_only' ? (
-        <div className="absolute top-0 left-[60px] right-0 z-20 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-900 text-sm">
+        <div className="absolute top-14 left-[60px] right-0 z-20 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-900 text-sm">
           Seu acesso está em modo leitura. Algumas ações estão bloqueadas até a regularização da assinatura.
         </div>
       ) : null}
@@ -1468,16 +1470,7 @@ export function SolarZapLayout() {
 
       {activeTab === 'integracoes' && (
         <div className="flex-1 flex flex-col h-full overflow-hidden">
-          {activeFeatureSoftWall ? (
-            <FeatureSoftWall
-              featureName={activeFeatureSoftWall.featureName}
-              requiredPlan={activeFeatureSoftWall.requiredPlan}
-              description={activeFeatureSoftWall.description}
-              onUpgrade={() => navigate('/pricing')}
-            />
-          ) : (
-            <IntegrationsView />
-          )}
+          <IntegrationsView />
         </div>
       )}
 
@@ -1488,7 +1481,7 @@ export function SolarZapLayout() {
               featureName={activeFeatureSoftWall.featureName}
               requiredPlan={activeFeatureSoftWall.requiredPlan}
               description={activeFeatureSoftWall.description}
-              onUpgrade={() => navigate('/pricing')}
+              onUpgrade={() => navigate('/billing')}
             />
           ) : (
             <TrackingView />
@@ -1513,6 +1506,12 @@ export function SolarZapLayout() {
       {activeTab === 'minha_conta' && (
         <div className="flex-1 h-full overflow-auto">
           <ConfiguracoesContaView />
+        </div>
+      )}
+
+      {activeTab === 'meu_plano' && canAccessAdmin && (
+        <div className="flex-1 h-full overflow-auto">
+          <MeuPlanoView />
         </div>
       )}
 

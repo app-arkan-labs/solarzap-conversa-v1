@@ -18,16 +18,20 @@ import { useAdminSystemMetrics, useAdminFinancialSummary, useAdminAuditLog } fro
 
 const PLAN_COLORS: Record<string, string> = {
   free: 'bg-slate-100 text-slate-700',
+  start: 'bg-blue-100 text-blue-700',
   starter: 'bg-blue-100 text-blue-700',
   pro: 'bg-purple-100 text-purple-700',
+  scale: 'bg-amber-100 text-amber-800',
   business: 'bg-amber-100 text-amber-800',
 };
 
 const PLAN_LABELS: Record<string, string> = {
   free: 'Grátis',
-  starter: 'Starter',
+  start: 'Start',
+  starter: 'Start',
   pro: 'Pro',
-  business: 'Business',
+  scale: 'Scale',
+  business: 'Scale',
 };
 
 type MetricCardProps = {

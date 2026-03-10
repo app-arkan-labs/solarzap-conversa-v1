@@ -63,9 +63,6 @@ Deno.serve(async (req) => {
     }
 
     const stripePriceId = String(plan.stripe_price_id || '').trim();
-    if (!stripePriceId) {
-      return json(corsHeaders, 400, { ok: false, error: 'plan_missing_stripe_price_id' });
-    }
 
     let orgId = typeof payload.org_id === 'string' ? payload.org_id.trim() : '';
     let userRole = 'owner';
@@ -154,19 +151,29 @@ Deno.serve(async (req) => {
 
     const appUrl = resolveAppUrl();
     const successUrl = payload.success_url || `${appUrl}/welcome?checkout=success`;
-    const cancelUrl = payload.cancel_url || `${appUrl}/pricing?checkout=cancel`;
+    const cancelUrl = payload.cancel_url || `${appUrl}/billing?checkout=cancel`;
+
+    const lineItems = stripePriceId
+      ? [{ price: stripePriceId, quantity: 1 }]
+      : [{
+        price_data: {
+          currency: 'brl',
+          unit_amount: Number(plan.price_cents || 0),
+          recurring: { interval: 'month' },
+          product_data: {
+            name: String(plan.display_name || plan.plan_key),
+            metadata: { plan_key: String(plan.plan_key) },
+          },
+        },
+        quantity: 1,
+      }];
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: stripeCustomerId,
       success_url: successUrl,
       cancel_url: cancelUrl,
-      line_items: [
-        {
-          price: stripePriceId,
-          quantity: 1,
-        },
-      ],
+      line_items: lineItems,
       metadata: {
         org_id: orgId,
         plan_key: String(plan.plan_key),

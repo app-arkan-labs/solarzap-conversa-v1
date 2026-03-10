@@ -150,14 +150,14 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
 
   const accessState = billingQuery.data?.access_state;
   const subscriptionStatus = String(billingQuery.data?.subscription_status || '').toLowerCase();
-  const isPricingRoute = location.pathname === '/pricing';
+  const isBillingRoute = location.pathname === '/pricing' || location.pathname === '/billing';
   const isWelcomeRoute = location.pathname === '/welcome';
 
-  if (!billingQuery.isLoading && subscriptionStatus === 'pending_checkout' && !isPricingRoute) {
+  if (!billingQuery.isLoading && subscriptionStatus === 'pending_checkout' && !isBillingRoute) {
     return <BillingSetupWizard />;
   }
 
-  if (!billingQuery.isLoading && accessState === 'blocked' && !isPricingRoute && !isWelcomeRoute) {
+  if (!billingQuery.isLoading && accessState === 'blocked' && !isBillingRoute && !isWelcomeRoute) {
     return <SubscriptionRequiredScreen />;
   }
 

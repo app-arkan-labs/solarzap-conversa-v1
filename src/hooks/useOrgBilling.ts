@@ -24,6 +24,31 @@ export type OrgBillingInfo = {
 
 const BILLING_QUERY_KEY = ['org-billing-info'] as const;
 
+async function resolveFunctionErrorMessage(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) return fallback;
+
+  const directMessage = String(error.message || '').trim();
+  const genericMessage = 'Edge Function returned a non-2xx status code';
+  if (directMessage && directMessage !== genericMessage) {
+    return directMessage;
+  }
+
+  const context = (error as Error & { context?: unknown }).context;
+  if (context && typeof context === 'object' && 'json' in context && typeof (context as { json?: unknown }).json === 'function') {
+    try {
+      const payload = await (context as { json: () => Promise<unknown> }).json();
+      if (payload && typeof payload === 'object') {
+        const apiError = String((payload as { error?: unknown }).error || '').trim();
+        if (apiError) return apiError;
+      }
+    } catch {
+      // Ignore parse failures and return fallback below.
+    }
+  }
+
+  return directMessage || fallback;
+}
+
 export function useOrgBillingInfo(enabled = true) {
   const { orgId } = useAuth();
 
@@ -62,7 +87,8 @@ export async function createPlanCheckoutSession(input: {
   });
 
   if (error) {
-    throw new Error(error.message || 'Falha ao iniciar checkout');
+    const message = await resolveFunctionErrorMessage(error, 'Falha ao iniciar checkout');
+    throw new Error(message);
   }
 
   const checkoutUrl = (data as { checkout_url?: string })?.checkout_url;
@@ -83,7 +109,8 @@ export async function createPackCheckoutSession(addonKey: string, quantity = 1, 
   });
 
   if (error) {
-    throw new Error(error.message || 'Falha ao iniciar checkout de pacote');
+    const message = await resolveFunctionErrorMessage(error, 'Falha ao iniciar checkout de pacote');
+    throw new Error(message);
   }
 
   const checkoutUrl = (data as { checkout_url?: string })?.checkout_url;
@@ -102,7 +129,8 @@ export async function createBillingPortalSession(orgId?: string | null) {
   });
 
   if (error) {
-    throw new Error(error.message || 'Falha ao abrir portal de cobrança');
+    const message = await resolveFunctionErrorMessage(error, 'Falha ao abrir portal de cobranca');
+    throw new Error(message);
   }
 
   const portalUrl = (data as { portal_url?: string })?.portal_url;

@@ -15,7 +15,7 @@ import {
     DEFAULT_PROMPTS_BY_STAGE,
     type PipelineAgentDef,
 } from '../../constants/aiPipelineAgents';
-import { AlertTriangle, RefreshCcw, Save, Bot, ChevronRight, Shield, Power, Wifi, WifiOff, Pencil } from 'lucide-react';
+import { AlertTriangle, RefreshCcw, Save, Bot, ChevronRight, Shield, Power, Wifi, WifiOff, Pencil, Brain } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
     Dialog,
@@ -27,6 +27,7 @@ import {
 } from "../ui/dialog";
 import { Textarea } from '../ui/textarea';
 import { PageHeader } from './PageHeader';
+import { PackPurchaseModal } from '@/components/billing/PackPurchaseModal';
 import {
     DEFAULT_APPOINTMENT_WINDOW_CONFIG,
     type AppointmentWindowConfig,
@@ -131,6 +132,7 @@ export function AIAgentsView() {
     const [isWarningOpen, setIsWarningOpen] = useState(false);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
+    const [isAiPackModalOpen, setIsAiPackModalOpen] = useState(false);
     const [tempPrompt, setTempPrompt] = useState('');
 
     // Local state for Assistant Name to prevent auto-refresh/focus loss
@@ -273,17 +275,27 @@ export function AIAgentsView() {
                 subtitle="Configure os agentes autônomos do seu funil de vendas"
                 icon={Bot}
                 actionContent={
-                    <div className="flex items-center gap-3 bg-background/50 glass px-4 py-2 rounded-xl border border-border/50">
-                        <Badge variant={settings?.is_active ? "default" : "secondary"} className="h-7 px-3">
-                            {settings?.is_active ? "SISTEMA ATIVO" : "SISTEMA PAUSADO"}
-                        </Badge>
-                        <Switch
-                            data-testid="ai-master-switch"
-                            checked={settings?.is_active || false}
-                            onCheckedChange={(checked) => updateGlobalSettings({ is_active: checked })}
-                            className="data-[state=checked]:bg-green-500"
-                            disabled={!canEdit}
-                        />
+                    <div className="flex items-center gap-3">
+                        <Button
+                            variant="outline"
+                            onClick={() => setIsAiPackModalOpen(true)}
+                            className="gap-2 font-semibold h-9"
+                        >
+                            <Brain className="w-4 h-4" />
+                            Comprar créditos de IA
+                        </Button>
+                        <div className="flex items-center gap-3 bg-background/50 glass px-4 py-2 rounded-xl border border-border/50">
+                            <Badge variant={settings?.is_active ? "default" : "secondary"} className="h-7 px-3">
+                                {settings?.is_active ? "SISTEMA ATIVO" : "SISTEMA PAUSADO"}
+                            </Badge>
+                            <Switch
+                                data-testid="ai-master-switch"
+                                checked={settings?.is_active || false}
+                                onCheckedChange={(checked) => updateGlobalSettings({ is_active: checked })}
+                                className="data-[state=checked]:bg-green-500"
+                                disabled={!canEdit}
+                            />
+                        </div>
                     </div>
                 }
             />
@@ -685,6 +697,12 @@ export function AIAgentsView() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <PackPurchaseModal
+                open={isAiPackModalOpen}
+                onOpenChange={setIsAiPackModalOpen}
+                packType="ai"
+            />
         </div>
     );
 }

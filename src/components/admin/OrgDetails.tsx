@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Building2, Calendar, Mail, Shield, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -101,10 +101,28 @@ export default function OrgDetails() {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
   const orgId = params.id ?? null;
-  const detailsQuery = useAdminOrgDetails(orgId);
+  const [timelinePage, setTimelinePage] = useState(1);
+  const [timelineEventType, setTimelineEventType] = useState('all');
+  const detailsQuery = useAdminOrgDetails(orgId, {
+    timeline_page: timelinePage,
+    timeline_per_page: 10,
+    timeline_event_type: timelineEventType === 'all' ? '' : timelineEventType,
+  });
   const org = detailsQuery.data?.org;
   const members = detailsQuery.data?.members ?? [];
   const stats = detailsQuery.data?.stats;
+  const billing = detailsQuery.data?.billing;
+  const timelineTotal = Number(billing?.timeline_total ?? 0);
+  const timelinePerPage = Number(billing?.timeline_per_page ?? 10) || 10;
+  const totalTimelinePages = Math.max(1, Math.ceil(timelineTotal / timelinePerPage));
+  const timelineEvents = billing?.timeline ?? [];
+  const timelineEventOptions = useMemo(() => {
+    const values = new Set<string>();
+    timelineEvents.forEach((entry) => {
+      if (entry.event_type) values.add(entry.event_type);
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [timelineEvents]);
 
   if (!orgId) {
     return <p className="text-sm text-muted-foreground">org_id inválido.</p>;
@@ -175,6 +193,7 @@ export default function OrgDetails() {
         <TabsList className="bg-slate-100">
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="members">Membros ({members.length})</TabsTrigger>
+          <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="actions">Ações</TabsTrigger>
           <TabsTrigger value="flags">Feature Flags</TabsTrigger>
         </TabsList>
@@ -270,6 +289,140 @@ export default function OrgDetails() {
                   )}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Billing Tab */}
+        <TabsContent value="billing" className="space-y-4">
+          <div className="grid md:grid-cols-2 gap-4">
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Estado da Assinatura</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Status</span>
+                  <span className="font-medium capitalize">{billing?.subscription_status ?? 'none'}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Trial termina em</span>
+                  <span>{formatDate(billing?.trial_ends_at ?? null)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Grace termina em</span>
+                  <span>{formatDate(billing?.grace_ends_at ?? null)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Período atual termina em</span>
+                  <span>{formatDate(billing?.current_period_end ?? null)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Stripe customer</span>
+                  <span className="font-mono text-xs break-all text-right">{billing?.stripe_customer_id ?? '—'}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Stripe subscription</span>
+                  <span className="font-mono text-xs break-all text-right">{billing?.stripe_subscription_id ?? '—'}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Checkout session</span>
+                  <span className="font-mono text-xs break-all text-right">{billing?.stripe_checkout_session_id ?? '—'}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Price ID</span>
+                  <span className="font-mono text-xs break-all text-right">{billing?.stripe_price_id ?? '—'}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Créditos de Packs</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {(billing?.credit_balances ?? []).map((row) => (
+                  <div key={row.credit_type} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                    <span className="text-muted-foreground">{row.credit_type}</span>
+                    <div className="text-right">
+                      <p className="font-semibold text-slate-900">{row.balance}</p>
+                      <p className="text-xs text-muted-foreground">Atualizado: {formatDate(row.updated_at)}</p>
+                    </div>
+                  </div>
+                ))}
+                {!(billing?.credit_balances?.length ?? 0) && (
+                  <p className="text-muted-foreground">Sem saldo de packs registrado.</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <CardTitle className="text-sm font-semibold">Timeline de Billing</CardTitle>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground" htmlFor="timeline-event-filter">
+                    Evento
+                  </label>
+                  <select
+                    id="timeline-event-filter"
+                    className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"
+                    value={timelineEventType}
+                    onChange={(event) => {
+                      setTimelineEventType(event.target.value);
+                      setTimelinePage(1);
+                    }}
+                  >
+                    <option value="all">Todos</option>
+                    {timelineEventOptions.map((eventType) => (
+                      <option key={eventType} value={eventType}>{eventType}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {timelineEvents.map((entry) => (
+                <div key={entry.id} className="rounded-md border bg-slate-50/60 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-slate-900">{entry.event_type}</p>
+                    <span className="text-xs text-muted-foreground">{formatDate(entry.created_at)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">ator: {entry.actor}</p>
+                  <pre className="text-xs mt-2 whitespace-pre-wrap break-words text-slate-700 bg-white rounded border p-2">
+                    {JSON.stringify(entry.payload, null, 2)}
+                  </pre>
+                </div>
+              ))}
+              {!timelineEvents.length && (
+                <p className="text-sm text-muted-foreground">Nenhum evento de billing encontrado.</p>
+              )}
+              {timelineTotal > 0 && (
+                <div className="pt-2 flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    {`Mostrando página ${timelinePage} de ${totalTimelinePages} (${timelineTotal} eventos)`}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={timelinePage <= 1}
+                      onClick={() => setTimelinePage((current) => Math.max(1, current - 1))}
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={timelinePage >= totalTimelinePages}
+                      onClick={() => setTimelinePage((current) => Math.min(totalTimelinePages, current + 1))}
+                    >
+                      Próxima
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -1,12 +1,18 @@
 import { cn } from '@/lib/utils';
 import { ActiveTab } from '@/types/solarzap';
-import { MessageCircle, Kanban, Calendar, Users, Send, FileText, BarChart3, Bell, Settings, Plug, Zap, Brain, Bot, UserCog, User, Building2, Activity } from 'lucide-react';
+import { MessageCircle, Kanban, Calendar, Users, Send, FileText, BarChart3, Bell, Settings, Plug, Zap, Brain, Bot, UserCog, User, Building2, Activity, CreditCard } from 'lucide-react';
 import { GoogleAccountButton } from './GoogleAccountButton';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+
+const PLAN_BADGE: Record<string, { label: string; color: string }> = {
+  start: { label: 'Start', color: 'bg-slate-600/80 text-slate-100' },
+  pro:   { label: 'Pro',   color: 'bg-emerald-600/80 text-emerald-100' },
+  scale: { label: 'Scale', color: 'bg-violet-600/80 text-violet-100' },
+};
 
 interface SolarZapNavProps {
   activeTab: ActiveTab;
@@ -20,6 +26,7 @@ interface SolarZapNavProps {
   activeOrganizationName?: string;
   userAvatarUrl?: string | null;
   userDisplayName?: string;
+  currentPlanKey?: string | null;
   tabPermissions?: {
     ia_agentes: boolean;
     automacoes: boolean;
@@ -27,6 +34,7 @@ interface SolarZapNavProps {
     tracking: boolean;
     banco_ia: boolean;
     minha_conta: boolean;
+    meu_plano: boolean;
   };
   lockedTabs?: Partial<Record<ActiveTab, string>>;
   onLockedTabClick?: (tab: ActiveTab, reason?: string) => void;
@@ -57,17 +65,24 @@ export function SolarZapNav({
   tabPermissions,
   lockedTabs,
   onLockedTabClick,
+  currentPlanKey,
 }: SolarZapNavProps) {
-  const tp = tabPermissions ?? { ia_agentes: true, automacoes: true, integracoes: true, tracking: true, banco_ia: true, minha_conta: true };
+  const tp = tabPermissions ?? { ia_agentes: true, automacoes: true, integracoes: true, tracking: true, banco_ia: true, minha_conta: true, meu_plano: true };
+  const planBadge = currentPlanKey ? PLAN_BADGE[currentPlanKey] : null;
   const normalizedAvatarUrl = typeof userAvatarUrl === 'string' && userAvatarUrl.trim().length > 0
     ? userAvatarUrl.trim()
     : null;
   const userInitial = userDisplayName?.trim().charAt(0).toUpperCase() || '';
   return (
     <nav className="w-[60px] h-full bg-secondary flex flex-col items-center py-4">
-      {/* Logo */}
-      <div className="mb-8 p-2">
+      {/* Logo + Plan badge */}
+      <div className="mb-8 flex flex-col items-center gap-1.5 p-2">
         <img src="/logo.png" alt="SolarZap" className="w-10 h-10 rounded-full object-cover" />
+        {planBadge ? (
+          <span className={cn('rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider', planBadge.color)}>
+            {planBadge.label}
+          </span>
+        ) : null}
       </div>
 
       {/* Navigation Items */}
@@ -234,6 +249,19 @@ export function SolarZapNav({
               ) : null}
 
               <div className="border-t my-1" />
+
+              {tp.meu_plano ? (
+                <button
+                  data-testid="nav-menu-meu-plano"
+                  onClick={() => onTabChange('meu_plano')}
+                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <CreditCard className="w-4 h-4 text-primary" />
+                  </div>
+                  Meu Plano
+                </button>
+              ) : null}
 
               {tp.minha_conta ? (
                 <button

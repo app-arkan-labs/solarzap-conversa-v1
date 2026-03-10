@@ -141,6 +141,7 @@ const App = () => {
                     <Route path="/privacidade" element={<PrivacyPolicy />} />
                     <Route path="/termos" element={<TermsOfService />} />
                     <Route path="/pricing" element={<Pricing />} />
+                    <Route path="/billing" element={<Pricing />} />
                     <Route
                       path="/welcome"
                       element={

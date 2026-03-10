@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -10,6 +10,8 @@ import { Mail, Lock, Loader2, ArrowLeft, Zap, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 type ViewMode = 'login' | 'signup' | 'forgot';
+const SIGNUP_AUTO_RESEND_DEFAULT_DELAY_MS = 65_000;
+const MICROSOFT_EMAIL_DOMAINS = new Set(['hotmail.com', 'outlook.com', 'live.com', 'msn.com']);
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -17,20 +19,141 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [view, setView] = useState<ViewMode>('login');
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, resendSignUpConfirmation } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  const autoResendTimerRef = useRef<number | null>(null);
+
+  const getFriendlyAuthMessage = (code: string | undefined, message: string) => {
+    const normalizedCode = String(code || '').toLowerCase();
+    const normalizedMessage = String(message || '').toLowerCase();
+
+    if (normalizedCode === 'over_email_send_rate_limit' || normalizedMessage.includes('only request this after')) {
+      return 'Ja enviamos a confirmacao. O sistema vai tentar novo envio automaticamente em instantes.';
+    }
+
+    if (
+      normalizedCode === 'user_already_registered' ||
+      normalizedMessage.includes('user already registered') ||
+      normalizedMessage.includes('ja possui cadastro')
+    ) {
+      return 'Este email ja possui cadastro confirmado. Faça login ou use recuperacao de senha.';
+    }
+
+    return message;
+  };
+
+  const isRateLimitError = (code: string | undefined, message: string) => {
+    const normalizedCode = String(code || '').toLowerCase();
+    const normalizedMessage = String(message || '').toLowerCase();
+    return normalizedCode === 'over_email_send_rate_limit' || normalizedMessage.includes('only request this after');
+  };
+
+  const isAlreadyRegisteredError = (code: string | undefined, message: string) => {
+    const normalizedCode = String(code || '').toLowerCase();
+    const normalizedMessage = String(message || '').toLowerCase();
+    return (
+      normalizedCode === 'user_already_registered' ||
+      normalizedMessage.includes('user already registered') ||
+      normalizedMessage.includes('ja possui cadastro')
+    );
+  };
+
+  const isEmailNotConfirmedError = (code: string | undefined, message: string) => {
+    const normalizedCode = String(code || '').toLowerCase();
+    const normalizedMessage = String(message || '').toLowerCase();
+    return (
+      normalizedCode === 'email_not_confirmed' ||
+      normalizedMessage.includes('email not confirmed') ||
+      normalizedMessage.includes('email_not_confirmed') ||
+      normalizedMessage.includes('confirme seu email')
+    );
+  };
+
+  const parseRateLimitDelayMs = (message: string) => {
+    const match = message.match(/(\d+)\s*seconds?/i);
+    const seconds = Number(match?.[1] || 0);
+    if (!Number.isFinite(seconds) || seconds <= 0) return null;
+    return seconds * 1000;
+  };
+
+  const shouldScheduleDomainResend = (targetEmail: string) => {
+    const domain = targetEmail.split('@')[1]?.trim().toLowerCase();
+    if (!domain) return false;
+    return MICROSOFT_EMAIL_DOMAINS.has(domain);
+  };
+
+  const clearAutoResendTimer = () => {
+    if (autoResendTimerRef.current !== null) {
+      window.clearTimeout(autoResendTimerRef.current);
+      autoResendTimerRef.current = null;
+    }
+  };
+
+  const scheduleAutomaticResend = (targetEmail: string, delayMs: number, attemptsLeft = 1) => {
+    clearAutoResendTimer();
+    autoResendTimerRef.current = window.setTimeout(async () => {
+      autoResendTimerRef.current = null;
+      const error = await resendSignUpConfirmation(targetEmail);
+      if (!error) {
+        toast({
+          title: 'Confirmacao reenviada automaticamente',
+          description: `Enviamos novamente para ${targetEmail}. Confira a caixa de entrada e spam.`,
+        });
+        return;
+      }
+
+      const code = (error as { code?: string }).code;
+      if (attemptsLeft > 0 && isRateLimitError(code, error.message)) {
+        const retryDelayMs = parseRateLimitDelayMs(error.message) ?? SIGNUP_AUTO_RESEND_DEFAULT_DELAY_MS;
+        scheduleAutomaticResend(targetEmail, retryDelayMs + 2000, attemptsLeft - 1);
+        return;
+      }
+
+      toast({
+        title: 'Falha ao confirmar email',
+        description: getFriendlyAuthMessage(code, error.message),
+        variant: 'destructive',
+      });
+    }, Math.max(2000, delayMs));
+  };
+
+  useEffect(() => () => clearAutoResendTimer(), []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    const normalizedEmail = email.trim().toLowerCase();
     setIsLoading(true);
     try {
-      const error = await signIn(email, password);
+      const error = await signIn(normalizedEmail, password);
       if (!error) {
         const planHint = searchParams.get('plan');
         navigate(planHint ? `/?plan=${encodeURIComponent(planHint)}` : '/');
       } else {
+        const code = (error as { code?: string }).code;
+
+        if (isEmailNotConfirmedError(code, error.message)) {
+          const resendError = await resendSignUpConfirmation(normalizedEmail);
+          if (!resendError) {
+            if (shouldScheduleDomainResend(normalizedEmail)) {
+              scheduleAutomaticResend(normalizedEmail, SIGNUP_AUTO_RESEND_DEFAULT_DELAY_MS, 1);
+            }
+            toast({
+              title: 'Confirme seu email para entrar',
+              description: `Reenviamos a confirmacao para ${normalizedEmail}. Verifique caixa de entrada, spam e lixeira.`,
+            });
+          } else {
+            const resendCode = (resendError as { code?: string }).code;
+            toast({
+              title: 'Conta sem confirmacao',
+              description: getFriendlyAuthMessage(resendCode, resendError.message),
+              variant: 'destructive',
+            });
+          }
+          return;
+        }
+
         toast({
           title: 'Erro ao entrar',
           description: error.message === 'Invalid login credentials'
@@ -52,14 +175,47 @@ const Login = () => {
       toast({ title: 'Senha muito curta', description: 'A senha deve ter pelo menos 8 caracteres.', variant: 'destructive' });
       return;
     }
+    const normalizedEmail = email.trim().toLowerCase();
     setIsLoading(true);
     try {
-      const error = await signUp(email, password);
+      const error = await signUp(normalizedEmail, password);
       if (!error) {
-        toast({ title: 'Conta criada!', description: 'Verifique seu email para confirmar a conta.' });
+        setPassword('');
         setView('login');
+        if (shouldScheduleDomainResend(normalizedEmail)) {
+          scheduleAutomaticResend(normalizedEmail, SIGNUP_AUTO_RESEND_DEFAULT_DELAY_MS, 1);
+        }
+        toast({
+          title: 'Conta criada!',
+          description: `Enviamos o email de confirmacao para ${normalizedEmail}.`,
+        });
       } else {
-        toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+        const code = (error as { code?: string }).code;
+
+        if (isRateLimitError(code, error.message)) {
+          const delayMs = parseRateLimitDelayMs(error.message) ?? SIGNUP_AUTO_RESEND_DEFAULT_DELAY_MS;
+          scheduleAutomaticResend(normalizedEmail, delayMs + 2000, 1);
+          toast({
+            title: 'Confirmacao pendente',
+            description: `Ja enviamos uma solicitacao. Vamos reenviar automaticamente para ${normalizedEmail} em instantes.`,
+          });
+          return;
+        }
+
+        if (isAlreadyRegisteredError(code, error.message)) {
+          setView('login');
+          toast({
+            title: 'Email ja cadastrado',
+            description: 'Essa conta ja existe. Entre com sua senha ou use recuperacao de senha.',
+          });
+          return;
+        }
+
+        toast({
+          title: 'Erro',
+          description: getFriendlyAuthMessage(code, error.message),
+          variant: 'destructive',
+        });
       }
     } catch {
       toast({ title: 'Erro', description: 'Ocorreu um erro inesperado', variant: 'destructive' });
@@ -70,15 +226,15 @@ const Login = () => {
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
       toast({ title: 'Informe seu email', description: 'Digite o email da sua conta para receber o link.', variant: 'destructive' });
       return;
     }
     setIsLoading(true);
     try {
-      // Use a root callback marker because some Supabase setups only allow origin-level redirects.
-      const passwordRecoveryRedirectTo = `${window.location.origin}/?password_recovery=1`;
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const passwordRecoveryRedirectTo = `${window.location.origin}/update-password?password_recovery=1`;
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
         redirectTo: passwordRecoveryRedirectTo,
       });
       if (error) throw error;
@@ -88,7 +244,23 @@ const Login = () => {
       });
       setView('login');
     } catch (err: any) {
-      toast({ title: 'Erro', description: err.message || 'Não foi possível enviar o email.', variant: 'destructive' });
+      const code = String(err?.code || '').toLowerCase();
+      const message = String(err?.message || '');
+      if (isEmailNotConfirmedError(code, message)) {
+        const resendError = await resendSignUpConfirmation(normalizedEmail);
+        if (!resendError) {
+          if (shouldScheduleDomainResend(normalizedEmail)) {
+            scheduleAutomaticResend(normalizedEmail, SIGNUP_AUTO_RESEND_DEFAULT_DELAY_MS, 1);
+          }
+          toast({
+            title: 'Conta ainda nao confirmada',
+            description: `Reenviamos o email de confirmacao para ${normalizedEmail}. Depois de confirmar, use o fluxo de esqueci a senha novamente.`,
+          });
+          setView('login');
+          return;
+        }
+      }
+      toast({ title: 'Erro', description: message || 'Não foi possível enviar o email.', variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -231,7 +403,7 @@ const Login = () => {
                     <Input
                       id="signup-password"
                       type={showPassword ? 'text' : 'password'}
-                      placeholder="Mínimo 6 caracteres"
+                      placeholder="Minimo 8 caracteres"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="pl-12 pr-12 bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-green-500 focus:ring-green-500/30 h-12 rounded-xl transition-all shadow-sm"

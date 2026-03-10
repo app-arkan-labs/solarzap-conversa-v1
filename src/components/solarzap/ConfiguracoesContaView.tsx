@@ -10,10 +10,6 @@ import { Loader2, User, Mail, Lock, ShieldCheck, LogOut, Camera } from 'lucide-r
 import { useNavigate } from 'react-router-dom';
 import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
 import { PageHeader } from './PageHeader';
-import { createBillingPortalSession, createPlanCheckoutSession, useOrgBillingInfo } from '@/hooks/useOrgBilling';
-import { runBillingAdminAction } from '@/lib/orgAdminClient';
-import PlanBadge from '@/components/billing/PlanBadge';
-import UsageBar from '@/components/billing/UsageBar';
 
 export function ConfiguracoesContaView() {
     const { user, role, signOut } = useAuth();
@@ -27,11 +23,7 @@ export function ConfiguracoesContaView() {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [currentPassword, setCurrentPassword] = useState('');
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-    const [billingBusy, setBillingBusy] = useState(false);
-    const [migratingLegacy, setMigratingLegacy] = useState(false);
     const avatarInputRef = useRef<HTMLInputElement>(null);
-    const billingQuery = useOrgBillingInfo(Boolean(user));
-    const billing = billingQuery.data;
 
     useEffect(() => {
         if (user) {
@@ -175,48 +167,6 @@ export function ConfiguracoesContaView() {
         navigate('/login');
     };
 
-    const handleUpgradePlan = async () => {
-        try {
-            setBillingBusy(true);
-            const targetPlan = billing?.plan_key === 'free' ? 'start' : 'pro';
-            const checkoutUrl = await createPlanCheckoutSession({
-                planKey: targetPlan,
-                successUrl: `${window.location.origin}/welcome?checkout=success`,
-                cancelUrl: `${window.location.origin}/pricing?checkout=cancel`,
-            });
-            window.location.href = checkoutUrl;
-        } catch (err: any) {
-            toast({ title: 'Falha ao abrir checkout', description: err?.message || 'Tente novamente.', variant: 'destructive' });
-        } finally {
-            setBillingBusy(false);
-        }
-    };
-
-    const handleOpenBillingPortal = async () => {
-        try {
-            setBillingBusy(true);
-            const portalUrl = await createBillingPortalSession();
-            window.location.href = portalUrl;
-        } catch (err: any) {
-            toast({ title: 'Portal indisponível', description: err?.message || 'Tente novamente.', variant: 'destructive' });
-        } finally {
-            setBillingBusy(false);
-        }
-    };
-
-    const handleLegacyMigration = async () => {
-        try {
-            setMigratingLegacy(true);
-            await runBillingAdminAction('migrate_legacy_to_trial', { trialDays: 7 });
-            await billingQuery.refetch();
-            toast({ title: 'Migração aplicada', description: 'Organização migrada para trial de 7 dias.' });
-        } catch (err: any) {
-            toast({ title: 'Falha na migração', description: err?.message || 'Tente novamente.', variant: 'destructive' });
-        } finally {
-            setMigratingLegacy(false);
-        }
-    };
-
     return (
         <div className="flex-1 flex flex-col items-center h-full bg-slate-50 overflow-hidden">
             <div className="w-full">
@@ -313,60 +263,6 @@ export function ConfiguracoesContaView() {
                                 Salvar Alterações
                             </Button>
                         </CardFooter>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Meu Plano</CardTitle>
-                            <CardDescription>Resumo do billing da organização ativa.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3 text-sm">
-                            <PlanBadge billing={billing} />
-                            <div className="grid gap-2 sm:grid-cols-3">
-                                <div className="rounded-md border border-border bg-muted/20 p-3">
-                                    <p className="text-muted-foreground">Plano</p>
-                                    <p className="font-semibold uppercase">{billing?.plan_key || 'free'}</p>
-                                </div>
-                                <div className="rounded-md border border-border bg-muted/20 p-3">
-                                    <p className="text-muted-foreground">Status</p>
-                                    <p className="font-semibold uppercase">{billing?.subscription_status || 'indefinido'}</p>
-                                </div>
-                                <div className="rounded-md border border-border bg-muted/20 p-3">
-                                    <p className="text-muted-foreground">Acesso</p>
-                                    <p className="font-semibold uppercase">{billing?.access_state || 'full'}</p>
-                                </div>
-                            </div>
-                            <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
-                                <UsageBar
-                                    label="Propostas no ciclo"
-                                    used={Number((billing?.usage?.proposals_generated as number) || 0)}
-                                    limit={Number((billing?.effective_limits?.max_proposals_month as number) || (billing?.plan_limits?.max_proposals_month as number) || 0)}
-                                />
-                                <UsageBar
-                                    label="Campanhas no ciclo"
-                                    used={Number((billing?.usage?.campaigns_created as number) || 0)}
-                                    limit={Number((billing?.effective_limits?.max_campaigns_month as number) || (billing?.plan_limits?.max_campaigns_month as number) || 0)}
-                                />
-                                <UsageBar
-                                    label="Créditos de disparo no ciclo"
-                                    used={Number((billing?.usage?.broadcast_credits_used as number) || 0)}
-                                    limit={Number((billing?.effective_limits?.monthly_broadcast_credits as number) || (billing?.plan_limits?.monthly_broadcast_credits as number) || 0)}
-                                />
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                <Button type="button" onClick={handleUpgradePlan} disabled={billingBusy}>
-                                    Fazer Upgrade
-                                </Button>
-                                <Button type="button" variant="outline" onClick={handleOpenBillingPortal} disabled={billingBusy}>
-                                    Abrir Portal de Cobrança
-                                </Button>
-                                {(role === 'owner' || role === 'admin') && (
-                                    <Button type="button" variant="outline" onClick={handleLegacyMigration} disabled={migratingLegacy}>
-                                        {migratingLegacy ? 'Migrando...' : 'Migrar legado para trial'}
-                                    </Button>
-                                )}
-                            </div>
-                        </CardContent>
                     </Card>
 
                     <Card>

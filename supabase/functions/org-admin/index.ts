@@ -399,11 +399,10 @@ async function bootstrapSelf(
     .from('organizations')
     .update({
       subscription_status: 'trialing',
-      trial_starts_at: new Date().toISOString(),
+      trial_started_at: new Date().toISOString(),
       trial_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       onboarding_state: 'pending_checkout',
       trial_days: 7,
-      updated_at: new Date().toISOString(),
     })
     .eq('id', orgId)
     .is('trial_starts_at', null);

@@ -73,20 +73,39 @@ if (password.length < 8) {
         }
 
         setIsLoading(true);
-
         try {
+            const { data: currentUserData } = await supabase.auth.getUser();
+            const recoveryEmail = currentUserData.user?.email?.trim().toLowerCase() || null;
+
             const { error } = await supabase.auth.updateUser({
-                password: password
+                password: password,
             });
 
             if (error) throw error;
 
+            if (recoveryEmail) {
+                const { error: reAuthError } = await supabase.auth.signInWithPassword({
+                    email: recoveryEmail,
+                    password,
+                });
+
+                if (!reAuthError) {
+                    toast({
+                        title: 'Senha atualizada!',
+                        description: 'Senha redefinida com sucesso. Entrando automaticamente...',
+                    });
+                    navigate('/');
+                    return;
+                }
+
+                console.warn('Automatic sign-in after password reset failed', reAuthError);
+            }
+
             toast({
                 title: 'Senha atualizada!',
-                description: 'Sua senha foi redefinida com sucesso. FaÃ§a login.',
+                description: 'Sua senha foi redefinida com sucesso. Faça login.',
             });
 
-            // Sign out to force the user to login with the new credentials
             await supabase.auth.signOut();
             navigate('/login');
         } catch (err: any) {
@@ -205,3 +224,4 @@ if (password.length < 8) {
 };
 
 export default UpdatePassword;
+

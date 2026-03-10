@@ -74,8 +74,8 @@ Deno.serve(async (req) => {
     }
 
     const appUrl = resolveAppUrl();
-    const successUrl = payload.success_url || `${appUrl}/pricing?pack=success`;
-    const cancelUrl = payload.cancel_url || `${appUrl}/pricing?pack=cancel`;
+    const successUrl = payload.success_url || `${appUrl}/billing?pack=success`;
+    const cancelUrl = payload.cancel_url || `${appUrl}/billing?pack=cancel`;
 
     const grantValue = Number(addon.credit_amount || 0);
     const session = await stripe.checkout.sessions.create({
