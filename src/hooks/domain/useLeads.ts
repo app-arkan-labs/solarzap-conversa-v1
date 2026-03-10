@@ -7,6 +7,7 @@ import { Contact, Channel, PipelineStage, ClientType } from '@/types/solarzap';
 import type { LeadStageData } from '@/types/ai';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { normalizeLeadStage } from '@/lib/leadStageNormalization';
+import { normalizeChannelValue } from '@/lib/channelNormalization';
 import {
     buildImportLeadsSummary,
     type ImportLeadsSummary,
@@ -95,22 +96,7 @@ const packLeadMeta = (currentObs: string | null | undefined, data: ExtendedLeadF
 
 // Helper to map DB lead to Contact (Domain entity)
 export const mapChannel = (canal: string): Channel => {
-    const channelMap: Record<string, Channel> = {
-        'whatsapp': 'whatsapp',
-        'messenger': 'messenger',
-        'instagram': 'instagram',
-        'email': 'email',
-        'google_ads': 'google_ads',
-        'facebook_ads': 'facebook_ads',
-        'tiktok_ads': 'tiktok_ads',
-        'indication': 'indication',
-        'event': 'event',
-        'cold_list': 'cold_list',
-        'other': 'other'
-    };
-    // Normalize logic
-    const normalized = canal?.toLowerCase().replace(/\s+/g, '_') || 'whatsapp';
-    return channelMap[normalized] || 'whatsapp';
+    return normalizeChannelValue(canal);
 };
 
 export const mapPipelineStage = (status: string): PipelineStage => {
@@ -389,9 +375,9 @@ export function useLeads() {
                             if (!oldData) return [];
                             return oldData.filter(c => c.id !== deletedId);
                         });
-                        toast.info('Contato excluído');
+                        toast.info('Contato excluido');
                     } else {
-                        // UPDATE — optimistic merge to reflect AI toggle and other changes instantly
+                        // UPDATE - optimistic merge to reflect AI toggle and other changes instantly
                         const updated = payload.new;
                         if (updated) {
                             const updatedContact = leadToContact(updated);
@@ -581,7 +567,7 @@ export function useLeads() {
     const createLeadMutation = useMutation({
         mutationFn: async (data: LeadPatch) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
 
             const basePayload = {
                 org_id: orgId,
@@ -631,7 +617,7 @@ export function useLeads() {
     const updateLeadMutation = useMutation({
         mutationFn: async ({ contactId, data }: { contactId: string; data: LeadPatch }) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
 
             const basePayload: any = {};
             if (data.nome !== undefined) {
@@ -689,7 +675,7 @@ export function useLeads() {
     const importContactsMutation = useMutation({
         mutationFn: async (contacts: any[]): Promise<ImportLeadsSummary> => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
 
             const payload = contacts.map((contact) => ({
                 ...contact,
@@ -714,10 +700,73 @@ export function useLeads() {
         }
     });
 
+    const bulkAssignLeadsMutation = useMutation({
+        mutationFn: async ({
+            leadIds,
+            assignedToUserId,
+        }: {
+            leadIds: string[];
+            assignedToUserId: string | null;
+        }): Promise<{ updatedCount: number; failedIds: string[] }> => {
+            if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+
+            const numericLeadIds = Array.from(new Set(
+                (leadIds || [])
+                    .map((id) => Number(id))
+                    .filter((id) => Number.isFinite(id) && id > 0)
+            ));
+
+            if (numericLeadIds.length === 0) {
+                return { updatedCount: 0, failedIds: [] };
+            }
+
+            const { data, error } = await supabase
+                .from('leads')
+                .update({ assigned_to_user_id: assignedToUserId })
+                .eq('org_id', orgId)
+                .in('id', numericLeadIds)
+                .select('id');
+
+            if (error) throw error;
+
+            const updatedIdSet = new Set((data || []).map((row: any) => String(row.id)));
+            const failedIds = leadIds.filter((id) => !updatedIdSet.has(String(id)));
+
+            return {
+                updatedCount: (data || []).length,
+                failedIds,
+            };
+        },
+        onMutate: async ({ leadIds, assignedToUserId }) => {
+            const snapshot = queryClient.getQueriesData({ queryKey: ['leads', orgId] });
+
+            queryClient.setQueriesData({ queryKey: ['leads', orgId] }, (oldData: unknown) => {
+                if (!Array.isArray(oldData)) return oldData;
+                const idSet = new Set((leadIds || []).map((id) => String(id)));
+                return oldData.map((item: any) => (
+                    idSet.has(String(item?.id))
+                        ? { ...item, assignedToUserId: assignedToUserId, assigned_to_user_id: assignedToUserId }
+                        : item
+                ));
+            });
+
+            return { snapshot };
+        },
+        onError: (_error, _vars, context) => {
+            context?.snapshot?.forEach(([key, data]) => {
+                queryClient.setQueryData(key, data);
+            });
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
+        },
+    });
+
     const deleteLeadMutation = useMutation({
         mutationFn: async (leadId: string) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
             const { data: lead } = await supabase.from('leads').select('phone_e164, instance_name').eq('id', Number(leadId)).eq('org_id', orgId).single();
 
             if (lead?.phone_e164) {
@@ -737,7 +786,7 @@ export function useLeads() {
             return leadId;
         },
         onSuccess: (deletedId) => {
-            toast.success('Contato excluído permanentemente');
+            toast.success('Contato excluido permanentemente');
             queryClient.setQueriesData({ queryKey: ['leads', orgId] }, (old: Contact[] | undefined) =>
                 Array.isArray(old) ? old.filter(c => c.id !== deletedId) : old
             );
@@ -752,7 +801,7 @@ export function useLeads() {
     const toggleLeadAiMutation = useMutation({
         mutationFn: async ({ leadId, enabled, reason }: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
             const updatePayload: any = {
                 ai_enabled: enabled,
                 ai_paused_reason: enabled ? null : (reason || 'manual'),
@@ -761,7 +810,7 @@ export function useLeads() {
             const { data, error } = await supabase.from('leads').update(updatePayload).eq('id', Number(leadId)).eq('org_id', orgId).select('id');
             if (error) throw error;
             if (!data?.length) {
-                throw new Error('Nenhum lead atualizado. Verifique permissões.');
+                throw new Error('Nenhum lead atualizado. Verifique permissoes.');
             }
             return { leadId, enabled };
         },
@@ -801,6 +850,7 @@ export function useLeads() {
         updateLead: updateLeadMutation.mutateAsync,
         deleteLead: deleteLeadMutation.mutateAsync,
         importContacts: importContactsMutation.mutateAsync,
+        bulkAssignLeads: bulkAssignLeadsMutation.mutateAsync,
         toggleLeadAi: toggleLeadAiMutation.mutateAsync,
     };
 }

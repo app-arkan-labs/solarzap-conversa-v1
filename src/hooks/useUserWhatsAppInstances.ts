@@ -268,7 +268,7 @@ export function useUserWhatsAppInstances() {
       }
 
       const limitRow = Array.isArray(limitData) ? limitData[0] : limitData;
-      if (!limitRow?.allowed || limitRow?.access_state === 'blocked') {
+      if (!limitRow?.allowed || limitRow?.access_state === 'blocked' || limitRow?.access_state === 'read_only') {
         toast.error('Limite do plano atingido para novas instâncias. Faça upgrade para continuar.');
         return null;
       }

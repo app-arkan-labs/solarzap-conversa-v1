@@ -611,7 +611,7 @@ Deno.serve(async (req: Request) => {
                 const leadTelefone = explicitPhoneCandidate || rawRemoteJid
 
                 const leadLimit = await checkLimit(supabase, orgId, 'max_leads', 1)
-                if (!leadLimit.allowed || leadLimit.access_state === 'blocked') {
+                if (!leadLimit.allowed || leadLimit.access_state === 'blocked' || leadLimit.access_state === 'read_only') {
                     console.warn('lead_limit_reached: skipping lead resolution', {
                         orgId,
                         instanceName,
@@ -1041,7 +1041,7 @@ Deno.serve(async (req: Request) => {
                 // AI Trigger
                 if (!isFromMe && leadId && inserted?.id) {
                     const aiLimit = await checkLimit(supabase, orgId, 'included_ai_requests_month', 1)
-                    if (!aiLimit.allowed || aiLimit.access_state === 'blocked') {
+                    if (!aiLimit.allowed || aiLimit.access_state === 'blocked' || aiLimit.access_state === 'read_only') {
                         console.warn('ai_quota_exhausted: skipping ai pipeline invoke', {
                             orgId,
                             leadId,

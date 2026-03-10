@@ -6,6 +6,8 @@ export interface BroadcastCampaign {
   id: string;
   org_id: string;
   user_id: string;
+  assigned_to_user_id: string | null;
+  lead_client_type: 'residencial' | 'comercial' | 'industrial' | 'rural' | 'usina';
   name: string;
   messages: string[];
   instance_name: string;

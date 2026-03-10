@@ -6,6 +6,8 @@ import {
   buildUpsertLeadCanonicalPayload,
   doesLeadBelongToOrg,
 } from '@/lib/multiOrgLeadScoping';
+import { normalizeImportedClientType } from '@/utils/importClientType';
+import type { ClientType } from '@/types/solarzap';
 import type {
   BroadcastCampaign,
   BroadcastCampaignStatus,
@@ -26,6 +28,8 @@ export interface BroadcastCampaignInput {
   name: string;
   messages: string[];
   instance_name: string;
+  assigned_to_user_id?: string;
+  lead_client_type?: ClientType;
   interval_seconds?: number;
   source_channel?: string;
   pipeline_stage?: string;
@@ -66,6 +70,10 @@ const sanitizeMessages = (messages: unknown): string[] => {
     .filter((entry) => entry.length > 0);
 };
 
+const normalizeCampaignClientType = (value: unknown): ClientType => (
+  normalizeImportedClientType(value) || 'residencial'
+);
+
 const computeDispatchDelayMs = (intervalSeconds: number): number => {
   const base = Math.max(intervalSeconds, 10);
   const jitter = base * 0.3;
@@ -79,6 +87,8 @@ const toBroadcastCampaign = (row: CampaignRow): BroadcastCampaign => ({
   id: String(row.id),
   org_id: String(row.org_id),
   user_id: String(row.user_id),
+  assigned_to_user_id: row.assigned_to_user_id == null ? null : String(row.assigned_to_user_id),
+  lead_client_type: normalizeCampaignClientType(row.lead_client_type),
   name: String(row.name || ''),
   messages: sanitizeMessages(row.messages),
   instance_name: String(row.instance_name || ''),
@@ -258,7 +268,11 @@ export function useBroadcasts() {
     const normalizedPhone = normalizePhone(recipient.phone);
     if (!normalizedPhone) return null;
 
+    const campaignAssigneeId = campaign.assigned_to_user_id || campaign.user_id || user.id;
+    const campaignClientType = normalizeCampaignClientType(campaign.lead_client_type);
     let leadId: number | null = null;
+    let isNewLead = false;
+    let existingLeadClientType: string | null = null;
 
     const { data: rpcData, error: rpcError } = await supabase
       .rpc('upsert_lead_canonical', buildUpsertLeadCanonicalPayload({
@@ -278,12 +292,13 @@ export function useBroadcasts() {
       if (rpcLeadId) {
         const { data: rpcLead } = await supabase
           .from('leads')
-          .select('id, org_id')
+          .select('id, org_id, tipo_cliente')
           .eq('id', rpcLeadId)
           .maybeSingle();
 
         if (doesLeadBelongToOrg(rpcLead, orgId)) {
           leadId = rpcLeadId;
+          existingLeadClientType = String(rpcLead?.tipo_cliente || '').trim() || null;
         } else {
           console.warn('Discarding cross-org lead returned by upsert_lead_canonical', {
             orgId,
@@ -299,7 +314,7 @@ export function useBroadcasts() {
     if (!leadId) {
       const { data: existingLead } = await supabase
         .from('leads')
-        .select('id')
+        .select('id, tipo_cliente')
         .eq('org_id', orgId)
         .or(`phone_e164.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
         .order('id', { ascending: true })
@@ -308,6 +323,7 @@ export function useBroadcasts() {
 
       if (existingLead?.id) {
         leadId = Number(existingLead.id);
+        existingLeadClientType = String(existingLead.tipo_cliente || '').trim() || null;
       }
     }
 
@@ -315,13 +331,14 @@ export function useBroadcasts() {
       const baseInsertPayload: Record<string, unknown> = {
         org_id: orgId,
         user_id: user.id,
-        assigned_to_user_id: user.id,
+        assigned_to_user_id: campaignAssigneeId,
         nome: recipient.name || normalizedPhone,
         telefone: normalizedPhone,
         phone_e164: normalizedPhone,
         email: recipient.email || null,
         canal: campaign.source_channel || 'cold_list',
         status_pipeline: campaign.pipeline_stage || 'novo_lead',
+        tipo_cliente: campaignClientType,
         consumo_kwh: 0,
         valor_estimado: 0,
         observacoes: '',
@@ -339,7 +356,7 @@ export function useBroadcasts() {
         const fallbackPayload = {
           org_id: orgId,
           user_id: user.id,
-          assigned_to_user_id: user.id,
+          assigned_to_user_id: campaignAssigneeId,
           nome: recipient.name || normalizedPhone,
           telefone: normalizedPhone,
           email: recipient.email || null,
@@ -359,6 +376,10 @@ export function useBroadcasts() {
 
       if (insertResult.error) throw insertResult.error;
       leadId = Number(insertResult.data?.id || 0) || null;
+      isNewLead = Boolean(leadId);
+      if (isNewLead) {
+        existingLeadClientType = campaignClientType;
+      }
     }
 
     if (leadId) {
@@ -371,8 +392,11 @@ export function useBroadcasts() {
         phone_e164: normalizedPhone,
         telefone: normalizedPhone,
         instance_name: campaign.instance_name,
-        assigned_to_user_id: user.id,
+        assigned_to_user_id: campaignAssigneeId,
       };
+      if (!isNewLead && !existingLeadClientType) {
+        fullUpdatePayload.tipo_cliente = campaignClientType;
+      }
 
       let updateResult = await supabase
         .from('leads')
@@ -696,6 +720,8 @@ export function useBroadcasts() {
     const campaignPayload = {
       org_id: orgId,
       user_id: user.id,
+      assigned_to_user_id: input.assigned_to_user_id || user.id,
+      lead_client_type: normalizeCampaignClientType(input.lead_client_type),
       name: String(input.name || '').trim(),
       messages,
       instance_name: String(input.instance_name || '').trim(),
@@ -840,6 +866,13 @@ export function useBroadcasts() {
     if (!orgId) return;
 
     clearCampaignTimer(campaignId);
+
+    const { error: deleteRecipientsError } = await supabase
+      .from('broadcast_recipients')
+      .delete()
+      .eq('campaign_id', campaignId);
+
+    if (deleteRecipientsError) throw deleteRecipientsError;
 
     const { error: deleteError } = await supabase
       .from('broadcast_campaigns')

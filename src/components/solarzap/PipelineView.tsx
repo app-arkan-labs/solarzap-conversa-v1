@@ -1,8 +1,8 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
-import { Contact, PIPELINE_STAGES, PipelineStage, CalendarEvent } from '@/types/solarzap';
+import { Contact, PIPELINE_STAGES, PipelineStage, CalendarEvent, CHANNEL_INFO, ChannelFilter } from '@/types/solarzap';
 import { Badge } from '@/components/ui/badge';
-import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog, MapPin, MessageSquareQuote, Kanban } from 'lucide-react';
+import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog, MapPin, MessageSquareQuote, Kanban, Filter } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -25,7 +25,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -101,6 +113,7 @@ export function PipelineView({
   currentUserId = null,
 }: PipelineViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>('todos');
   const [draggedContact, setDraggedContact] = useState<Contact | null>(null);
   const [dragOverStage, setDragOverStage] = useState<PipelineStage | null>(null);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -282,9 +295,28 @@ export function PipelineView({
   };
 
   const stages = Object.entries(PIPELINE_STAGES) as [PipelineStage, typeof PIPELINE_STAGES[PipelineStage]][];
+  const channelFilters = (
+    [{ id: 'todos' as ChannelFilter, label: 'Todas as origens' }]
+      .concat(
+        (Object.entries(CHANNEL_INFO) as Array<[Exclude<ChannelFilter, 'todos'>, { label: string }]>)
+          .map(([id, info]) => ({ id, label: info.label }))
+      )
+  );
+  const hasChannelFilter = channelFilter !== 'todos';
+  const selectedChannelLabel = channelFilter === 'todos'
+    ? 'Todas as origens'
+    : CHANNEL_INFO[channelFilter]?.label || 'Origem selecionada';
+  const getChannelCount = useCallback((filter: ChannelFilter) => {
+    if (filter === 'todos') return contacts.length;
+    return contacts.filter((contact) => contact.channel === filter).length;
+  }, [contacts]);
 
   const getContactsForStage = (stage: PipelineStage) => {
     let stageContacts = contacts.filter(c => c.pipelineStage === stage);
+
+    if (channelFilter !== 'todos') {
+      stageContacts = stageContacts.filter((contact) => contact.channel === channelFilter);
+    }
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -620,6 +652,50 @@ export function PipelineView({
                 testId="pipeline-owner-scope-trigger"
               />
             ) : null}
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  title={hasChannelFilter ? `Origem: ${selectedChannelLabel}` : 'Filtrar por origem'}
+                  className={`border-border/50 shadow-sm glass ${hasChannelFilter ? 'bg-primary/10 text-primary border-primary/40' : ''}`}
+                >
+                  <Filter className="w-4 h-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-3 bg-popover border border-border shadow-xl">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-foreground">Origem do lead</h3>
+                  {hasChannelFilter ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setChannelFilter('todos')}
+                    >
+                      Limpar
+                    </Button>
+                  ) : null}
+                </div>
+
+                <Select
+                  value={channelFilter}
+                  onValueChange={(value) => setChannelFilter(value as ChannelFilter)}
+                >
+                  <SelectTrigger className="h-9 bg-background">
+                    <SelectValue placeholder="Selecione a origem" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {channelFilters.map((filter) => (
+                      <SelectItem key={`pipeline-origin-${filter.id}`} value={filter.id}>
+                        {`${filter.label} (${getChannelCount(filter.id)})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </PopoverContent>
+            </Popover>
 
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

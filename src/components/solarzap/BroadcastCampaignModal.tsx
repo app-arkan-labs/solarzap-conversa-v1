@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Upload, FileSpreadsheet, Plus, Trash2, Loader2, Sparkles } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Upload, FileSpreadsheet, Plus, Trash2, Loader2, Sparkles, RefreshCw } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -25,7 +25,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import type { BroadcastCampaignInput, BroadcastRecipientInput } from '@/hooks/useBroadcasts';
 import type { UserWhatsAppInstance } from '@/hooks/useUserWhatsAppInstances';
-import { CHANNEL_INFO, type Channel } from '@/types/solarzap';
+import { CHANNEL_INFO, type Channel, type ClientType } from '@/types/solarzap';
 import { parseContactsFile, type ImportedContactRow } from '@/utils/contactsImport';
 import {
   BROADCAST_MIN_TIMER_SECONDS,
@@ -33,6 +33,9 @@ import {
   clampBroadcastTimerSeconds,
   formatBroadcastInterval,
 } from '@/utils/broadcastTimer';
+import { useAuth } from '@/contexts/AuthContext';
+import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
+import { getMemberDisplayName } from '@/lib/memberDisplayName';
 
 interface BroadcastCampaignModalProps {
   isOpen: boolean;
@@ -56,6 +59,7 @@ const PREVIEW_CONTACTS_LIMIT = 40;
 const TIMER_PRESETS_SECONDS = [15, 60, 300, 3_600, 86_400];
 
 export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }: BroadcastCampaignModalProps) {
+  const { user, orgId } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -68,6 +72,8 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
   const [campaignName, setCampaignName] = useState('');
   const [instanceName, setInstanceName] = useState('');
   const [sourceChannel, setSourceChannel] = useState<Channel>('cold_list');
+  const [assignedToUserId, setAssignedToUserId] = useState('');
+  const [leadClientType, setLeadClientType] = useState<ClientType>('residencial');
   const [messages, setMessages] = useState<string[]>(DEFAULT_MESSAGES);
   const [timerSeconds, setTimerSeconds] = useState(15);
   const [contacts, setContacts] = useState<ImportedContactRow[]>([]);
@@ -75,6 +81,12 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
   const [invalidRows, setInvalidRows] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
+  const [members, setMembers] = useState<MemberDto[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [didLoadMembers, setDidLoadMembers] = useState(false);
+  const [membersLoadError, setMembersLoadError] = useState<string | null>(null);
+  const membersRequestRef = useRef(0);
+  const fallbackAssigneeId = user?.id || '';
 
   useEffect(() => {
     if (!isOpen) return;
@@ -85,11 +97,88 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
     }
   }, [connectedInstances, instanceName, isOpen]);
 
+  const loadMembers = useCallback(async () => {
+    if (!isOpen) return;
+
+    membersRequestRef.current += 1;
+    const currentRequestId = membersRequestRef.current;
+    setIsLoadingMembers(true);
+    setMembersLoadError(null);
+
+    const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          promise,
+          new Promise<T>((_, reject) => {
+            timeoutHandle = setTimeout(() => reject(new Error('members_timeout')), timeoutMs);
+          }),
+        ]);
+      } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      }
+    };
+
+    try {
+      let response: { members: MemberDto[] };
+      try {
+        response = await withTimeout(listMembers(orgId ?? undefined), 7_000);
+      } catch (primaryError) {
+        console.warn('Primary members load failed, retrying with forced refresh...', primaryError);
+        response = await withTimeout(listMembers(orgId ?? undefined, { forceRefresh: true }), 10_000);
+      }
+
+      if (!response.members?.length) {
+        console.warn('No members returned for org scope. Retrying with active org context...');
+        response = await withTimeout(listMembers(undefined, { forceRefresh: true }), 10_000);
+      }
+
+      if (membersRequestRef.current !== currentRequestId) return;
+
+      const nextMembers = response.members || [];
+      setMembers(nextMembers);
+
+      if (nextMembers.length < 1) {
+        setAssignedToUserId(fallbackAssigneeId);
+        setMembersLoadError('Nenhum membro encontrado para esta organização.');
+        return;
+      }
+
+      const preferred = nextMembers.find((member) => member.user_id === user?.id);
+      setAssignedToUserId((current) => {
+        if (current && nextMembers.some((member) => member.user_id === current)) return current;
+        if (fallbackAssigneeId && nextMembers.some((member) => member.user_id === fallbackAssigneeId)) {
+          return fallbackAssigneeId;
+        }
+        return preferred?.user_id || nextMembers[0].user_id;
+      });
+    } catch (error) {
+      console.warn('Failed to load members for broadcast campaign:', error);
+      if (membersRequestRef.current !== currentRequestId) return;
+
+      setMembers([]);
+      setAssignedToUserId(fallbackAssigneeId);
+      setMembersLoadError('Não foi possível carregar os membros agora.');
+    } finally {
+      if (membersRequestRef.current === currentRequestId) {
+        setDidLoadMembers(true);
+        setIsLoadingMembers(false);
+      }
+    }
+  }, [fallbackAssigneeId, isOpen, orgId, user?.id]);
+
+  useEffect(() => {
+    if (!isOpen || didLoadMembers || isLoadingMembers) return;
+    void loadMembers();
+  }, [didLoadMembers, isLoadingMembers, isOpen, loadMembers]);
+
   const resetState = () => {
     setStep(1);
     setCampaignName('');
     setInstanceName('');
     setSourceChannel('cold_list');
+    setAssignedToUserId(fallbackAssigneeId);
+    setLeadClientType('residencial');
     setMessages(DEFAULT_MESSAGES);
     setTimerSeconds(15);
     setContacts([]);
@@ -97,6 +186,10 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
     setInvalidRows(0);
     setIsSubmitting(false);
     setIsParsing(false);
+    setMembers([]);
+    setIsLoadingMembers(false);
+    setDidLoadMembers(false);
+    setMembersLoadError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -119,6 +212,10 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
       }
       if (!instanceName.trim()) {
         toast({ title: 'Selecione uma instancia de WhatsApp', variant: 'destructive' });
+        return false;
+      }
+      if (!assignedToUserId.trim()) {
+        toast({ title: 'Selecione o responsavel da campanha', variant: 'destructive' });
         return false;
       }
     }
@@ -229,6 +326,8 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
           name: campaignName.trim(),
           instance_name: instanceName,
           source_channel: sourceChannel,
+          assigned_to_user_id: assignedToUserId || user?.id || undefined,
+          lead_client_type: leadClientType,
           messages: normalizedMessages,
           interval_seconds: clampBroadcastTimerSeconds(timerSeconds),
           pipeline_stage: 'novo_lead',
@@ -250,6 +349,10 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
   const normalizedTimerSeconds = clampBroadcastTimerSeconds(timerSeconds);
   const previewContacts = contacts.slice(0, PREVIEW_CONTACTS_LIMIT);
   const completedSteps = step - 1;
+  const selectedAssignee = members.find((member) => member.user_id === assignedToUserId);
+  const selectedAssigneeLabel = selectedAssignee
+    ? getMemberDisplayName(selectedAssignee)
+    : (assignedToUserId === fallbackAssigneeId ? (user?.email || 'Usuário atual') : '-');
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -313,6 +416,72 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                         {info.label}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Responsavel pelos leads</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => void loadMembers()}
+                    disabled={isLoadingMembers}
+                  >
+                    {isLoadingMembers ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                        Atualizando...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                        Recarregar
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <Select
+                  value={assignedToUserId}
+                  onValueChange={setAssignedToUserId}
+                  disabled={isLoadingMembers && members.length < 1 && !fallbackAssigneeId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={isLoadingMembers ? 'Carregando membros...' : 'Selecione o responsavel'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.map((member) => (
+                      <SelectItem key={member.user_id} value={member.user_id}>
+                        {getMemberDisplayName(member)}
+                      </SelectItem>
+                    ))}
+                    {members.length < 1 && fallbackAssigneeId && (
+                      <SelectItem value={fallbackAssigneeId}>
+                        {user?.email || 'Usuário atual'}
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                {membersLoadError && (
+                  <p className="text-xs text-amber-600">{membersLoadError}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Tipo de cliente</Label>
+                <Select value={leadClientType} onValueChange={(value) => setLeadClientType(value as ClientType)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo de cliente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="residencial">Residencial</SelectItem>
+                    <SelectItem value="comercial">Comercial</SelectItem>
+                    <SelectItem value="industrial">Industrial</SelectItem>
+                    <SelectItem value="rural">Rural</SelectItem>
+                    <SelectItem value="usina">Usina</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -505,6 +674,14 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                   <p className="font-semibold">
                     {formatBroadcastInterval(normalizedTimerSeconds)} ({normalizedTimerSeconds}s, +/-30%)
                   </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Responsavel</p>
+                  <p className="font-semibold">{selectedAssigneeLabel}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Tipo de cliente</p>
+                  <p className="font-semibold">{leadClientType}</p>
                 </div>
               </div>
 

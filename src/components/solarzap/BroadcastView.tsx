@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Eye, Loader2, Pause, Play, Plus, Square, SendHorizontal } from 'lucide-react';
+import { Eye, Loader2, Pause, Play, Plus, Square, SendHorizontal, Trash2, Zap } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useBroadcasts, type BroadcastCampaignInput } from '@/hooks/useBroadcasts';
 import { useUserWhatsAppInstances } from '@/hooks/useUserWhatsAppInstances';
 import { useToast } from '@/hooks/use-toast';
@@ -12,6 +22,7 @@ import { formatBroadcastInterval } from '@/utils/broadcastTimer';
 import { PageHeader } from './PageHeader';
 import { BroadcastCampaignModal } from './BroadcastCampaignModal';
 import { BroadcastStatusPanel } from './BroadcastStatusPanel';
+import { PackPurchaseModal } from '@/components/billing/PackPurchaseModal';
 import type { BroadcastCampaign } from '@/types/broadcast';
 
 const campaignStatusClass: Record<BroadcastCampaign['status'], string> = {
@@ -43,12 +54,15 @@ export function BroadcastView() {
     pauseCampaign,
     resumeCampaign,
     cancelCampaign,
+    deleteCampaign,
   } = useBroadcasts();
   const { instances } = useUserWhatsAppInstances();
 
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
+  const [isPackModalOpen, setIsPackModalOpen] = useState(false);
   const [statusPanelCampaignId, setStatusPanelCampaignId] = useState<string | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
+  const [campaignToDelete, setCampaignToDelete] = useState<BroadcastCampaign | null>(null);
 
   const selectedCampaign = useMemo(
     () => campaigns.find((campaign) => campaign.id === statusPanelCampaignId) || null,
@@ -112,6 +126,32 @@ export function BroadcastView() {
     setStatusPanelCampaignId(campaignId);
   };
 
+  const handleDeleteCampaign = async () => {
+    if (!campaignToDelete) return;
+
+    const deletingCampaign = campaignToDelete;
+    setActionInFlight(`${deletingCampaign.id}:delete`);
+
+    try {
+      if (deletingCampaign.status === 'running') {
+        await cancelCampaign(deletingCampaign.id);
+      }
+
+      await deleteCampaign(deletingCampaign.id);
+      toast({ title: 'Campanha deletada' });
+
+      if (statusPanelCampaignId === deletingCampaign.id) {
+        setStatusPanelCampaignId(null);
+      }
+      setCampaignToDelete(null);
+    } catch (deleteError) {
+      const message = deleteError instanceof Error ? deleteError.message : 'Erro ao deletar campanha';
+      toast({ title: 'Falha ao deletar campanha', description: message, variant: 'destructive' });
+    } finally {
+      setActionInFlight(null);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col bg-muted/30 overflow-hidden">
       <PageHeader
@@ -119,13 +159,23 @@ export function BroadcastView() {
         subtitle="Crie campanhas, acompanhe progresso e controle o envio via WhatsApp."
         icon={SendHorizontal}
         actionContent={(
-          <Button
-            onClick={() => setIsCampaignModalOpen(true)}
-            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10 w-full sm:w-auto"
-          >
-            <Plus className="w-4 h-4" />
-            Nova Campanha
-          </Button>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Button
+              variant="outline"
+              onClick={() => setIsPackModalOpen(true)}
+              className="gap-2 font-semibold h-10"
+            >
+              <Zap className="w-4 h-4" />
+              Comprar créditos
+            </Button>
+            <Button
+              onClick={() => setIsCampaignModalOpen(true)}
+              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10 w-full sm:w-auto"
+            >
+              <Plus className="w-4 h-4" />
+              Nova Campanha
+            </Button>
+          </div>
         )}
       />
 
@@ -249,6 +299,23 @@ export function BroadcastView() {
                             )}
                           </Button>
                         )}
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-destructive/40 text-destructive hover:text-destructive hover:bg-destructive/5"
+                          onClick={() => setCampaignToDelete(campaign)}
+                          disabled={actionInFlight !== null}
+                        >
+                          {actionInFlight === `${campaign.id}:delete` ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              Deletar
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -267,6 +334,12 @@ export function BroadcastView() {
         </div>
       </div>
 
+      <PackPurchaseModal
+        open={isPackModalOpen}
+        onOpenChange={setIsPackModalOpen}
+        packType="disparo"
+      />
+
       <BroadcastCampaignModal
         isOpen={isCampaignModalOpen}
         onClose={() => setIsCampaignModalOpen(false)}
@@ -283,6 +356,35 @@ export function BroadcastView() {
         onResume={resumeCampaign}
         onCancel={cancelCampaign}
       />
+
+      <AlertDialog open={campaignToDelete !== null} onOpenChange={(open) => !open && setCampaignToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deletar campanha?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação removerá a campanha "{campaignToDelete?.name || ''}" e seu histórico de envios.
+              {campaignToDelete?.status === 'running' ? ' A campanha será cancelada antes da exclusão.' : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionInFlight !== null}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteCampaign();
+              }}
+              disabled={actionInFlight !== null}
+            >
+              {campaignToDelete && actionInFlight === `${campaignToDelete.id}:delete` ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                'Deletar campanha'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

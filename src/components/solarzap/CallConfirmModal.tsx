@@ -24,6 +24,12 @@ function normalizeBrazilPhoneDigits(raw: string | undefined | null) {
   return digits.startsWith('55') ? digits : `55${digits}`;
 }
 
+function stripBrazilCountryCode(digits: string) {
+  if (!digits) return '';
+  if (digits.startsWith('55') && digits.length >= 12) return digits.slice(2);
+  return digits;
+}
+
 export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, contactPhone }: CallConfirmModalProps) {
   const { toast } = useToast();
 
@@ -33,12 +39,14 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
   const [feedback, setFeedback] = useState('');
 
   const phoneDigits = useMemo(() => normalizeBrazilPhoneDigits(contactPhone), [contactPhone]);
+  const dialPhoneDigits = useMemo(() => stripBrazilCountryCode(phoneDigits), [phoneDigits]);
   const phoneDisplay = useMemo(() => formatPhoneForDisplay(phoneDigits), [phoneDigits]);
 
-  const telUrl = useMemo(() => (phoneDigits ? `tel:+${phoneDigits}` : ''), [phoneDigits]);
+  const telUrl = useMemo(() => (dialPhoneDigits ? `tel:${dialPhoneDigits}` : ''), [dialPhoneDigits]);
   const whatsappUrl = useMemo(() => (phoneDigits ? `https://wa.me/${phoneDigits}` : ''), [phoneDigits]);
 
   const directUrl = method === 'tel' ? telUrl : method === 'whatsapp' ? whatsappUrl : '';
+  const numberToCopy = method === 'tel' ? dialPhoneDigits : phoneDigits ? `+${phoneDigits}` : '';
   const methodLabel = method === 'tel' ? 'Telefone' : method === 'whatsapp' ? 'WhatsApp' : '';
 
   const resetState = () => {
@@ -206,8 +214,8 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
                     variant="outline"
                     size="sm"
                     className="gap-2"
-                    onClick={() => copyToClipboard(phoneDigits ? `+${phoneDigits}` : '')}
-                    disabled={!phoneDigits}
+                    onClick={() => copyToClipboard(numberToCopy)}
+                    disabled={!numberToCopy}
                   >
                     <Copy className="w-4 h-4" />
                     Copiar
