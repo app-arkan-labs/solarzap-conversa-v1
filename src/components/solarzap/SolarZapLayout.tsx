@@ -35,6 +35,7 @@ import { MoveToProposalModal } from './MoveToProposalModal';
 import { GenerateProposalPromptModal } from './GenerateProposalPromptModal';
 import { ProposalReadyModal } from './ProposalReadyModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
+import { FollowUpExhaustedModal, type FollowUpLostReasonKey } from './FollowUpExhaustedModal';
 import { Loader2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -136,7 +137,8 @@ export function SolarZapLayout() {
     updateLead,
     deleteLead,
     importContacts,
-    toggleLeadAi
+    toggleLeadAi,
+    toggleLeadFollowUp,
   } = useLeads();
 
   const {
@@ -387,8 +389,39 @@ export function SolarZapLayout() {
   const [visitOutcomeSubmitting, setVisitOutcomeSubmitting] = useState(false);
   const [pendingVisitOutcome, setPendingVisitOutcome] = useState<VisitOutcomeItem | null>(null);
   const [dismissedVisitOutcomeIds, setDismissedVisitOutcomeIds] = useState<Set<string>>(new Set());
+  const [followUpExhaustedModalOpen, setFollowUpExhaustedModalOpen] = useState(false);
+  const [followUpExhaustedLeadId, setFollowUpExhaustedLeadId] = useState<string | null>(null);
+  const [followUpExhaustedSubmitting, setFollowUpExhaustedSubmitting] = useState(false);
 
   const { toast } = useToast();
+
+  const openFollowUpExhaustedForLead = useCallback((leadId: string) => {
+    const candidate = contacts.find((contact) => contact.id === leadId);
+    if (!candidate) return;
+    if ((candidate.followUpStep ?? 0) < 5) return;
+    if (candidate.followUpExhaustedSeen !== false) return;
+
+    setFollowUpExhaustedLeadId(candidate.id);
+    setFollowUpExhaustedModalOpen(true);
+  }, [contacts]);
+
+  const followUpExhaustedLead = useMemo(() => {
+    if (!followUpExhaustedLeadId) return null;
+    return contacts.find((contact) => contact.id === followUpExhaustedLeadId) || null;
+  }, [contacts, followUpExhaustedLeadId]);
+
+  useEffect(() => {
+    if (activeTab !== 'conversas') return;
+    const candidate = activeConversation?.contact;
+    if (!candidate) return;
+    openFollowUpExhaustedForLead(candidate.id);
+  }, [
+    activeTab,
+    activeConversation?.id,
+    activeConversation?.contact?.followUpStep,
+    activeConversation?.contact?.followUpExhaustedSeen,
+    openFollowUpExhaustedForLead,
+  ]);
 
   const handleSelectOrganizationFromModal = useCallback(async (nextOrgId: string) => {
     try {
@@ -638,16 +671,37 @@ export function SolarZapLayout() {
         if (contact.id && orgId) {
           void (async () => {
             try {
+              const leadId = parseInt(contact.id, 10);
               const { error: commentError } = await supabase
                 .from('comentarios_leads')
                 .insert([{
                   org_id: orgId,
-                  lead_id: parseInt(contact.id, 10),
+                  lead_id: leadId,
                   texto: `[Feedback Ligacao]: ${normalizedFeedback}`,
                   autor: 'Vendedor',
                 }]);
               if (commentError) {
                 console.error('Error saving call comment:', commentError);
+                return;
+              }
+
+              const { error: scheduleError } = await supabase
+                .from('scheduled_agent_jobs')
+                .insert({
+                  org_id: orgId,
+                  lead_id: leadId,
+                  agent_type: 'post_call',
+                  scheduled_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+                  status: 'pending',
+                  guard_stage: 'chamada_realizada',
+                  payload: {
+                    comment_text: normalizedFeedback,
+                    instance_name: contact.instanceName || null,
+                  },
+                });
+
+              if (scheduleError) {
+                console.error('Error scheduling post-call agent job:', scheduleError);
               }
             } catch (commentError) {
               console.error('Unexpected error saving call comment:', commentError);
@@ -927,6 +981,115 @@ export function SolarZapLayout() {
       setVisitOutcomeSubmitting(false);
     }
   }, [contacts, handlePipelineStageChange, orgId, pendingVisitOutcome, toast, updateAppointment]);
+
+  const closeFollowUpExhaustedModal = useCallback(() => {
+    setFollowUpExhaustedModalOpen(false);
+    setFollowUpExhaustedLeadId(null);
+  }, []);
+
+  const handleFollowUpKeepCurrent = useCallback(async () => {
+    if (!followUpExhaustedLead) return;
+
+    setFollowUpExhaustedSubmitting(true);
+    try {
+      await updateLead({
+        contactId: followUpExhaustedLead.id,
+        data: { follow_up_exhausted_seen: true },
+      });
+      closeFollowUpExhaustedModal();
+    } catch (error) {
+      console.error('Failed to acknowledge follow-up exhausted modal (keep current):', error);
+      toast({
+        title: 'Erro ao atualizar lead',
+        description: 'Nao foi possivel confirmar o follow-up exaurido.',
+        variant: 'destructive',
+      });
+    } finally {
+      setFollowUpExhaustedSubmitting(false);
+    }
+  }, [closeFollowUpExhaustedModal, followUpExhaustedLead, toast, updateLead]);
+
+  const handleFollowUpDisableForLead = useCallback(async () => {
+    if (!followUpExhaustedLead) return;
+
+    setFollowUpExhaustedSubmitting(true);
+    try {
+      await toggleLeadFollowUp({
+        leadId: followUpExhaustedLead.id,
+        enabled: false,
+      });
+      await updateLead({
+        contactId: followUpExhaustedLead.id,
+        data: { follow_up_exhausted_seen: true, follow_up_step: 0 },
+      });
+      closeFollowUpExhaustedModal();
+    } catch (error) {
+      console.error('Failed to disable follow-up for exhausted lead:', error);
+      toast({
+        title: 'Erro ao desabilitar follow-up',
+        description: 'Nao foi possivel desabilitar o follow-up para este lead.',
+        variant: 'destructive',
+      });
+    } finally {
+      setFollowUpExhaustedSubmitting(false);
+    }
+  }, [closeFollowUpExhaustedModal, followUpExhaustedLead, toast, toggleLeadFollowUp, updateLead]);
+
+  const handleFollowUpMoveToLost = useCallback(async (reasonKey: FollowUpLostReasonKey, reasonDetail?: string) => {
+    if (!followUpExhaustedLead) return;
+
+    const reasonMap: Record<FollowUpLostReasonKey, string> = {
+      sem_resposta: 'Nao respondeu',
+      sem_interesse: 'Sem interesse',
+      concorrente: 'Fechou com concorrente',
+      timing: 'Nao e o momento',
+      financeiro: 'Sem condicao financeira',
+      outro: 'Outro',
+    };
+
+    const baseReason = reasonMap[reasonKey] || 'Outro';
+    const normalizedReason = reasonKey === 'outro' && reasonDetail
+      ? `${baseReason}: ${reasonDetail.trim()}`
+      : baseReason;
+
+    setFollowUpExhaustedSubmitting(true);
+    try {
+      await toggleLeadFollowUp({
+        leadId: followUpExhaustedLead.id,
+        enabled: false,
+      });
+
+      await updateLead({
+        contactId: followUpExhaustedLead.id,
+        data: {
+          lost_reason: normalizedReason,
+          follow_up_exhausted_seen: true,
+        },
+      });
+
+      await handlePipelineStageChange(followUpExhaustedLead.id, 'perdido');
+
+      if (orgId) {
+        await supabase.from('comentarios_leads').insert({
+          org_id: orgId,
+          lead_id: Number(followUpExhaustedLead.id),
+          texto: `[Follow Up Esgotado]: ${normalizedReason}`,
+          autor: 'Sistema',
+        });
+      }
+
+      closeFollowUpExhaustedModal();
+    } catch (error) {
+      console.error('Failed to move exhausted follow-up lead to perdido:', error);
+      toast({
+        title: 'Erro ao mover para perdido',
+        description: 'Nao foi possivel concluir a acao para follow-up exaurido.',
+        variant: 'destructive',
+      });
+    } finally {
+      setFollowUpExhaustedSubmitting(false);
+    }
+  }, [closeFollowUpExhaustedModal, followUpExhaustedLead, handlePipelineStageChange, orgId, toast, toggleLeadFollowUp, updateLead]);
 
   const handleCreateLead = async (data: CreateLeadData) => {
     await createLead(data);
@@ -1365,6 +1528,7 @@ export function SolarZapLayout() {
               onAction={handleAction}
               onClose={() => setIsDetailsPanelOpen(false)}
               onUpdateLead={handleLeadUpdateWithoutStage}
+              onToggleLeadFollowUp={toggleLeadFollowUp}
             />
           )}
         </>
@@ -1397,6 +1561,7 @@ export function SolarZapLayout() {
               setScheduleType(type === 'reuniao' ? 'reuniao' : 'visita');
               setIsScheduleOpen(true);
             }}
+            onOpenFollowUpExhausted={openFollowUpExhaustedForLead}
           />
           <Button
             onClick={() => setIsCreateLeadOpen(true)}
@@ -1427,6 +1592,7 @@ export function SolarZapLayout() {
             leadScopeMembers={leadScopeMembers}
             leadScopeLoading={isLoadingLeadScopeMembers}
             currentUserId={user?.id ?? null}
+            onOpenFollowUpExhausted={openFollowUpExhaustedForLead}
           />
           <Button
             onClick={() => setIsCreateLeadOpen(true)}
@@ -1659,6 +1825,15 @@ export function SolarZapLayout() {
         submitting={visitOutcomeSubmitting}
         onSubmit={handleVisitOutcomeSubmit}
         onClose={closeVisitOutcomeModal}
+      />
+
+      <FollowUpExhaustedModal
+        open={followUpExhaustedModalOpen && !!followUpExhaustedLead}
+        leadName={followUpExhaustedLead?.name || ''}
+        submitting={followUpExhaustedSubmitting}
+        onKeepCurrent={handleFollowUpKeepCurrent}
+        onDisableFollowUp={handleFollowUpDisableForLead}
+        onMoveToLost={handleFollowUpMoveToLost}
       />
 
       <VisitScheduleConfirmModal

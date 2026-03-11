@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import {
   Select,
@@ -35,6 +36,7 @@ interface ActionsPanelProps {
   onAction: (action: string, contact?: Conversation['contact']) => void;
   onClose: () => void;
   onUpdateLead?: (contactId: string, data: UpdateLeadData) => Promise<void>;
+  onToggleLeadFollowUp?: (params: { leadId: string; enabled: boolean }) => Promise<{ leadId: string; enabled: boolean }>;
 }
 
 const quickActions = [
@@ -54,9 +56,10 @@ const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'rural', label: 'Rural' },
 ];
 
-export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose, onUpdateLead }: ActionsPanelProps) {
+export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose, onUpdateLead, onToggleLeadFollowUp }: ActionsPanelProps) {
   const { orgId } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
+  const [isTogglingFollowUp, setIsTogglingFollowUp] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [formData, setFormData] = useState<UpdateLeadData & { canal?: Channel }>({});
   const { toast } = useToast();
@@ -227,6 +230,7 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
   // Fallback to 'novo_lead' if stage is invalid/missing
   const currentStageKey = formData.status_pipeline || contact.pipelineStage || 'novo_lead';
   const stage = PIPELINE_STAGES[currentStageKey] || PIPELINE_STAGES['novo_lead'];
+  const followUpEnabled = contact.followUpEnabled !== false;
 
   const currentChannelKey = formData.canal || contact.channel || 'whatsapp';
   const channelInfo = CHANNEL_INFO[currentChannelKey] || CHANNEL_INFO['whatsapp'];
@@ -316,6 +320,30 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
     return new Date(date).toLocaleDateString('pt-BR');
   };
 
+  const handleToggleFollowUp = async (checked: boolean) => {
+    if (!onToggleLeadFollowUp) return;
+
+    setIsTogglingFollowUp(true);
+    try {
+      await onToggleLeadFollowUp({ leadId: contact.id, enabled: checked });
+      toast({
+        title: 'Follow-up atualizado',
+        description: checked
+          ? 'Follow Up Automático habilitado para este lead.'
+          : 'Follow Up Automático desabilitado para este lead.',
+      });
+    } catch (error) {
+      console.error('Error toggling follow-up from ActionsPanel:', error);
+      toast({
+        title: 'Erro ao atualizar follow-up',
+        description: 'Não foi possível alterar a configuração do follow-up.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsTogglingFollowUp(false);
+    }
+  };
+
   return (
     <div className="w-[340px] h-full border-l border-border bg-card overflow-y-auto custom-scrollbar">
       {/* Header with close button */}
@@ -345,10 +373,26 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
       </div>
 
       {/* Current Stage */}
-      <div className="px-4 pb-4 pt-2 border-b border-border">
+      <div className="px-4 pb-4 pt-2 border-b border-border space-y-3">
         <Badge className={`${stage.color} text-white text-sm px-3 py-1`}>
           {stage.icon} {stage.title}
         </Badge>
+        {onToggleLeadFollowUp && (
+          <div className="flex items-center justify-between rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+            <div>
+              <p className="text-xs font-semibold text-foreground">Follow Up Automático</p>
+              <p className="text-[11px] text-muted-foreground">Opera independente da IA geral.</p>
+            </div>
+            <Switch
+              checked={followUpEnabled}
+              onCheckedChange={(checked) => {
+                void handleToggleFollowUp(checked);
+              }}
+              disabled={isTogglingFollowUp}
+              className="data-[state=checked]:bg-emerald-500"
+            />
+          </div>
+        )}
       </div>
 
       {/* Quick Actions */}

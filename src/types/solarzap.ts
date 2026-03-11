@@ -72,6 +72,10 @@ export interface Contact {
   aiEnabled?: boolean;
   aiPausedReason?: string | null;
   aiPausedAt?: Date | null;
+  followUpStep?: number;
+  followUpEnabled?: boolean;
+  followUpExhaustedSeen?: boolean;
+  lostReason?: string | null;
 }
 
 export interface Message {

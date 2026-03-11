@@ -20,6 +20,7 @@ import { AudioDeviceModal } from './AudioDeviceModal';
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
 import { ExportContactsModal } from './ExportContactsModal';
 import { AssignMemberSelect } from './AssignMemberSelect';
+import { FollowUpIndicator } from './FollowUpIndicator';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -937,19 +938,28 @@ export function ConversationList({
                     </div>
                   </div>
 
-                  <div className="mt-1 flex items-center gap-2 flex-wrap">
-                    {!isSelectionMode && (
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <AssignMemberSelect
-                          contactId={conversation.contact.id}
-                          currentAssigneeId={conversation.contact.assignedToUserId}
-                          triggerClassName="w-[130px]"
-                        />
-                      </div>
-                    )}
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                      {stage.icon} {stage.title}
-                    </Badge>
+                  <div className="mt-1 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      {!isSelectionMode && (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <AssignMemberSelect
+                            contactId={conversation.contact.id}
+                            currentAssigneeId={conversation.contact.assignedToUserId}
+                            triggerClassName="w-[130px]"
+                          />
+                        </div>
+                      )}
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {stage.icon} {stage.title}
+                      </Badge>
+                    </div>
+                    <div className="w-full overflow-hidden">
+                      <FollowUpIndicator
+                        step={conversation.contact.followUpStep ?? 0}
+                        enabled={conversation.contact.followUpEnabled !== false}
+                        compact
+                      />
+                    </div>
                   </div>
                 </div>
               </button>

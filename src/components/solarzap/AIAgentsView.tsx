@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { useAISettings } from '../../hooks/useAISettings';
 import { useUserWhatsAppInstances } from '../../hooks/useUserWhatsAppInstances';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Switch } from '../ui/switch';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
-import { PIPELINE_STAGES, PipelineStage } from '../../types/solarzap';
+import { PIPELINE_STAGES } from '../../types/solarzap';
 import { AI_SUPPORT_ELIGIBLE_STAGES } from '../../constants/aiSupportStages';
 import {
     ACTIVE_PIPELINE_AGENTS,
@@ -26,20 +27,49 @@ import {
     DialogTitle,
 } from "../ui/dialog";
 import { Textarea } from '../ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { PageHeader } from './PageHeader';
 import { PackPurchaseModal } from '@/components/billing/PackPurchaseModal';
 import {
     DEFAULT_APPOINTMENT_WINDOW_CONFIG,
+    DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
     type AppointmentWindowConfig,
     type AppointmentWindowType,
     type AppointmentDayKey,
+    type FollowUpSequenceConfig,
+    type FollowUpStepKey,
 } from '@/types/ai';
+
+type SpecialAgentDef = {
+    stage: 'follow_up' | 'agente_disparos';
+    label: string;
+    icon: string;
+    objective: string;
+    description: string;
+};
+
+const SPECIAL_AGENTS: SpecialAgentDef[] = [
+    {
+        stage: 'follow_up',
+        label: 'Follow Up Automático',
+        icon: '🔄',
+        objective: 'Reengajar leads que pararam de responder (5 tentativas)',
+        description: 'Opera independente da IA geral, inclusive quando o lead estiver com IA pausada.',
+    },
+    {
+        stage: 'agente_disparos',
+        label: 'Agente de Disparos',
+        icon: '📢',
+        objective: 'Qualificar leads outbound de campanhas de disparo',
+        description: 'Ativa apenas para respostas de leads com vínculo determinístico em broadcast_recipients.',
+    },
+];
 
 const APPOINTMENT_WINDOW_TYPE_OPTIONS: Array<{ key: AppointmentWindowType; label: string }> = [
     { key: 'call', label: 'Chamada' },
     { key: 'visit', label: 'Visita' },
-    { key: 'meeting', label: 'Reuniao' },
-    { key: 'installation', label: 'Instalacao' },
+    { key: 'meeting', label: 'Reunião' },
+    { key: 'installation', label: 'Instalação' },
 ];
 
 const APPOINTMENT_DAY_OPTIONS: Array<{ key: AppointmentDayKey; label: string }> = [
@@ -48,7 +78,7 @@ const APPOINTMENT_DAY_OPTIONS: Array<{ key: AppointmentDayKey; label: string }> 
     { key: 'wed', label: 'Qua' },
     { key: 'thu', label: 'Qui' },
     { key: 'fri', label: 'Sex' },
-    { key: 'sat', label: 'Sab' },
+    { key: 'sat', label: 'Sáb' },
     { key: 'sun', label: 'Dom' },
 ];
 
@@ -110,7 +140,7 @@ const validateWindowConfig = (config: AppointmentWindowConfig): Record<Appointme
         const startMin = parseTimeToMinutes(rule.start);
         const endMin = parseTimeToMinutes(rule.end);
         if (startMin === null || endMin === null || endMin <= startMin) {
-            errors[key] = 'Horario final deve ser maior que o inicial';
+            errors[key] = 'Horário final deve ser maior que o inicial';
             continue;
         }
         if (!Array.isArray(rule.days) || rule.days.length === 0) {
@@ -121,12 +151,138 @@ const validateWindowConfig = (config: AppointmentWindowConfig): Record<Appointme
     return errors;
 };
 
+type FollowUpCadenceUnit = 'm' | 'h' | 'd';
+type FollowUpCadenceStepDraft = {
+    step: FollowUpStepKey;
+    enabled: boolean;
+    value: number;
+    unit: FollowUpCadenceUnit;
+};
+
+const FOLLOW_UP_STEP_KEYS: FollowUpStepKey[] = [1, 2, 3, 4, 5];
+const FOLLOW_UP_MIN_DELAY_MINUTES = 5;
+const FOLLOW_UP_MAX_DELAY_MINUTES = 365 * 24 * 60;
+const FOLLOW_UP_UNIT_LABEL: Record<FollowUpCadenceUnit, string> = {
+    m: 'min',
+    h: 'h',
+    d: 'dias',
+};
+
+const cadenceToMinutes = (value: number, unit: FollowUpCadenceUnit): number => {
+    const base = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+    if (unit === 'd') return base * 24 * 60;
+    if (unit === 'h') return base * 60;
+    return base;
+};
+
+const pickBestCadenceUnit = (minutes: number): FollowUpCadenceUnit => {
+    if (minutes % 1440 === 0) return 'd';
+    if (minutes % 60 === 0) return 'h';
+    return 'm';
+};
+
+const minutesToCadenceValue = (minutes: number, unit: FollowUpCadenceUnit): number => {
+    if (unit === 'd') return Math.max(1, Math.round(minutes / 1440));
+    if (unit === 'h') return Math.max(1, Math.round(minutes / 60));
+    return Math.max(1, Math.round(minutes));
+};
+
+const normalizeFollowUpSequenceConfig = (raw: unknown): FollowUpSequenceConfig => {
+    const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {};
+    const incomingSteps = Array.isArray(source.steps) ? source.steps : [];
+    const fallbackMap = new Map(
+        DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG.steps.map((step) => [step.step, step] as const),
+    );
+
+    const steps = FOLLOW_UP_STEP_KEYS.map((stepKey) => {
+        const fallback = fallbackMap.get(stepKey)!;
+        const incoming = incomingSteps.find((entry) => Number((entry as any)?.step) === stepKey) || {};
+        const enabled =
+            typeof (incoming as any)?.enabled === 'boolean'
+                ? Boolean((incoming as any).enabled)
+                : fallback.enabled;
+        const delayRaw = Number((incoming as any)?.delay_minutes);
+        const delayMinutes = Number.isFinite(delayRaw)
+            ? Math.max(
+                FOLLOW_UP_MIN_DELAY_MINUTES,
+                Math.min(FOLLOW_UP_MAX_DELAY_MINUTES, Math.round(delayRaw)),
+            )
+            : fallback.delay_minutes;
+
+        return {
+            step: stepKey,
+            enabled,
+            delay_minutes: delayMinutes,
+        };
+    });
+
+    return { steps };
+};
+
+const toFollowUpCadenceDraft = (config: FollowUpSequenceConfig): FollowUpCadenceStepDraft[] =>
+    config.steps
+        .slice()
+        .sort((a, b) => a.step - b.step)
+        .map((step) => {
+            const unit = pickBestCadenceUnit(step.delay_minutes);
+            return {
+                step: step.step,
+                enabled: step.enabled,
+                unit,
+                value: minutesToCadenceValue(step.delay_minutes, unit),
+            };
+        });
+
+const followUpDraftToConfig = (draft: FollowUpCadenceStepDraft[]): FollowUpSequenceConfig => {
+    const raw = {
+        steps: draft.map((step) => ({
+            step: step.step,
+            enabled: step.enabled,
+            delay_minutes: cadenceToMinutes(step.value, step.unit),
+        })),
+    };
+    return normalizeFollowUpSequenceConfig(raw);
+};
+
+const validateFollowUpCadenceDraft = (draft: FollowUpCadenceStepDraft[]): Record<number, string | null> => {
+    const errors: Record<number, string | null> = {};
+    for (const item of draft) {
+        const minutes = cadenceToMinutes(item.value, item.unit);
+        if (!item.enabled) {
+            errors[item.step] = null;
+            continue;
+        }
+        if (!Number.isFinite(item.value) || item.value <= 0) {
+            errors[item.step] = 'Informe um valor maior que zero';
+            continue;
+        }
+        if (minutes < FOLLOW_UP_MIN_DELAY_MINUTES || minutes > FOLLOW_UP_MAX_DELAY_MINUTES) {
+            errors[item.step] = 'Tempo fora do limite permitido';
+            continue;
+        }
+        errors[item.step] = null;
+    }
+    return errors;
+};
+
+const formatMinutesCompact = (minutes: number): string => {
+    if (minutes % 1440 === 0) {
+        const days = Math.round(minutes / 1440);
+        return `${days}d`;
+    }
+    if (minutes % 60 === 0) {
+        const hours = Math.round(minutes / 60);
+        return `${hours}h`;
+    }
+    return `${minutes}min`;
+};
+
 export function AIAgentsView() {
     const { settings, stageConfigs, updateGlobalSettings, updateStageConfig, loading, restoreDefaultPrompt } = useAISettings();
     const { instances: whatsappInstances, setInstanceAiEnabled, activateAiForAllLeads } = useUserWhatsAppInstances();
-    const { role } = useAuth();
+    const { role, orgId } = useAuth();
     const canEdit = role === 'owner' || role === 'admin';
-    const [editingStage, setEditingStage] = useState<PipelineStage | null>(null);
+    const [editingStage, setEditingStage] = useState<string | null>(null);
     const [editingAgent, setEditingAgent] = useState<PipelineAgentDef | null>(null);
 
     const [isWarningOpen, setIsWarningOpen] = useState(false);
@@ -142,6 +298,11 @@ export function AIAgentsView() {
         cloneWindowConfig(DEFAULT_APPOINTMENT_WINDOW_CONFIG)
     );
     const [windowConfigDirty, setWindowConfigDirty] = useState(false);
+    const [followUpCadenceDraft, setFollowUpCadenceDraft] = useState<FollowUpCadenceStepDraft[]>(
+        toFollowUpCadenceDraft(DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG)
+    );
+    const [followUpCadenceDirty, setFollowUpCadenceDirty] = useState(false);
+    const [followUpCadenceExpanded, setFollowUpCadenceExpanded] = useState(false);
 
     // Sync local state when settings load
     React.useEffect(() => {
@@ -155,6 +316,14 @@ export function AIAgentsView() {
         setWindowConfigDraft(incoming);
         setWindowConfigDirty(false);
     }, [settings?.appointment_window_config]);
+
+    React.useEffect(() => {
+        const incoming = normalizeFollowUpSequenceConfig(
+            settings?.follow_up_sequence_config || DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG
+        );
+        setFollowUpCadenceDraft(toFollowUpCadenceDraft(incoming));
+        setFollowUpCadenceDirty(false);
+    }, [settings?.follow_up_sequence_config]);
 
     const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setLocalAssistantName(e.target.value);
@@ -211,11 +380,66 @@ export function AIAgentsView() {
     const handleWindowConfigSave = async () => {
         const errors = validateWindowConfig(windowConfigDraft);
         if (Object.values(errors).some(Boolean)) {
-            toast.error('Revise os horarios: fim deve ser maior que inicio e cada tipo precisa de ao menos 1 dia.');
+            toast.error('Revise os horários: o fim deve ser maior que o início e cada tipo precisa de ao menos 1 dia.');
             return;
         }
         await updateGlobalSettings({ appointment_window_config: normalizeWindowConfig(windowConfigDraft) });
         setWindowConfigDirty(false);
+    };
+
+    const handleFollowUpCadenceValueChange = (step: FollowUpStepKey, value: number) => {
+        setFollowUpCadenceDraft((prev) => prev.map((item) => (
+            item.step === step
+                ? { ...item, value: Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0 }
+                : item
+        )));
+        setFollowUpCadenceDirty(true);
+    };
+
+    const handleFollowUpCadenceUnitChange = (step: FollowUpStepKey, unit: FollowUpCadenceUnit) => {
+        setFollowUpCadenceDraft((prev) => prev.map((item) => {
+            if (item.step !== step) return item;
+            const minutes = cadenceToMinutes(item.value, item.unit);
+            return {
+                ...item,
+                unit,
+                value: minutesToCadenceValue(minutes, unit),
+            };
+        }));
+        setFollowUpCadenceDirty(true);
+    };
+
+    const handleFollowUpCadenceToggle = (step: FollowUpStepKey, checked: boolean) => {
+        setFollowUpCadenceDraft((prev) => prev.map((item) => (
+            item.step === step ? { ...item, enabled: checked } : item
+        )));
+        setFollowUpCadenceDirty(true);
+    };
+
+    const handleFollowUpCadenceCancel = () => {
+        const incoming = normalizeFollowUpSequenceConfig(
+            settings?.follow_up_sequence_config || DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG
+        );
+        setFollowUpCadenceDraft(toFollowUpCadenceDraft(incoming));
+        setFollowUpCadenceDirty(false);
+    };
+
+    const handleFollowUpCadenceSave = async () => {
+        const activeSteps = followUpCadenceDraft.filter((item) => item.enabled);
+        if (activeSteps.length === 0) {
+            toast.error('Ative ao menos uma etapa de follow-up.');
+            return;
+        }
+
+        const errors = validateFollowUpCadenceDraft(followUpCadenceDraft);
+        if (Object.values(errors).some(Boolean)) {
+            toast.error('Revise os tempos do follow-up antes de salvar.');
+            return;
+        }
+
+        const normalized = followUpDraftToConfig(followUpCadenceDraft);
+        await updateGlobalSettings({ follow_up_sequence_config: normalized });
+        setFollowUpCadenceDirty(false);
     };
 
     const handleEditClick = (agent: PipelineAgentDef, currentPrompt: string) => {
@@ -251,16 +475,84 @@ export function AIAgentsView() {
         }
     };
 
+    const getStageConfigByKey = (stageKey: string) =>
+        stageConfigs.find((config) => {
+            const normalized = String((config as any)?.status_pipeline ?? (config as any)?.pipeline_stage ?? '').trim();
+            return normalized === stageKey;
+        });
+
+    const getStagePromptByKey = (stageKey: string) => {
+        const config = getStageConfigByKey(stageKey);
+        return (
+            config?.prompt_override ||
+            config?.default_prompt ||
+            DEFAULT_PROMPTS_BY_STAGE[stageKey] ||
+            ''
+        );
+    };
+
+    const handleEditSpecialPrompt = (stageKey: 'follow_up' | 'agente_disparos') => {
+        setEditingStage(stageKey);
+        setEditingAgent(null);
+        setTempPrompt(getStagePromptByKey(stageKey));
+        setIsWarningOpen(true);
+    };
+
+    const handleSpecialAgentToggle = async (stageKey: 'follow_up' | 'agente_disparos', checked: boolean) => {
+        await updateStageConfig(stageKey, { is_active: checked });
+
+        if (stageKey !== 'follow_up' || checked || !orgId) return;
+
+        const nowIso = new Date().toISOString();
+        const { error: cancelJobsErr } = await supabase
+            .from('scheduled_agent_jobs')
+            .update({
+                status: 'cancelled',
+                cancelled_reason: 'org_agent_disabled',
+                executed_at: nowIso,
+            })
+            .eq('org_id', orgId)
+            .eq('agent_type', 'follow_up')
+            .eq('status', 'pending');
+
+        if (cancelJobsErr) {
+            toast.error('Não foi possível cancelar jobs pendentes de follow-up da organização.');
+            return;
+        }
+
+        const { error: resetLeadsErr } = await supabase
+            .from('leads')
+            .update({ follow_up_step: 0 })
+            .eq('org_id', orgId)
+            .gt('follow_up_step', 0);
+
+        if (resetLeadsErr) {
+            toast.error('Não foi possível resetar o passo de follow-up dos leads da organização.');
+        }
+    };
+
     if (loading) return <div className="p-8 text-center">Carregando módulos de IA...</div>;
 
     const activeCount = ACTIVE_PIPELINE_AGENTS.filter(
-        a => stageConfigs.find(c => c.status_pipeline === a.stage)?.is_active
+        a => getStageConfigByKey(a.stage)?.is_active
     ).length;
-    const editingConfig = editingStage ? stageConfigs.find(c => c.status_pipeline === editingStage) : null;
+    const editingConfig = editingStage ? getStageConfigByKey(editingStage) : null;
+    const editingSpecialAgent = SPECIAL_AGENTS.find((agent) => agent.stage === editingStage);
+    const editingStageTitle = editingAgent?.label
+        || editingSpecialAgent?.label
+        || (editingStage && (PIPELINE_STAGES as Record<string, { title: string }>)[editingStage]?.title)
+        || '';
     const editingPromptVersion = editingConfig?.prompt_override_version ?? 0;
     const promptLength = tempPrompt.length;
     const windowConfigErrors = validateWindowConfig(windowConfigDraft);
     const hasWindowConfigErrors = Object.values(windowConfigErrors).some(Boolean);
+    const followUpCadenceErrors = validateFollowUpCadenceDraft(followUpCadenceDraft);
+    const hasFollowUpCadenceErrors = Object.values(followUpCadenceErrors).some(Boolean);
+    const followUpEnabledSteps = followUpCadenceDraft.filter((item) => item.enabled).length;
+    const followUpCadencePreview = followUpDraftToConfig(followUpCadenceDraft).steps
+        .filter((step) => step.enabled)
+        .map((step) => `E${step.step}: ${formatMinutesCompact(step.delay_minutes)}`)
+        .join(' -> ');
     const promptWarnings = [
         promptLength > 0 && promptLength < 50 ? `Prompt curto (${promptLength} < 50 caracteres)` : null,
         promptLength > 15000 ? `Prompt longo (${promptLength} > 15000 caracteres)` : null,
@@ -318,7 +610,7 @@ export function AIAgentsView() {
                             </CardContent>
                         </Card>
 
-                        {/* Instâncias WhatsApp — TODAS, não só connected */}
+                        {/* Instâncias WhatsApp - TODAS, não só connected */}
                         <Card className="shadow-sm">
                             <CardContent className="p-4">
                                 <Label className="text-xs uppercase text-slate-400 font-medium">Instâncias WhatsApp</Label>
@@ -402,7 +694,7 @@ export function AIAgentsView() {
 
                                         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                                             <div className="space-y-1">
-                                                <Label className="text-[11px] text-slate-500">Inicio</Label>
+                                                <Label className="text-[11px] text-slate-500">Início</Label>
                                                 <Input
                                                     type="time"
                                                     value={rule.start}
@@ -492,7 +784,7 @@ export function AIAgentsView() {
                         </CardContent>
                     </Card>
 
-                    {/* Pipeline Agents — APENAS OS 5 ATIVOS */}
+                    {/* Pipeline Agents - APENAS OS 5 ATIVOS */}
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
                             <div>
@@ -509,7 +801,7 @@ export function AIAgentsView() {
 
                         <div className="space-y-3">
                             {ACTIVE_PIPELINE_AGENTS.map((agent) => {
-                                const config = stageConfigs.find(c => c.status_pipeline === agent.stage);
+                                const config = getStageConfigByKey(agent.stage);
                                 const stageInfo = PIPELINE_STAGES[agent.stage];
                                 const isEnabled = config?.is_active || false;
                                 const effectivePrompt =
@@ -542,7 +834,7 @@ export function AIAgentsView() {
                                                             {isEnabled ? "Ativo" : "Desativado"}
                                                         </Badge>
                                                         <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                                                            Versao {config?.prompt_override_version ?? 0}
+                                                            Versão {config?.prompt_override_version ?? 0}
                                                         </Badge>
                                                     </div>
                                                     <p className="text-xs font-medium text-slate-600 mb-0.5">
@@ -578,6 +870,192 @@ export function AIAgentsView() {
                                 );
                             })}
                         </div>
+                    </div>
+
+                    <div className="space-y-3 mt-6">
+                        <div>
+                            <h2 className="text-base font-semibold text-slate-800">Agentes Especiais</h2>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                                Agentes transversais sem etapa fixa de pipeline.
+                            </p>
+                        </div>
+
+                        {SPECIAL_AGENTS.map((agent) => {
+                            const config = getStageConfigByKey(agent.stage);
+                            const isEnabled = config?.is_active || false;
+
+                            return (
+                                <Card
+                                    key={agent.stage}
+                                    className={`shadow-sm transition-all ${isEnabled ? 'border-l-4 border-l-emerald-500' : 'opacity-70'}`}
+                                    data-testid={`ai-special-stage-card-${agent.stage}`}
+                                >
+                                    <CardContent className="p-4">
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-100">
+                                                <span className="text-lg">{agent.icon}</span>
+                                            </div>
+
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="font-semibold text-sm text-slate-800">{agent.label}</span>
+                                                    <Badge
+                                                        variant={isEnabled ? "default" : "secondary"}
+                                                        className={`text-[10px] h-4 px-1.5 ${isEnabled ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''}`}
+                                                    >
+                                                        {isEnabled ? "Ativo" : "Desativado"}
+                                                    </Badge>
+                                                    <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                                        Versão {config?.prompt_override_version ?? 0}
+                                                    </Badge>
+                                                </div>
+                                                <p className="text-xs font-medium text-slate-600 mb-0.5">
+                                                    🎯 {agent.objective}
+                                                </p>
+                                                <p className="text-[11px] text-slate-400">
+                                                    {agent.description}
+                                                </p>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                {agent.stage === 'follow_up' && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant={followUpCadenceExpanded ? 'default' : 'outline'}
+                                                        className="h-8 text-xs"
+                                                        onClick={() => setFollowUpCadenceExpanded((prev) => !prev)}
+                                                        disabled={!canEdit}
+                                                    >
+                                                        Controlar Etapas
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-8 text-xs gap-1.5"
+                                                    onClick={() => handleEditSpecialPrompt(agent.stage)}
+                                                >
+                                                    <Pencil className="w-3 h-3" />
+                                                    Editar Prompt
+                                                </Button>
+                                                <Switch
+                                                    checked={isEnabled}
+                                                    onCheckedChange={(checked) => {
+                                                        void handleSpecialAgentToggle(agent.stage, checked);
+                                                    }}
+                                                    className="data-[state=checked]:bg-emerald-500"
+                                                    disabled={!canEdit}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {agent.stage === 'follow_up' && (
+                                            <div className="mt-4 border-t border-slate-200 pt-4 space-y-3">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div>
+                                                        <p className="text-xs font-semibold text-slate-700">Controlador de Cadencia</p>
+                                                        <p className="text-[11px] text-slate-500">
+                                                            {followUpCadencePreview || 'Nenhuma etapa ativa'}
+                                                        </p>
+                                                    </div>
+                                                    <Badge variant="outline" className="text-[10px] h-5 px-2">
+                                                        {followUpEnabledSteps}/5 etapas ativas
+                                                    </Badge>
+                                                </div>
+
+                                                {followUpCadenceExpanded && (
+                                                    <div className="space-y-2">
+                                                        {followUpCadenceDraft.map((item) => (
+                                                            <div
+                                                                key={item.step}
+                                                                className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                                                            >
+                                                                <div className="flex items-center gap-2">
+                                                                    <Switch
+                                                                        checked={item.enabled}
+                                                                        onCheckedChange={(checked) => handleFollowUpCadenceToggle(item.step, checked)}
+                                                                        className="data-[state=checked]:bg-emerald-500"
+                                                                        disabled={!canEdit}
+                                                                    />
+                                                                    <span className="text-xs font-semibold text-slate-700">Etapa {item.step}</span>
+                                                                </div>
+
+                                                                <div className="text-[11px] text-slate-500">
+                                                                    {item.enabled ? 'Disparo automatico ativo' : 'Etapa pausada'}
+                                                                </div>
+
+                                                                <Input
+                                                                    type="number"
+                                                                    min={1}
+                                                                    step={1}
+                                                                    value={item.value}
+                                                                    onChange={(event) =>
+                                                                        handleFollowUpCadenceValueChange(
+                                                                            item.step,
+                                                                            Number(event.target.value || 0),
+                                                                        )
+                                                                    }
+                                                                    className="h-8 w-20 text-xs"
+                                                                    disabled={!canEdit || !item.enabled}
+                                                                />
+
+                                                                <Select
+                                                                    value={item.unit}
+                                                                    onValueChange={(value) => handleFollowUpCadenceUnitChange(item.step, value as FollowUpCadenceUnit)}
+                                                                    disabled={!canEdit || !item.enabled}
+                                                                >
+                                                                    <SelectTrigger className="h-8 w-[82px] text-xs">
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        {Object.entries(FOLLOW_UP_UNIT_LABEL).map(([key, label]) => (
+                                                                            <SelectItem key={key} value={key} className="text-xs">
+                                                                                {label}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+
+                                                                {followUpCadenceErrors[item.step] && (
+                                                                    <div className="col-span-4 text-[11px] text-red-600">
+                                                                        {followUpCadenceErrors[item.step]}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <p className="text-[11px] text-slate-500">
+                                                        Padrao do sistema: E1 3h {'->'} E2 1d {'->'} E3 2d {'->'} E4 3d {'->'} E5 7d.
+                                                    </p>
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="h-8 text-xs"
+                                                            onClick={handleFollowUpCadenceCancel}
+                                                            disabled={!canEdit || !followUpCadenceDirty}
+                                                        >
+                                                            Reverter
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            className="h-8 text-xs"
+                                                            onClick={handleFollowUpCadenceSave}
+                                                            disabled={!canEdit || !followUpCadenceDirty || hasFollowUpCadenceErrors}
+                                                        >
+                                                            Salvar Cadencia
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            );
+                        })}
                     </div>
 
                     {/* Floating Save Bar */}
@@ -625,18 +1103,21 @@ export function AIAgentsView() {
                 <DialogContent className="max-w-3xl h-[80vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>
-                            Editor de Agente: {editingAgent?.label || (editingStage ? PIPELINE_STAGES[editingStage].title : '')}
+                            Editor de Agente: {editingStageTitle}
                         </DialogTitle>
                         <DialogDescription>
                             {editingAgent && (
-                                <span>🎯 {editingAgent.objective} — Próxima etapa → {editingAgent.nextStages}</span>
+                                <span>🎯 {editingAgent.objective} - Próxima etapa {'->'} {editingAgent.nextStages}</span>
+                            )}
+                            {!editingAgent && editingSpecialAgent && (
+                                <span>🎯 {editingSpecialAgent.objective}</span>
                             )}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="flex-1 py-4 min-h-0">
                         <div className="mb-3 flex flex-wrap items-center gap-2">
                             <Badge variant="outline" className="h-5 px-2 text-[10px]">
-                                Versao {editingPromptVersion}
+                                Versão {editingPromptVersion}
                             </Badge>
                             <Badge variant="secondary" className="h-5 px-2 text-[10px]">
                                 {promptLength} caracteres
@@ -651,7 +1132,7 @@ export function AIAgentsView() {
                                 </Badge>
                             ))}
                             {promptWarnings.length > 0 && (
-                                <span className="text-[11px] text-slate-500">Avisos nao bloqueiam o salvamento.</span>
+                                <span className="text-[11px] text-slate-500">Avisos não bloqueiam o salvamento.</span>
                             )}
                         </div>
                         <Textarea

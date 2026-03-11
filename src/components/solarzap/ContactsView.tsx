@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { UpdateLeadData } from './EditLeadModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
 import { AssignMemberSelect } from './AssignMemberSelect';
+import { FollowUpIndicator } from './FollowUpIndicator';
 import { PageHeader } from './PageHeader'; // New Import
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
 import { useAuth } from '@/contexts/AuthContext';
@@ -49,6 +50,7 @@ interface ContactsViewProps {
   onImportContacts?: (contacts: ImportedContact[]) => Promise<unknown>;
   onDeleteLead?: (contactId: string) => Promise<void>;
   onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
+  onOpenFollowUpExhausted?: (leadId: string) => void;
   canViewTeam?: boolean;
   leadScope?: LeadScopeValue;
   onLeadScopeChange?: (scope: LeadScopeValue) => void;
@@ -146,6 +148,7 @@ export function ContactsView({
   onImportContacts,
   onDeleteLead,
   onToggleLeadAi,
+  onOpenFollowUpExhausted,
   canViewTeam = false,
   leadScope = 'mine',
   onLeadScopeChange,
@@ -395,6 +398,22 @@ export function ContactsView({
       c.city?.toLowerCase().includes(q);
   });
 
+  const triggerFollowUpExhaustedIfNeeded = React.useCallback((contact: Contact | null) => {
+    if (!contact || !onOpenFollowUpExhausted) return;
+    if ((contact.followUpStep ?? 0) < 5) return;
+    if (contact.followUpExhaustedSeen !== false) return;
+    onOpenFollowUpExhausted(contact.id);
+  }, [onOpenFollowUpExhausted]);
+
+  useEffect(() => {
+    triggerFollowUpExhaustedIfNeeded(selectedContact);
+  }, [
+    selectedContact?.id,
+    selectedContact?.followUpStep,
+    selectedContact?.followUpExhaustedSeen,
+    triggerFollowUpExhaustedIfNeeded,
+  ]);
+
   const visibleContactIds = filteredContacts.map((contact) => contact.id);
   const selectedVisibleCount = visibleContactIds.filter((contactId) => selectedContactIds.has(contactId)).length;
   const allVisibleSelected = visibleContactIds.length > 0 && selectedVisibleCount === visibleContactIds.length;
@@ -601,6 +620,7 @@ export function ContactsView({
                     toggleContactSelection(contact.id);
                     return;
                   }
+                  triggerFollowUpExhaustedIfNeeded(contact);
                   setSelectedContact(contact);
                 }}
                 className={`
@@ -630,6 +650,13 @@ export function ContactsView({
                   <div className="text-sm text-muted-foreground truncate flex items-center gap-1">
                     <Phone className="w-3 h-3" />
                     {formatPhoneForDisplay(contact.phone)}
+                  </div>
+                  <div className="mt-1">
+                    <FollowUpIndicator
+                      step={contact.followUpStep ?? 0}
+                      enabled={contact.followUpEnabled !== false}
+                      compact
+                    />
                   </div>
                 </div>
                 {/* Buttons on hover */}

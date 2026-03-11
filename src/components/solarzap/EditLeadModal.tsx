@@ -46,6 +46,10 @@ export interface UpdateLeadData {
   observacoes?: string;
   status_pipeline?: PipelineStage;
   canal?: Channel;
+  follow_up_enabled?: boolean;
+  follow_up_step?: number;
+  follow_up_exhausted_seen?: boolean;
+  lost_reason?: string | null;
 }
 
 const CLIENT_TYPES: { value: ClientType; label: string }[] = [

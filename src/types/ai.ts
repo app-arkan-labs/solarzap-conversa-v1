@@ -1,5 +1,6 @@
 export type AppointmentWindowType = 'call' | 'visit' | 'meeting' | 'installation';
 export type AppointmentDayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+export type FollowUpStepKey = 1 | 2 | 3 | 4 | 5;
 
 export interface AppointmentWindowRule {
     start: string;
@@ -14,6 +15,26 @@ export const DEFAULT_APPOINTMENT_WINDOW_CONFIG: AppointmentWindowConfig = {
     visit: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
     meeting: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
     installation: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+};
+
+export interface FollowUpSequenceStep {
+    step: FollowUpStepKey;
+    enabled: boolean;
+    delay_minutes: number;
+}
+
+export interface FollowUpSequenceConfig {
+    steps: FollowUpSequenceStep[];
+}
+
+export const DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG: FollowUpSequenceConfig = {
+    steps: [
+        { step: 1, enabled: true, delay_minutes: 180 },
+        { step: 2, enabled: true, delay_minutes: 1440 },
+        { step: 3, enabled: true, delay_minutes: 2880 },
+        { step: 4, enabled: true, delay_minutes: 4320 },
+        { step: 5, enabled: true, delay_minutes: 10080 },
+    ],
 };
 
 export interface AISettings {
@@ -37,6 +58,7 @@ export interface AISettings {
     respondeu_flow_mode?: string;
     support_ai_stage_toggles?: Record<string, boolean>;
     appointment_window_config?: AppointmentWindowConfig;
+    follow_up_sequence_config?: FollowUpSequenceConfig;
 }
 
 export interface AIStageConfig {
@@ -135,4 +157,5 @@ export const DEFAULT_AI_SETTINGS: Partial<AISettings> = {
     weekly_report_enabled: false,
     monthly_report_enabled: false,
     appointment_window_config: DEFAULT_APPOINTMENT_WINDOW_CONFIG,
+    follow_up_sequence_config: DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
 };

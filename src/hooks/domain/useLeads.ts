@@ -160,6 +160,10 @@ export const leadToContact = (lead: any): Contact => {
         aiEnabled: lead.ai_enabled ?? true,
         aiPausedReason: lead.ai_paused_reason,
         aiPausedAt: lead.ai_paused_at ? new Date(lead.ai_paused_at) : null,
+        followUpStep: Number.isFinite(Number(lead.follow_up_step)) ? Number(lead.follow_up_step) : 0,
+        followUpEnabled: lead.follow_up_enabled !== false,
+        followUpExhaustedSeen: lead.follow_up_exhausted_seen !== false,
+        lostReason: lead.lost_reason ?? null,
     };
 };
 
@@ -191,6 +195,10 @@ export interface LeadPatch {
     status_pipeline?: PipelineStage;
     canal?: Channel;
     assigned_to_user_id?: string | null;
+    follow_up_enabled?: boolean;
+    follow_up_step?: number;
+    follow_up_exhausted_seen?: boolean;
+    lost_reason?: string | null;
 }
 
 export type LeadScopeFilter = 'mine' | 'org_all' | `user:${string}`;
@@ -637,6 +645,10 @@ export function useLeads() {
             if (data.canal !== undefined) basePayload.canal = data.canal;
             if (data.observacoes !== undefined) basePayload.observacoes = data.observacoes;
             if (data.assigned_to_user_id !== undefined) basePayload.assigned_to_user_id = data.assigned_to_user_id;
+            if (data.follow_up_enabled !== undefined) basePayload.follow_up_enabled = data.follow_up_enabled;
+            if (data.follow_up_step !== undefined) basePayload.follow_up_step = data.follow_up_step;
+            if (data.follow_up_exhausted_seen !== undefined) basePayload.follow_up_exhausted_seen = data.follow_up_exhausted_seen;
+            if (data.lost_reason !== undefined) basePayload.lost_reason = data.lost_reason;
 
             const extendedPayload: ExtendedLeadFields = {};
             if (data.tipo_cliente !== undefined) extendedPayload.tipo_cliente = data.tipo_cliente;
@@ -835,6 +847,75 @@ export function useLeads() {
         }
     });
 
+    const toggleLeadFollowUpMutation = useMutation({
+        mutationFn: async ({ leadId, enabled }: { leadId: string; enabled: boolean }) => {
+            if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+
+            const leadIdNum = Number(leadId);
+            const basePatch: Record<string, unknown> = {
+                follow_up_enabled: enabled,
+            };
+
+            if (!enabled) {
+                basePatch.follow_up_step = 0;
+            }
+
+            const { data, error } = await supabase
+                .from('leads')
+                .update(basePatch)
+                .eq('id', leadIdNum)
+                .eq('org_id', orgId)
+                .select('id');
+
+            if (error) throw error;
+            if (!data?.length) {
+                throw new Error('Nenhum lead atualizado. Verifique permissoes.');
+            }
+
+            if (!enabled) {
+                const nowIso = new Date().toISOString();
+                const { error: cancelErr } = await supabase
+                    .from('scheduled_agent_jobs')
+                    .update({
+                        status: 'cancelled',
+                        cancelled_reason: 'lead_fu_disabled',
+                        executed_at: nowIso,
+                    })
+                    .eq('org_id', orgId)
+                    .eq('lead_id', leadIdNum)
+                    .eq('agent_type', 'follow_up')
+                    .eq('status', 'pending');
+
+                if (cancelErr) throw cancelErr;
+            }
+
+            return { leadId, enabled };
+        },
+        onSuccess: ({ leadId, enabled }) => {
+            queryClient.setQueriesData(
+                { queryKey: ['leads', orgId] },
+                (oldData: Contact[] | undefined) => {
+                    if (!Array.isArray(oldData)) return oldData;
+                    return oldData.map((contact) =>
+                        contact.id === leadId
+                            ? {
+                                ...contact,
+                                followUpEnabled: enabled,
+                                followUpStep: enabled ? (contact.followUpStep ?? 0) : 0,
+                            }
+                            : contact
+                    );
+                }
+            );
+            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
+        },
+        onError: (error) => {
+            console.error('Error toggling lead follow-up:', error);
+            toast.error(error instanceof Error ? error.message : 'Erro ao alterar status do follow-up');
+        },
+    });
+
     return {
         contacts: leadsQuery.data || [],
         isLoading: leadsQuery.isLoading && !!user,
@@ -852,6 +933,7 @@ export function useLeads() {
         importContacts: importContactsMutation.mutateAsync,
         bulkAssignLeads: bulkAssignLeadsMutation.mutateAsync,
         toggleLeadAi: toggleLeadAiMutation.mutateAsync,
+        toggleLeadFollowUp: toggleLeadFollowUpMutation.mutateAsync,
     };
 }
 

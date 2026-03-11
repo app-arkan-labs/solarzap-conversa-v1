@@ -5,9 +5,12 @@ import {
   AIStageConfig,
   DEFAULT_AI_SETTINGS,
   DEFAULT_APPOINTMENT_WINDOW_CONFIG,
+  DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
   type AppointmentWindowConfig,
   type AppointmentWindowType,
   type AppointmentDayKey,
+  type FollowUpSequenceConfig,
+  type FollowUpStepKey,
 } from '@/types/ai';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -61,6 +64,9 @@ const getStageKey = (row: Partial<AIStageConfig> | undefined): string =>
 
 const APPOINTMENT_WINDOW_TYPES: AppointmentWindowType[] = ['call', 'visit', 'meeting', 'installation'];
 const APPOINTMENT_DAY_KEYS: AppointmentDayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const FOLLOW_UP_STEP_KEYS: FollowUpStepKey[] = [1, 2, 3, 4, 5];
+const FOLLOW_UP_DELAY_MIN_MINUTES = 5;
+const FOLLOW_UP_DELAY_MAX_MINUTES = 365 * 24 * 60;
 
 const normalizeTimeHHMM = (raw: unknown, fallback: string): string => {
   const text = String(raw ?? '').trim();
@@ -104,6 +110,38 @@ const normalizeAppointmentWindowConfig = (raw: unknown): AppointmentWindowConfig
   }
 
   return normalized;
+};
+
+const normalizeFollowUpSequenceConfig = (raw: unknown): FollowUpSequenceConfig => {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {};
+  const incomingSteps = Array.isArray(source.steps) ? source.steps : [];
+  const fallbackMap = new Map(
+    DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG.steps.map((step) => [step.step, step] as const),
+  );
+
+  const steps = FOLLOW_UP_STEP_KEYS.map((stepKey) => {
+    const fallback = fallbackMap.get(stepKey)!;
+    const incoming = incomingSteps.find((entry) => Number((entry as any)?.step) === stepKey) || {};
+    const enabled =
+      typeof (incoming as any)?.enabled === 'boolean'
+        ? Boolean((incoming as any).enabled)
+        : fallback.enabled;
+    const delayRaw = Number((incoming as any)?.delay_minutes);
+    const delayMinutes = Number.isFinite(delayRaw)
+      ? Math.max(
+        FOLLOW_UP_DELAY_MIN_MINUTES,
+        Math.min(FOLLOW_UP_DELAY_MAX_MINUTES, Math.round(delayRaw)),
+      )
+      : fallback.delay_minutes;
+
+    return {
+      step: stepKey,
+      enabled,
+      delay_minutes: delayMinutes,
+    };
+  });
+
+  return { steps };
 };
 
 const toStageTitle = (stage: string): string =>
@@ -192,6 +230,7 @@ export function useAISettings() {
         const normalizedSettings: AISettings = {
           ...settingsData,
           appointment_window_config: normalizeAppointmentWindowConfig((settingsData as any)?.appointment_window_config),
+          follow_up_sequence_config: normalizeFollowUpSequenceConfig((settingsData as any)?.follow_up_sequence_config),
         };
         setSettings(normalizedSettings);
 
@@ -266,14 +305,28 @@ export function useAISettings() {
           (normalizedUpdates as any).appointment_window_config
         );
       }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'follow_up_sequence_config')) {
+        normalizedUpdates.follow_up_sequence_config = normalizeFollowUpSequenceConfig(
+          (normalizedUpdates as any).follow_up_sequence_config
+        );
+      }
 
       if (!settings?.id) {
         const initialConfig = normalizeAppointmentWindowConfig(
           (normalizedUpdates as any).appointment_window_config || DEFAULT_APPOINTMENT_WINDOW_CONFIG
         );
+        const initialFollowUpSequence = normalizeFollowUpSequenceConfig(
+          (normalizedUpdates as any).follow_up_sequence_config || DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG
+        );
         const { error } = await supabase
           .from('ai_settings')
-          .insert([{ ...DEFAULT_AI_SETTINGS, ...normalizedUpdates, appointment_window_config: initialConfig, org_id: orgId }])
+          .insert([{
+            ...DEFAULT_AI_SETTINGS,
+            ...normalizedUpdates,
+            appointment_window_config: initialConfig,
+            follow_up_sequence_config: initialFollowUpSequence,
+            org_id: orgId
+          }])
           .select()
           .single();
 

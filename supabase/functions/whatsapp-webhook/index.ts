@@ -186,6 +186,199 @@ function normalizeProtocolVersion(raw: any): 'legacy' | 'pipeline_pdf_v1' {
     return value === 'pipeline_pdf_v1' ? 'pipeline_pdf_v1' : 'legacy'
 }
 
+const TERMINAL_STAGES = new Set(['perdido', 'contato_futuro', 'projeto_instalado', 'coletar_avaliacao'])
+type FollowUpStepRule = {
+    step: 1 | 2 | 3 | 4 | 5
+    enabled: boolean
+    delay_minutes: number
+}
+
+const FOLLOW_UP_STEP_KEYS: Array<FollowUpStepRule['step']> = [1, 2, 3, 4, 5]
+const FOLLOW_UP_MIN_DELAY_MINUTES = 5
+const FOLLOW_UP_MAX_DELAY_MINUTES = 365 * 24 * 60
+const DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG: { steps: FollowUpStepRule[] } = {
+    steps: [
+        { step: 1, enabled: true, delay_minutes: 180 },
+        { step: 2, enabled: true, delay_minutes: 1440 },
+        { step: 3, enabled: true, delay_minutes: 2880 },
+        { step: 4, enabled: true, delay_minutes: 4320 },
+        { step: 5, enabled: true, delay_minutes: 10080 },
+    ],
+}
+
+async function isOrgFollowUpAgentActive(supabase: any, orgId: string): Promise<boolean> {
+    const { data, error } = await supabase
+        .from('ai_stage_config')
+        .select('is_active')
+        .eq('org_id', orgId)
+        .eq('pipeline_stage', 'follow_up')
+        .maybeSingle()
+
+    if (error) {
+        console.warn('Failed to load follow_up stage config in webhook:', error.message)
+        return false
+    }
+
+    return data?.is_active === true
+}
+
+function normalizeFollowUpSequenceConfig(raw: any): { steps: FollowUpStepRule[] } {
+    const source = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw as Record<string, any> : {}
+    const incomingSteps = Array.isArray(source.steps) ? source.steps : []
+    const fallbackMap = new Map(
+        DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG.steps.map((step) => [step.step, step] as const),
+    )
+
+    const steps: FollowUpStepRule[] = FOLLOW_UP_STEP_KEYS.map((stepKey) => {
+        const fallback = fallbackMap.get(stepKey)!
+        const incoming = incomingSteps.find((entry: any) => Number(entry?.step) === stepKey) || {}
+        const enabled = typeof incoming?.enabled === 'boolean' ? Boolean(incoming.enabled) : fallback.enabled
+        const delayRaw = Number(incoming?.delay_minutes)
+        const delayMinutes = Number.isFinite(delayRaw)
+            ? Math.max(
+                FOLLOW_UP_MIN_DELAY_MINUTES,
+                Math.min(FOLLOW_UP_MAX_DELAY_MINUTES, Math.round(delayRaw)),
+            )
+            : fallback.delay_minutes
+
+        return {
+            step: stepKey,
+            enabled,
+            delay_minutes: delayMinutes,
+        }
+    })
+
+    return { steps }
+}
+
+async function loadFollowUpSequenceConfig(supabase: any, orgId: string): Promise<{ steps: FollowUpStepRule[] }> {
+    const { data, error } = await supabase
+        .from('ai_settings')
+        .select('follow_up_sequence_config')
+        .eq('org_id', orgId)
+        .maybeSingle()
+
+    if (error) {
+        console.warn('Failed to load follow_up_sequence_config in webhook, using defaults:', error.message)
+        return DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG
+    }
+
+    return normalizeFollowUpSequenceConfig((data as any)?.follow_up_sequence_config)
+}
+
+function getFirstEnabledFollowUpStep(config: { steps: FollowUpStepRule[] }): FollowUpStepRule | null {
+    const ordered = config.steps
+        .filter((step) => step.enabled)
+        .sort((a, b) => a.step - b.step)
+    return ordered[0] || null
+}
+
+async function cancelPendingFollowUpJobs(
+    supabase: any,
+    leadId: number,
+    cancelledReason: string,
+): Promise<void> {
+    const { error } = await supabase
+        .from('scheduled_agent_jobs')
+        .update({
+            status: 'cancelled',
+            cancelled_reason: cancelledReason,
+            executed_at: new Date().toISOString(),
+        })
+        .eq('lead_id', leadId)
+        .eq('agent_type', 'follow_up')
+        .eq('status', 'pending')
+
+    if (error) throw error
+}
+
+async function resetLeadFollowUpStep(
+    supabase: any,
+    leadId: number,
+    orgId: string,
+): Promise<void> {
+    const { error } = await supabase
+        .from('leads')
+        .update({ follow_up_step: 0 })
+        .eq('id', leadId)
+        .eq('org_id', orgId)
+
+    if (error) throw error
+}
+
+async function scheduleFollowUpStep1FromOutbound(params: {
+    supabase: any
+    orgId: string
+    leadId: number
+    leadStage: string | null
+    instanceName: string
+}): Promise<{ scheduled: boolean; reason?: string; step?: number }> {
+    const { supabase, orgId, leadId, leadStage, instanceName } = params
+    const normalizedStage = String(leadStage || '').trim().toLowerCase()
+
+    if (TERMINAL_STAGES.has(normalizedStage)) {
+        return { scheduled: false, reason: 'terminal_stage' }
+    }
+
+    const { data: leadRow, error: leadRowError } = await supabase
+        .from('leads')
+        .select('follow_up_enabled')
+        .eq('id', leadId)
+        .eq('org_id', orgId)
+        .maybeSingle()
+    if (leadRowError) throw leadRowError
+    if (!leadRow || leadRow.follow_up_enabled === false) {
+        return { scheduled: false, reason: 'lead_fu_disabled' }
+    }
+
+    const orgFollowUpActive = await isOrgFollowUpAgentActive(supabase, orgId)
+    if (!orgFollowUpActive) {
+        return { scheduled: false, reason: 'org_agent_disabled' }
+    }
+
+    const followUpSequence = await loadFollowUpSequenceConfig(supabase, orgId)
+    const firstEnabledStep = getFirstEnabledFollowUpStep(followUpSequence)
+    if (!firstEnabledStep) {
+        return { scheduled: false, reason: 'fu_sequence_empty' }
+    }
+
+    const nowIso = new Date().toISOString()
+    const payload = {
+        fu_step: firstEnabledStep.step,
+        last_outbound_at: nowIso,
+        original_stage: normalizedStage || null,
+        instance_name: instanceName || null,
+    }
+
+    await cancelPendingFollowUpJobs(supabase, leadId, 'new_outbound_superseded')
+
+    const tryInsert = async () => {
+        const { error } = await supabase
+            .from('scheduled_agent_jobs')
+            .insert({
+                org_id: orgId,
+                lead_id: leadId,
+                agent_type: 'follow_up',
+                scheduled_at: new Date(Date.now() + (firstEnabledStep.delay_minutes * 60_000)).toISOString(),
+                status: 'pending',
+                guard_stage: normalizedStage || null,
+                payload,
+            })
+        return error
+    }
+
+    let insertErr = await tryInsert()
+    if (insertErr && insertErr.code === '23505') {
+        await cancelPendingFollowUpJobs(supabase, leadId, 'new_outbound_superseded')
+        insertErr = await tryInsert()
+    }
+    if (insertErr) throw insertErr
+
+    await resetLeadFollowUpStep(supabase, leadId, orgId)
+
+    return { scheduled: true, step: firstEnabledStep.step }
+}
+
 async function uploadMedia(
     supabase: any,
     data: string | Uint8Array,
@@ -923,17 +1116,21 @@ Deno.serve(async (req: Request) => {
 
                 if (isFromMe && leadId) {
                     const takeoverEnabled = supportAiAutoDisableOnSellerMessage === true
+                    const leadIdNum = Number(leadId)
                     let leadStage: string | null = null
                     let leadWasAlreadyPaused = false
+                    let leadFollowUpEnabled = true
                     let sellerMessageAutoDisabledAI = false
+                    let likelyAiEchoDetected = false
                     let takeoverError: string | null = null
                     let takeoverSuppressedReason: string | null = null
+                    let followUpScheduleStatus: string | null = null
 
                     try {
                         const { data: leadBefore, error: leadBeforeErr } = await supabase
                             .from('leads')
-                            .select('id, status_pipeline, ai_enabled')
-                            .eq('id', Number(leadId))
+                            .select('id, status_pipeline, ai_enabled, follow_up_enabled')
+                            .eq('id', leadIdNum)
                             .maybeSingle()
 
                         if (leadBeforeErr) {
@@ -941,6 +1138,7 @@ Deno.serve(async (req: Request) => {
                         } else {
                             leadStage = (leadBefore as any)?.status_pipeline || null
                             leadWasAlreadyPaused = (leadBefore as any)?.ai_enabled === false
+                            leadFollowUpEnabled = (leadBefore as any)?.follow_up_enabled !== false
 
                             const shouldEvaluatePause = takeoverEnabled && !leadWasAlreadyPaused
                             let likelyAiEcho = false
@@ -953,8 +1151,8 @@ Deno.serve(async (req: Request) => {
                                     const trimmedText = (text || '').trim()
                                     const { data: duplicateOutbound } = await supabase
                                         .from('interacoes')
-                                        .select('id, created_at')
-                                        .eq('lead_id', Number(leadId))
+                                        .select('id, created_at, mensagem')
+                                        .eq('lead_id', leadIdNum)
                                         .eq('instance_name', instanceName)
                                         .eq('wa_from_me', true)
                                         .in('tipo', ['mensagem_vendedor', 'audio_vendedor', 'video_vendedor', 'anexo_vendedor'])
@@ -970,6 +1168,7 @@ Deno.serve(async (req: Request) => {
                                             return rowText === trimmedText
                                         })
                                     )
+                                    likelyAiEchoDetected = likelyAiEcho
                                 } catch (dupErr: any) {
                                     console.warn('Failed to check duplicate outbound before takeover pause:', dupErr?.message || dupErr)
                                 }
@@ -1003,10 +1202,32 @@ Deno.serve(async (req: Request) => {
                         takeoverError = pauseErr?.message || String(pauseErr)
                     }
 
+                    if (!likelyAiEchoDetected && leadFollowUpEnabled) {
+                        try {
+                            const scheduleResult = await scheduleFollowUpStep1FromOutbound({
+                                supabase,
+                                orgId,
+                                leadId: leadIdNum,
+                                leadStage,
+                                instanceName,
+                            })
+                            followUpScheduleStatus = scheduleResult.scheduled
+                                ? `scheduled_step_${scheduleResult.step || 1}`
+                                : `skipped:${scheduleResult.reason || 'unknown'}`
+                        } catch (followUpScheduleErr: any) {
+                            followUpScheduleStatus = `error:${String(followUpScheduleErr?.message || followUpScheduleErr || 'unknown').slice(0, 120)}`
+                            console.warn('Failed to schedule follow-up after seller outbound:', followUpScheduleErr)
+                        }
+                    } else if (likelyAiEchoDetected) {
+                        followUpScheduleStatus = 'skipped_likely_ai_echo'
+                    } else if (!leadFollowUpEnabled) {
+                        followUpScheduleStatus = 'skipped:lead_fu_disabled'
+                    }
+
                     try {
                         await supabase.from('ai_action_logs').insert({
                             org_id: orgId,
-                            lead_id: Number(leadId),
+                            lead_id: leadIdNum,
                             action_type: 'seller_message_takeover',
                             details: JSON.stringify({
                                 protocol_version: protocolVersion,
@@ -1024,6 +1245,9 @@ Deno.serve(async (req: Request) => {
                                 blocked_prompt_override_reason: null,
                                 support_ai_auto_disable_on_seller_message: supportAiAutoDisableOnSellerMessage,
                                 lead_was_already_paused: leadWasAlreadyPaused,
+                                lead_follow_up_enabled: leadFollowUpEnabled,
+                                likely_ai_echo_detected: likelyAiEchoDetected,
+                                follow_up_schedule_status: followUpScheduleStatus,
                                 takeover_enabled: takeoverEnabled,
                                 takeover_suppressed_reason: takeoverSuppressedReason,
                                 instance_name: instanceName,
@@ -1040,6 +1264,14 @@ Deno.serve(async (req: Request) => {
 
                 // AI Trigger
                 if (!isFromMe && leadId && inserted?.id) {
+                    try {
+                        const leadIdNum = Number(leadId)
+                        await cancelPendingFollowUpJobs(supabase, leadIdNum, 'lead_replied')
+                        await resetLeadFollowUpStep(supabase, leadIdNum, orgId)
+                    } catch (followUpCancelErr) {
+                        console.warn('Failed to cancel/reset follow-up after inbound message:', followUpCancelErr)
+                    }
+
                     const aiLimit = await checkLimit(supabase, orgId, 'included_ai_requests_month', 1)
                     if (!aiLimit.allowed || aiLimit.access_state === 'blocked' || aiLimit.access_state === 'read_only') {
                         console.warn('ai_quota_exhausted: skipping ai pipeline invoke', {

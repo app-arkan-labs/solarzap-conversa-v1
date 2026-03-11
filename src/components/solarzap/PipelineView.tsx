@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAutomationSettings } from '@/hooks/useAutomationSettings';
 import { EditLeadModal, UpdateLeadData } from './EditLeadModal';
 import { StageBadges } from './StageBadges';
+import { FollowUpIndicator } from './FollowUpIndicator';
 import { LeadScopeSelect, type LeadScopeValue } from './LeadScopeSelect';
 import type { MemberDto } from '@/lib/orgAdminClient';
 
@@ -62,6 +63,7 @@ interface PipelineViewProps {
   onDeleteLead?: (contactId: string) => Promise<void>;
   onSchedule?: (contact: Contact, type: 'reuniao' | 'visita') => void;
   onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
+  onOpenFollowUpExhausted?: (leadId: string) => void;
   canViewTeam?: boolean;
   leadScope?: LeadScopeValue;
   onLeadScopeChange?: (scope: LeadScopeValue) => void;
@@ -105,6 +107,7 @@ export function PipelineView({
   onDeleteLead,
   onSchedule,
   onToggleLeadAi,
+  onOpenFollowUpExhausted,
   canViewTeam = false,
   leadScope = 'mine',
   onLeadScopeChange,
@@ -190,6 +193,11 @@ export function PipelineView({
   const handleCardClick = (contact: Contact, e: React.MouseEvent) => {
     if (draggedContact) return;
     if ((e.target as HTMLElement).closest('[draggable]') && e.type !== 'click') return;
+
+    if ((contact.followUpStep ?? 0) >= 5 && contact.followUpExhaustedSeen === false && onOpenFollowUpExhausted) {
+      onOpenFollowUpExhausted(contact.id);
+      return;
+    }
 
     setEditingContact(contact);
     setIsEditModalOpen(true);
@@ -948,6 +956,13 @@ export function PipelineView({
                           </div>
 
                           <StageBadges contact={contact} className="mb-3" />
+
+                          <div className="mb-3">
+                            <FollowUpIndicator
+                              step={contact.followUpStep ?? 0}
+                              enabled={contact.followUpEnabled !== false}
+                            />
+                          </div>
 
                           {/* Value */}
                           <div className="flex items-center gap-1 text-sm font-bold text-green-600 mb-1">

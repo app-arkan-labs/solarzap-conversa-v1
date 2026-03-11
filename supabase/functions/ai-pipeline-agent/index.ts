@@ -28,6 +28,32 @@ const STAGE_TRANSITION_MAP: Record<string, string[]> = {
     // ... others assume logical linear types
 };
 
+const TERMINAL_STAGES = new Set([
+    'perdido',
+    'contato_futuro',
+    'projeto_instalado',
+    'coletar_avaliacao',
+]);
+
+type FollowUpStepRule = {
+    step: 1 | 2 | 3 | 4 | 5;
+    enabled: boolean;
+    delay_minutes: number;
+};
+
+const FOLLOW_UP_STEP_KEYS: Array<FollowUpStepRule['step']> = [1, 2, 3, 4, 5];
+const FOLLOW_UP_MIN_DELAY_MINUTES = 5;
+const FOLLOW_UP_MAX_DELAY_MINUTES = 365 * 24 * 60;
+const DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG: { steps: FollowUpStepRule[] } = {
+    steps: [
+        { step: 1, enabled: true, delay_minutes: 180 },
+        { step: 2, enabled: true, delay_minutes: 1440 },
+        { step: 3, enabled: true, delay_minutes: 2880 },
+        { step: 4, enabled: true, delay_minutes: 4320 },
+        { step: 5, enabled: true, delay_minutes: 10080 },
+    ],
+};
+
 function isValidTransition(current: string, target: string): boolean {
     if (current === target) return true; // Staying is always valid
     const allowed = STAGE_TRANSITION_MAP[current];
@@ -753,6 +779,216 @@ async function isLeadAiEnabledNow(supabase: any, leadId: string | number): Promi
     }
     if (!data) return false;
     return data.ai_enabled !== false;
+}
+
+async function isLeadFollowUpEnabledNow(supabase: any, leadId: string | number): Promise<boolean> {
+    const { data, error } = await supabase
+        .from('leads')
+        .select('follow_up_enabled')
+        .eq('id', leadId)
+        .maybeSingle();
+
+    // FAIL-SAFE: on DB error, assume follow-up is disabled.
+    if (error) {
+        console.error('[isLeadFollowUpEnabledNow] DB error - defaulting to DISABLED for safety:', error.message);
+        return false;
+    }
+    if (!data) return false;
+    return data.follow_up_enabled !== false;
+}
+
+async function isOrgStageAgentActive(supabase: any, orgId: string, stageKey: string): Promise<boolean> {
+    const { data, error } = await supabase
+        .from('ai_stage_config')
+        .select('is_active')
+        .eq('org_id', orgId)
+        .eq('pipeline_stage', stageKey)
+        .maybeSingle();
+
+    if (error) {
+        console.error(`[isOrgStageAgentActive] Failed to load stage config for ${stageKey}:`, error.message);
+        return false;
+    }
+    return data?.is_active === true;
+}
+
+function normalizeFollowUpSequenceConfig(raw: any): { steps: FollowUpStepRule[] } {
+    const source = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw as Record<string, any> : {};
+    const incomingSteps = Array.isArray(source.steps) ? source.steps : [];
+    const fallbackMap = new Map(
+        DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG.steps.map((step) => [step.step, step] as const),
+    );
+
+    const steps: FollowUpStepRule[] = FOLLOW_UP_STEP_KEYS.map((stepKey) => {
+        const fallback = fallbackMap.get(stepKey)!;
+        const incoming = incomingSteps.find((entry: any) => Number(entry?.step) === stepKey) || {};
+        const enabled = typeof incoming?.enabled === 'boolean' ? Boolean(incoming.enabled) : fallback.enabled;
+        const delayRaw = Number(incoming?.delay_minutes);
+        const delayMinutes = Number.isFinite(delayRaw)
+            ? Math.max(
+                FOLLOW_UP_MIN_DELAY_MINUTES,
+                Math.min(FOLLOW_UP_MAX_DELAY_MINUTES, Math.round(delayRaw)),
+            )
+            : fallback.delay_minutes;
+
+        return {
+            step: stepKey,
+            enabled,
+            delay_minutes: delayMinutes,
+        };
+    });
+
+    return { steps };
+}
+
+async function loadFollowUpSequenceConfig(supabase: any, orgId: string): Promise<{ steps: FollowUpStepRule[] }> {
+    const { data, error } = await supabase
+        .from('ai_settings')
+        .select('follow_up_sequence_config')
+        .eq('org_id', orgId)
+        .maybeSingle();
+
+    if (error) {
+        console.warn('[loadFollowUpSequenceConfig] falling back to default sequence:', error.message);
+        return DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG;
+    }
+
+    return normalizeFollowUpSequenceConfig((data as any)?.follow_up_sequence_config);
+}
+
+function getFirstEnabledFollowUpStep(config: { steps: FollowUpStepRule[] }): FollowUpStepRule | null {
+    const ordered = config.steps
+        .filter((step) => step.enabled)
+        .sort((a, b) => a.step - b.step);
+    return ordered[0] || null;
+}
+
+function formatElapsedSince(iso: string | null | undefined): string {
+    const raw = String(iso || '').trim();
+    if (!raw) return 'tempo não informado';
+    const ts = Date.parse(raw);
+    if (!Number.isFinite(ts)) return 'tempo não informado';
+    const deltaMs = Math.max(0, Date.now() - ts);
+    const totalMinutes = Math.floor(deltaMs / 60000);
+    if (totalMinutes < 1) return 'menos de 1 minuto';
+    if (totalMinutes < 60) return `${totalMinutes} minuto(s)`;
+    const totalHours = Math.floor(totalMinutes / 60);
+    if (totalHours < 24) return `${totalHours} hora(s)`;
+    const totalDays = Math.floor(totalHours / 24);
+    return `${totalDays} dia(s)`;
+}
+
+async function cancelAndScheduleFollowUp(params: {
+    supabase: any;
+    leadId: string | number;
+    orgId: string;
+    currentStage: string | null | undefined;
+    instanceName: string | null | undefined;
+    runId: string;
+}): Promise<{ scheduled: boolean; skippedReason?: string; scheduledStep?: number }> {
+    const { supabase, leadId, orgId, currentStage, instanceName, runId } = params;
+    const normalizedStage = normalizeStage(currentStage);
+
+    if (TERMINAL_STAGES.has(normalizedStage)) {
+        return { scheduled: false, skippedReason: 'terminal_stage' };
+    }
+
+    const leadFuEnabled = await isLeadFollowUpEnabledNow(supabase, leadId);
+    if (!leadFuEnabled) {
+        return { scheduled: false, skippedReason: 'lead_fu_disabled' };
+    }
+
+    const orgFollowUpActive = await isOrgStageAgentActive(supabase, orgId, 'follow_up');
+    if (!orgFollowUpActive) {
+        return { scheduled: false, skippedReason: 'org_agent_disabled' };
+    }
+
+    const followUpSequence = await loadFollowUpSequenceConfig(supabase, orgId);
+    const firstEnabledStep = getFirstEnabledFollowUpStep(followUpSequence);
+    if (!firstEnabledStep) {
+        return { scheduled: false, skippedReason: 'fu_sequence_empty' };
+    }
+
+    const nowIso = new Date().toISOString();
+    const leadIdNum = Number(leadId);
+
+    const { error: cancelErr } = await supabase
+        .from('scheduled_agent_jobs')
+        .update({
+            status: 'cancelled',
+            cancelled_reason: 'new_outbound_superseded',
+            executed_at: nowIso,
+        })
+        .eq('lead_id', leadIdNum)
+        .eq('agent_type', 'follow_up')
+        .eq('status', 'pending');
+    if (cancelErr) throw cancelErr;
+
+    const insertPayload = {
+        org_id: orgId,
+        lead_id: leadIdNum,
+        agent_type: 'follow_up',
+        scheduled_at: new Date(Date.now() + (firstEnabledStep.delay_minutes * 60_000)).toISOString(),
+        status: 'pending',
+        guard_stage: normalizedStage || null,
+        payload: {
+            fu_step: firstEnabledStep.step,
+            last_outbound_at: nowIso,
+            original_stage: normalizedStage || null,
+            instance_name: instanceName || null,
+        },
+    };
+
+    const tryInsert = async () => {
+        const { error } = await supabase
+            .from('scheduled_agent_jobs')
+            .insert(insertPayload);
+        return error;
+    };
+
+    let insertErr = await tryInsert();
+    if (insertErr && insertErr.code === '23505') {
+        // Race safety for unique pending follow_up per lead.
+        const { error: recancelErr } = await supabase
+            .from('scheduled_agent_jobs')
+            .update({
+                status: 'cancelled',
+                cancelled_reason: 'new_outbound_superseded',
+                executed_at: nowIso,
+            })
+            .eq('lead_id', leadIdNum)
+            .eq('agent_type', 'follow_up')
+            .eq('status', 'pending');
+        if (recancelErr) throw recancelErr;
+        insertErr = await tryInsert();
+    }
+    if (insertErr) throw insertErr;
+
+    const { error: leadUpdateErr } = await supabase
+        .from('leads')
+        .update({ follow_up_step: 0 })
+        .eq('id', leadIdNum);
+    if (leadUpdateErr) throw leadUpdateErr;
+
+    try {
+        await supabase.from('ai_action_logs').insert({
+            org_id: orgId,
+            lead_id: leadIdNum,
+            action_type: 'follow_up_sequence_scheduled',
+            details: JSON.stringify({
+                runId,
+                trigger: 'bot_outbound',
+                stage: normalizedStage || null,
+                step: firstEnabledStep.step,
+                scheduled_in_minutes: firstEnabledStep.delay_minutes,
+            }),
+            success: true,
+        });
+    } catch (logErr) {
+        console.warn(`[${runId}] follow_up_sequence_scheduled log failed (non-blocking):`, logErr);
+    }
+
+    return { scheduled: true, scheduledStep: firstEnabledStep.step };
 }
 
 async function performOpenAIWebSearch(openAIApiKey: string, query: string): Promise<{ ok: boolean; text: string; error?: string }> {
@@ -1600,6 +1836,10 @@ Deno.serve(async (req) => {
 
         // 0. GENERATE RUN ID
         const runId = crypto.randomUUID();
+        const triggerType = String(payload?.triggerType || 'incoming_message').trim() || 'incoming_message';
+        const isFollowUpTrigger = triggerType === 'follow_up';
+        const isScheduledPostCallTrigger = triggerType === 'scheduled_post_call';
+        const isScheduledTrigger = isScheduledPostCallTrigger || isFollowUpTrigger;
 
         // --- CONSTANTS ---
         const QUIET_WINDOW_MS = 3500;   // min silence before responding
@@ -1642,6 +1882,7 @@ Deno.serve(async (req) => {
         let stageMoveResult: string | null = null;
         // Tracks whether the agent actually sent an outbound reply this run (Tarefa 1)
         let didSendOutbound = false;
+        let followUpScheduleStatus: string | null = null;
         // Scheduling / appointment observability
         let scheduleTimezone = 'America/Sao_Paulo';
         let scheduleCatalogText = '';
@@ -1819,8 +2060,13 @@ Deno.serve(async (req) => {
             return respondNoSend({ skipped: "System Inactive" }, 'system_inactive');
         }
 
-        // 3a. CHECK IF LEAD HAS AI ENABLED SPECIFICALLY
-        if (lead.ai_enabled === false) {
+        // 3a. Lead-level gate
+        if (isFollowUpTrigger) {
+            if (lead.follow_up_enabled === false) {
+                console.log(`🛑 Follow-up disabled for lead: ${leadId}`);
+                return respondNoSend({ skipped: "lead_follow_up_disabled" }, 'lead_follow_up_disabled');
+            }
+        } else if (lead.ai_enabled === false) {
             console.log(`🛑 AI disabled for specific LEAD: ${leadId}`);
             return respondNoSend({ skipped: "lead_ai_disabled" }, 'lead_ai_disabled');
         }
@@ -1836,7 +2082,15 @@ Deno.serve(async (req) => {
         const RAPID_CHECKS = 3; // first 3 checks are rapid
         let loopCount = 0;
 
-        while (true) {
+        if (isScheduledTrigger) {
+            decision = 'scheduled_trigger_skip_debounce';
+            stabilized = true;
+            anchorInteractionId = interactionId || null;
+            anchorMsgCreatedAt = null;
+            anchorCreatedAt = null;
+            console.log(`⏭️ [${runId}] Scheduled trigger (${triggerType}) - skipping quiet-window/yield/burst guards.`);
+        } else {
+            while (true) {
             loopCount++;
             // Stage 1 (first 3 loops): rapid 1.5s checks to catch burst
             // Stage 2 (after): slower 4-7s checks for human pacing
@@ -2017,25 +2271,25 @@ Deno.serve(async (req) => {
             }
 
             console.log(`🔄 [${runId}] Still typing (lastInboundAge=${lastInboundAgeMs}ms < ${QUIET_WINDOW_MS}ms). Waiting...`);
-        }
+            }
 
-        if (!stabilized) {
-            decision = 'not_stabilized';
-            return respondNoSend({ aborted: "not_stabilized", runId }, 'not_stabilized');
-        }
+            if (!stabilized) {
+                decision = 'not_stabilized';
+                return respondNoSend({ aborted: "not_stabilized", runId }, 'not_stabilized');
+            }
 
-        // Post-stabilize recheck: avoid responding from an older run if a newer inbound became visible after we broke
-        // (e.g., DB visibility lag). This is critical for TEST 7 (No Response Mid-Burst).
-        try {
-            const { data: latestMsgPost } = await supabase
-                .from('interacoes')
-                .select('id, created_at')
-                .eq('lead_id', leadId)
-                .eq('instance_name', instanceName)
-                .eq('tipo', 'mensagem_cliente')
-                .order('id', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+            // Post-stabilize recheck: avoid responding from an older run if a newer inbound became visible after we broke
+            // (e.g., DB visibility lag). This is critical for TEST 7 (No Response Mid-Burst).
+            try {
+                const { data: latestMsgPost } = await supabase
+                    .from('interacoes')
+                    .select('id, created_at')
+                    .eq('lead_id', leadId)
+                    .eq('instance_name', instanceName)
+                    .eq('tipo', 'mensagem_cliente')
+                    .order('id', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
 
             if (latestMsgPost?.id && anchorInteractionId && String(latestMsgPost.id) !== String(anchorInteractionId)) {
                 const postInboundTime = latestMsgPost.created_at ? new Date(latestMsgPost.created_at).getTime() : NaN;
@@ -2160,38 +2414,39 @@ Deno.serve(async (req) => {
                     }, 'yield_to_newer');
                 }
             }
-        } catch (postStabilizeErr) {
-            console.warn(`[${runId}] Post-stabilize latest inbound check failed (fail-open):`, postStabilizeErr);
-        }
+            } catch (postStabilizeErr) {
+                console.warn(`[${runId}] Post-stabilize latest inbound check failed (fail-open):`, postStabilizeErr);
+            }
 
-        // If this run was invoked for an older interactionId than the stabilized anchor, yield.
-        // This keeps burst handling deterministic: only the call for the latest inbound should proceed.
-        if (!adoptedLatestOnce && inputInteractionId && anchorInteractionId && String(inputInteractionId) !== String(anchorInteractionId)) {
-            decision = 'yield_to_newer';
-            console.log(`🔄 [${runId}] Yielding: stabilized anchor ${anchorInteractionId} is newer than input ${inputInteractionId}. Aborting this run.`);
-            return respondNoSend({
-                aborted: "yield_to_newer",
-                runId,
-                debug: {
-                    latest: anchorInteractionId,
-                    anchor: anchorInteractionId,
-                    input: inputInteractionId,
-                    adopted_from: adoptedFromInteractionId,
-                    adopted_to: adoptedToInteractionId
+            // If this run was invoked for an older interactionId than the stabilized anchor, yield.
+            // This keeps burst handling deterministic: only the call for the latest inbound should proceed.
+            if (!adoptedLatestOnce && inputInteractionId && anchorInteractionId && String(inputInteractionId) !== String(anchorInteractionId)) {
+                decision = 'yield_to_newer';
+                console.log(`🔄 [${runId}] Yielding: stabilized anchor ${anchorInteractionId} is newer than input ${inputInteractionId}. Aborting this run.`);
+                return respondNoSend({
+                    aborted: "yield_to_newer",
+                    runId,
+                    debug: {
+                        latest: anchorInteractionId,
+                        anchor: anchorInteractionId,
+                        input: inputInteractionId,
+                        adopted_from: adoptedFromInteractionId,
+                        adopted_to: adoptedToInteractionId
+                    }
+                }, 'yield_to_newer');
+            }
+
+            // 4a. Ensure anchorMsgCreatedAt is set
+            if (!anchorMsgCreatedAt && anchorInteractionId) {
+                const { data: anchorRow } = await supabase
+                    .from('interacoes')
+                    .select('created_at')
+                    .eq('id', anchorInteractionId)
+                    .single();
+                if (anchorRow) {
+                    anchorMsgCreatedAt = new Date(anchorRow.created_at).getTime();
+                    anchorCreatedAt = anchorRow.created_at;
                 }
-            }, 'yield_to_newer');
-        }
-
-        // 4a. Ensure anchorMsgCreatedAt is set
-        if (!anchorMsgCreatedAt && anchorInteractionId) {
-            const { data: anchorRow } = await supabase
-                .from('interacoes')
-                .select('created_at')
-                .eq('id', anchorInteractionId)
-                .single();
-            if (anchorRow) {
-                anchorMsgCreatedAt = new Date(anchorRow.created_at).getTime();
-                anchorCreatedAt = anchorRow.created_at;
             }
         }
 
@@ -2232,64 +2487,121 @@ Deno.serve(async (req) => {
         }
 
         // --- CHECK #1: ANTI-SPAM (FIXED: anchor-based, not 60s cooldown) ---
-        try {
-            const { data: lastOutbound, error: lastOutError } = await supabase
-                .from('interacoes')
-                .select('id, created_at')
-                .eq('instance_name', instanceName)
-                .eq('remote_jid', resolvedRemoteJid)
-                .eq('wa_from_me', true)
-                .order('id', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+        if (!isScheduledTrigger) {
+            try {
+                const { data: lastOutbound, error: lastOutError } = await supabase
+                    .from('interacoes')
+                    .select('id, created_at')
+                    .eq('instance_name', instanceName)
+                    .eq('remote_jid', resolvedRemoteJid)
+                    .eq('wa_from_me', true)
+                    .order('id', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
 
-            if (!lastOutError && lastOutbound) {
-                const lastTime = new Date(lastOutbound.created_at).getTime();
-                const nowTime = Date.now();
-                lastOutboundCreatedAt = lastOutbound.created_at;
+                if (!lastOutError && lastOutbound) {
+                    const lastTime = new Date(lastOutbound.created_at).getTime();
+                    const nowTime = Date.now();
+                    lastOutboundCreatedAt = lastOutbound.created_at;
 
-                // A) ALREADY REPLIED: outbound is NEWER than anchor → duplicate run
-                if (anchorMsgCreatedAt && lastTime > anchorMsgCreatedAt) {
-                    decision = 'already_replied';
-                    console.warn(`🛑 [${runId}] Skipped: Already replied after anchor. lastOut=${lastOutbound.created_at} > anchor=${anchorCreatedAt}`);
-                    return respondNoSend({ skipped: "already_replied", runId }, 'already_replied');
-                }
-
-                // B) TIGHT LOOP GUARD: block only true re-entry (no newer inbound than last outbound)
-                const TIGHT_LOOP_GUARD_MS = 5000;
-                const lastOutboundAtMs = Date.parse(lastOutbound.created_at);
-                const anchorAtMs = anchorCreatedAt ? Date.parse(anchorCreatedAt) : NaN;
-                const ageMs = nowTime - lastOutboundAtMs;
-
-                if (ageMs < TIGHT_LOOP_GUARD_MS) {
-                    if (anchorCreatedAt && Number.isFinite(anchorAtMs) && anchorAtMs > lastOutboundAtMs) {
-                        console.log(`[${runId}] Tight-loop bypass: inbound(${anchorCreatedAt}) is newer than last outbound(${lastOutbound.created_at}).`);
-                    } else {
-                        decision = 'tight_loop_guard';
-                        console.warn(`🛑 [${runId}] Skipped: Tight loop guard. Last sent ${ageMs / 1000}s ago.`);
-                        return respondNoSend({ skipped: "tight_loop_guard", runId }, 'tight_loop_guard');
+                    // A) ALREADY REPLIED: outbound is NEWER than anchor -> duplicate run
+                    if (anchorMsgCreatedAt && lastTime > anchorMsgCreatedAt) {
+                        decision = 'already_replied';
+                        console.warn(`🛑 [${runId}] Skipped: Already replied after anchor. lastOut=${lastOutbound.created_at} > anchor=${anchorCreatedAt}`);
+                        return respondNoSend({ skipped: "already_replied", runId }, 'already_replied');
                     }
-                }
 
-                // C) ANCHOR IS NEWER → new inbound after bot reply → ALLOW
-                decision = 'allowed_new_inbound';
-                console.log(`✅ [${runId}] Allowed: anchor is newer than last outbound. Responding to follow-up.`);
+                    // B) TIGHT LOOP GUARD: block only true re-entry (no newer inbound than last outbound)
+                    const TIGHT_LOOP_GUARD_MS = 5000;
+                    const lastOutboundAtMs = Date.parse(lastOutbound.created_at);
+                    const anchorAtMs = anchorCreatedAt ? Date.parse(anchorCreatedAt) : NaN;
+                    const ageMs = nowTime - lastOutboundAtMs;
+
+                    if (ageMs < TIGHT_LOOP_GUARD_MS) {
+                        if (anchorCreatedAt && Number.isFinite(anchorAtMs) && anchorAtMs > lastOutboundAtMs) {
+                            console.log(`[${runId}] Tight-loop bypass: inbound(${anchorCreatedAt}) is newer than last outbound(${lastOutbound.created_at}).`);
+                        } else {
+                            decision = 'tight_loop_guard';
+                            console.warn(`🛑 [${runId}] Skipped: Tight loop guard. Last sent ${ageMs / 1000}s ago.`);
+                            return respondNoSend({ skipped: "tight_loop_guard", runId }, 'tight_loop_guard');
+                        }
+                    }
+
+                    // C) ANCHOR IS NEWER -> new inbound after bot reply -> ALLOW
+                    decision = 'allowed_new_inbound';
+                    console.log(`✅ [${runId}] Allowed: anchor is newer than last outbound. Responding to follow-up.`);
+                }
+            } catch (err) {
+                console.error(`⚠️ [${runId}] Anti-Spam Check #1 failed (non-blocking):`, err);
+                // Fail open - continue
             }
-        } catch (err) {
-            console.error(`⚠️ [${runId}] Anti-Spam Check #1 failed (non-blocking):`, err);
-            // Fail open - continue
+        } else {
+            decision = 'scheduled_trigger_skip_anti_spam';
         }
 
         // 6. BUILD CONTEXT (Scoped History)
         const currentStage = normalizeStage(lead.status_pipeline) || lead.pipeline_stage || 'novo_lead';
+        const configStageKey = isFollowUpTrigger ? 'follow_up' : currentStage;
+        let effectiveAgentType: 'standard' | 'disparos' | 'follow_up' = isFollowUpTrigger ? 'follow_up' : 'standard';
+
         let { data: stageConfig } = await supabase
             .from('ai_stage_config')
             .select('*')
             .eq('org_id', leadOrgId)
-            .eq('pipeline_stage', currentStage)
+            .eq('pipeline_stage', configStageKey)
             .maybeSingle();
 
-        if (!stageConfig) {
+        // Disparos routing only applies to stage "respondeu" outside follow_up trigger.
+        if (!isFollowUpTrigger && currentStage === 'respondeu') {
+            try {
+                const { count: broadcastCount, error: broadcastLookupErr } = await supabase
+                    .from('broadcast_recipients')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('lead_id', Number(leadId))
+                    .eq('status', 'sent')
+                    .limit(1);
+
+                if (broadcastLookupErr) {
+                    console.warn(`⚠️ [${runId}] Failed broadcast_recipients lookup (non-blocking):`, broadcastLookupErr.message);
+                } else if ((broadcastCount || 0) > 0) {
+                    const { data: disparosConfig, error: disparosErr } = await supabase
+                        .from('ai_stage_config')
+                        .select('*')
+                        .eq('org_id', leadOrgId)
+                        .eq('pipeline_stage', 'agente_disparos')
+                        .maybeSingle();
+
+                    if (disparosErr) {
+                        console.warn(`⚠️ [${runId}] Failed to load agente_disparos config (non-blocking):`, disparosErr.message);
+                    } else if (disparosConfig?.is_active) {
+                        stageConfig = disparosConfig;
+                        effectiveAgentType = 'disparos';
+                        console.log(`🎯 [${runId}] Routed to Agente de Disparos (broadcast lead detected via broadcast_recipients)`);
+                        try {
+                            await supabase.from('ai_action_logs').insert({
+                                org_id: leadOrgId,
+                                lead_id: Number(leadId),
+                                action_type: 'agent_routed_to_disparos',
+                                details: JSON.stringify({
+                                    runId,
+                                    lead_id: Number(leadId),
+                                    lead_canal: lead?.canal || null,
+                                    broadcast_recipient_found: true,
+                                    effective_agent: 'disparos',
+                                }),
+                                success: true,
+                            });
+                        } catch (routeLogErr) {
+                            console.warn(`[${runId}] agent_routed_to_disparos log failed (non-blocking):`, routeLogErr);
+                        }
+                    }
+                }
+            } catch (routingErr) {
+                console.warn(`⚠️ [${runId}] Disparos routing exception (non-blocking):`, routingErr);
+            }
+        }
+
+        if (!stageConfig && !isFollowUpTrigger) {
             const { data: fallback } = await supabase
                 .from('ai_stage_config')
                 .select('*')
@@ -2304,12 +2616,12 @@ Deno.serve(async (req) => {
         if (!stageConfig?.is_active) {
             stageFallbackUsed = true;
             stagePromptText = STAGE_FALLBACK_PROMPT;
-            console.log(`⚠️ [${runId}] Stage '${currentStage}' inactive/missing. Using FAQ fallback prompt. stageFallbackUsed=true`);
+            console.log(`⚠️ [${runId}] Stage '${configStageKey}' inactive/missing. Using FAQ fallback prompt. stageFallbackUsed=true`);
         } else {
             stagePromptText = stageConfig.prompt_override || stageConfig.default_prompt || '';
-            console.log(`📝 [${runId}] Stage '${currentStage}' prompt source: ${stageConfig.prompt_override ? 'OVERRIDE' : 'DEFAULT'}. Length: ${stagePromptText.length}`);
+            console.log(`📝 [${runId}] Stage '${configStageKey}' prompt source: ${stageConfig.prompt_override ? 'OVERRIDE' : 'DEFAULT'}. Length: ${stagePromptText.length}. Agent=${effectiveAgentType}`);
             if (stagePromptText.length > 0 && stagePromptText.length < 200) {
-                console.warn(`🚨 [${runId}] CRITICAL: Stage prompt for '${currentStage}' is suspiciously short (${stagePromptText.length} chars). Likely a placeholder seed. Check ai_stage_config.default_prompt for org_id=${leadOrgId}.`);
+                console.warn(`🚨 [${runId}] CRITICAL: Stage prompt for '${configStageKey}' is suspiciously short (${stagePromptText.length} chars). Likely a placeholder seed. Check ai_stage_config.default_prompt for org_id=${leadOrgId}.`);
             }
         }
 
@@ -2821,6 +3133,58 @@ Deno.serve(async (req) => {
                 console.log(`🛡️ [${runId}] Solar Gate Triggered: ${gate.intent} missing [${gate.missing.join(',')}]`);
             }
 
+            const postCallCommentText = isScheduledPostCallTrigger
+                ? String(payload?.extraContext?.comment_text || '').trim()
+                : '';
+            if (isScheduledPostCallTrigger && !postCallCommentText) {
+                return respondNoSend({ skipped: 'empty_comment', runId }, 'empty_comment');
+            }
+
+            const followUpStepRaw = Number(payload?.extraContext?.fu_step || 0);
+            const followUpStep = Number.isInteger(followUpStepRaw) && followUpStepRaw >= 1 && followUpStepRaw <= 5
+                ? followUpStepRaw
+                : null;
+            const followUpElapsedText = formatElapsedSince(
+                isFollowUpTrigger ? (payload?.extraContext?.last_outbound_at || null) : null
+            );
+
+            const postCallContextBlock = isScheduledPostCallTrigger
+                ? `
+=== CONTEXTO DA LIGACAO (PRIORIDADE MAXIMA) ===
+O vendedor realizou uma ligacao com o lead ha 5 minutos e registrou:
+"${postCallCommentText}"
+
+INSTRUCOES:
+- Sua mensagem DEVE referenciar o que foi conversado na ligacao.
+- Use o feedback acima como dado PRINCIPAL do contexto.
+- Conduza para o proximo passo (agendar visita, gerar proposta, ou pedir dado faltante).
+- NAO invente o que foi conversado. Use APENAS o feedback registrado.
+=== FIM DO CONTEXTO DA LIGACAO ===
+`
+                : '';
+
+            const followUpContextBlock = isFollowUpTrigger
+                ? `
+=== FOLLOW UP (STEP ${followUpStep || '?'}/5) ===
+O lead nao responde ha ${followUpElapsedText}.
+Este e o follow-up ${followUpStep || '?'} de 5.
+
+INSTRUCOES POR STEP:
+- Step 1: toque leve, pergunta curta.
+- Step 2: trazer dado novo ou beneficio.
+- Step 3: micro-urgencia sem pressao.
+- Step 4: empatia e validacao.
+- Step 5: ultima mensagem, tom de despedida leve.
+
+OBRIGATORIO:
+- Cada follow-up deve ser DIFERENTE dos anteriores.
+- Referenciar a ultima conversa com base no historico real.
+- 1-2 frases no maximo.
+- Nao repetir perguntas ja feitas.
+=== FIM DO FOLLOW UP ===
+`
+                : '';
+
             const systemPrompt = `
 IDENTIDADE: ${settings.assistant_identity_name || 'Consultor Solar'}. Consultor de energia solar no Brasil.
 Ao se apresentar, use explicitamente o nome "${settings.assistant_identity_name || 'Consultor Solar'}". Evite apresentações genéricas como "assistente da empresa".
@@ -2877,6 +3241,10 @@ REGRA DE AGENDAMENTO:
 - Se o horário solicitado estiver indisponível/conflitado, peça nova escolha.
 - Para efetivar agendamento no CRM, inclua appointment.start_at em ISO.
 - Só mova para chamada_agendada/visita_agendada quando houver appointment válido.
+
+${postCallContextBlock}
+
+${followUpContextBlock}
 
 PROTOCOLO DA ETAPA:
 ${stagePromptText}
@@ -3508,73 +3876,91 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                 // --- CHECK #2: ANTI-SPAM FINAL (First Part Only) — FIXED: anchor-based ---
                 if (i === 0) {
                     try {
-                        const leadStillAiEnabled = await isLeadAiEnabledNow(supabase, leadId);
-                        if (!leadStillAiEnabled) {
-                            decision = 'lead_ai_disabled_before_send';
-                            return respondNoSend({ skipped: 'lead_ai_disabled_before_send', runId }, 'lead_ai_disabled_before_send');
-                        }
-
-                        const { data: latestClientAtSend } = await supabase
-                            .from('interacoes')
-                            .select('id')
-                            .eq('lead_id', leadId)
-                            .eq('instance_name', instanceName)
-                            .eq('tipo', 'mensagem_cliente')
-                            .order('id', { ascending: false })
-                            .limit(1)
-                            .maybeSingle();
-
-                        // In burst mode, only the call that was invoked with the latest inbound id is allowed to send.
-                        // This prevents older runs (even if they adopted latest) from winning and sending before the final quiet-window call.
-                        const raceInteractionId = burstMode ? (inputInteractionId ?? interactionId) : interactionId;
-
-                        if (latestClientAtSend?.id && String(latestClientAtSend.id) !== String(raceInteractionId)) {
-                            decision = 'lost_latest_race';
-                            console.warn(`[${runId}] Skipped (Final Check): interaction ${raceInteractionId} lost race to latest ${latestClientAtSend.id}.`);
-                            return respondNoSend({ skipped: "lost_latest_race", runId }, 'lost_latest_race');
-                        }
-
-                        if (burstMode && latestClientAtSend?.id) {
-                            const burstKey = `${instanceName}:${resolvedRemoteJid}:${latestClientAtSend.id}`;
-                            try {
-                                await supabase.from('ai_action_logs').insert({
-                                    lead_id: Number(leadId),
-                                    action_type: 'burst_winner_claim',
-                                    details: JSON.stringify({
-                                        key: burstKey,
-                                        runId,
-                                        interactionId: latestClientAtSend.id
-                                    }),
-                                    success: true
-                                });
-
-                                const { data: winnerClaim } = await supabase
-                                    .from('ai_action_logs')
-                                    .select('id, details')
-                                    .eq('lead_id', Number(leadId))
-                                    .eq('action_type', 'burst_winner_claim')
-                                    .filter('details', 'ilike', `%"key":"${burstKey}"%`)
-                                    .order('id', { ascending: true })
-                                    .limit(1)
-                                    .maybeSingle();
-
-                                if (winnerClaim?.details) {
-                                    let winnerRunId: string | null = null;
-                                    try {
-                                        winnerRunId = JSON.parse(winnerClaim.details)?.runId || null;
-                                    } catch (_) {
-                                        winnerRunId = null;
-                                    }
-
-                                    if (winnerRunId && winnerRunId !== runId) {
-                                        decision = 'lost_burst_winner';
-                                        console.warn(`[${runId}] Skipped (Burst Winner): winner is ${winnerRunId}.`);
-                                        return respondNoSend({ skipped: "lost_burst_winner", runId }, 'lost_burst_winner');
-                                    }
-                                }
-                            } catch (winnerErr) {
-                                console.warn(`[${runId}] burst_winner_claim failed (non-blocking):`, winnerErr);
+                        if (isFollowUpTrigger) {
+                            const leadStillFollowUpEnabled = await isLeadFollowUpEnabledNow(supabase, leadId);
+                            if (!leadStillFollowUpEnabled) {
+                                decision = 'lead_follow_up_disabled_before_send';
+                                return respondNoSend(
+                                    { skipped: 'lead_follow_up_disabled_before_send', runId },
+                                    'lead_follow_up_disabled_before_send'
+                                );
                             }
+                        } else {
+                            const leadStillAiEnabled = await isLeadAiEnabledNow(supabase, leadId);
+                            if (!leadStillAiEnabled) {
+                                decision = 'lead_ai_disabled_before_send';
+                                return respondNoSend(
+                                    { skipped: 'lead_ai_disabled_before_send', runId },
+                                    'lead_ai_disabled_before_send'
+                                );
+                            }
+                        }
+
+                        if (!isScheduledTrigger) {
+                            const { data: latestClientAtSend } = await supabase
+                                .from('interacoes')
+                                .select('id')
+                                .eq('lead_id', leadId)
+                                .eq('instance_name', instanceName)
+                                .eq('tipo', 'mensagem_cliente')
+                                .order('id', { ascending: false })
+                                .limit(1)
+                                .maybeSingle();
+
+                            // In burst mode, only the call that was invoked with the latest inbound id is allowed to send.
+                            // This prevents older runs (even if they adopted latest) from winning and sending before the final quiet-window call.
+                            const raceInteractionId = burstMode ? (inputInteractionId ?? interactionId) : interactionId;
+
+                            if (latestClientAtSend?.id && String(latestClientAtSend.id) !== String(raceInteractionId)) {
+                                decision = 'lost_latest_race';
+                                console.warn(`[${runId}] Skipped (Final Check): interaction ${raceInteractionId} lost race to latest ${latestClientAtSend.id}.`);
+                                return respondNoSend({ skipped: "lost_latest_race", runId }, 'lost_latest_race');
+                            }
+
+                            if (burstMode && latestClientAtSend?.id) {
+                                const burstKey = `${instanceName}:${resolvedRemoteJid}:${latestClientAtSend.id}`;
+                                try {
+                                    await supabase.from('ai_action_logs').insert({
+                                        lead_id: Number(leadId),
+                                        action_type: 'burst_winner_claim',
+                                        details: JSON.stringify({
+                                            key: burstKey,
+                                            runId,
+                                            interactionId: latestClientAtSend.id
+                                        }),
+                                        success: true
+                                    });
+
+                                    const { data: winnerClaim } = await supabase
+                                        .from('ai_action_logs')
+                                        .select('id, details')
+                                        .eq('lead_id', Number(leadId))
+                                        .eq('action_type', 'burst_winner_claim')
+                                        .filter('details', 'ilike', `%"key":"${burstKey}"%`)
+                                        .order('id', { ascending: true })
+                                        .limit(1)
+                                        .maybeSingle();
+
+                                    if (winnerClaim?.details) {
+                                        let winnerRunId: string | null = null;
+                                        try {
+                                            winnerRunId = JSON.parse(winnerClaim.details)?.runId || null;
+                                        } catch (_) {
+                                            winnerRunId = null;
+                                        }
+
+                                        if (winnerRunId && winnerRunId !== runId) {
+                                            decision = 'lost_burst_winner';
+                                            console.warn(`[${runId}] Skipped (Burst Winner): winner is ${winnerRunId}.`);
+                                            return respondNoSend({ skipped: "lost_burst_winner", runId }, 'lost_burst_winner');
+                                        }
+                                    }
+                                } catch (winnerErr) {
+                                    console.warn(`[${runId}] burst_winner_claim failed (non-blocking):`, winnerErr);
+                                }
+                            }
+                        } else {
+                            decision = 'scheduled_trigger_skip_final_race_check';
                         }
 
                         const { data: finalCheck, error: finalError } = await supabase
@@ -3764,6 +4150,27 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             }
         }
 
+        if (didSendOutbound && !isFollowUpTrigger) {
+            try {
+                const followUpSchedule = await cancelAndScheduleFollowUp({
+                    supabase,
+                    leadId,
+                    orgId: leadOrgId,
+                    currentStage,
+                    instanceName,
+                    runId,
+                });
+                followUpScheduleStatus = followUpSchedule.scheduled
+                    ? `scheduled_step_${followUpSchedule.scheduledStep || 1}`
+                    : `skipped:${followUpSchedule.skippedReason || 'unknown'}`;
+            } catch (followUpScheduleErr: any) {
+                followUpScheduleStatus = `error:${String(followUpScheduleErr?.message || followUpScheduleErr || 'unknown').slice(0, 120)}`;
+                console.warn(`[${runId}] follow-up sequence scheduling failed (non-blocking):`, followUpScheduleErr);
+            }
+        } else if (isFollowUpTrigger) {
+            followUpScheduleStatus = 'not_applicable_follow_up_trigger';
+        }
+
         // 9. STAGE TRANSITION (Increment 3.1: Implicit move if target provided)
         if (aiRes.target_stage) {
             const target = normalizeStage(aiRes.target_stage);
@@ -3836,6 +4243,10 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             aggregatedBurstCount,
             aggregatedChars,
             decision,
+            trigger_type: triggerType,
+            is_scheduled_trigger: isScheduledTrigger,
+            config_stage_key: configStageKey,
+            effective_agent_type: effectiveAgentType,
             stageFallbackUsed,
             kb_hits_count: kbHitsCount,
             kb_chars: kbChars,
@@ -3868,6 +4279,7 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             stage_current: currentStage,
             stage_target_from_llm: (aiRes as any)?.target_stage || null,
             did_send_outbound: didSendOutbound,
+            follow_up_schedule_status: followUpScheduleStatus,
             // V6
             v6_fields_candidate_count: v6FieldsCandidateCount,
             v6_fields_written_count: v6FieldsWrittenCount,
@@ -3904,10 +4316,15 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                     runId,
                     anchorInteractionId,
                     decision,
+                    trigger_type: triggerType,
+                    is_scheduled_trigger: isScheduledTrigger,
+                    config_stage_key: configStageKey,
+                    effective_agent_type: effectiveAgentType,
                     lastInboundAgeMs,
                     aggregatedBurstCount,
                     aggregatedChars,
                     stageFallbackUsed,
+                    follow_up_schedule_status: followUpScheduleStatus,
                     kb_hits_count: kbHitsCount,
                     kb_chars: kbChars,
                     web_used: webUsed,
