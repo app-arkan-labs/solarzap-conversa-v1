@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import OpenAI from "npm:openai";
+import { buildAgentResultEnvelope } from "../_shared/aiPipelineOutcome.ts";
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
 if (!ALLOWED_ORIGIN) {
@@ -599,6 +600,200 @@ function buildFallbackCommentFromText(agg: string): { text: string; type: 'summa
     };
 }
 
+function normalizeQuestionKey(raw: string | null | undefined): string | null {
+    const normalized = String(raw || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9_]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return normalized || null;
+}
+
+function inferQuestionKeyFromText(text: string | null | undefined): string | null {
+    const normalized = String(text || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    if (!normalized) return null;
+    if (/(casa|empresa|agronegocio|agro|fazenda|usina|investimento|tipo do (seu )?projeto|tipo de projeto|tipo de instalacao|instalar para casa|instalar para empresa)/i.test(normalized)) {
+        return 'project_type';
+    }
+    if (/(quanto (voce )?paga|valor da conta|conta de luz|media da conta|qual a faixa|quantos reais|r\\$|reais)/i.test(normalized)) {
+        return 'bill_value';
+    }
+    if (/(consumo|kwh|quilowatt)/i.test(normalized)) {
+        return 'consumption_kwh';
+    }
+    if (/(cidade|uf|bairro|endereco|rua|avenida|logradouro|cep|onde fica|local da instalacao)/i.test(normalized)) {
+        return 'location';
+    }
+    if (/(concessionaria|distribuidora|cpfl|cemig|enel|energisa|neoenergia)/i.test(normalized)) {
+        return 'utility_company';
+    }
+    if (/(telhado|laje|fibrocimento|ceramica|metalica|colonial)/i.test(normalized)) {
+        return 'roof_type';
+    }
+    if (/(sim|nao|pode ser|bora|vamos|fechado|quero agendar|confirmo)/i.test(normalized)) {
+        return 'confirmation';
+    }
+
+    return null;
+}
+
+function extractLocationSignal(text: string): string | null {
+    const normalized = String(text || '').trim();
+    if (!normalized) return null;
+
+    const addressLike = normalized.match(/(?:rua|r\.|avenida|av\.|travessa|trav\.|alameda|estrada|rodovia)\s+[^,\n]+/i)?.[0]?.trim();
+    if (addressLike) return addressLike;
+
+    const cityLike = normalized.match(/(?:moro em|sou de|cidade[: ]|em)\s+([a-zA-Z\u00c0-\u017f\s'-]{3,})/i)?.[1]?.trim();
+    return cityLike || null;
+}
+
+function extractDeterministicLeadSignals(
+    aggregatedText: string,
+    currentStage: string,
+    lastAssistantText: string,
+    lead: any
+): {
+    fields: Record<string, FieldCandidate>;
+    stageData: Record<string, any>;
+    answeredKeys: string[];
+    lastQuestionKey: string | null;
+} {
+    const text = String(aggregatedText || '').trim();
+    const normalized = text
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    const fields: Record<string, FieldCandidate> = {};
+    const answeredKeys = new Set<string>();
+    const stageData: Record<string, any> = {};
+    const lastQuestionKey = inferQuestionKeyFromText(lastAssistantText);
+
+    const customerType = normalizeCustomerType(text);
+    if (customerType && ['residencial', 'comercial', 'agro', 'industrial'].includes(customerType)) {
+        fields.customer_type = { value: customerType, confidence: 'high', source: 'user' };
+        answeredKeys.add('project_type');
+        if (currentStage === 'respondeu') {
+            stageData.segment = customerType;
+        }
+    }
+
+    const billMatch = normalized.match(/(?:r\\$\\s*|)(\\d{2,5})(?:\\s*reais?)\\b/i);
+    const billValue = billMatch?.[1] ? normalizeMoneyBRL(billMatch[1]) : normalizeMoneyBRL(text);
+    if (billValue && billValue > 0) {
+        fields.estimated_value_brl = { value: billValue, confidence: 'high', source: 'user' };
+        answeredKeys.add('bill_value');
+    }
+
+    const kwhMatch = normalized.match(/(\\d{2,5})\\s*kwh\\b/i);
+    const kwhValue = kwhMatch?.[1] ? normalizeKwh(kwhMatch[1]) : null;
+    if (kwhValue && kwhValue > 0) {
+        fields.consumption_kwh_month = { value: kwhValue, confidence: 'high', source: 'user' };
+        answeredKeys.add('consumption_kwh');
+    }
+
+    const locationSignal = extractLocationSignal(text);
+    if (locationSignal) {
+        fields.city = { value: locationSignal, confidence: 'medium', source: 'user' };
+        answeredKeys.add('location');
+        if (currentStage === 'respondeu' && /(?:rua|avenida|travessa|alameda|estrada|rodovia)/i.test(locationSignal)) {
+            stageData.address = locationSignal;
+        }
+    } else if (lead?.cidade) {
+        answeredKeys.add('location');
+    }
+
+    if (/(cpfl|cemig|enel|energisa|neoenergia|equatorial|celesc|copel|light)/i.test(normalized)) {
+        const utility = text.match(/(cpfl|cemig|enel|energisa|neoenergia|equatorial|celesc|copel|light)/i)?.[1] || '';
+        fields.utility_company = { value: utility, confidence: 'high', source: 'user' };
+        answeredKeys.add('utility_company');
+    }
+
+    if (/(sim|pode|vamos|bora|fechado|ok|pode ser|esse|essa|quero)/i.test(normalized)) {
+        answeredKeys.add('confirmation');
+    }
+
+    if (lastQuestionKey && answeredKeys.has(lastQuestionKey)) {
+        stageData.last_question_key = lastQuestionKey;
+    }
+
+    const collected: Record<string, any> = {};
+    if (fields.customer_type) collected.customer_type = fields.customer_type.value;
+    if (fields.estimated_value_brl) collected.estimated_value_brl = fields.estimated_value_brl.value;
+    if (fields.consumption_kwh_month) collected.consumption_kwh_month = fields.consumption_kwh_month.value;
+    if (fields.city) collected.city = fields.city.value;
+    if (fields.utility_company) collected.utility_company = fields.utility_company.value;
+    if (Object.keys(collected).length > 0) {
+        stageData.collected = collected;
+    }
+    if (answeredKeys.size > 0) {
+        stageData.answered_keys = Array.from(answeredKeys);
+    }
+    if (lastQuestionKey) {
+        stageData.last_question_key = lastQuestionKey;
+    }
+
+    return {
+        fields,
+        stageData,
+        answeredKeys: Array.from(answeredKeys),
+        lastQuestionKey,
+    };
+}
+
+function getStageNamespaceSnapshot(lead: any, currentStage: string): Record<string, any> {
+    const namespace = getStageDataNamespace(currentStage);
+    if (!namespace) return {};
+    const root = normalizeLeadStageDataRoot(lead?.lead_stage_data);
+    const value = root[namespace];
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return value as Record<string, any>;
+}
+
+function buildStructuredLeadSnapshot(lead: any, currentStage: string): Record<string, any> {
+    const stageSnapshot = getStageNamespaceSnapshot(lead, currentStage);
+    const meta = parseLeadMeta(lead?.observacoes || '');
+    const answeredKeys = Array.isArray(stageSnapshot.answered_keys)
+        ? stageSnapshot.answered_keys.map((item: any) => String(item || '').trim()).filter(Boolean)
+        : [];
+
+    return {
+        nome_confirmado: lead?.nome || null,
+        tipo_projeto: lead?.tipo_cliente || stageSnapshot.segment || null,
+        cidade_ou_endereco: lead?.cidade || stageSnapshot.address || null,
+        valor_medio_conta_brl: lead?.valor_estimado || stageSnapshot.collected?.estimated_value_brl || null,
+        consumo_kwh_mes: lead?.consumo_kwh || stageSnapshot.collected?.consumption_kwh_month || null,
+        concessionaria: meta.utility_company || stageSnapshot.collected?.utility_company || null,
+        lead_stage_data: stageSnapshot,
+        ultima_pergunta_chave: normalizeQuestionKey(stageSnapshot.last_question_key),
+        slots_respondidos: answeredKeys,
+    };
+}
+
+function buildDeterministicNextQuestionFallback(currentStage: string, lead: any): string | null {
+    if (currentStage !== 'respondeu') return null;
+
+    if (!lead?.tipo_cliente) {
+        return 'Pra eu seguir certo: e para casa, empresa, agronegocio ou usina/investimento?';
+    }
+    if (!lead?.valor_estimado && !lead?.consumo_kwh) {
+        return 'Perfeito. Quanto voce paga, em media, na conta de luz ou quantos kWh por mes?';
+    }
+    if (!lead?.cidade) {
+        return 'Agora me confirma so a cidade da instalacao.';
+    }
+
+    return 'Com esses dados eu sigo melhor. Prefere que eu te passe uma simulacao inicial ou ja alinhamos uma chamada rapida?';
+}
+
 // --- HELPER: Safe Stage Update (Increment 10) ---
 async function updateLeadStageSafe(
     supabase: any,
@@ -1116,6 +1311,9 @@ const STAGE_DATA_ALLOWED_FIELDS: Record<string, Set<string>> = {
         'address',
         'reference_point',
         'bant_complete',
+        'last_question_key',
+        'answered_keys',
+        'collected',
     ]),
     nao_compareceu: new Set([
         'no_show_reason',
@@ -1127,6 +1325,9 @@ const STAGE_DATA_ALLOWED_FIELDS: Record<string, Set<string>> = {
         'visit_datetime',
         'address',
         'reference_point',
+        'last_question_key',
+        'answered_keys',
+        'collected',
     ]),
     negociacao: new Set([
         'payment_track',
@@ -1135,6 +1336,9 @@ const STAGE_DATA_ALLOWED_FIELDS: Record<string, Set<string>> = {
         'chosen_condition',
         'explicit_approval',
         'negotiation_status',
+        'last_question_key',
+        'answered_keys',
+        'collected',
     ]),
     financiamento: new Set([
         'financing_status',
@@ -1145,6 +1349,9 @@ const STAGE_DATA_ALLOWED_FIELDS: Record<string, Set<string>> = {
         'profile_type',
         'approved_at',
         'bank_notes',
+        'last_question_key',
+        'answered_keys',
+        'collected',
     ]),
 };
 
@@ -1831,11 +2038,24 @@ Peça cidade/UF e concessionária para estimar prazos.`;
 Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
+    let payload: any = null;
+    let runId: string | null = null;
+    let leadId: string | number | null = null;
+    let instanceName: string | null = null;
+    let leadOrgId: string | null = null;
+    let supabase: any = null;
+    let latestAiResponse: Record<string, any> | null = null;
+    let structuredLeadSnapshot: Record<string, any> | null = null;
+    let leadUpdatesSummary: Record<string, unknown> | null = null;
+    let currentStage = '';
+    let configStageKey = '';
+    let effectiveAgentType: 'standard' | 'disparos' | 'follow_up' = 'standard';
+
     try {
-        const payload = await req.json();
+        payload = await req.json();
 
         // 0. GENERATE RUN ID
-        const runId = crypto.randomUUID();
+        runId = crypto.randomUUID();
         const triggerType = String(payload?.triggerType || 'incoming_message').trim() || 'incoming_message';
         const isFollowUpTrigger = triggerType === 'follow_up';
         const isScheduledPostCallTrigger = triggerType === 'scheduled_post_call';
@@ -1903,7 +2123,8 @@ Deno.serve(async (req) => {
         let slotSelectionType: AppointmentWindowType | null = null;
 
         // 1. STRICT INSTANCE CHECK
-        const { leadId, instanceName } = payload;
+        leadId = payload?.leadId ?? null;
+        instanceName = payload?.instanceName ?? null;
         const inputInteractionId = payload.interactionId;
         let interactionId = payload.interactionId;
         let adoptedLatestOnce = false;
@@ -1916,7 +2137,63 @@ Deno.serve(async (req) => {
                 ? parsedMaxOutboundPerLeadPerMin
                 : 3;
 
-        const respondNoSend = (
+        const persistAgentOutcome = async (envelope: Record<string, any>) => {
+            if (!supabase || !leadId) return;
+
+            try {
+                await supabase.from('ai_action_logs').insert({
+                    org_id: leadOrgId || null,
+                    lead_id: Number(leadId) || null,
+                    action_type: 'agent_run_outcome',
+                    details: JSON.stringify({
+                        runId,
+                        triggerType,
+                        outcome: envelope.outcome,
+                        reason_code: envelope.reason_code,
+                        message_sent: envelope.message_sent,
+                        should_retry: envelope.should_retry,
+                        next_retry_seconds: envelope.next_retry_seconds,
+                        decision,
+                        current_stage: currentStage || null,
+                        config_stage_key: configStageKey || null,
+                        effective_agent_type: effectiveAgentType || null,
+                        lead_updates: envelope.lead_updates || null,
+                    }),
+                    success: envelope.outcome === 'sent' || envelope.outcome === 'terminal_skip',
+                });
+            } catch (logErr: any) {
+                console.warn(`[${runId}] agent_run_outcome log failed (non-blocking):`, logErr?.message || logErr);
+            }
+
+            try {
+                await supabase.from('ai_agent_runs').insert({
+                    org_id: leadOrgId,
+                    lead_id: leadId,
+                    trigger_type: payload?.triggerType || 'incoming_message',
+                    status: envelope.outcome === 'sent' || envelope.outcome === 'terminal_skip' ? 'success' : 'failed',
+                    error_message: envelope.outcome === 'sent' ? null : envelope.reason_code,
+                    llm_output: latestAiResponse || envelope.ai_response || envelope,
+                    actions_executed: latestAiResponse?.action ? [latestAiResponse.action] : [],
+                    input_snapshot: {
+                        runId,
+                        decision,
+                        trigger_type: triggerType,
+                        current_stage: currentStage || null,
+                        config_stage_key: configStageKey || null,
+                        effective_agent_type: effectiveAgentType || null,
+                        structured_lead_snapshot: structuredLeadSnapshot,
+                        lead_updates: envelope.lead_updates || null,
+                        outcome: envelope.outcome,
+                        reason_code: envelope.reason_code,
+                        message_sent: envelope.message_sent,
+                    }
+                });
+            } catch (logErr: any) {
+                console.warn(`[${runId}] ai_agent_runs insert failed (non-blocking):`, logErr?.message || logErr);
+            }
+        };
+
+        const respondNoSend = async (
             body: Record<string, any>,
             reason: string,
             mode: 'simulated' | 'blocked' = 'blocked',
@@ -1924,17 +2201,24 @@ Deno.serve(async (req) => {
         ) => {
             transportMode = mode;
             transportSimReason = reason;
-            return new Response(
-                JSON.stringify({
-                    ...body,
-                    _transport_mode: mode,
-                    _transport_reason: reason
-                }),
-                {
-                    status,
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                }
-            );
+            const envelope = buildAgentResultEnvelope({
+                reasonCode: reason,
+                messageSent: false,
+                runId,
+                triggerType,
+                scheduledJobId: payload?.scheduledJobId ? String(payload.scheduledJobId) : null,
+                effectiveAgentType,
+                transportMode: mode,
+                transportReason: reason,
+                leadUpdates: leadUpdatesSummary,
+                aiResponse: latestAiResponse,
+                extras: body,
+            });
+            await persistAgentOutcome(envelope);
+            return new Response(JSON.stringify(envelope), {
+                status,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
         };
 
         console.log(`🚀 [${runId}] START Agent. Instance: ${instanceName}, Lead: ${leadId}, Interaction: ${interactionId}`);
@@ -1948,12 +2232,11 @@ Deno.serve(async (req) => {
             Deno.env.get('SUPABASE_URL')!,
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
         );
-        let leadOrgId: string | null = null;
         const aiActionLogsHasOrgId = await tableHasOrgIdColumn(supabaseBase, 'ai_action_logs');
         if (!aiActionLogsHasOrgId) {
             throw new Error('Schema hardening violation: ai_action_logs.org_id column is required');
         }
-        const supabase = createOrgAwareSupabaseClient(
+        supabase = createOrgAwareSupabaseClient(
             supabaseBase,
             () => leadOrgId,
             aiActionLogsHasOrgId
@@ -2540,9 +2823,9 @@ Deno.serve(async (req) => {
         }
 
         // 6. BUILD CONTEXT (Scoped History)
-        const currentStage = normalizeStage(lead.status_pipeline) || lead.pipeline_stage || 'novo_lead';
-        const configStageKey = isFollowUpTrigger ? 'follow_up' : currentStage;
-        let effectiveAgentType: 'standard' | 'disparos' | 'follow_up' = isFollowUpTrigger ? 'follow_up' : 'standard';
+        currentStage = normalizeStage(lead.status_pipeline) || lead.pipeline_stage || 'novo_lead';
+        configStageKey = isFollowUpTrigger ? 'follow_up' : currentStage;
+        effectiveAgentType = isFollowUpTrigger ? 'follow_up' : 'standard';
 
         let { data: stageConfig } = await supabase
             .from('ai_stage_config')
@@ -2554,16 +2837,39 @@ Deno.serve(async (req) => {
         // Disparos routing only applies to stage "respondeu" outside follow_up trigger.
         if (!isFollowUpTrigger && currentStage === 'respondeu') {
             try {
-                const { count: broadcastCount, error: broadcastLookupErr } = await supabase
+                const { data: latestBroadcast, error: broadcastLookupErr } = await supabase
                     .from('broadcast_recipients')
-                    .select('id', { count: 'exact', head: true })
+                    .select('id, sent_at, created_at')
                     .eq('lead_id', Number(leadId))
                     .eq('status', 'sent')
-                    .limit(1);
+                    .order('sent_at', { ascending: false, nullsFirst: false })
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
 
                 if (broadcastLookupErr) {
                     console.warn(`⚠️ [${runId}] Failed broadcast_recipients lookup (non-blocking):`, broadcastLookupErr.message);
-                } else if ((broadcastCount || 0) > 0) {
+                } else if (latestBroadcast) {
+                    const broadcastSentAt = String(latestBroadcast.sent_at || latestBroadcast.created_at || '').trim() || null;
+                    let outboundAfterBroadcast = false;
+
+                    if (broadcastSentAt) {
+                        const { count: outboundCount, error: outboundLookupErr } = await supabase
+                            .from('interacoes')
+                            .select('id', { count: 'exact', head: true })
+                            .eq('lead_id', leadId)
+                            .eq('instance_name', instanceName)
+                            .eq('wa_from_me', true)
+                            .gt('created_at', broadcastSentAt);
+
+                        if (outboundLookupErr) {
+                            console.warn(`⚠️ [${runId}] Failed outbound-after-broadcast lookup (non-blocking):`, outboundLookupErr.message);
+                        } else {
+                            outboundAfterBroadcast = Number(outboundCount || 0) > 0;
+                        }
+                    }
+
+                    if (!outboundAfterBroadcast) {
                     const { data: disparosConfig, error: disparosErr } = await supabase
                         .from('ai_stage_config')
                         .select('*')
@@ -2576,7 +2882,7 @@ Deno.serve(async (req) => {
                     } else if (disparosConfig?.is_active) {
                         stageConfig = disparosConfig;
                         effectiveAgentType = 'disparos';
-                        console.log(`🎯 [${runId}] Routed to Agente de Disparos (broadcast lead detected via broadcast_recipients)`);
+                        console.log(`🎯 [${runId}] Routed to Agente de Disparos (active broadcast context)`);
                         try {
                             await supabase.from('ai_action_logs').insert({
                                 org_id: leadOrgId,
@@ -2587,6 +2893,8 @@ Deno.serve(async (req) => {
                                     lead_id: Number(leadId),
                                     lead_canal: lead?.canal || null,
                                     broadcast_recipient_found: true,
+                                    broadcast_sent_at: broadcastSentAt,
+                                    outbound_after_broadcast: false,
                                     effective_agent: 'disparos',
                                 }),
                                 success: true,
@@ -2594,6 +2902,7 @@ Deno.serve(async (req) => {
                         } catch (routeLogErr) {
                             console.warn(`[${runId}] agent_routed_to_disparos log failed (non-blocking):`, routeLogErr);
                         }
+                    }
                     }
                 }
             } catch (routingErr) {
@@ -2622,6 +2931,55 @@ Deno.serve(async (req) => {
             console.log(`📝 [${runId}] Stage '${configStageKey}' prompt source: ${stageConfig.prompt_override ? 'OVERRIDE' : 'DEFAULT'}. Length: ${stagePromptText.length}. Agent=${effectiveAgentType}`);
             if (stagePromptText.length > 0 && stagePromptText.length < 200) {
                 console.warn(`🚨 [${runId}] CRITICAL: Stage prompt for '${configStageKey}' is suspiciously short (${stagePromptText.length} chars). Likely a placeholder seed. Check ai_stage_config.default_prompt for org_id=${leadOrgId}.`);
+            }
+        }
+
+        if (!isScheduledTrigger && anchorInteractionId) {
+            const mediaWaitMaxRaw = Number.parseInt(Deno.env.get('MEDIA_WAIT_MAX_MS') || '15000', 10);
+            const mediaWaitIntervalRaw = Number.parseInt(Deno.env.get('MEDIA_WAIT_INTERVAL_MS') || '1500', 10);
+            const mediaWaitMaxMs = Number.isFinite(mediaWaitMaxRaw)
+                ? Math.max(1000, Math.min(mediaWaitMaxRaw, 30000))
+                : 15000;
+            const mediaWaitIntervalMs = Number.isFinite(mediaWaitIntervalRaw)
+                ? Math.max(300, Math.min(mediaWaitIntervalRaw, 5000))
+                : 1500;
+
+            const mediaWaitStartedAt = Date.now();
+            let mediaPending = false;
+
+            while (true) {
+                const { data: anchorInteraction, error: anchorInteractionError } = await supabase
+                    .from('interacoes')
+                    .select('id, attachment_type, attachment_ready')
+                    .eq('id', Number(anchorInteractionId))
+                    .eq('lead_id', leadId)
+                    .eq('instance_name', instanceName)
+                    .eq('tipo', 'mensagem_cliente')
+                    .maybeSingle();
+
+                if (anchorInteractionError) {
+                    console.warn(`⚠️ [${runId}] Media wait check failed (non-blocking):`, anchorInteractionError.message);
+                    break;
+                }
+
+                const hasAttachment = Boolean(anchorInteraction?.attachment_type);
+                const isReady = anchorInteraction?.attachment_ready === true;
+                mediaPending = hasAttachment && !isReady;
+
+                if (!mediaPending) {
+                    if (Date.now() - mediaWaitStartedAt >= mediaWaitIntervalMs) {
+                        console.log(`✅ [${runId}] Media wait finished in ${Date.now() - mediaWaitStartedAt}ms for interaction ${anchorInteractionId}.`);
+                    }
+                    break;
+                }
+
+                const elapsedMs = Date.now() - mediaWaitStartedAt;
+                if (elapsedMs >= mediaWaitMaxMs) {
+                    console.warn(`⏱️ [${runId}] Media wait timeout after ${elapsedMs}ms (interaction ${anchorInteractionId}). Proceeding without ready attachment.`);
+                    break;
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, mediaWaitIntervalMs));
             }
         }
 
@@ -2685,9 +3043,26 @@ Deno.serve(async (req) => {
             // Remove all trailing user messages
             let idx = chatHistory.length - 1;
             while (idx >= 0 && chatHistory[idx].role === 'user') idx--;
+            const trailingUserMessages = chatHistory.slice(idx + 1);
+            const trailingImageParts = trailingUserMessages.flatMap((m: any) => {
+                if (!Array.isArray(m?.content)) return [];
+                return m.content.filter((part: any) => part?.type === 'image_url' && part?.image_url?.url);
+            });
+
             chatHistory = chatHistory.slice(0, idx + 1);
+
             // Push single aggregated block
-            chatHistory.push({ role: 'user', content: lastUserTextAggregated });
+            if (trailingImageParts.length > 0) {
+                chatHistory.push({
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: lastUserTextAggregated || 'Imagem enviada pelo cliente.' },
+                        ...trailingImageParts
+                    ]
+                });
+            } else {
+                chatHistory.push({ role: 'user', content: lastUserTextAggregated });
+            }
         }
 
         // Strip created_at from chatHistory before sending to LLM
@@ -2711,6 +3086,80 @@ Deno.serve(async (req) => {
                 break;
             }
         }
+
+        const deterministicSignals = extractDeterministicLeadSignals(
+            lastUserTextAggregated || '',
+            currentStage,
+            lastAssistantMessageText,
+            lead
+        );
+        if (Object.keys(deterministicSignals.fields).length > 0) {
+            const deterministicFieldResult = await executeLeadFieldUpdate(
+                supabase,
+                leadId,
+                deterministicSignals.fields,
+                lead,
+                runId,
+                lastUserTextAggregated || ''
+            );
+            if (deterministicFieldResult.writtenCount > 0) {
+                if (deterministicSignals.fields.customer_type) {
+                    lead.tipo_cliente = normalizeCustomerType(deterministicSignals.fields.customer_type.value) || lead.tipo_cliente;
+                }
+                if (deterministicSignals.fields.estimated_value_brl) {
+                    lead.valor_estimado = normalizeMoneyBRL(deterministicSignals.fields.estimated_value_brl.value) || lead.valor_estimado;
+                }
+                if (deterministicSignals.fields.consumption_kwh_month) {
+                    lead.consumo_kwh = normalizeKwh(deterministicSignals.fields.consumption_kwh_month.value) || lead.consumo_kwh;
+                }
+                if (deterministicSignals.fields.city) {
+                    lead.cidade = String(deterministicSignals.fields.city.value || '').trim() || lead.cidade;
+                }
+            }
+
+            leadUpdatesSummary = {
+                ...(leadUpdatesSummary || {}),
+                deterministic_fields: Object.fromEntries(
+                    Object.entries(deterministicSignals.fields).map(([key, value]) => [key, value?.value ?? null])
+                ),
+            };
+        }
+
+        if (Object.keys(deterministicSignals.stageData).length > 0) {
+            const deterministicStageResult = await executeLeadStageDataUpdate(
+                supabase,
+                leadId,
+                currentStage,
+                deterministicSignals.stageData,
+                lead,
+                runId
+            );
+            if (deterministicStageResult.writtenCount > 0) {
+                const namespace = getStageDataNamespace(currentStage);
+                if (namespace) {
+                    const currentRoot = normalizeLeadStageDataRoot(lead?.lead_stage_data);
+                    const currentNamespaceData =
+                        currentRoot[namespace] && typeof currentRoot[namespace] === 'object' && !Array.isArray(currentRoot[namespace])
+                            ? currentRoot[namespace] as Record<string, any>
+                            : {};
+                    lead.lead_stage_data = {
+                        ...currentRoot,
+                        [namespace]: {
+                            ...currentNamespaceData,
+                            ...normalizeStageDataPayload(deterministicSignals.stageData, namespace),
+                            updated_at: new Date().toISOString(),
+                        }
+                    };
+                }
+            }
+
+            leadUpdatesSummary = {
+                ...(leadUpdatesSummary || {}),
+                deterministic_stage_data: deterministicSignals.stageData,
+            };
+        }
+
+        structuredLeadSnapshot = buildStructuredLeadSnapshot(lead, currentStage);
 
         scheduleTimezone = String(settings?.timezone || 'America/Sao_Paulo').trim() || 'America/Sao_Paulo';
         scheduleWindowConfigNormalized = normalizeAppointmentWindowConfig((settings as any)?.appointment_window_config);
@@ -3249,6 +3698,9 @@ ${followUpContextBlock}
 PROTOCOLO DA ETAPA:
 ${stagePromptText}
 
+DADOS_JA_CONFIRMADOS:
+${structuredLeadSnapshot ? JSON.stringify(structuredLeadSnapshot, null, 2) : '(sem dados estruturados confirmados)'}
+
 COMENTARIOS_CRM_RECENTES:
 ${crmCommentsBlock || '(sem comentários internos disponíveis)'}
 
@@ -3283,6 +3735,7 @@ INCREMENTO_CIRURGICO_V2_20260306_GLOBAL:
 - Ao tratar promocao, nunca inventar valores/condicoes; usar apenas dados explicitamente presentes no contexto.
 
 COMENTÁRIOS INTERNOS E FOLLOW-UPS (V7):
+- Antes de perguntar qualquer coisa, consulte DADOS_JA_CONFIRMADOS. Se um dado já estiver confirmado, NÃO peça de novo.
 - Antes de pedir dados novamente, confira COMENTARIOS_CRM_RECENTES e RESUMO_PROPOSTA_ATUAL para não repetir perguntas já respondidas pelo lead.
 - Após coletar uma informação importante ou definir próximo passo, registre um comentário interno via add_comment. Use comment_type: "summary" para resumos, "next_step" para próximo passo, "note" para observações gerais.
 - Quando houver ação pendente (documentos, retorno, confirmação do cliente), crie um follow-up via create_followup com título claro e due_at se possível.
@@ -3429,6 +3882,76 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
             // 3. Final Assignment
             aiRes.content = text;
         }
+
+        const answeredQuestionKeys = Array.isArray(structuredLeadSnapshot?.slots_respondidos)
+            ? structuredLeadSnapshot.slots_respondidos.map((item: any) => normalizeQuestionKey(item)).filter(Boolean)
+            : [];
+        const draftedQuestionKey = inferQuestionKeyFromText(aiRes?.content || '');
+        const likelyAsksForSlot = typeof aiRes?.content === 'string'
+            && (
+                aiRes.content.includes('?')
+                || /(qual|quanto|me confirma|prefere|e para|é para|tipo de projeto|tipo do projeto)/i.test(aiRes.content)
+            );
+
+        if (
+            aiRes?.action === 'send_message'
+            && likelyAsksForSlot
+            && draftedQuestionKey
+            && answeredQuestionKeys.includes(draftedQuestionKey)
+        ) {
+            console.warn(`[${runId}] Duplicate question guard triggered for key=${draftedQuestionKey}.`);
+
+            if (openai) {
+                try {
+                    const duplicateCorrectionPrompt = `${systemPrompt}
+
+CORRECAO OBRIGATORIA:
+- A resposta abaixo tentou perguntar novamente um dado já confirmado pelo lead.
+- NAO repita a pergunta de chave "${draftedQuestionKey}".
+- Use DADOS_JA_CONFIRMADOS como verdade.
+- Gere a proxima melhor pergunta faltante ou avance para o proximo passo.
+`;
+
+                    const retryCompletion = await openai.chat.completions.create({
+                        model: "gpt-4o",
+                        messages: [{ role: "system", content: duplicateCorrectionPrompt }, ...chatHistory],
+                        max_tokens: 900,
+                        response_format: { type: "json_object" }
+                    });
+
+                    const retryRawContent = retryCompletion.choices[0]?.message?.content || '{}';
+                    const retryCleaned = retryRawContent.replace(/```json/g, '').replace(/```/g, '').trim();
+                    const retryParsed = JSON.parse(retryCleaned);
+                    if (retryParsed && typeof retryParsed === 'object') {
+                        aiRes = {
+                            ...aiRes,
+                            ...retryParsed,
+                        };
+                    }
+                } catch (duplicateRetryErr: any) {
+                    console.warn(`[${runId}] Duplicate question regeneration failed (non-blocking):`, duplicateRetryErr?.message || duplicateRetryErr);
+                }
+            }
+
+            const duplicateAfterRetry = inferQuestionKeyFromText(aiRes?.content || '');
+            const stillRepeats = typeof aiRes?.content === 'string'
+                && duplicateAfterRetry
+                && answeredQuestionKeys.includes(duplicateAfterRetry)
+                && (
+                    aiRes.content.includes('?')
+                    || /(qual|quanto|me confirma|prefere|e para|é para|tipo de projeto|tipo do projeto)/i.test(aiRes.content)
+                );
+
+            if (stillRepeats) {
+                const fallbackContent = buildDeterministicNextQuestionFallback(currentStage, lead);
+                if (fallbackContent) {
+                    aiRes.action = 'send_message';
+                    aiRes.content = fallbackContent;
+                }
+            }
+        }
+
+        latestAiResponse = aiRes as any;
 
         // DEBUG: Attach aggregated text
         aiRes._debug_aggregated = lastUserTextAggregated;
@@ -4303,52 +4826,40 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
         };
         console.log(`📊 [${runId}] STRUCTURED_LOG: ${JSON.stringify(structuredLog)}`);
 
-        // 11. LOG RUN (Include instance info + input_snapshot)
-        try {
-            await supabase.from('ai_agent_runs').insert({
-                org_id: leadOrgId,
-                lead_id: leadId,
-                trigger_type: payload?.triggerType || 'incoming_message',
-                status: 'success',
-                llm_output: aiRes,
-                actions_executed: [aiRes.action, `instance:${instanceName}`, ...(v6FieldsWrittenCount > 0 ? ['update_lead_fields'] : []), ...(v11StageDataWrittenCount > 0 ? ['update_lead_stage_data'] : []), ...(v7CommentWritten ? ['add_comment'] : []), ...(v7FollowupWritten ? ['create_followup'] : []), ...(appointmentWritten ? ['create_appointment'] : []), ...(proposalWritten ? ['create_proposal_draft'] : []), ...(stageMoveResult ? [`stage_move:${stageMoveResult}`] : [])], // Tarefa 6
-                input_snapshot: {
-                    runId,
-                    anchorInteractionId,
-                    decision,
-                    trigger_type: triggerType,
-                    is_scheduled_trigger: isScheduledTrigger,
-                    config_stage_key: configStageKey,
-                    effective_agent_type: effectiveAgentType,
-                    lastInboundAgeMs,
-                    aggregatedBurstCount,
-                    aggregatedChars,
-                    stageFallbackUsed,
-                    follow_up_schedule_status: followUpScheduleStatus,
-                    kb_hits_count: kbHitsCount,
-                    kb_chars: kbChars,
-                    web_used: webUsed,
-                    web_results_count: webResultsCount,
-                    schedule_timezone: scheduleTimezone,
-                    schedule_busy_count: scheduleBusyCount,
-                    slot_selection_event: slotSelectionEvent,
-                    slot_selection_start_at: slotSelectionStartAt,
-                    slot_selection_type: slotSelectionType,
-                    appointment_precheck_block_reason: appointmentPrecheckBlockedReason,
-                    implicit_confirmation_used: implicitConfirmationUsed,
-                    stage_gate_block_reason: stageGateBlockReason,
-                    v6_fields_candidate_count: v6FieldsCandidateCount,
-                    v6_fields_written_count: v6FieldsWrittenCount,
-                    v11_stage_data_candidate_count: v11StageDataCandidateCount,
-                    v11_stage_data_written_count: v11StageDataWrittenCount,
-                    v11_stage_data_namespace: v11StageDataNamespace,
-                }
-            });
-        } catch (logErr) {
-            console.warn(`⚠️ [${runId}] ai_agent_runs insert failed (non-blocking):`, logErr);
-        }
+        leadUpdatesSummary = {
+            ...(leadUpdatesSummary || {}),
+            fields_written_count: v6FieldsWrittenCount,
+            stage_data_written_count: v11StageDataWrittenCount,
+            comment_written: v7CommentWritten,
+            followup_written: v7FollowupWritten,
+            appointment_written: appointmentWritten,
+            proposal_written: proposalWritten,
+            stage_move_result: stageMoveResult,
+        };
+        latestAiResponse = aiRes as any;
 
-        return new Response(JSON.stringify(aiRes), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        const finalReasonCode = didSendOutbound
+            ? 'message_sent'
+            : (isScheduledTrigger ? 'scheduled_trigger_no_outbound' : 'no_outbound_action');
+        const finalEnvelope = buildAgentResultEnvelope({
+            reasonCode: finalReasonCode,
+            messageSent: didSendOutbound,
+            runId,
+            triggerType,
+            scheduledJobId: payload?.scheduledJobId ? String(payload.scheduledJobId) : null,
+            effectiveAgentType,
+            transportMode,
+            transportReason: transportSimReason,
+            leadUpdates: leadUpdatesSummary,
+            aiResponse: aiRes as any,
+            extras: {
+                structured_log: structuredLog,
+                did_send_outbound: didSendOutbound,
+            },
+        });
+        await persistAgentOutcome(finalEnvelope);
+
+        return new Response(JSON.stringify(finalEnvelope), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     } catch (error: any) {
         console.error("Agent Error:", error);
@@ -4367,12 +4878,23 @@ Se APENAS dados foram detectados e não há resposta necessária, use action="up
                 });
             }
         } catch (_logErr) { /* non-blocking */ }
-        return new Response(
-            JSON.stringify({
+        const errorEnvelope = buildAgentResultEnvelope({
+            reasonCode: 'exception',
+            messageSent: false,
+            runId,
+            triggerType: payload?.triggerType || null,
+            scheduledJobId: payload?.scheduledJobId ? String(payload.scheduledJobId) : null,
+            effectiveAgentType,
+            transportMode: 'blocked',
+            transportReason: 'exception',
+            leadUpdates: leadUpdatesSummary,
+            aiResponse: latestAiResponse,
+            extras: {
                 error: error.message,
-                _transport_mode: 'blocked',
-                _transport_reason: 'exception'
-            }),
+            },
+        });
+        return new Response(
+            JSON.stringify(errorEnvelope),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     }

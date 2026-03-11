@@ -2,8 +2,8 @@ export interface DashboardPayload {
     kpis: {
         leads: { value: number; delta_pct: number };
         conversion: { value_pct: number; won: number; leads: number };
-        revenue: { value: number; delta_pct: number };
-        profit: { value: number; delta_pct: number };
+        revenue: { value: number; prev_value: number; delta_pct: number | null };
+        profit: { value: number; prev_value: number; delta_pct: number | null };
         avg_close_days: { value: number };
         ticket_avg: { value: number };
         forecast: { value: number; count: number };
@@ -22,6 +22,7 @@ export interface DashboardPayload {
             last_interaction?: string;
         }>;
         owner_performance: Array<{
+            owner_id?: string;
             name: string;
             leads: number;
             won: number;
@@ -45,3 +46,4 @@ export interface DashboardPayload {
         }>;
     };
 }
+

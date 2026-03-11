@@ -11,6 +11,7 @@ import {
 } from '../_shared/trackingAttribution.ts'
 import { resolveLeadCanonicalId } from '../_shared/leadCanonical.ts'
 import { checkLimit, recordUsage } from '../_shared/billing.ts'
+import { normalizeAgentInvokeResult } from '../_shared/aiPipelineOutcome.ts'
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
 if (!ALLOWED_ORIGIN) {
@@ -1287,8 +1288,59 @@ Deno.serve(async (req: Request) => {
                         .invoke('ai-pipeline-agent', {
                             body: { leadId, triggerType: 'incoming_message', interactionId: inserted.id, instanceName }
                         })
-                        .then(async ({ error: invokeError }: { error: { message: string } | null }) => {
-                            if (!invokeError) {
+                        .then(async ({ data: invokeData, error: invokeError }: { data?: unknown; error: { message: string } | null }) => {
+                            if (invokeError) {
+                                console.error('❌ Failed to invoke ai-pipeline-agent from whatsapp-webhook', {
+                                    leadId,
+                                    interactionId: inserted.id,
+                                    instanceName,
+                                    error: invokeError.message
+                                })
+                                try {
+                                    await supabase.from('ai_action_logs').insert({
+                                        org_id: orgId,
+                                        lead_id: Number(leadId),
+                                        action_type: 'agent_invoke_failed',
+                                        details: JSON.stringify({
+                                            source: 'whatsapp-webhook',
+                                            triggerType: 'incoming_message',
+                                            interactionId: inserted.id,
+                                            instanceName,
+                                            error: invokeError.message
+                                        }),
+                                        success: false
+                                    })
+                                } catch (logErr) {
+                                    console.warn('Failed to log agent_invoke_failed (whatsapp-webhook):', logErr)
+                                }
+                                return
+                            }
+
+                            const agentResult = normalizeAgentInvokeResult(invokeData)
+                            try {
+                                await supabase.from('ai_action_logs').insert({
+                                    org_id: orgId,
+                                    lead_id: Number(leadId),
+                                    action_type: 'agent_invoke_outcome',
+                                    details: JSON.stringify({
+                                        source: 'whatsapp-webhook',
+                                        triggerType: 'incoming_message',
+                                        interactionId: inserted.id,
+                                        instanceName,
+                                        outcome: agentResult.outcome,
+                                        reason_code: agentResult.reason_code,
+                                        should_retry: agentResult.should_retry,
+                                        next_retry_seconds: agentResult.next_retry_seconds,
+                                        message_sent: agentResult.message_sent,
+                                        run_id: agentResult.run_id || null
+                                    }),
+                                    success: agentResult.outcome === 'sent'
+                                })
+                            } catch (logErr) {
+                                console.warn('Failed to log agent_invoke_outcome (whatsapp-webhook):', logErr)
+                            }
+
+                            if (agentResult.outcome === 'sent') {
                                 try {
                                     await recordUsage(supabase, {
                                         orgId,
@@ -1300,6 +1352,8 @@ Deno.serve(async (req: Request) => {
                                         metadata: {
                                             instance_name: instanceName,
                                             interaction_id: inserted.id,
+                                            agent_outcome: agentResult.outcome,
+                                            reason_code: agentResult.reason_code,
                                         },
                                     })
                                 } catch (usageError) {
@@ -1307,29 +1361,16 @@ Deno.serve(async (req: Request) => {
                                 }
                                 return
                             }
-                            console.error('❌ Failed to invoke ai-pipeline-agent from whatsapp-webhook', {
+
+                            console.warn('AI pipeline returned without outbound send', {
                                 leadId,
                                 interactionId: inserted.id,
                                 instanceName,
-                                error: invokeError.message
+                                outcome: agentResult.outcome,
+                                reasonCode: agentResult.reason_code,
+                                shouldRetry: agentResult.should_retry,
+                                nextRetrySeconds: agentResult.next_retry_seconds,
                             })
-                            try {
-                                await supabase.from('ai_action_logs').insert({
-                                    org_id: orgId,
-                                    lead_id: Number(leadId),
-                                    action_type: 'agent_invoke_failed',
-                                    details: JSON.stringify({
-                                        source: 'whatsapp-webhook',
-                                        triggerType: 'incoming_message',
-                                        interactionId: inserted.id,
-                                        instanceName,
-                                        error: invokeError.message
-                                    }),
-                                    success: false
-                                })
-                            } catch (logErr) {
-                                console.warn('Failed to log agent_invoke_failed (whatsapp-webhook):', logErr)
-                            }
                         })
                         .catch(async (invokeErr: unknown) => {
                             const invokeErrorMessage = invokeErr instanceof Error ? invokeErr.message : String(invokeErr)
@@ -1373,4 +1414,3 @@ Deno.serve(async (req: Request) => {
         })
     }
 })
-

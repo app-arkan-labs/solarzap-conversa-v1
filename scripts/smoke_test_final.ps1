@@ -19,6 +19,19 @@ Write-Host "[OK] JWT obtained"
 
 $pass = 0; $fail = 0; $info = 0
 
+function Invoke-MgmtQuery {
+  param([string]$Query)
+
+  $body = @{ query = $Query } | ConvertTo-Json -Depth 5
+  $resp = Invoke-WebRequest -Uri "https://api.supabase.com/v1/projects/ucwmcmdwbvrwotuzlmxh/database/query" `
+    -Method POST `
+    -Headers @{ "Authorization" = "Bearer $ACCESS_TOKEN"; "Content-Type" = "application/json" } `
+    -Body $body `
+    -UseBasicParsing
+
+  return ($resp.Content | ConvertFrom-Json)
+}
+
 # T01: DB connectivity + ai_enabled
 try {
   $r = Invoke-WebRequest -Uri "$SUPABASE_URL/rest/v1/leads?select=id,ai_enabled&limit=3" `
@@ -150,15 +163,96 @@ try {
 
 # T13: DB migration columns via Management API
 try {
-  $r = Invoke-WebRequest -Uri "https://api.supabase.com/v1/projects/ucwmcmdwbvrwotuzlmxh/database/query" `
-    -Method POST `
-    -Headers @{ "Authorization" = "Bearer $ACCESS_TOKEN"; "Content-Type" = "application/json" } `
-    -Body '{"query":"SELECT column_name FROM information_schema.columns WHERE table_name=''leads'' AND column_name IN (''ai_enabled'',''ai_paused_reason'',''ai_paused_at'') ORDER BY column_name"}' `
-    -UseBasicParsing
-  $d = $r.Content | ConvertFrom-Json
+  $d = Invoke-MgmtQuery "SELECT column_name FROM information_schema.columns WHERE table_name='leads' AND column_name IN ('ai_enabled','ai_paused_reason','ai_paused_at') ORDER BY column_name"
   if ($d.Count -eq 3) { Write-Host "[PASS] T13 DB migration columns ($($d.Count)/3)"; $pass++ }
   else { Write-Host "[FAIL] T13 DB migration columns ($($d.Count)/3 expected)"; $fail++ }
 } catch { Write-Host "[FAIL] T13 DB migration: $_"; $fail++ }
+
+# T14: Stage configs dos 3 agentes por org
+try {
+  $r = Invoke-WebRequest -Uri "$SUPABASE_URL/rest/v1/ai_stage_config?org_id=eq.$ORG_ID&pipeline_stage=in.(agente_disparos,follow_up,chamada_realizada)&select=pipeline_stage,is_active" `
+    -Headers @{ "apikey" = $SERVICE_KEY; "Authorization" = "Bearer $SERVICE_KEY" } -UseBasicParsing
+  $d = $r.Content | ConvertFrom-Json
+  $missing = @('agente_disparos', 'follow_up', 'chamada_realizada') | Where-Object { -not ($d.pipeline_stage -contains $_) }
+  $inactive = @($d | Where-Object { $_.is_active -ne $true } | Select-Object -ExpandProperty pipeline_stage)
+  if ($missing.Count -eq 0 -and $inactive.Count -eq 0) {
+    Write-Host "[PASS] T14 ai_stage_config ativos para disparos/follow_up/chamada_realizada"; $pass++
+  } else {
+    Write-Host "[FAIL] T14 ai_stage_config missing=[$($missing -join ',')] inactive=[$($inactive -join ',')]"; $fail++
+  }
+} catch { Write-Host "[FAIL] T14 ai_stage_config: $_"; $fail++ }
+
+# T15: Estrutura de fila (tabela + RPC)
+try {
+  $d = Invoke-MgmtQuery "SELECT (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='scheduled_agent_jobs') AS table_count, (SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname='public' AND p.proname='claim_due_agent_jobs') AS rpc_count"
+  $row = $d | Select-Object -First 1
+  if ([int]$row.table_count -eq 1 -and [int]$row.rpc_count -ge 1) {
+    Write-Host "[PASS] T15 scheduled_agent_jobs + claim_due_agent_jobs presentes"; $pass++
+  } else {
+    Write-Host "[FAIL] T15 Estrutura fila ausente (table=$($row.table_count), rpc=$($row.rpc_count))"; $fail++
+  }
+} catch { Write-Host "[FAIL] T15 Estrutura fila: $_"; $fail++ }
+
+# T16: Cron process-agent-jobs ativo
+try {
+  $d = Invoke-MgmtQuery "SELECT jobid, active, schedule FROM cron.job WHERE jobname='process-agent-jobs-worker' ORDER BY jobid DESC LIMIT 1"
+  if ($d.Count -ge 1 -and $d[0].active -eq $true) {
+    Write-Host "[PASS] T16 Cron process-agent-jobs ativo (jobid=$($d[0].jobid), schedule=$($d[0].schedule))"; $pass++
+  } else {
+    Write-Host "[FAIL] T16 Cron process-agent-jobs não encontrado/inativo"; $fail++
+  }
+} catch { Write-Host "[FAIL] T16 Cron process-agent-jobs: $_"; $fail++ }
+
+# T17: Cron executou nas últimas 6h
+try {
+  $d = Invoke-MgmtQuery "SELECT COUNT(*)::int AS runs FROM cron.job_run_details d JOIN cron.job j ON j.jobid=d.jobid WHERE j.jobname='process-agent-jobs-worker' AND d.start_time > now() - interval '6 hours'"
+  $runs = [int]($d | Select-Object -First 1).runs
+  if ($runs -gt 0) {
+    Write-Host "[PASS] T17 Cron process-agent-jobs com execuções recentes ($runs runs/6h)"; $pass++
+  } else {
+    Write-Host "[FAIL] T17 Cron sem execuções recentes (0 runs/6h)"; $fail++
+  }
+} catch { Write-Host "[FAIL] T17 Cron runs: $_"; $fail++ }
+
+# T18: Health de invoke do worker
+try {
+  $r = Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/process-agent-jobs" -Method POST `
+    -Headers @{ "Authorization" = "Bearer $SERVICE_KEY"; "Content-Type" = "application/json" } `
+    -Body '{"source":"smoke_test_final"}' -UseBasicParsing
+  $d = $r.Content | ConvertFrom-Json
+  if ($null -ne $d.processed) {
+    Write-Host "[PASS] T18 process-agent-jobs invoke (processed=$($d.processed))"; $pass++
+  } else {
+    Write-Host "[FAIL] T18 process-agent-jobs resposta inesperada"; $fail++
+  }
+} catch {
+  $code = $_.Exception.Response.StatusCode.value__
+  Write-Host "[FAIL] T18 process-agent-jobs invoke ($code)"; $fail++
+}
+
+# T19: Backlog crítico da fila de agentes
+try {
+  $d = Invoke-MgmtQuery "SELECT (SELECT COUNT(*) FROM public.scheduled_agent_jobs WHERE status='pending' AND scheduled_at < now() - interval '15 minutes')::int AS pending_stale_15m, (SELECT COUNT(*) FROM public.scheduled_agent_jobs WHERE status='processing' AND updated_at < now() - interval '5 minutes')::int AS processing_stale_5m"
+  $row = $d | Select-Object -First 1
+  $pendingStale = [int]$row.pending_stale_15m
+  $processingStale = [int]$row.processing_stale_5m
+  if ($pendingStale -eq 0 -and $processingStale -eq 0) {
+    Write-Host "[PASS] T19 Fila saudável (pending_stale_15m=0, processing_stale_5m=0)"; $pass++
+  } else {
+    Write-Host "[FAIL] T19 Backlog detectado (pending_stale_15m=$pendingStale, processing_stale_5m=$processingStale)"; $fail++
+  }
+} catch { Write-Host "[FAIL] T19 Backlog fila: $_"; $fail++ }
+
+# T20: Evidências recentes de execução dos agentes (INFO)
+try {
+  $d = Invoke-MgmtQuery "SELECT action_type, COUNT(*)::int AS total FROM public.ai_action_logs WHERE created_at > now() - interval '24 hours' AND action_type IN ('agent_routed_to_disparos','follow_up_agent_executed','post_call_agent_executed','agent_invoke_failed') GROUP BY action_type ORDER BY action_type"
+  if ($d.Count -gt 0) {
+    $summary = ($d | ForEach-Object { "$($_.action_type)=$($_.total)" }) -join ', '
+    Write-Host "[INFO] T20 ai_action_logs_24h $summary"; $info++
+  } else {
+    Write-Host "[INFO] T20 ai_action_logs_24h sem eventos"; $info++
+  }
+} catch { Write-Host "[INFO] T20 ai_action_logs_24h erro: $_"; $info++ }
 
 Write-Host ""
 Write-Host "===== RESULTS: $pass PASS, $fail FAIL, $info INFO ====="

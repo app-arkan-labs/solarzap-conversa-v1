@@ -1,13 +1,11 @@
-import React, { Component, ReactNode, useState, useMemo } from 'react';
+import React, { Component, ReactNode, useMemo, useState } from 'react';
 import { Appointment, Contact } from '@/types/solarzap';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Plus, Video, Calendar as CalendarIcon, Clock, MapPin, Archive, History, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppointments } from '@/hooks/useAppointments';
-import { useLeads } from '@/hooks/domain/useLeads';
 import { AppointmentModal } from './AppointmentModal';
-import { format, isSameDay, parseISO, startOfDay, endOfDay, isBefore } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { format, isSameDay, parseISO, startOfDay, endOfDay } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarFilters, CalendarFilterState } from './calendar/CalendarFilters';
@@ -15,6 +13,8 @@ import { EventFeedbackModal } from './calendar/EventFeedbackModal';
 import { EventArchiveModal } from './calendar/EventArchiveModal';
 import { useToast } from '@/hooks/use-toast';
 import { PageHeader } from './PageHeader';
+import { LeadScopeSelect, type LeadScopeValue } from './LeadScopeSelect';
+import type { MemberDto } from '@/lib/orgAdminClient';
 
 type CalendarAppointmentErrorBoundaryProps = {
   children: ReactNode;
@@ -50,6 +50,12 @@ class CalendarAppointmentErrorBoundary extends Component<
 
 interface CalendarViewProps {
   contacts?: Contact[];
+  canViewTeam?: boolean;
+  leadScope?: LeadScopeValue;
+  onLeadScopeChange?: (scope: LeadScopeValue) => void;
+  leadScopeMembers?: MemberDto[];
+  leadScopeLoading?: boolean;
+  currentUserId?: string | null;
 }
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
@@ -92,11 +98,27 @@ const STATUS_COLORS: Record<string, string> = {
   rescheduled: 'bg-orange-100 text-orange-700'
 };
 
-export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
+export function CalendarView({
+  contacts: propContacts,
+  canViewTeam = false,
+  leadScope = 'mine',
+  onLeadScopeChange,
+  leadScopeMembers = [],
+  leadScopeLoading = false,
+  currentUserId = null,
+}: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const { appointments, isLoading } = useAppointments();
-  const { contacts: hookContacts } = useLeads();
-  const contacts = hookContacts.length > 0 ? hookContacts : (propContacts || []);
+  const readScope = canViewTeam && leadScope !== 'mine' ? 'org' : 'mine';
+  const { appointments } = useAppointments({ readScope });
+  const contacts = propContacts || [];
+  const contactByLeadId = useMemo(
+    () => new Map(contacts.map((contact) => [String(contact.id), contact])),
+    [contacts],
+  );
+  const scopedAppointments = useMemo(
+    () => appointments.filter((appointment) => contactByLeadId.has(String(appointment.lead_id))),
+    [appointments, contactByLeadId],
+  );
   const { toast } = useToast();
 
   // Filter States - Independent for each section
@@ -134,6 +156,12 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
       // Type Filter
       if (currentFilters.type && appt.type !== currentFilters.type) return false;
 
+      // Lead Source Filter
+      if (currentFilters.channel) {
+        const contact = contactByLeadId.get(String(appt.lead_id));
+        if (!contact || contact.channel !== currentFilters.channel) return false;
+      }
+
       // Client Filter
       if (currentFilters.clientId && String(appt.lead_id) !== currentFilters.clientId) return false;
 
@@ -152,15 +180,15 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
 
   // --- Main Calendar Logic ---
   const filteredAppointments = useMemo(() => {
-    return applyFilters(appointments, mainFilters);
-  }, [appointments, mainFilters]);
+    return applyFilters(scopedAppointments, mainFilters);
+  }, [mainFilters, scopedAppointments]);
 
   // --- Sidebar Logic ---
   const { upcomingEvents, pastEvents } = useMemo(() => {
     const now = new Date();
 
     // Split all non-completed appointments first based on time
-    const allActive = appointments.filter(a => a.status !== 'completed'); // Base filter
+    const allActive = scopedAppointments.filter(a => a.status !== 'completed'); // Base filter
 
     const upcoming = allActive.filter(a => {
       const t = parseISO(a.start_at).getTime();
@@ -180,12 +208,12 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
     filteredPast.sort((a, b) => new Date(b.start_at).getTime() - new Date(a.start_at).getTime());
 
     return { upcomingEvents: filteredUpcoming, pastEvents: filteredPast };
-  }, [appointments, upcomingFilters, pastFilters]);
+  }, [pastFilters, scopedAppointments, upcomingFilters]);
 
 
   const getContactName = (item: Appointment) => {
     if (item.leads?.nome) return item.leads.nome;
-    return contacts.find(c => c.id === String(item.lead_id))?.name || 'Cliente';
+    return contactByLeadId.get(String(item.lead_id))?.name || 'Cliente';
   };
 
   const year = currentDate.getFullYear();
@@ -311,10 +339,22 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
         icon={CalendarIcon}
         className="z-20"
         actionContent={
-          <Button onClick={handleCreateEvent} className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10 w-full sm:w-auto">
-            <Plus className="w-4 h-4" />
-            Novo Agendamento
-          </Button>
+          <>
+            {canViewTeam && onLeadScopeChange ? (
+              <LeadScopeSelect
+                value={leadScope}
+                onChange={onLeadScopeChange}
+                members={leadScopeMembers}
+                loading={leadScopeLoading}
+                currentUserId={currentUserId}
+                testId="calendar-owner-scope-trigger"
+              />
+            ) : null}
+            <Button onClick={handleCreateEvent} className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10 w-full sm:w-auto">
+              <Plus className="w-4 h-4" />
+              Novo Agendamento
+            </Button>
+          </>
         }
       />
 
@@ -342,7 +382,12 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
 
               {showFilters && (
                 <div className="animate-in fade-in slide-in-from-left-2 duration-300 origin-left">
-                  <CalendarFilters filters={mainFilters} onChange={setMainFilters} className="w-full sm:w-auto bg-white p-0.5 rounded-lg" />
+                  <CalendarFilters
+                    filters={mainFilters}
+                    onChange={setMainFilters}
+                    contacts={contacts}
+                    className="w-full sm:w-auto bg-white p-0.5 rounded-lg"
+                  />
                 </div>
               )}
             </div>
@@ -458,7 +503,12 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-auto p-2">
-                  <CalendarFilters filters={upcomingFilters} onChange={setUpcomingFilters} className="flex-col items-stretch gap-2 [&_button]:w-full [&_button]:justify-start" />
+                  <CalendarFilters
+                    filters={upcomingFilters}
+                    onChange={setUpcomingFilters}
+                    contacts={contacts}
+                    className="flex-col items-stretch gap-2 [&_button]:w-full [&_button]:justify-start"
+                  />
                 </PopoverContent>
               </Popover>
             </div>
@@ -491,7 +541,12 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent align="end" className="w-auto p-2">
-                    <CalendarFilters filters={pastFilters} onChange={setPastFilters} className="flex-col items-stretch gap-2 [&_button]:w-full [&_button]:justify-start" />
+                    <CalendarFilters
+                      filters={pastFilters}
+                      onChange={setPastFilters}
+                      contacts={contacts}
+                      className="flex-col items-stretch gap-2 [&_button]:w-full [&_button]:justify-start"
+                    />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -533,6 +588,7 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
         <AppointmentModal
           isOpen={appointmentModalOpen}
           onClose={() => setAppointmentModalOpen(false)}
+          contacts={contacts}
           initialData={selectedAppointment}
           defaultDate={modalDate}
         />
@@ -547,6 +603,8 @@ export function CalendarView({ contacts: propContacts }: CalendarViewProps) {
       <EventArchiveModal
         isOpen={archiveModalOpen}
         onClose={() => setArchiveModalOpen(false)}
+        appointments={scopedAppointments}
+        contacts={contacts}
       />
     </div>
   );

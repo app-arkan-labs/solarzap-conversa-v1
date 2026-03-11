@@ -1,5 +1,5 @@
-import React from 'react';
-import { AppointmentType, Contact } from '@/types/solarzap';
+import React, { useMemo } from 'react';
+import { AppointmentType, Channel, CHANNEL_INFO, Contact } from '@/types/solarzap';
 import {
     Select,
     SelectContent,
@@ -7,7 +7,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -23,10 +22,10 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { useLeads } from '@/hooks/domain/useLeads';
 
 export interface CalendarFilterState {
     type?: AppointmentType | 'all';
+    channel?: Channel;
     clientId?: string;
     startDate?: Date;
     endDate?: Date;
@@ -35,14 +34,32 @@ export interface CalendarFilterState {
 interface CalendarFiltersProps {
     filters: CalendarFilterState;
     onChange: (filters: CalendarFilterState) => void;
+    contacts: Contact[];
     className?: string;
 }
 
-export function CalendarFilters({ filters, onChange, className }: CalendarFiltersProps) {
-    const { contacts } = useLeads();
+export function CalendarFilters({ filters, onChange, contacts, className }: CalendarFiltersProps) {
+    const availableChannels = useMemo(() => {
+        const seen = new Set<Channel>();
+        const channels: Channel[] = [];
+
+        contacts.forEach((contact) => {
+            const channel = contact.channel;
+            if (!seen.has(channel)) {
+                seen.add(channel);
+                channels.push(channel);
+            }
+        });
+
+        return channels;
+    }, [contacts]);
 
     const handleTypeChange = (val: string) => {
         onChange({ ...filters, type: val === 'all' ? undefined : val as AppointmentType });
+    };
+
+    const handleChannelChange = (val: string) => {
+        onChange({ ...filters, channel: val === 'all' ? undefined : val as Channel });
     };
 
     const handleClientChange = (val: string) => {
@@ -58,10 +75,10 @@ export function CalendarFilters({ filters, onChange, className }: CalendarFilter
     };
 
     const clearFilters = () => {
-        onChange({ type: undefined, clientId: undefined, startDate: undefined, endDate: undefined });
+        onChange({ type: undefined, channel: undefined, clientId: undefined, startDate: undefined, endDate: undefined });
     };
 
-    const hasFilters = !!filters.type || !!filters.clientId || !!filters.startDate || !!filters.endDate;
+    const hasFilters = !!filters.type || !!filters.channel || !!filters.clientId || !!filters.startDate || !!filters.endDate;
 
     return (
         <div className={cn("flex flex-wrap items-center gap-2", className)}>
@@ -77,6 +94,21 @@ export function CalendarFilters({ filters, onChange, className }: CalendarFilter
                     <SelectItem value="reuniao">Reunião</SelectItem>
                     <SelectItem value="instalacao">Instalação</SelectItem>
                     <SelectItem value="other">Outro</SelectItem>
+                </SelectContent>
+            </Select>
+
+            {/* Filter by Lead Source */}
+            <Select value={filters.channel || 'all'} onValueChange={handleChannelChange}>
+                <SelectTrigger className="w-[170px] h-8 text-xs bg-white text-primary border border-slate-300 shadow-sm hover:bg-white/90 focus:ring-0 focus:ring-offset-0">
+                    <SelectValue placeholder="Origem" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">Todas as Origens</SelectItem>
+                    {availableChannels.map((channel) => (
+                        <SelectItem key={`calendar-source-${channel}`} value={channel}>
+                            {CHANNEL_INFO[channel]?.label || channel}
+                        </SelectItem>
+                    ))}
                 </SelectContent>
             </Select>
 

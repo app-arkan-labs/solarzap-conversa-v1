@@ -10,6 +10,12 @@ import {
   renderDigestSectionsTextLines,
   type DigestSections,
 } from '../_shared/digestContract.ts'
+import {
+  mergeDigestLeadIds,
+  renderDigestCommentsForPrompt,
+  selectDigestCommentsForPrompt,
+  type DigestPromptCommentRow,
+} from '../_shared/digestCommentSelection.ts'
 import { selectDigestMessagesForPrompt } from '../_shared/digestMessageSelection.ts'
 import { resolveDigestPeriodBounds } from '../_shared/digestPeriod.ts'
 import { buildDigestTextMessage } from '../_shared/digestTextFormatter.ts'
@@ -57,9 +63,13 @@ const DIGEST_OPENAI_TIMEOUT_MS = (() => {
 })()
 const DIGEST_AI_MAX_MESSAGES = 12
 const DIGEST_AI_MAX_MESSAGE_CHARS = 220
+const DIGEST_AI_MAX_COMMENTS = 6
+const DIGEST_AI_MAX_COMMENT_CHARS = 220
 const DIGEST_LEAD_CONCURRENCY = 4
 const DIGEST_INTERACTIONS_FETCH_LIMIT_DAILY = 4000
 const DIGEST_INTERACTIONS_FETCH_LIMIT_WEEKLY = 12000
+const DIGEST_COMMENTS_FETCH_LIMIT_DAILY = 2000
+const DIGEST_COMMENTS_FETCH_LIMIT_WEEKLY = 6000
 
 type NotificationSettingsRow = {
   org_id: string
@@ -286,6 +296,7 @@ type DigestWorkerErrorCode =
   | 'missing_openai_api_key'
   | 'ai_timeout'
   | 'ai_generation_failed'
+  | 'comments_fetch_failed'
   | 'comments_write_failed'
   | 'routing_invalid'
   | 'run_acquire_failed'
@@ -333,6 +344,8 @@ type LeadMessageRow = {
   wa_from_me: boolean | null
   created_at: string
 }
+
+type LeadCommentRow = DigestPromptCommentRow
 
 type GeneratedLeadSummary = {
   leadId: number
@@ -438,6 +451,7 @@ function buildDigestAiPrompt(
   digestType: 'daily' | 'weekly',
   stage: string,
   messages: LeadMessageRow[],
+  comments: LeadCommentRow[],
   periodStartIso?: string,
   periodEndIso?: string,
 ): string {
@@ -456,17 +470,27 @@ function buildDigestAiPrompt(
     })
     .join('\n')
 
+  const recentComments = selectDigestCommentsForPrompt({
+    comments,
+    maxComments: DIGEST_AI_MAX_COMMENTS,
+  })
+  const commentsText = renderDigestCommentsForPrompt(recentComments, DIGEST_AI_MAX_COMMENT_CHARS).join('\n')
+
   return [
     `Tipo de resumo: ${digestType === 'weekly' ? 'semanal' : 'diário'}.`,
     `Etapa atual do lead: ${stage || 'sem_etapa'}.`,
     'Transcrição recente:',
     transcript || '[sem mensagens no período]',
     '',
+    'Comentários internos recentes:',
+    commentsText || '[sem comentários internos no período]',
+    '',
     'Produza JSON estrito com as chaves: summary, currentSituation, recommendedActions.',
     'Regras:',
     '- Escreva em português do Brasil.',
     '- Não use markdown, listas com bullets ou títulos no valor das chaves.',
     '- Cada campo deve ser curto, direto e acionável.',
+    '- Considere o contexto combinado de conversa e comentários internos recentes.',
   ].join('\n')
 }
 
@@ -476,6 +500,7 @@ async function requestDigestSectionsWithAi(opts: {
   digestType: 'daily' | 'weekly'
   stage: string
   messages: LeadMessageRow[]
+  comments: LeadCommentRow[]
   periodStartIso?: string
   periodEndIso?: string
   timeoutMs: number
@@ -522,6 +547,7 @@ async function requestDigestSectionsWithAi(opts: {
               opts.digestType,
               opts.stage,
               opts.messages,
+              opts.comments,
               opts.periodStartIso,
               opts.periodEndIso,
             ),
@@ -564,6 +590,7 @@ async function generateLeadSections(opts: {
   digestType: 'daily' | 'weekly'
   stage: string
   messages: LeadMessageRow[]
+  comments: LeadCommentRow[]
   periodStartIso?: string
   periodEndIso?: string
 }): Promise<{ sections: DigestSections; source: 'ai' }> {
@@ -577,6 +604,7 @@ async function generateLeadSections(opts: {
     digestType: opts.digestType,
     stage: opts.stage,
     messages: opts.messages,
+    comments: opts.comments,
     periodStartIso: opts.periodStartIso,
     periodEndIso: opts.periodEndIso,
     timeoutMs: DIGEST_OPENAI_TIMEOUT_MS,
@@ -927,6 +955,10 @@ async function processDigestForOrg(
     ? DIGEST_INTERACTIONS_FETCH_LIMIT_WEEKLY
     : DIGEST_INTERACTIONS_FETCH_LIMIT_DAILY
 
+  const commentsFetchLimit = ctx.digestType === 'weekly'
+    ? DIGEST_COMMENTS_FETCH_LIMIT_WEEKLY
+    : DIGEST_COMMENTS_FETCH_LIMIT_DAILY
+
   const { data: interactions, error: interactionsError } = await supabase
     .from('interacoes')
     .select('lead_id, mensagem, created_at, wa_from_me')
@@ -948,21 +980,61 @@ async function processDigestForOrg(
     return { skipped: false, failed: true, reason: 'interactions_fetch_failed' }
   }
 
-  const rows = Array.isArray(interactions) ? interactions : []
-  const grouped = new Map<number, LeadMessageRow[]>()
+  const { data: leadComments, error: commentsError } = await supabase
+    .from('comentarios_leads')
+    .select('lead_id, texto, autor, comment_type, created_at')
+    .eq('org_id', ctx.orgId)
+    .gte('created_at', ctx.periodStartIso)
+    .lte('created_at', ctx.periodEndIso)
+    .not('lead_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(commentsFetchLimit)
 
-  for (const row of rows) {
+  if (commentsError) {
+    await failDigestRun(
+      supabase,
+      runId,
+      'comments_fetch_failed',
+      commentsError.message,
+      channelResults,
+    )
+    return { skipped: false, failed: true, reason: 'comments_fetch_failed' }
+  }
+
+  const interactionRows = Array.isArray(interactions) ? interactions : []
+  const groupedMessages = new Map<number, LeadMessageRow[]>()
+
+  for (const row of interactionRows) {
     const leadId = Number((row as any).lead_id)
     if (!Number.isFinite(leadId)) continue
-    if (!grouped.has(leadId)) grouped.set(leadId, [])
-    grouped.get(leadId)!.push({
+    if (!groupedMessages.has(leadId)) groupedMessages.set(leadId, [])
+    groupedMessages.get(leadId)!.push({
       mensagem: (row as any).mensagem || null,
       wa_from_me: (row as any).wa_from_me ?? null,
       created_at: String((row as any).created_at || ''),
     })
   }
 
-  const leadIds = Array.from(grouped.keys())
+  const sourceCommentRows = Array.isArray(leadComments) ? leadComments : []
+  const groupedComments = new Map<number, LeadCommentRow[]>()
+
+  for (const row of sourceCommentRows) {
+    const leadId = Number((row as any).lead_id)
+    if (!Number.isFinite(leadId)) continue
+    const comment: LeadCommentRow = {
+      texto: (row as any).texto || null,
+      autor: (row as any).autor || null,
+      comment_type: (row as any).comment_type || null,
+      created_at: String((row as any).created_at || ''),
+    }
+    if (!groupedComments.has(leadId)) groupedComments.set(leadId, [])
+    groupedComments.get(leadId)!.push(comment)
+  }
+
+  const leadIds = mergeDigestLeadIds(
+    Array.from(groupedMessages.keys()),
+    Array.from(groupedComments.keys()),
+  )
   const { data: leads } = leadIds.length > 0
     ? await supabase
       .from('leads')
@@ -1000,7 +1072,8 @@ async function processDigestForOrg(
   const leadSummariesRaw = await mapWithConcurrency(digestLeadIds, async (leadId): Promise<GeneratedLeadSummary | null> => {
     const lead = leadById.get(leadId)
     const stage = lead?.status_pipeline || 'sem_etapa'
-    const messages = grouped.get(leadId) || []
+    const messages = groupedMessages.get(leadId) || []
+    const comments = groupedComments.get(leadId) || []
     try {
       const generated = await generateLeadSections({
         apiKey: openAiApiKey,
@@ -1008,6 +1081,7 @@ async function processDigestForOrg(
         digestType: ctx.digestType,
         stage,
         messages,
+        comments,
         periodStartIso: ctx.periodStartIso,
         periodEndIso: ctx.periodEndIso,
       })

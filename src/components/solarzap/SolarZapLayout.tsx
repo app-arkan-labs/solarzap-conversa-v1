@@ -1575,7 +1575,15 @@ export function SolarZapLayout() {
       )}
 
       {activeTab === 'calendario' && (
-        <CalendarView contacts={contacts} />
+        <CalendarView
+          contacts={contacts}
+          canViewTeam={canViewTeam}
+          leadScope={leadScope}
+          onLeadScopeChange={setLeadScope}
+          leadScopeMembers={leadScopeMembers}
+          leadScopeLoading={isLoadingLeadScopeMembers}
+          currentUserId={user?.id ?? null}
+        />
       )}
 
       {activeTab === 'contatos' && (

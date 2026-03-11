@@ -8,6 +8,7 @@ const read = (relativePath: string) =>
 describe('pipeline agent jobs contract', () => {
   it('migration defines scheduled_agent_jobs, claim RPC and follow-up lead fields', () => {
     const sql = read('supabase/migrations/20260310100000_pipeline_agents_jobs.sql');
+    const backfillSql = read('supabase/migrations/20260311170000_backfill_pipeline_agent_configs_safe.sql');
 
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS public.scheduled_agent_jobs');
     expect(sql).toContain("agent_type IN ('post_call', 'follow_up')");
@@ -20,6 +21,11 @@ describe('pipeline agent jobs contract', () => {
     expect(sql).toContain('ADD COLUMN IF NOT EXISTS follow_up_step');
     expect(sql).toContain('ADD COLUMN IF NOT EXISTS follow_up_exhausted_seen');
     expect(sql).toContain('ADD COLUMN IF NOT EXISTS lost_reason');
+
+    expect(backfillSql).toContain('INSERT INTO public.ai_stage_config');
+    expect(backfillSql).toContain("'follow_up'::text");
+    expect(backfillSql).toContain("'chamada_realizada'::text");
+    expect(backfillSql).toContain("'agente_disparos'::text");
   });
 
   it('process-agent-jobs handles post_call and follow_up with cancellation guards', () => {
@@ -28,6 +34,9 @@ describe('pipeline agent jobs contract', () => {
     expect(worker).toContain("agent_type: 'post_call' | 'follow_up'");
     expect(worker).toContain("triggerType: 'scheduled_post_call'");
     expect(worker).toContain("triggerType: 'follow_up'");
+    expect(worker).toContain('normalizeAgentInvokeResult');
+    expect(worker).toContain('scheduled_agent_job_outcome');
+    expect(worker).toContain("result: 'deferred'");
     expect(worker).toContain("'org_agent_disabled'");
     expect(worker).toContain("'lead_fu_disabled'");
     expect(worker).toContain("'lead_responded_before_execution'");
@@ -43,7 +52,11 @@ describe('pipeline agent jobs contract', () => {
     expect(agent).toContain('Scheduled trigger');
     expect(agent).toContain('lead.follow_up_enabled === false');
     expect(agent).toContain('broadcast_recipients');
+    expect(agent).toContain('outbound_after_broadcast');
     expect(agent).toContain("pipeline_stage', 'agente_disparos'");
+    expect(agent).toContain('DADOS_JA_CONFIRMADOS');
+    expect(agent).toContain('Duplicate question guard triggered');
+    expect(agent).toContain('agent_run_outcome');
     expect(agent).toContain('cancelAndScheduleFollowUp');
   });
 
@@ -55,5 +68,7 @@ describe('pipeline agent jobs contract', () => {
     expect(webhook).toContain("'new_outbound_superseded'");
     expect(webhook).toContain("'lead_replied'");
     expect(webhook).toContain('follow_up_schedule_status');
+    expect(webhook).toContain('normalizeAgentInvokeResult');
+    expect(webhook).toContain('agent_invoke_outcome');
   });
 });

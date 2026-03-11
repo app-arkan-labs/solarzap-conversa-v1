@@ -37,6 +37,7 @@ interface AppointmentModalProps {
     defaultDate?: Date | string; // If clicking on calendar
     preselectedLeadId?: string; // string because Contact.id is string
     preselectedContact?: Contact; // Full contact object to avoid lookup issues
+    contacts?: Contact[]; // Optional injected contact list to avoid scope divergence
     onSuccess?: (appointment: Appointment) => void;
 }
 
@@ -79,10 +80,12 @@ export function AppointmentModal({
     defaultDate,
     preselectedLeadId,
     preselectedContact,
+    contacts: providedContacts,
     onSuccess
 }: AppointmentModalProps) {
     const { createAppointment, updateAppointment, deleteAppointment } = useAppointments();
-    const { contacts } = useLeads();
+    const { contacts: hookContacts } = useLeads();
+    const contacts = providedContacts ?? hookContacts;
     const { toast } = useToast();
     const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
     const contactsSignature = useMemo(
