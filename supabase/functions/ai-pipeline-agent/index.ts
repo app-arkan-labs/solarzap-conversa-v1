@@ -611,6 +611,18 @@ function normalizeQuestionKey(raw: string | null | undefined): string | null {
     return normalized || null;
 }
 
+function mergeQuestionKeys(...sources: any[]): string[] {
+    const merged = new Set<string>();
+    for (const source of sources) {
+        if (!Array.isArray(source)) continue;
+        for (const item of source) {
+            const key = normalizeQuestionKey(item);
+            if (key) merged.add(key);
+        }
+    }
+    return Array.from(merged);
+}
+
 function inferQuestionKeyFromText(text: string | null | undefined): string | null {
     const normalized = String(text || '')
         .trim()
@@ -673,8 +685,12 @@ function extractDeterministicLeadSignals(
         .replace(/[\u0300-\u036f]/g, '');
 
     const fields: Record<string, FieldCandidate> = {};
-    const answeredKeys = new Set<string>();
     const stageData: Record<string, any> = {};
+    const stageSnapshot = getStageNamespaceSnapshot(lead, currentStage);
+    const historicalAnswered = Array.isArray(stageSnapshot.answered_keys)
+        ? stageSnapshot.answered_keys
+        : [];
+    const answeredKeys = new Set<string>(mergeQuestionKeys(historicalAnswered));
     const lastQuestionKey = inferQuestionKeyFromText(lastAssistantText);
 
     const customerType = normalizeCustomerType(text);
@@ -721,10 +737,6 @@ function extractDeterministicLeadSignals(
         answeredKeys.add('confirmation');
     }
 
-    if (lastQuestionKey && answeredKeys.has(lastQuestionKey)) {
-        stageData.last_question_key = lastQuestionKey;
-    }
-
     const collected: Record<string, any> = {};
     if (fields.customer_type) collected.customer_type = fields.customer_type.value;
     if (fields.estimated_value_brl) collected.estimated_value_brl = fields.estimated_value_brl.value;
@@ -734,12 +746,12 @@ function extractDeterministicLeadSignals(
     if (Object.keys(collected).length > 0) {
         stageData.collected = collected;
     }
-    if (answeredKeys.size > 0) {
-        stageData.answered_keys = Array.from(answeredKeys);
+    const mergedAnsweredKeys = Array.from(answeredKeys);
+    if (mergedAnsweredKeys.length > 0) {
+        stageData.answered_keys = mergedAnsweredKeys;
     }
-    if (lastQuestionKey) {
-        stageData.last_question_key = lastQuestionKey;
-    }
+    const previousLastQuestion = normalizeQuestionKey(stageSnapshot.last_question_key);
+    stageData.last_question_key = lastQuestionKey || previousLastQuestion || null;
 
     return {
         fields,
@@ -762,7 +774,7 @@ function buildStructuredLeadSnapshot(lead: any, currentStage: string): Record<st
     const stageSnapshot = getStageNamespaceSnapshot(lead, currentStage);
     const meta = parseLeadMeta(lead?.observacoes || '');
     const answeredKeys = Array.isArray(stageSnapshot.answered_keys)
-        ? stageSnapshot.answered_keys.map((item: any) => String(item || '').trim()).filter(Boolean)
+        ? stageSnapshot.answered_keys.map((item: any) => normalizeQuestionKey(item)).filter(Boolean)
         : [];
 
     return {
@@ -1527,6 +1539,26 @@ async function executeLeadStageDataUpdate(
     }
 
     const payload = normalizeStageDataPayload(rawStageData, namespace);
+    const existingNamespaceData =
+        (normalizeLeadStageDataRoot(lead?.lead_stage_data)[namespace] as Record<string, any> | undefined) || {};
+    const mergedAnsweredKeys = mergeQuestionKeys(existingNamespaceData.answered_keys, payload.answered_keys);
+    if (mergedAnsweredKeys.length > 0) {
+        payload.answered_keys = mergedAnsweredKeys;
+    } else if (payload.answered_keys) {
+        delete payload.answered_keys;
+    }
+
+    if (!payload.last_question_key) {
+        const existingLastQuestion = normalizeQuestionKey(
+            existingNamespaceData.last_question_key
+        );
+        if (existingLastQuestion) {
+            payload.last_question_key = existingLastQuestion;
+        }
+    } else {
+        payload.last_question_key = normalizeQuestionKey(payload.last_question_key);
+    }
+
     const payloadKeys = Object.keys(payload);
     if (payloadKeys.length === 0) {
         return { candidateCount: 0, writtenCount: 0, namespace, skippedReason: 'no_supported_fields' };
@@ -2037,6 +2069,12 @@ Peça cidade/UF e concessionária para estimar prazos.`;
 
 Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+    if (req.method !== 'POST') {
+        return new Response(JSON.stringify({ error: 'method_not_allowed' }), {
+            status: 405,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
 
     let payload: any = null;
     let runId: string | null = null;
@@ -2052,7 +2090,14 @@ Deno.serve(async (req) => {
     let effectiveAgentType: 'standard' | 'disparos' | 'follow_up' = 'standard';
 
     try {
-        payload = await req.json();
+        try {
+            payload = await req.json();
+        } catch (_invalidJsonErr) {
+            return new Response(JSON.stringify({ error: 'invalid_json_payload' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
 
         // 0. GENERATE RUN ID
         runId = crypto.randomUUID();
@@ -2308,18 +2353,16 @@ Deno.serve(async (req) => {
         leadOrgId = lead.org_id ? String(lead.org_id) : null;
         if (!leadOrgId) {
             console.error(`🛑 [${runId}] lead_without_org_id`, { leadId, instanceName, interactionId });
-            return new Response(
-                JSON.stringify({
+            return respondNoSend(
+                {
                     error: 'lead_without_org_id',
                     runId,
                     leadId,
                     instanceName,
                     interactionId
-                }),
-                {
-                    status: 422,
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                }
+                },
+                'lead_without_org_id',
+                'blocked'
             );
         }
 
@@ -2852,6 +2895,7 @@ Deno.serve(async (req) => {
                 } else if (latestBroadcast) {
                     const broadcastSentAt = String(latestBroadcast.sent_at || latestBroadcast.created_at || '').trim() || null;
                     let outboundAfterBroadcast = false;
+                    let isFirstInboundAfterBroadcast = false;
 
                     if (broadcastSentAt) {
                         const { count: outboundCount, error: outboundLookupErr } = await supabase
@@ -2867,42 +2911,65 @@ Deno.serve(async (req) => {
                         } else {
                             outboundAfterBroadcast = Number(outboundCount || 0) > 0;
                         }
-                    }
 
-                    if (!outboundAfterBroadcast) {
-                    const { data: disparosConfig, error: disparosErr } = await supabase
-                        .from('ai_stage_config')
-                        .select('*')
-                        .eq('org_id', leadOrgId)
-                        .eq('pipeline_stage', 'agente_disparos')
-                        .maybeSingle();
+                        if (anchorInteractionId) {
+                            const { data: firstInboundAfterBroadcast, error: inboundLookupErr } = await supabase
+                                .from('interacoes')
+                                .select('id, created_at')
+                                .eq('lead_id', leadId)
+                                .eq('instance_name', instanceName)
+                                .eq('wa_from_me', false)
+                                .eq('tipo', 'mensagem_cliente')
+                                .gt('created_at', broadcastSentAt)
+                                .order('id', { ascending: true })
+                                .limit(1)
+                                .maybeSingle();
 
-                    if (disparosErr) {
-                        console.warn(`⚠️ [${runId}] Failed to load agente_disparos config (non-blocking):`, disparosErr.message);
-                    } else if (disparosConfig?.is_active) {
-                        stageConfig = disparosConfig;
-                        effectiveAgentType = 'disparos';
-                        console.log(`🎯 [${runId}] Routed to Agente de Disparos (active broadcast context)`);
-                        try {
-                            await supabase.from('ai_action_logs').insert({
-                                org_id: leadOrgId,
-                                lead_id: Number(leadId),
-                                action_type: 'agent_routed_to_disparos',
-                                details: JSON.stringify({
-                                    runId,
-                                    lead_id: Number(leadId),
-                                    lead_canal: lead?.canal || null,
-                                    broadcast_recipient_found: true,
-                                    broadcast_sent_at: broadcastSentAt,
-                                    outbound_after_broadcast: false,
-                                    effective_agent: 'disparos',
-                                }),
-                                success: true,
-                            });
-                        } catch (routeLogErr) {
-                            console.warn(`[${runId}] agent_routed_to_disparos log failed (non-blocking):`, routeLogErr);
+                            if (inboundLookupErr) {
+                                console.warn(`⚠️ [${runId}] Failed first-inbound-after-broadcast lookup (non-blocking):`, inboundLookupErr.message);
+                            } else {
+                                isFirstInboundAfterBroadcast = !!firstInboundAfterBroadcast
+                                    && String(firstInboundAfterBroadcast.id) === String(anchorInteractionId);
+                            }
                         }
                     }
+
+                    if (!outboundAfterBroadcast && isFirstInboundAfterBroadcast) {
+                        const { data: disparosConfig, error: disparosErr } = await supabase
+                            .from('ai_stage_config')
+                            .select('*')
+                            .eq('org_id', leadOrgId)
+                            .eq('pipeline_stage', 'agente_disparos')
+                            .maybeSingle();
+
+                        if (disparosErr) {
+                            console.warn(`⚠️ [${runId}] Failed to load agente_disparos config (non-blocking):`, disparosErr.message);
+                        } else if (disparosConfig?.is_active) {
+                            stageConfig = disparosConfig;
+                            effectiveAgentType = 'disparos';
+                            console.log(`🎯 [${runId}] Routed to Agente de Disparos (first inbound after active broadcast)`);
+                            try {
+                                await supabase.from('ai_action_logs').insert({
+                                    org_id: leadOrgId,
+                                    lead_id: Number(leadId),
+                                    action_type: 'agent_routed_to_disparos',
+                                    details: JSON.stringify({
+                                        runId,
+                                        lead_id: Number(leadId),
+                                        lead_canal: lead?.canal || null,
+                                        broadcast_recipient_found: true,
+                                        broadcast_sent_at: broadcastSentAt,
+                                        outbound_after_broadcast: false,
+                                        first_inbound_after_broadcast: true,
+                                        anchor_interaction_id: anchorInteractionId || null,
+                                        effective_agent: 'disparos',
+                                    }),
+                                    success: true,
+                                });
+                            } catch (routeLogErr) {
+                                console.warn(`[${runId}] agent_routed_to_disparos log failed (non-blocking):`, routeLogErr);
+                            }
+                        }
                     }
                 }
             } catch (routingErr) {
@@ -4893,9 +4960,10 @@ CORRECAO OBRIGATORIA:
                 error: error.message,
             },
         });
+        await persistAgentOutcome(errorEnvelope);
         return new Response(
             JSON.stringify(errorEnvelope),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     }
 });

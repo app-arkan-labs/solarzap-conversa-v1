@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { format, subDays, startOfMonth, endOfMonth, startOfYear } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, ChevronDown, Download } from "lucide-react";
+import { CalendarIcon, ChevronDown, Download, TrendingDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { PageHeader } from "@/components/solarzap/PageHeader";
 import { LeadScopeSelect, type LeadScopeValue } from "@/components/solarzap/LeadScopeSelect";
+import { LossAnalyticsModal } from "@/components/solarzap/LossAnalyticsModal";
 import type { MemberDto } from "@/lib/orgAdminClient";
 
 interface DashboardViewProps {
@@ -50,6 +51,7 @@ export function DashboardView({
   const [periodLabel, setPeriodLabel] = useState("this_month");
 
   const [staleLeadsOpen, setStaleLeadsOpen] = useState(false);
+  const [lossAnalyticsOpen, setLossAnalyticsOpen] = useState(false);
   const resolvedOwnerUserId = useMemo(() => {
     if (!user) return null;
     if (!canViewTeam) return user.id;
@@ -58,6 +60,17 @@ export function DashboardView({
     const scopedUserId = leadScope.slice(5).trim();
     return scopedUserId || user.id;
   }, [canViewTeam, leadScope, user]);
+
+  // Fetch Data
+  const { data, isLoading, error } = useDashboardReport({
+    start: dateRange.from,
+    end: dateRange.to,
+    compare: true,
+    orgId,
+    filters: {
+      owner_user_id: resolvedOwnerUserId,
+    }
+  });
 
   const ownerPerformanceData = useMemo(() => {
     const rows = data?.tables.owner_performance ?? [];
@@ -77,17 +90,6 @@ export function DashboardView({
       return mappedName ? { ...row, name: mappedName } : row;
     });
   }, [data?.tables.owner_performance, leadScopeMembers]);
-
-  // Fetch Data
-  const { data, isLoading, error } = useDashboardReport({
-    start: dateRange.from,
-    end: dateRange.to,
-    compare: true,
-    orgId,
-    filters: {
-      owner_user_id: resolvedOwnerUserId,
-    }
-  });
 
   // Handlers
   const handlePeriodChange = (val: string) => {
@@ -142,6 +144,15 @@ export function DashboardView({
                 testId="dashboard-owner-scope-trigger"
               />
             ) : null}
+
+            <Button
+              variant="outline"
+              className="border-border/50 shadow-sm glass"
+              onClick={() => setLossAnalyticsOpen(true)}
+            >
+              <TrendingDown className="mr-2 h-4 w-4 text-rose-500" />
+              Analise de Perdas
+            </Button>
 
             {/* Period Selector */}
             <Select value={periodLabel} onValueChange={handlePeriodChange}>
@@ -244,6 +255,12 @@ export function DashboardView({
           </CollapsibleContent>
         </Collapsible>
       </div>
+
+      <LossAnalyticsModal
+        open={lossAnalyticsOpen}
+        onOpenChange={setLossAnalyticsOpen}
+        ownerUserId={resolvedOwnerUserId}
+      />
     </div>
   );
 }

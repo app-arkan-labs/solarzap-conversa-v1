@@ -1,8 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
 import { Contact, PIPELINE_STAGES, PipelineStage, CalendarEvent, CHANNEL_INFO, ChannelFilter } from '@/types/solarzap';
 import { Badge } from '@/components/ui/badge';
-import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog, MapPin, MessageSquareQuote, Kanban, Filter } from 'lucide-react';
+import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog, MapPin, MessageSquareQuote, Kanban, Filter, CircleX, TrendingDown } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -16,6 +16,8 @@ import type { MemberDto } from '@/lib/orgAdminClient';
 import { ProposalModal, ProposalData } from './ProposalModal';
 import { ProposalReadyModal } from './ProposalReadyModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
+import { MarkAsLostModal } from './MarkAsLostModal';
+import { LossAnalyticsModal } from './LossAnalyticsModal';
 import { AssignMemberSelect } from './AssignMemberSelect';
 import { PageHeader } from './PageHeader';
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
@@ -137,12 +139,23 @@ export function PipelineView({
   // Comments modal state
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
   const [commentsContact, setCommentsContact] = useState<Contact | null>(null);
+  const [lostModalOpen, setLostModalOpen] = useState(false);
+  const [lostContact, setLostContact] = useState<Contact | null>(null);
+  const [lossAnalyticsOpen, setLossAnalyticsOpen] = useState(false);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
 
   const { toast } = useToast();
   const { isDragDropEnabled, getMessage } = useAutomationSettings();
+  const resolvedOwnerUserId = useMemo(() => {
+    if (!currentUserId) return null;
+    if (!canViewTeam) return currentUserId;
+    if (leadScope === 'org_all') return null;
+    if (leadScope === 'mine') return currentUserId;
+    const scopedUserId = leadScope.slice(5).trim();
+    return scopedUserId || currentUserId;
+  }, [canViewTeam, currentUserId, leadScope]);
 
   // Drag-to-scroll state
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -241,6 +254,10 @@ export function PipelineView({
       case 'comments':
         setCommentsContact(contact);
         setCommentsModalOpen(true);
+        break;
+      case 'mark_lost':
+        setLostContact(contact);
+        setLostModalOpen(true);
         break;
       case 'delete':
         setContactToDelete(contact);
@@ -715,6 +732,15 @@ export function PipelineView({
               />
             </div>
 
+            <Button
+              variant="outline"
+              className="border-border/50 shadow-sm glass"
+              onClick={() => setLossAnalyticsOpen(true)}
+            >
+              <TrendingDown className="mr-2 h-4 w-4 text-rose-500" />
+              Analise de Perdas
+            </Button>
+
             {/* Import/Export Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -910,6 +936,15 @@ export function PipelineView({
                                     <MapPin className="w-4 h-4 text-orange-500" />
                                     <span>Agendar Visita</span>
                                   </DropdownMenuItem>
+                                  {contact.pipelineStage !== 'perdido' ? (
+                                    <DropdownMenuItem
+                                      onClick={(e) => handleQuickAction('mark_lost', contact, e as unknown as React.MouseEvent)}
+                                      className="gap-2 cursor-pointer text-rose-600 focus:text-rose-600"
+                                    >
+                                      <CircleX className="w-4 h-4" />
+                                      <span>Marcar como Perdido</span>
+                                    </DropdownMenuItem>
+                                  ) : null}
                                   {onDeleteLead && (
                                     <>
                                       <div className="h-px bg-muted my-1" />
@@ -1047,6 +1082,26 @@ export function PipelineView({
         }}
         leadId={commentsContact?.id || ''}
         leadName={commentsContact?.name || ''}
+      />
+
+      <MarkAsLostModal
+        open={lostModalOpen}
+        onOpenChange={(open) => {
+          setLostModalOpen(open);
+          if (!open) setLostContact(null);
+        }}
+        lead={lostContact}
+        onMoveToPipeline={onMoveToPipeline}
+        onUpdateLead={async (contactId, data) => {
+          if (!onUpdateLead) return;
+          await onUpdateLead(contactId, data);
+        }}
+      />
+
+      <LossAnalyticsModal
+        open={lossAnalyticsOpen}
+        onOpenChange={setLossAnalyticsOpen}
+        ownerUserId={resolvedOwnerUserId}
       />
 
       {/* Import Contacts Modal */}

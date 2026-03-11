@@ -54,6 +54,7 @@ import type { UpdateLeadData } from './EditLeadModal';
 import { useOrgBillingInfo } from '@/hooks/useOrgBilling';
 import FeatureSoftWall from '@/components/billing/FeatureSoftWall';
 import BillingBanner from '@/components/billing/BillingBanner';
+import { buildLossReasonSummary, findLossReasonByKey } from '@/hooks/useLossReasons';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -1048,9 +1049,7 @@ export function SolarZapLayout() {
     };
 
     const baseReason = reasonMap[reasonKey] || 'Outro';
-    const normalizedReason = reasonKey === 'outro' && reasonDetail
-      ? `${baseReason}: ${reasonDetail.trim()}`
-      : baseReason;
+    const normalizedReason = buildLossReasonSummary(baseReason, reasonDetail);
 
     setFollowUpExhaustedSubmitting(true);
     try {
@@ -1070,6 +1069,21 @@ export function SolarZapLayout() {
       await handlePipelineStageChange(followUpExhaustedLead.id, 'perdido');
 
       if (orgId) {
+        const matchingReason = await findLossReasonByKey(orgId, reasonKey);
+        if (matchingReason) {
+          const { error: lossError } = await supabase.from('perdas_leads').insert({
+            org_id: orgId,
+            lead_id: Number(followUpExhaustedLead.id),
+            motivo_id: matchingReason.id,
+            motivo_detalhe: reasonDetail?.trim() || null,
+            registrado_por: 'Sistema',
+          });
+
+          if (lossError) {
+            throw lossError;
+          }
+        }
+
         await supabase.from('comentarios_leads').insert({
           org_id: orgId,
           lead_id: Number(followUpExhaustedLead.id),

@@ -212,44 +212,12 @@ BEGIN
       SELECT jobid
       FROM cron.job
       WHERE jobname = 'process-agent-jobs-worker'
+         OR command ILIKE '%/functions/v1/process-agent-jobs%'
     LOOP
       PERFORM cron.unschedule(v_job.jobid);
     END LOOP;
-
-    BEGIN
-      PERFORM cron.schedule(
-        'process-agent-jobs-worker',
-        '* * * * *',
-        $job$
-        SELECT
-          net.http_post(
-            url := 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/process-agent-jobs',
-            headers := jsonb_build_object(
-              'Content-Type', 'application/json',
-              'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8'
-            ),
-            body := '{"source":"cron"}'::jsonb
-          ) AS request_id;
-        $job$
-      );
-    EXCEPTION
-      WHEN others THEN
-        PERFORM cron.schedule(
-          'process-agent-jobs-worker',
-          '*/2 * * * *',
-          $job$
-          SELECT
-            net.http_post(
-              url := 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/process-agent-jobs',
-              headers := jsonb_build_object(
-                'Content-Type', 'application/json',
-                'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8'
-              ),
-              body := '{"source":"cron","fallback":"2m"}'::jsonb
-            ) AS request_id;
-          $job$
-        );
-    END;
+    -- Cron endpoint/JWT are environment-specific and must be configured via:
+    -- scripts/ops/reconfigure_process_agent_jobs_cron.sql
   END IF;
 END;
 $$;

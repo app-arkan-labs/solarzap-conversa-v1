@@ -1,6 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { checkLimit, recordUsage } from '../_shared/billing.ts'
-import { normalizeAgentInvokeResult } from '../_shared/aiPipelineOutcome.ts'
+import {
+  buildInvokeFailureEnvelope,
+  normalizeAgentInvokeResult,
+} from '../_shared/aiPipelineOutcome.ts'
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
 if (!ALLOWED_ORIGIN) {
@@ -587,11 +590,14 @@ const processPostCallJob = async (supabase: any, job: ScheduledAgentJob, lead: L
     },
   })
 
-  if (invokeError) {
-    throw new Error(invokeError.message || 'invoke_failed')
-  }
-
-  const agentResult = normalizeAgentInvokeResult(invokeData)
+  const agentResult = invokeError
+    ? buildInvokeFailureEnvelope({
+        reasonCode: 'invoke_failed',
+        errorMessage: invokeError.message,
+        triggerType: 'scheduled_post_call',
+        scheduledJobId: String(job.job_id),
+      })
+    : normalizeAgentInvokeResult(invokeData)
   await logScheduledAgentOutcome(supabase, job.org_id, lead.id, job.job_id, 'post_call', agentResult)
 
   if (agentResult.outcome === 'sent') {
@@ -736,11 +742,15 @@ const processFollowUpJob = async (supabase: any, job: ScheduledAgentJob, lead: L
     },
   })
 
-  if (invokeError) {
-    throw new Error(invokeError.message || 'invoke_failed')
-  }
-
-  const agentResult = normalizeAgentInvokeResult(invokeData)
+  const agentResult = invokeError
+    ? buildInvokeFailureEnvelope({
+        reasonCode: 'invoke_failed',
+        errorMessage: invokeError.message,
+        triggerType: 'follow_up',
+        scheduledJobId: String(job.job_id),
+        effectiveAgentType: 'follow_up',
+      })
+    : normalizeAgentInvokeResult(invokeData)
   await logScheduledAgentOutcome(supabase, job.org_id, lead.id, job.job_id, 'follow_up', {
     ...agentResult,
     follow_up_step: fuStep,

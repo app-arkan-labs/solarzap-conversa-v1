@@ -1,9 +1,19 @@
 $ErrorActionPreference = "Continue"
-$SUPABASE_URL = "https://ucwmcmdwbvrwotuzlmxh.supabase.co"
-$SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8"
-$ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMzkyMTEsImV4cCI6MjA4MzYxNTIxMX0.KMk4XqFCm4FkvOZg7LNWaI_4lknMwcdCkYSGjBjDdOg"
-$ACCESS_TOKEN = "sbp_c0582b1b87bfca0867632f521082d84f147e8281"
-$ORG_ID = "70d3af46-37f6-4ff4-a6f6-4cebd6341129"
+$SUPABASE_URL = $env:SUPABASE_URL
+$SERVICE_KEY = $env:SUPABASE_SERVICE_ROLE_KEY
+$ANON_KEY = $env:SUPABASE_ANON_KEY
+$ACCESS_TOKEN = $env:SUPABASE_ACCESS_TOKEN
+$ORG_ID = $env:ORG_ID
+$SMOKE_EMAIL = $env:SMOKE_TEST_EMAIL
+$SMOKE_PASSWORD = $env:SMOKE_TEST_PASSWORD
+
+if ([string]::IsNullOrWhiteSpace($SUPABASE_URL)) { throw "Missing SUPABASE_URL env var" }
+if ([string]::IsNullOrWhiteSpace($SERVICE_KEY)) { throw "Missing SUPABASE_SERVICE_ROLE_KEY env var" }
+if ([string]::IsNullOrWhiteSpace($ANON_KEY)) { throw "Missing SUPABASE_ANON_KEY env var" }
+if ([string]::IsNullOrWhiteSpace($ACCESS_TOKEN)) { throw "Missing SUPABASE_ACCESS_TOKEN env var" }
+if ([string]::IsNullOrWhiteSpace($ORG_ID)) { throw "Missing ORG_ID env var" }
+if ([string]::IsNullOrWhiteSpace($SMOKE_EMAIL)) { throw "Missing SMOKE_TEST_EMAIL env var" }
+if ([string]::IsNullOrWhiteSpace($SMOKE_PASSWORD)) { throw "Missing SMOKE_TEST_PASSWORD env var" }
 
 Write-Host "===== SOLARZAP FINAL SMOKE TESTS ====="
 Write-Host ""
@@ -12,7 +22,7 @@ Write-Host ""
 $login = Invoke-WebRequest -Uri "$SUPABASE_URL/auth/v1/token?grant_type=password" `
   -Method POST `
   -Headers @{ "apikey" = $ANON_KEY; "Content-Type" = "application/json" } `
-  -Body '{"email":"rodrigosenafernandes@gmail.com","password":"AtsWp@3fB&"}' `
+  -Body (@{ email = $SMOKE_EMAIL; password = $SMOKE_PASSWORD } | ConvertTo-Json) `
   -UseBasicParsing
 $JWT = ($login.Content | ConvertFrom-Json).access_token
 Write-Host "[OK] JWT obtained"
@@ -195,22 +205,25 @@ try {
 
 # T16: Cron process-agent-jobs ativo
 try {
-  $d = Invoke-MgmtQuery "SELECT jobid, active, schedule FROM cron.job WHERE jobname='process-agent-jobs-worker' ORDER BY jobid DESC LIMIT 1"
-  if ($d.Count -ge 1 -and $d[0].active -eq $true) {
-    Write-Host "[PASS] T16 Cron process-agent-jobs ativo (jobid=$($d[0].jobid), schedule=$($d[0].schedule))"; $pass++
+  $expectedWorkerUrl = "$SUPABASE_URL/functions/v1/process-agent-jobs"
+  $d = Invoke-MgmtQuery "SELECT jobid, active, schedule, command FROM cron.job WHERE jobname='process-agent-jobs-worker' ORDER BY jobid DESC LIMIT 1"
+  $isActive = ($d.Count -ge 1 -and $d[0].active -eq $true)
+  $urlMatches = ($d.Count -ge 1 -and [string]$d[0].command -like "*$expectedWorkerUrl*")
+  if ($isActive -and $urlMatches) {
+    Write-Host "[PASS] T16 Cron process-agent-jobs ativo e apontando para o worker correto (jobid=$($d[0].jobid), schedule=$($d[0].schedule))"; $pass++
   } else {
-    Write-Host "[FAIL] T16 Cron process-agent-jobs não encontrado/inativo"; $fail++
+    Write-Host "[FAIL] T16 Cron process-agent-jobs ausente/inativo ou apontando para URL divergente"; $fail++
   }
 } catch { Write-Host "[FAIL] T16 Cron process-agent-jobs: $_"; $fail++ }
 
-# T17: Cron executou nas últimas 6h
+# T17: Cron executou nas Ãºltimas 6h
 try {
   $d = Invoke-MgmtQuery "SELECT COUNT(*)::int AS runs FROM cron.job_run_details d JOIN cron.job j ON j.jobid=d.jobid WHERE j.jobname='process-agent-jobs-worker' AND d.start_time > now() - interval '6 hours'"
   $runs = [int]($d | Select-Object -First 1).runs
   if ($runs -gt 0) {
-    Write-Host "[PASS] T17 Cron process-agent-jobs com execuções recentes ($runs runs/6h)"; $pass++
+    Write-Host "[PASS] T17 Cron process-agent-jobs com execuÃ§Ãµes recentes ($runs runs/6h)"; $pass++
   } else {
-    Write-Host "[FAIL] T17 Cron sem execuções recentes (0 runs/6h)"; $fail++
+    Write-Host "[FAIL] T17 Cron sem execuÃ§Ãµes recentes (0 runs/6h)"; $fail++
   }
 } catch { Write-Host "[FAIL] T17 Cron runs: $_"; $fail++ }
 
@@ -230,20 +243,20 @@ try {
   Write-Host "[FAIL] T18 process-agent-jobs invoke ($code)"; $fail++
 }
 
-# T19: Backlog crítico da fila de agentes
+# T19: Backlog crÃ­tico da fila de agentes
 try {
   $d = Invoke-MgmtQuery "SELECT (SELECT COUNT(*) FROM public.scheduled_agent_jobs WHERE status='pending' AND scheduled_at < now() - interval '15 minutes')::int AS pending_stale_15m, (SELECT COUNT(*) FROM public.scheduled_agent_jobs WHERE status='processing' AND updated_at < now() - interval '5 minutes')::int AS processing_stale_5m"
   $row = $d | Select-Object -First 1
   $pendingStale = [int]$row.pending_stale_15m
   $processingStale = [int]$row.processing_stale_5m
   if ($pendingStale -eq 0 -and $processingStale -eq 0) {
-    Write-Host "[PASS] T19 Fila saudável (pending_stale_15m=0, processing_stale_5m=0)"; $pass++
+    Write-Host "[PASS] T19 Fila saudÃ¡vel (pending_stale_15m=0, processing_stale_5m=0)"; $pass++
   } else {
     Write-Host "[FAIL] T19 Backlog detectado (pending_stale_15m=$pendingStale, processing_stale_5m=$processingStale)"; $fail++
   }
 } catch { Write-Host "[FAIL] T19 Backlog fila: $_"; $fail++ }
 
-# T20: Evidências recentes de execução dos agentes (INFO)
+# T20: EvidÃªncias recentes de execuÃ§Ã£o dos agentes (INFO)
 try {
   $d = Invoke-MgmtQuery "SELECT action_type, COUNT(*)::int AS total FROM public.ai_action_logs WHERE created_at > now() - interval '24 hours' AND action_type IN ('agent_routed_to_disparos','follow_up_agent_executed','post_call_agent_executed','agent_invoke_failed') GROUP BY action_type ORDER BY action_type"
   if ($d.Count -gt 0) {
@@ -261,3 +274,4 @@ if ($fail -eq 0) {
 } else {
   Write-Host "$fail TEST(S) FAILED" -ForegroundColor Red
 }
+

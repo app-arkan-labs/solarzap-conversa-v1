@@ -37,7 +37,6 @@ const TERMINAL_REASON_CODES = new Set([
   'already_replied_final',
   'lead_ai_disabled_before_send',
   'lead_follow_up_disabled_before_send',
-  'settings_not_found_for_org',
   'no_outbound_action',
 ])
 
@@ -61,6 +60,7 @@ const RETRYABLE_REASON_CODES = new Set([
 const BLOCKED_REASON_CODES = new Set([
   'missing_openai_api_key',
   'lead_without_org_id',
+  'settings_not_found_for_org',
   'missing_required_config',
   'cron_worker_misconfigured',
   'invoke_failed',
@@ -228,6 +228,30 @@ export const normalizeAgentInvokeResult = (payload: any): AgentResultEnvelope =>
     error: payload?.error,
   }
 }
+
+export const buildInvokeFailureEnvelope = (params: {
+  reasonCode?: string | null
+  errorMessage?: string | null
+  triggerType?: string | null
+  scheduledJobId?: string | null
+  effectiveAgentType?: string | null
+  runId?: string | null
+}): AgentResultEnvelope =>
+  buildAgentResultEnvelope({
+    reasonCode: String(params.reasonCode || 'invoke_failed'),
+    outcome: 'blocked',
+    messageSent: false,
+    shouldRetry: false,
+    runId: params.runId || null,
+    triggerType: params.triggerType || null,
+    scheduledJobId: params.scheduledJobId || null,
+    effectiveAgentType: params.effectiveAgentType || null,
+    transportMode: 'blocked',
+    transportReason: 'invoke_failed',
+    extras: {
+      error: params.errorMessage ? String(params.errorMessage) : 'invoke_failed',
+    },
+  })
 
 export const isSuccessfulAgentOutcome = (outcome: AgentOutcome) =>
   outcome === 'sent' || outcome === 'terminal_skip'
