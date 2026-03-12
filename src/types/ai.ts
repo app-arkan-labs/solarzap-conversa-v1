@@ -37,6 +37,20 @@ export const DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG: FollowUpSequenceConfig = {
     ],
 };
 
+export interface FollowUpWindowConfig {
+    start: string;
+    end: string;
+    days: AppointmentDayKey[];
+    preferred_time?: string | null;
+}
+
+export const DEFAULT_FOLLOW_UP_WINDOW_CONFIG: FollowUpWindowConfig = {
+    start: '09:00',
+    end: '18:00',
+    days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    preferred_time: null,
+};
+
 export interface AISettings {
     id: number;
     org_id?: string;
@@ -44,7 +58,6 @@ export interface AISettings {
     personality_tone: string; // Legacy field, might be used or replaced by assistant_identity_name
     assistant_identity_name?: string;
     assistant_identity_signature?: string;
-    openai_api_key?: string;
     daily_report_enabled: boolean;
     weekly_report_enabled: boolean;
     monthly_report_enabled: boolean;
@@ -57,8 +70,14 @@ export interface AISettings {
     support_ai_auto_disable_on_seller_message?: boolean;
     respondeu_flow_mode?: string;
     support_ai_stage_toggles?: Record<string, boolean>;
+    timezone?: string;
+    auto_schedule_call_enabled?: boolean;
+    auto_schedule_visit_enabled?: boolean;
+    auto_schedule_call_min_days?: number;
+    auto_schedule_visit_min_days?: number;
     appointment_window_config?: AppointmentWindowConfig;
     follow_up_sequence_config?: FollowUpSequenceConfig;
+    follow_up_window_config?: FollowUpWindowConfig;
 }
 
 export interface AIStageConfig {
@@ -153,9 +172,15 @@ export interface AIActionLog {
 export const DEFAULT_AI_SETTINGS: Partial<AISettings> = {
     is_active: false,
     assistant_identity_name: 'Consultor Solar',
+    timezone: 'America/Sao_Paulo',
+    auto_schedule_call_enabled: true,
+    auto_schedule_visit_enabled: true,
+    auto_schedule_call_min_days: 0,
+    auto_schedule_visit_min_days: 0,
     daily_report_enabled: false,
     weekly_report_enabled: false,
     monthly_report_enabled: false,
     appointment_window_config: DEFAULT_APPOINTMENT_WINDOW_CONFIG,
     follow_up_sequence_config: DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
+    follow_up_window_config: DEFAULT_FOLLOW_UP_WINDOW_CONFIG,
 };

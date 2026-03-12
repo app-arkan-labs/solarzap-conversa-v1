@@ -1,19 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { checkLimit, recordUsage } from '../_shared/billing.ts'
+import { resolveRequestCors } from '../_shared/cors.ts'
 import {
   buildInvokeFailureEnvelope,
   normalizeAgentInvokeResult,
 } from '../_shared/aiPipelineOutcome.ts'
-
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
-if (!ALLOWED_ORIGIN) {
-  throw new Error('Missing ALLOWED_ORIGIN env')
-}
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
 
 const TERMINAL_STAGES = new Set(['perdido', 'contato_futuro', 'projeto_instalado', 'coletar_avaliacao'])
 
@@ -34,6 +25,182 @@ const DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG: { steps: FollowUpStepRule[] } = {
     { step: 4, enabled: true, delay_minutes: 4320 },
     { step: 5, enabled: true, delay_minutes: 10080 },
   ],
+}
+type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat'
+type FollowUpWindowConfig = {
+  start: string
+  end: string
+  days: DayKey[]
+  preferred_time: string | null
+}
+const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+const DEFAULT_FOLLOW_UP_WINDOW_CONFIG: FollowUpWindowConfig = {
+  start: '09:00',
+  end: '18:00',
+  days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+  preferred_time: null,
+}
+
+const normalizeDayKey = (raw: unknown): DayKey | null => {
+  const value = String(raw ?? '').trim().toLowerCase()
+  if (DAY_KEYS.includes(value as DayKey)) return value as DayKey
+  return null
+}
+
+const normalizeHHMM = (raw: unknown, fallback: string): string => {
+  const text = String(raw ?? '').trim()
+  const match = /^(\d{1,2}):(\d{2})$/.exec(text)
+  if (!match) return fallback
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return fallback
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+const parseHHMMToMinutes = (value: string): number => {
+  const match = /^(\d{2}):(\d{2})$/.exec(String(value || '').trim())
+  if (!match) return -1
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  return (hour * 60) + minute
+}
+
+const normalizeFollowUpWindowConfig = (raw: unknown): FollowUpWindowConfig => {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {}
+  const incomingDays = Array.isArray(source.days) ? source.days : []
+  const normalizedDays = Array.from(
+    new Set(
+      incomingDays
+        .map((day: unknown) => normalizeDayKey(day))
+        .filter((day): day is DayKey => !!day),
+    ),
+  )
+  const preferredRaw = String(source.preferred_time ?? '').trim()
+  const preferred = preferredRaw ? normalizeHHMM(preferredRaw, '') : ''
+  return {
+    start: normalizeHHMM(source.start, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.start),
+    end: normalizeHHMM(source.end, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.end),
+    days: normalizedDays.length > 0 ? normalizedDays : [...DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days],
+    preferred_time: preferred || null,
+  }
+}
+
+const getZonedDateParts = (
+  date: Date,
+  timeZone: string,
+): { year: number; month: number; day: number; hour: number; minute: number; second: number; weekday: DayKey } => {
+  const datePartFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+  const weekdayFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+  })
+
+  const parts = datePartFormatter.formatToParts(date)
+  const year = Number(parts.find((p) => p.type === 'year')?.value || '0')
+  const month = Number(parts.find((p) => p.type === 'month')?.value || '0')
+  const day = Number(parts.find((p) => p.type === 'day')?.value || '0')
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value || '0')
+  const minute = Number(parts.find((p) => p.type === 'minute')?.value || '0')
+  const second = Number(parts.find((p) => p.type === 'second')?.value || '0')
+  const weekdayRaw = String(weekdayFormatter.format(date) || '').toLowerCase().slice(0, 3)
+  const weekday = (DAY_KEYS.includes(weekdayRaw as DayKey) ? weekdayRaw : 'mon') as DayKey
+  return { year, month, day, hour, minute, second, weekday }
+}
+
+const getTimeZoneOffsetMs = (date: Date, timeZone: string): number => {
+  const parts = getZonedDateParts(date, timeZone)
+  const localAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second)
+  return localAsUtc - date.getTime()
+}
+
+const zonedDateTimeToUtc = (
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  timeZone: string,
+): Date => {
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second))
+  const offset = getTimeZoneOffsetMs(utcGuess, timeZone)
+  return new Date(utcGuess.getTime() - offset)
+}
+
+const resolveFollowUpScheduledAt = (params: {
+  baseDate: Date
+  timeZone: string
+  windowConfig: FollowUpWindowConfig
+}): Date => {
+  const { baseDate, timeZone, windowConfig } = params
+  const base = new Date(baseDate.getTime())
+  if (isNaN(base.getTime())) return new Date(Date.now() + (3 * 60 * 60 * 1000))
+
+  const startMinutes = parseHHMMToMinutes(windowConfig.start)
+  const endMinutes = parseHHMMToMinutes(windowConfig.end)
+  if (startMinutes < 0 || endMinutes <= startMinutes) return base
+
+  const preferredRaw = windowConfig.preferred_time ? parseHHMMToMinutes(windowConfig.preferred_time) : -1
+  const preferredMinutes = preferredRaw >= startMinutes && preferredRaw < endMinutes ? preferredRaw : -1
+  const allowedDays = windowConfig.days.length > 0 ? windowConfig.days : DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days
+
+  const baseParts = getZonedDateParts(base, timeZone)
+  const baseLocalNoon = zonedDateTimeToUtc(baseParts.year, baseParts.month, baseParts.day, 12, 0, 0, timeZone)
+  const baseMinutesOfDay = (baseParts.hour * 60) + baseParts.minute + (baseParts.second > 0 ? 1 : 0)
+
+  for (let dayOffset = 0; dayOffset <= 30; dayOffset++) {
+    const dayProbe = new Date(baseLocalNoon.getTime() + (dayOffset * 24 * 60 * 60 * 1000))
+    const dayParts = getZonedDateParts(dayProbe, timeZone)
+    if (!allowedDays.includes(dayParts.weekday)) continue
+
+    let candidateMinutes = preferredMinutes >= 0 ? preferredMinutes : startMinutes
+
+    if (dayOffset === 0) {
+      if (preferredMinutes >= 0 && preferredMinutes < baseMinutesOfDay) continue
+      if (preferredMinutes < 0) candidateMinutes = Math.max(startMinutes, baseMinutesOfDay)
+    }
+
+    if (candidateMinutes >= endMinutes) continue
+
+    const candidateUtc = zonedDateTimeToUtc(
+      dayParts.year,
+      dayParts.month,
+      dayParts.day,
+      Math.floor(candidateMinutes / 60),
+      candidateMinutes % 60,
+      0,
+      timeZone,
+    )
+    if (candidateUtc.getTime() < base.getTime()) continue
+    return candidateUtc
+  }
+
+  return base
+}
+
+const isNowWithinFollowUpWindow = (
+  now: Date,
+  timeZone: string,
+  windowConfig: FollowUpWindowConfig,
+): boolean => {
+  const startMinutes = parseHHMMToMinutes(windowConfig.start)
+  const endMinutes = parseHHMMToMinutes(windowConfig.end)
+  if (startMinutes < 0 || endMinutes <= startMinutes) return true
+  const parts = getZonedDateParts(now, timeZone)
+  const minutes = (parts.hour * 60) + parts.minute
+  const allowedDays = windowConfig.days.length > 0 ? windowConfig.days : DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days
+  if (!allowedDays.includes(parts.weekday)) return false
+  return minutes >= startMinutes && minutes < endMinutes
 }
 
 type ScheduledAgentJob = {
@@ -58,7 +225,7 @@ type LeadRow = {
   user_id: string | null
 }
 
-const buildResponse = (status: number, body: Record<string, unknown>) =>
+const buildResponse = (status: number, body: Record<string, unknown>, corsHeaders: Record<string, string>) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -176,22 +343,30 @@ const normalizeFollowUpSequenceConfig = (raw: unknown): { steps: FollowUpStepRul
   return { steps }
 }
 
-const loadFollowUpSequenceConfig = async (
+const loadFollowUpRuntimeSettings = async (
   supabase: any,
   orgId: string,
-): Promise<{ steps: FollowUpStepRule[] }> => {
+): Promise<{ sequenceConfig: { steps: FollowUpStepRule[] }; windowConfig: FollowUpWindowConfig; timeZone: string }> => {
   const { data, error } = await supabase
     .from('ai_settings')
-    .select('follow_up_sequence_config')
+    .select('follow_up_sequence_config, follow_up_window_config, timezone')
     .eq('org_id', orgId)
     .maybeSingle()
 
   if (error) {
-    console.warn('process-agent-jobs: failed to load follow_up_sequence_config, using defaults:', error.message)
-    return DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG
+    console.warn('process-agent-jobs: failed to load follow_up runtime settings, using defaults:', error.message)
+    return {
+      sequenceConfig: DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
+      windowConfig: DEFAULT_FOLLOW_UP_WINDOW_CONFIG,
+      timeZone: 'America/Sao_Paulo',
+    }
   }
 
-  return normalizeFollowUpSequenceConfig((data as any)?.follow_up_sequence_config)
+  return {
+    sequenceConfig: normalizeFollowUpSequenceConfig((data as any)?.follow_up_sequence_config),
+    windowConfig: normalizeFollowUpWindowConfig((data as any)?.follow_up_window_config),
+    timeZone: String((data as any)?.timezone || 'America/Sao_Paulo').trim() || 'America/Sao_Paulo',
+  }
 }
 
 const getNextEnabledFollowUpStep = (
@@ -485,6 +660,28 @@ const logScheduledAgentOutcome = async (
   })
 }
 
+const logScheduledJobCancellation = async (
+  supabase: any,
+  orgId: string,
+  leadId: number,
+  jobId: string,
+  agentType: 'post_call' | 'follow_up',
+  reason: string,
+) => {
+  await supabase.from('ai_action_logs').insert({
+    org_id: orgId,
+    lead_id: leadId,
+    action_type: 'scheduled_agent_job_cancelled',
+    details: JSON.stringify({
+      job_id: jobId,
+      agent_type: agentType,
+      cancelled_reason: reason,
+      source: 'process-agent-jobs',
+    }),
+    success: true,
+  })
+}
+
 const scheduleFollowUpStep = async (
   supabase: any,
   orgId: string,
@@ -492,8 +689,15 @@ const scheduleFollowUpStep = async (
   currentStage: string | null,
   nextStep: number,
   delayMinutes: number,
+  runtimeSettings: { windowConfig: FollowUpWindowConfig; timeZone: string },
 ) => {
   const delayMs = Math.max(FOLLOW_UP_MIN_DELAY_MINUTES, Math.round(delayMinutes)) * 60_000
+  const baseDate = new Date(Date.now() + delayMs)
+  const scheduledAt = resolveFollowUpScheduledAt({
+    baseDate,
+    timeZone: runtimeSettings.timeZone,
+    windowConfig: runtimeSettings.windowConfig,
+  }).toISOString()
 
   await supabase
     .from('scheduled_agent_jobs')
@@ -505,11 +709,11 @@ const scheduleFollowUpStep = async (
     .eq('agent_type', 'follow_up')
     .eq('status', 'pending')
 
-  const scheduledAt = new Date(Date.now() + delayMs).toISOString()
   const payload = {
     fu_step: nextStep,
     last_outbound_at: new Date().toISOString(),
     original_stage: currentStage || null,
+    follow_up_schedule_timezone: runtimeSettings.timeZone,
   }
 
   const { error } = await supabase.from('scheduled_agent_jobs').insert({
@@ -567,8 +771,8 @@ const processPostCallJob = async (supabase: any, job: ScheduledAgentJob, lead: L
     job.payload?.instance_name || lead.instance_name,
   )
   if (!resolvedInstance) {
-    await markJobCancelled(supabase, job.job_id, 'instance_unavailable')
-    return { result: 'cancelled', reason: 'instance_unavailable' }
+    await markJobDeferred(supabase, job.job_id, 'instance_unavailable', 600)
+    return { result: 'deferred', reason: 'instance_unavailable' }
   }
 
   const limit = await checkLimit(supabase, job.org_id, 'max_automations_month', 1)
@@ -693,6 +897,7 @@ const processFollowUpJob = async (supabase: any, job: ScheduledAgentJob, lead: L
     await markJobCancelled(supabase, job.job_id, 'invalid_follow_up_step')
     return { result: 'cancelled', reason: 'invalid_follow_up_step' }
   }
+  const followUpRuntime = await loadFollowUpRuntimeSettings(supabase, job.org_id)
 
   const responded = await isLeadRespondedAfter(supabase, lead.id, job.created_at)
   if (responded) {
@@ -718,8 +923,19 @@ const processFollowUpJob = async (supabase: any, job: ScheduledAgentJob, lead: L
     job.payload?.instance_name || lead.instance_name,
   )
   if (!resolvedInstance) {
-    await markJobCancelled(supabase, job.job_id, 'instance_unavailable')
-    return { result: 'cancelled', reason: 'instance_unavailable' }
+    await markJobDeferred(supabase, job.job_id, 'instance_unavailable', 600)
+    return { result: 'deferred', reason: 'instance_unavailable' }
+  }
+
+  if (!isNowWithinFollowUpWindow(new Date(), followUpRuntime.timeZone, followUpRuntime.windowConfig)) {
+    const nextAllowedAt = resolveFollowUpScheduledAt({
+      baseDate: new Date(Date.now() + 60_000),
+      timeZone: followUpRuntime.timeZone,
+      windowConfig: followUpRuntime.windowConfig,
+    })
+    const deferSeconds = Math.max(60, Math.round((nextAllowedAt.getTime() - Date.now()) / 1000))
+    await markJobDeferred(supabase, job.job_id, 'outside_follow_up_window', deferSeconds)
+    return { result: 'deferred', reason: 'outside_follow_up_window' }
   }
 
   const limit = await checkLimit(supabase, job.org_id, 'max_automations_month', 1)
@@ -754,11 +970,11 @@ const processFollowUpJob = async (supabase: any, job: ScheduledAgentJob, lead: L
   await logScheduledAgentOutcome(supabase, job.org_id, lead.id, job.job_id, 'follow_up', {
     ...agentResult,
     follow_up_step: fuStep,
+    follow_up_timezone: followUpRuntime.timeZone,
   })
 
   if (agentResult.outcome === 'sent') {
-    const followUpSequence = await loadFollowUpSequenceConfig(supabase, job.org_id)
-    const nextEnabledStep = getNextEnabledFollowUpStep(followUpSequence, fuStep)
+    const nextEnabledStep = getNextEnabledFollowUpStep(followUpRuntime.sequenceConfig, fuStep)
 
     const leadPatch: Record<string, unknown> = {
       follow_up_step: fuStep,
@@ -781,6 +997,10 @@ const processFollowUpJob = async (supabase: any, job: ScheduledAgentJob, lead: L
         lead.status_pipeline,
         nextEnabledStep.step,
         nextEnabledStep.delay_minutes,
+        {
+          timeZone: followUpRuntime.timeZone,
+          windowConfig: followUpRuntime.windowConfig,
+        },
       )
     }
 
@@ -844,8 +1064,25 @@ const processFollowUpJob = async (supabase: any, job: ScheduledAgentJob, lead: L
 }
 
 Deno.serve(async (req: Request) => {
+  const cors = resolveRequestCors(req)
+  const corsHeaders = cors.corsHeaders
+
   if (req.method === 'OPTIONS') {
+    if (cors.missingAllowedOriginConfig) {
+      return buildResponse(500, { error: 'missing_allowed_origin' }, corsHeaders)
+    }
+    if (!cors.originAllowed) {
+      return buildResponse(403, { error: 'origin_not_allowed' }, corsHeaders)
+    }
     return new Response(null, { headers: corsHeaders })
+  }
+
+  if (cors.missingAllowedOriginConfig) {
+    return buildResponse(500, { error: 'missing_allowed_origin' }, corsHeaders)
+  }
+
+  if (!cors.originAllowed) {
+    return buildResponse(403, { error: 'origin_not_allowed' }, corsHeaders)
   }
 
   try {
@@ -877,7 +1114,7 @@ Deno.serve(async (req: Request) => {
         recovered,
         queue_health: queueHealthAfter,
         message: 'No jobs to process',
-      })
+      }, corsHeaders)
     }
 
     const summary = {
@@ -913,12 +1150,28 @@ Deno.serve(async (req: Request) => {
         const lead = await loadLead(supabase, Number(job.lead_id))
         if (!lead || !lead.org_id) {
           await markJobCancelled(supabase, job.job_id, 'lead_not_found')
+          await logScheduledJobCancellation(
+            supabase,
+            job.org_id,
+            Number(job.lead_id),
+            job.job_id,
+            job.agent_type,
+            'lead_not_found',
+          )
           summary.cancelled += 1
           continue
         }
 
         if (String(lead.org_id) !== String(job.org_id)) {
           await markJobCancelled(supabase, job.job_id, 'org_mismatch')
+          await logScheduledJobCancellation(
+            supabase,
+            job.org_id,
+            Number(job.lead_id),
+            job.job_id,
+            job.agent_type,
+            'org_mismatch',
+          )
           summary.cancelled += 1
           continue
         }
@@ -930,6 +1183,14 @@ Deno.serve(async (req: Request) => {
         if (outcome.result === 'completed') {
           summary.completed += 1
         } else if (outcome.result === 'cancelled') {
+          await logScheduledJobCancellation(
+            supabase,
+            job.org_id,
+            lead.id,
+            job.job_id,
+            job.agent_type,
+            String(outcome.reason || 'unknown'),
+          )
           summary.cancelled += 1
         } else if (outcome.result === 'deferred') {
           summary.deferred += 1
@@ -967,11 +1228,11 @@ Deno.serve(async (req: Request) => {
       console.warn('process-agent-jobs queue health warning (after):', summary.queue_health_after)
     }
 
-    return buildResponse(200, summary)
+    return buildResponse(200, summary, corsHeaders)
   } catch (error: any) {
     console.error('process-agent-jobs error', error)
     return buildResponse(500, {
       error: String(error?.message || error || 'unknown_error'),
-    })
+    }, corsHeaders)
   }
 })

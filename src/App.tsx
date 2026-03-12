@@ -1,28 +1,31 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AutomationProvider } from "@/contexts/AutomationContext";
 import { GoogleIntegrationProvider } from "@/contexts/GoogleIntegrationContext";
 import { IntegrationsProvider } from "@/contexts/IntegrationsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import Index from "./pages/Index";
-import Login from "./pages/Login";
-import UpdatePassword from "./pages/UpdatePassword";
-import OrganizationSelect from "./pages/OrganizationSelect";
-import NotFound from "./pages/NotFound";
-import CallQrRedirect from "./pages/CallQrRedirect";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import TermsOfService from "./pages/TermsOfService";
-import Pricing from "./pages/Pricing";
-import Welcome from "./pages/Welcome";
-import Admin from './pages/Admin';
 import { supabase } from "@/lib/supabase";
 import { extractAuthErrorMetadata, shouldAttemptAuthRecovery } from "@/lib/authSessionGuard";
 import { getPasswordRecoveryRedirectTarget } from "@/lib/passwordRecoveryRedirect";
 import { AdminGuard } from "@/components/admin/AdminGuard";
+
+const Index = lazy(() => import("./pages/Index"));
+const Login = lazy(() => import("./pages/Login"));
+const UpdatePassword = lazy(() => import("./pages/UpdatePassword"));
+const OrganizationSelect = lazy(() => import("./pages/OrganizationSelect"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const CallQrRedirect = lazy(() => import("./pages/CallQrRedirect"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const TermsOfService = lazy(() => import("./pages/TermsOfService"));
+const Pricing = lazy(() => import("./pages/Pricing"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
+const Admin = lazy(() => import("./pages/Admin"));
 
 let authRecoveryInFlight: Promise<void> | null = null;
 
@@ -114,6 +117,15 @@ const queryClient = new QueryClient({
   }),
 });
 
+const AppRouteFallback = () => (
+  <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+    <div className="flex items-center gap-2 text-slate-600">
+      <Loader2 className="h-5 w-5 animate-spin" />
+      <span className="text-sm">Carregando...</span>
+    </div>
+  </div>
+);
+
 const App = () => {
   if (typeof window !== 'undefined') {
     const recoveryRedirectTarget = getPasswordRecoveryRedirectTarget(window.location);
@@ -133,51 +145,59 @@ const App = () => {
                 <Toaster />
                 <Sonner />
                 <BrowserRouter>
-                  <Routes>
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/select-organization" element={<OrganizationSelect />} />
-                    <Route path="/update-password" element={<UpdatePassword />} />
-                    <Route path="/qr/call" element={<CallQrRedirect />} />
-                    <Route path="/privacidade" element={<PrivacyPolicy />} />
-                    <Route path="/termos" element={<TermsOfService />} />
-                    <Route path="/pricing" element={<Pricing />} />
-                    <Route path="/billing" element={<Pricing />} />
-                    <Route
-                      path="/welcome"
-                      element={
-                        <ProtectedRoute>
-                          <Welcome />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/"
-                      element={
-                        <ProtectedRoute>
-                          <Index />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/settings/members"
-                      element={
-                        <ProtectedRoute requiredRoles={['owner', 'admin']}>
-                          <Index />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route path="/admin/members" element={<Navigate to="/settings/members" replace />} />
-                    <Route
-                      path="/admin/*"
-                      element={
-                        <AdminGuard>
-                          <Admin />
-                        </AdminGuard>
-                      }
-                    />
-                    {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
+                  <Suspense fallback={<AppRouteFallback />}>
+                    <Routes>
+                      <Route path="/login" element={<Login />} />
+                      <Route path="/select-organization" element={<OrganizationSelect />} />
+                      <Route path="/update-password" element={<UpdatePassword />} />
+                      <Route path="/qr/call" element={<CallQrRedirect />} />
+                      <Route path="/privacidade" element={<PrivacyPolicy />} />
+                      <Route path="/termos" element={<TermsOfService />} />
+                      <Route path="/pricing" element={<Pricing />} />
+                      <Route path="/billing" element={<Pricing />} />
+                      <Route
+                        path="/onboarding"
+                        element={
+                          <ProtectedRoute>
+                            <Onboarding />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/welcome"
+                        element={
+                          <Navigate to="/onboarding" replace />
+                        }
+                      />
+                      <Route
+                        path="/"
+                        element={
+                          <ProtectedRoute>
+                            <Index />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/settings/members"
+                        element={
+                          <ProtectedRoute requiredRoles={['owner', 'admin']}>
+                            <Index />
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route path="/admin/members" element={<Navigate to="/settings/members" replace />} />
+                      <Route
+                        path="/admin/*"
+                        element={
+                          <AdminGuard>
+                            <Admin />
+                          </AdminGuard>
+                        }
+                      />
+                      {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </Suspense>
                 </BrowserRouter>
               </TooltipProvider>
             </IntegrationsProvider>

@@ -19,9 +19,11 @@ Deno.serve(async (req) => {
   const corsHeaders = cors.corsHeaders;
 
   if (req.method === 'OPTIONS') {
+    if (cors.missingAllowedOriginConfig) return json(corsHeaders, 500, { ok: false, error: 'missing_allowed_origin' });
     if (!cors.originAllowed) return json(corsHeaders, 403, { ok: false, error: 'origin_not_allowed' });
     return new Response('ok', { headers: corsHeaders });
   }
+  if (cors.missingAllowedOriginConfig) return json(corsHeaders, 500, { ok: false, error: 'missing_allowed_origin' });
   if (!cors.originAllowed) return json(corsHeaders, 403, { ok: false, error: 'origin_not_allowed' });
 
   try {

@@ -12,6 +12,13 @@ import { useToast } from '@/hooks/use-toast';
 type ViewMode = 'login' | 'signup' | 'forgot';
 const SIGNUP_AUTO_RESEND_DEFAULT_DELAY_MS = 65_000;
 const MICROSOFT_EMAIL_DOMAINS = new Set(['hotmail.com', 'outlook.com', 'live.com', 'msn.com']);
+const PLAN_STORAGE_KEY = 'checkout_plan_hint';
+const VALID_PLAN_HINTS = new Set(['start', 'pro', 'scale']);
+
+const normalizePlanHint = (value: string | null) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return VALID_PLAN_HINTS.has(normalized) ? normalized : null;
+};
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -24,6 +31,19 @@ const Login = () => {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const autoResendTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const requestedMode = String(searchParams.get('mode') || '').trim().toLowerCase();
+    const planHint = normalizePlanHint(searchParams.get('plan'));
+
+    if (planHint) {
+      window.sessionStorage.setItem(PLAN_STORAGE_KEY, planHint);
+    }
+
+    if (requestedMode === 'signup') {
+      setView('signup');
+    }
+  }, [searchParams]);
 
   const getFriendlyAuthMessage = (code: string | undefined, message: string) => {
     const normalizedCode = String(code || '').toLowerCase();
@@ -128,7 +148,9 @@ const Login = () => {
     try {
       const error = await signIn(normalizedEmail, password);
       if (!error) {
-        const planHint = searchParams.get('plan');
+        const queryPlanHint = normalizePlanHint(searchParams.get('plan'));
+        const storedPlanHint = normalizePlanHint(window.sessionStorage.getItem(PLAN_STORAGE_KEY));
+        const planHint = queryPlanHint || storedPlanHint;
         navigate(planHint ? `/?plan=${encodeURIComponent(planHint)}` : '/');
       } else {
         const code = (error as { code?: string }).code;
@@ -180,6 +202,10 @@ const Login = () => {
     try {
       const error = await signUp(normalizedEmail, password);
       if (!error) {
+        const planHint = normalizePlanHint(searchParams.get('plan'));
+        if (planHint) {
+          window.sessionStorage.setItem(PLAN_STORAGE_KEY, planHint);
+        }
         setPassword('');
         setView('login');
         if (shouldScheduleDomainResend(normalizedEmail)) {

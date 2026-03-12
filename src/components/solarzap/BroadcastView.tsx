@@ -22,8 +22,8 @@ import { formatBroadcastInterval } from '@/utils/broadcastTimer';
 import { PageHeader } from './PageHeader';
 import { BroadcastCampaignModal } from './BroadcastCampaignModal';
 import { BroadcastStatusPanel } from './BroadcastStatusPanel';
-import { PackPurchaseModal } from '@/components/billing/PackPurchaseModal';
 import type { BroadcastCampaign } from '@/types/broadcast';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 
 const campaignStatusClass: Record<BroadcastCampaign['status'], string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -43,6 +43,7 @@ const campaignStatusLabel: Record<BroadcastCampaign['status'], string> = {
 
 export function BroadcastView() {
   const { toast } = useToast();
+  const { openPackPurchase } = useBillingBlocker();
   const {
     campaigns,
     recipientsByCampaign,
@@ -59,7 +60,6 @@ export function BroadcastView() {
   const { instances } = useUserWhatsAppInstances();
 
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
-  const [isPackModalOpen, setIsPackModalOpen] = useState(false);
   const [statusPanelCampaignId, setStatusPanelCampaignId] = useState<string | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
   const [campaignToDelete, setCampaignToDelete] = useState<BroadcastCampaign | null>(null);
@@ -162,7 +162,9 @@ export function BroadcastView() {
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <Button
               variant="outline"
-              onClick={() => setIsPackModalOpen(true)}
+              onClick={() => {
+                void openPackPurchase('disparo', { source: 'broadcasts' });
+              }}
               className="gap-2 font-semibold h-10"
             >
               <Zap className="w-4 h-4" />
@@ -333,12 +335,6 @@ export function BroadcastView() {
           )}
         </div>
       </div>
-
-      <PackPurchaseModal
-        open={isPackModalOpen}
-        onOpenChange={setIsPackModalOpen}
-        packType="disparo"
-      />
 
       <BroadcastCampaignModal
         isOpen={isCampaignModalOpen}

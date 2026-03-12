@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { createPackCheckoutSession } from '@/hooks/useOrgBilling';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { BILLING_PACK_KEYS, type BillingPackType } from '@/lib/billingPacks';
 
 type AddonRow = {
   addon_key: string;
@@ -21,18 +22,13 @@ type AddonRow = {
   credit_amount: number;
 };
 
-export type PackType = 'disparo' | 'ai';
+export type PackType = BillingPackType;
 
 interface PackPurchaseModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   packType: PackType;
 }
-
-const PACK_KEYS: Record<PackType, string[]> = {
-  disparo: ['disparo_pack_1k', 'disparo_pack_5k', 'disparo_pack_25k'],
-  ai: ['ai_pack_1k', 'ai_pack_5k', 'ai_pack_20k'],
-};
 
 const PACK_CONFIG: Record<PackType, { title: string; description: string; icon: typeof Zap; unit: string; gradient: string }> = {
   disparo: {
@@ -82,7 +78,7 @@ export function PackPurchaseModal({ open, onOpenChange, packType }: PackPurchase
         .from('_admin_addon_catalog')
         .select('addon_key, display_name, price_cents, credit_amount')
         .eq('is_active', true)
-        .in('addon_key', PACK_KEYS[packType])
+        .in('addon_key', BILLING_PACK_KEYS[packType])
         .order('price_cents', { ascending: true });
 
       if (!isMounted) return;
@@ -118,7 +114,7 @@ export function PackPurchaseModal({ open, onOpenChange, packType }: PackPurchase
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent data-testid="pack-purchase-modal" className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br ${config.gradient} shadow-lg`}>

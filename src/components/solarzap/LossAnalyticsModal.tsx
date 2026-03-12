@@ -46,7 +46,7 @@ export function LossAnalyticsModal({ open, onOpenChange, ownerUserId = null }: L
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl p-0">
+      <DialogContent className="w-[96vw] max-w-[1200px] h-[92vh] p-0 overflow-hidden">
         <div className="border-b border-border/60 p-6 pb-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
@@ -70,7 +70,7 @@ export function LossAnalyticsModal({ open, onOpenChange, ownerUserId = null }: L
           </div>
         </div>
 
-        <ScrollArea className="max-h-[80vh]">
+        <ScrollArea className="h-[calc(92vh-128px)]">
           <div className="space-y-6 p-6">
             {isLoading ? (
               <div className="grid gap-4 md:grid-cols-3">

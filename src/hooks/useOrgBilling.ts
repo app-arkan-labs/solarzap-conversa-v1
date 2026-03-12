@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { resolveSupabaseFunctionErrorMessage } from '@/lib/supabaseFunctionErrors';
 
 export type BillingAccessState = 'full' | 'read_only' | 'blocked';
 
@@ -24,30 +25,24 @@ export type OrgBillingInfo = {
 
 const BILLING_QUERY_KEY = ['org-billing-info'] as const;
 
-async function resolveFunctionErrorMessage(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) return fallback;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
-  const directMessage = String(error.message || '').trim();
-  const genericMessage = 'Edge Function returned a non-2xx status code';
-  if (directMessage && directMessage !== genericMessage) {
-    return directMessage;
+const asNullableString = (value: unknown): string | null =>
+  typeof value === 'string' ? value : null;
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  isRecord(value) ? value : {};
+
+const asArrayOfRecords = (value: unknown): Array<Record<string, unknown>> =>
+  Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => isRecord(item)) : [];
+
+const asBillingAccessState = (value: unknown): BillingAccessState => {
+  if (value === 'read_only' || value === 'blocked' || value === 'full') {
+    return value;
   }
-
-  const context = (error as Error & { context?: unknown }).context;
-  if (context && typeof context === 'object' && 'json' in context && typeof (context as { json?: unknown }).json === 'function') {
-    try {
-      const payload = await (context as { json: () => Promise<unknown> }).json();
-      if (payload && typeof payload === 'object') {
-        const apiError = String((payload as { error?: unknown }).error || '').trim();
-        if (apiError) return apiError;
-      }
-    } catch {
-      // Ignore parse failures and return fallback below.
-    }
-  }
-
-  return directMessage || fallback;
-}
+  return 'blocked';
+};
 
 export function useOrgBillingInfo(enabled = true) {
   const { orgId } = useAuth();
@@ -64,7 +59,33 @@ export function useOrgBillingInfo(enabled = true) {
 
       const row = Array.isArray(data) ? data[0] : data;
       if (!row) return null;
-      return row as OrgBillingInfo;
+      const payload = isRecord(row) ? row : {};
+      const planKeyCandidate = payload.plan_key ?? payload.plan;
+      const planKey = typeof planKeyCandidate === 'string' && planKeyCandidate.trim().length > 0
+        ? planKeyCandidate.trim()
+        : 'free';
+      const planLimits = asRecord(payload.plan_limits ?? payload.limits);
+      const features = asRecord(payload.features);
+      const usage = asRecord(payload.usage);
+      const effectiveLimits = asRecord(payload.effective_limits ?? payload.plan_limits ?? payload.limits);
+
+      return {
+        org_id: orgId,
+        plan_key: planKey,
+        plan_limits: planLimits,
+        features,
+        subscription_status: typeof payload.subscription_status === 'string' ? payload.subscription_status : 'none',
+        trial_ends_at: asNullableString(payload.trial_ends_at),
+        trial_started_at: asNullableString(payload.trial_started_at),
+        grace_ends_at: asNullableString(payload.grace_ends_at),
+        current_period_end: asNullableString(payload.current_period_end),
+        onboarding_state: asNullableString(payload.onboarding_state),
+        access_state: asBillingAccessState(payload.access_state),
+        effective_limits: effectiveLimits,
+        limits: planLimits,
+        usage,
+        packs: asArrayOfRecords(payload.packs ?? payload.active_addons),
+      };
     },
   });
 }
@@ -87,7 +108,7 @@ export async function createPlanCheckoutSession(input: {
   });
 
   if (error) {
-    const message = await resolveFunctionErrorMessage(error, 'Falha ao iniciar checkout');
+    const message = await resolveSupabaseFunctionErrorMessage(error, 'Falha ao iniciar checkout');
     throw new Error(message);
   }
 
@@ -109,7 +130,7 @@ export async function createPackCheckoutSession(addonKey: string, quantity = 1, 
   });
 
   if (error) {
-    const message = await resolveFunctionErrorMessage(error, 'Falha ao iniciar checkout de pacote');
+    const message = await resolveSupabaseFunctionErrorMessage(error, 'Falha ao iniciar checkout de pacote');
     throw new Error(message);
   }
 
@@ -129,7 +150,7 @@ export async function createBillingPortalSession(orgId?: string | null) {
   });
 
   if (error) {
-    const message = await resolveFunctionErrorMessage(error, 'Falha ao abrir portal de cobranca');
+    const message = await resolveSupabaseFunctionErrorMessage(error, 'Falha ao abrir portal de cobranca');
     throw new Error(message);
   }
 

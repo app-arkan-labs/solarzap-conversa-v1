@@ -11,6 +11,7 @@ describe('pipeline agent jobs contract', () => {
     const backfillSql = read('supabase/migrations/20260311170000_backfill_pipeline_agent_configs_safe.sql');
     const hardeningSql = read('supabase/migrations/20260311193000_pipeline_agents_hardening.sql');
     const claimFixSql = read('supabase/migrations/20260311201500_fix_claim_due_agent_jobs_locking.sql');
+    const supportPromptSql = read('supabase/migrations/20260312130000_add_assistente_geral_prompt_config.sql');
 
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS public.scheduled_agent_jobs');
     expect(sql).toContain("agent_type IN ('post_call', 'follow_up')");
@@ -37,6 +38,11 @@ describe('pipeline agent jobs contract', () => {
     expect(claimFixSql).toContain('WITH due_raw AS');
     expect(claimFixSql).toContain('FOR UPDATE SKIP LOCKED');
     expect(claimFixSql).toContain('row_number() OVER');
+
+    expect(supportPromptSql).toContain("'assistente_geral'::text");
+    expect(supportPromptSql).toContain("COALESCE(c.pipeline_stage, c.status_pipeline) = seed.pipeline_stage");
+    expect(supportPromptSql).toContain("WHERE COALESCE(c.pipeline_stage, c.status_pipeline) = 'assistente_geral'");
+    expect(supportPromptSql).not.toContain('prompt_override =');
   });
 
   it('process-agent-jobs handles post_call and follow_up with cancellation guards', () => {
@@ -52,8 +58,12 @@ describe('pipeline agent jobs contract', () => {
     expect(worker).toContain("'org_agent_disabled'");
     expect(worker).toContain("'lead_fu_disabled'");
     expect(worker).toContain("'lead_responded_before_execution'");
+    expect(worker).toContain("'instance_unavailable', 600");
+    expect(worker).toContain("'outside_follow_up_window'");
+    expect(worker).toContain('follow_up_window_config');
     expect(worker).toContain('follow_up_exhausted_seen = false');
     expect(worker).toContain('recoverStuckJobs');
+    expect(worker).toContain('scheduled_agent_job_cancelled');
   });
 
   it('ai-pipeline-agent routes disparos and bypasses ai_enabled for follow_up', () => {
@@ -72,6 +82,14 @@ describe('pipeline agent jobs contract', () => {
     expect(agent).toContain('agent_run_outcome');
     expect(agent).toContain('cancelAndScheduleFollowUp');
     expect(agent).toContain('mergeQuestionKeys');
+    expect(agent).toContain('resolveAutoSchedulePolicy');
+    expect(agent).toContain('getRespondeuQualificationState');
+    expect(agent).toContain('qualification_gate_blocked');
+    expect(agent).toContain('no_outbound_fallback_used');
+    expect(agent).toContain('buildCompanyFactualReply');
+    expect(agent).toContain('follow_up_window_config');
+    expect(agent).toContain("pipeline_stage', 'assistente_geral'");
+    expect(agent).toContain("Using 'assistente_geral' prompt");
   });
 
   it('whatsapp webhook schedules and cancels follow-up sequence in expected points', () => {
@@ -82,6 +100,7 @@ describe('pipeline agent jobs contract', () => {
     expect(webhook).toContain("'new_outbound_superseded'");
     expect(webhook).toContain("'lead_replied'");
     expect(webhook).toContain('follow_up_schedule_status');
+    expect(webhook).toContain('follow_up_window_config');
     expect(webhook).toContain('normalizeAgentInvokeResult');
     expect(webhook).toContain('buildInvokeFailureEnvelope');
     expect(webhook).toContain('agent_invoke_outcome');

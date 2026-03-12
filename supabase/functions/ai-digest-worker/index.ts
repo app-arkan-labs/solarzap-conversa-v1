@@ -387,64 +387,15 @@ function isMissingCommentUserIdColumnError(error: unknown): boolean {
   )
 }
 
-function isMissingAiSettingsScopeError(error: unknown): boolean {
-  const code = typeof error === 'object' && error !== null ? String((error as any).code || '') : ''
-  const message = typeof error === 'object' && error !== null ? String((error as any).message || '') : String(error || '')
-  return (
-    code === '42703' ||
-    code === 'PGRST204' ||
-    code === '42P01' ||
-    (/column/i.test(message) && /ai_settings/i.test(message)) ||
-    (/relation/i.test(message) && /ai_settings/i.test(message))
-  )
-}
-
 async function resolveOpenAiApiKeyForOrg(
-  supabase: ReturnType<typeof createClient>,
+  _supabase: ReturnType<typeof createClient>,
   orgId: string,
 ): Promise<string> {
   const envKey = (Deno.env.get('OPENAI_API_KEY') || '').trim()
-
-  const scopedResult = await supabase
-    .from('ai_settings')
-    .select('openai_api_key')
-    .eq('org_id', orgId)
-    .order('id', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-
-  if (!scopedResult.error) {
-    const scopedKey = compactText((scopedResult.data as any)?.openai_api_key || '', 10000).trim()
-    return scopedKey || envKey
+  if (!envKey) {
+    console.warn('[ai-digest-worker][missing_openai_env_key]', { orgId })
   }
-
-  if (!isMissingAiSettingsScopeError(scopedResult.error)) {
-    console.warn('[ai-digest-worker][openai_key_lookup_failed]', {
-      orgId,
-      code: String((scopedResult.error as any)?.code || ''),
-      message: String((scopedResult.error as any)?.message || ''),
-    })
-    return envKey
-  }
-
-  const fallbackResult = await supabase
-    .from('ai_settings')
-    .select('openai_api_key')
-    .order('id', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-
-  if (fallbackResult.error) {
-    console.warn('[ai-digest-worker][openai_key_lookup_compat_failed]', {
-      orgId,
-      code: String((fallbackResult.error as any)?.code || ''),
-      message: String((fallbackResult.error as any)?.message || ''),
-    })
-    return envKey
-  }
-
-  const fallbackKey = compactText((fallbackResult.data as any)?.openai_api_key || '', 10000).trim()
-  return fallbackKey || envKey
+  return envKey
 }
 
 function buildDigestAiPrompt(

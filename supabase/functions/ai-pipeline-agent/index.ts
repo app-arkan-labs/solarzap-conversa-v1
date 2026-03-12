@@ -78,6 +78,12 @@ type AppointmentWindowRule = {
     days: DayKey[];
 };
 type AppointmentWindowConfig = Record<AppointmentWindowType, AppointmentWindowRule>;
+type FollowUpWindowConfig = {
+    start: string;
+    end: string;
+    days: DayKey[];
+    preferred_time: string | null;
+};
 
 const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -87,6 +93,113 @@ const DEFAULT_APPOINTMENT_WINDOW_CONFIG: AppointmentWindowConfig = {
     meeting: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
     installation: { start: '09:00', end: '17:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
 };
+const DEFAULT_FOLLOW_UP_WINDOW_CONFIG: FollowUpWindowConfig = {
+    start: '09:00',
+    end: '18:00',
+    days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    preferred_time: null,
+};
+
+type AutoScheduleMode = 'both_on' | 'call_only' | 'visit_only' | 'both_off';
+type AutoSchedulePolicy = {
+    mode: AutoScheduleMode;
+    callEnabled: boolean;
+    visitEnabled: boolean;
+    callMinDays: number;
+    visitMinDays: number;
+};
+
+const DEFAULT_AUTO_SCHEDULE_POLICY: AutoSchedulePolicy = {
+    mode: 'both_on',
+    callEnabled: true,
+    visitEnabled: true,
+    callMinDays: 0,
+    visitMinDays: 0,
+};
+
+function normalizeBooleanSetting(raw: any, fallback: boolean): boolean {
+    return typeof raw === 'boolean' ? raw : fallback;
+}
+
+function normalizeNonNegativeInt(raw: any, fallback = 0, max = 60): number {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(0, Math.min(max, Math.round(parsed)));
+}
+
+function resolveAutoSchedulePolicy(settings: any): AutoSchedulePolicy {
+    const callEnabled = normalizeBooleanSetting(
+        settings?.auto_schedule_call_enabled,
+        DEFAULT_AUTO_SCHEDULE_POLICY.callEnabled
+    );
+    const visitEnabled = normalizeBooleanSetting(
+        settings?.auto_schedule_visit_enabled,
+        DEFAULT_AUTO_SCHEDULE_POLICY.visitEnabled
+    );
+    const callMinDays = normalizeNonNegativeInt(
+        settings?.auto_schedule_call_min_days,
+        DEFAULT_AUTO_SCHEDULE_POLICY.callMinDays
+    );
+    const visitMinDays = normalizeNonNegativeInt(
+        settings?.auto_schedule_visit_min_days,
+        DEFAULT_AUTO_SCHEDULE_POLICY.visitMinDays
+    );
+
+    let mode: AutoScheduleMode = 'both_on';
+    if (callEnabled && visitEnabled) mode = 'both_on';
+    else if (callEnabled) mode = 'call_only';
+    else if (visitEnabled) mode = 'visit_only';
+    else mode = 'both_off';
+
+    return {
+        mode,
+        callEnabled,
+        visitEnabled,
+        callMinDays,
+        visitMinDays,
+    };
+}
+
+function buildSchedulePolicyPromptBlock(policy: AutoSchedulePolicy, isAfterHoursForCall: boolean): string {
+    const modeLine =
+        policy.mode === 'both_on'
+            ? 'MODO_AGENDAMENTO: ambos ativos, a IA pode escolher entre ligacao ou visita.'
+            : policy.mode === 'call_only'
+                ? 'MODO_AGENDAMENTO: apenas ligacao ativa, NAO oferecer visita automatica.'
+                : policy.mode === 'visit_only'
+                    ? 'MODO_AGENDAMENTO: apenas visita ativa, NAO oferecer ligacao automatica.'
+                    : 'MODO_AGENDAMENTO: ambos desativados, NAO fazer agendamento automatico.';
+
+    const cutoffLine = isAfterHoursForCall
+        ? 'REGRA_HORARIO_ATIVA: agora eh apos 18h no timezone operacional. Nao convide para ligacao; continue no WhatsApp.'
+        : 'REGRA_HORARIO_ATIVA: dentro da janela para convite de ligacao.';
+
+    return `
+POLITICA_DE_AGENDAMENTO_RUNTIME:
+- ${modeLine}
+- MIN_DIAS_LIGACAO: ${policy.callMinDays}
+- MIN_DIAS_VISITA: ${policy.visitMinDays}
+- ${cutoffLine}
+`;
+}
+
+function textContainsCallSchedulingIntent(text: string | null | undefined): boolean {
+    const normalized = String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    return /(ligacao|ligar|chamada|telefonema|call)/i.test(normalized)
+        && /(agendar|marcar|horario|horarios|posso|podemos|confirmar)/i.test(normalized);
+}
+
+function textContainsVisitSchedulingIntent(text: string | null | undefined): boolean {
+    const normalized = String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    return /(visita|visita tecnica|ir ate|presencial)/i.test(normalized)
+        && /(agendar|marcar|horario|horarios|posso|podemos|confirmar)/i.test(normalized);
+}
 
 function normalizeDayKey(raw: any): DayKey | null {
     const value = String(raw || '').trim().toLowerCase();
@@ -159,6 +272,29 @@ function normalizeAppointmentWindowConfig(raw: any): AppointmentWindowConfig {
     return normalized;
 }
 
+function normalizeFollowUpWindowConfig(raw: any): FollowUpWindowConfig {
+    const source = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw as Record<string, any> : {};
+    const start = normalizeHHMM(source.start, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.start);
+    const end = normalizeHHMM(source.end, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.end);
+    const incomingDays = Array.isArray(source.days) ? source.days : [];
+    const normalizedDays = Array.from(
+        new Set(
+            incomingDays
+                .map((day: any) => normalizeDayKey(day))
+                .filter((day): day is DayKey => !!day)
+        )
+    );
+    const preferredRaw = String(source.preferred_time || '').trim();
+    const preferred = preferredRaw ? normalizeHHMM(preferredRaw, '') : '';
+
+    return {
+        start,
+        end,
+        days: normalizedDays.length > 0 ? normalizedDays : DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days,
+        preferred_time: preferred || null,
+    };
+}
+
 function getZonedDateParts(date: Date, timeZone: string): {
     year: number;
     month: number;
@@ -216,6 +352,75 @@ function zonedDateTimeToUtc(
     return new Date(utcGuess.getTime() - offset);
 }
 
+function resolveFollowUpScheduledAt(params: {
+    baseDate: Date;
+    timeZone: string;
+    windowConfig: FollowUpWindowConfig;
+}): { scheduledAt: Date; adjusted: boolean } {
+    const { baseDate, timeZone, windowConfig } = params;
+    const base = new Date(baseDate.getTime());
+    if (isNaN(base.getTime())) {
+        return { scheduledAt: new Date(Date.now() + (3 * 60 * 60 * 1000)), adjusted: true };
+    }
+
+    const startMinutes = parseHHMMToMinutes(windowConfig.start);
+    const endMinutes = parseHHMMToMinutes(windowConfig.end);
+    if (startMinutes < 0 || endMinutes <= startMinutes) {
+        return { scheduledAt: base, adjusted: false };
+    }
+
+    const preferredMinutesRaw = windowConfig.preferred_time ? parseHHMMToMinutes(windowConfig.preferred_time) : -1;
+    const preferredMinutes = preferredMinutesRaw >= startMinutes && preferredMinutesRaw < endMinutes
+        ? preferredMinutesRaw
+        : -1;
+
+    const allowedDays = Array.isArray(windowConfig.days) && windowConfig.days.length > 0
+        ? windowConfig.days
+        : DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days;
+
+    const baseParts = getZonedDateParts(base, timeZone);
+    const baseLocalNoon = zonedDateTimeToUtc(baseParts.year, baseParts.month, baseParts.day, 12, 0, 0, timeZone);
+    const baseMinutesOfDay = (baseParts.hour * 60) + baseParts.minute + (baseParts.second > 0 ? 1 : 0);
+
+    for (let dayOffset = 0; dayOffset <= 30; dayOffset++) {
+        const dayProbe = new Date(baseLocalNoon.getTime() + (dayOffset * 24 * 60 * 60 * 1000));
+        const dayParts = getZonedDateParts(dayProbe, timeZone);
+        if (!allowedDays.includes(dayParts.weekday)) continue;
+
+        let candidateMinutes = preferredMinutes >= 0 ? preferredMinutes : startMinutes;
+
+        if (dayOffset === 0) {
+            if (preferredMinutes >= 0 && preferredMinutes < baseMinutesOfDay) {
+                continue;
+            }
+            if (preferredMinutes < 0) {
+                candidateMinutes = Math.max(startMinutes, baseMinutesOfDay);
+            }
+        }
+
+        if (candidateMinutes >= endMinutes) continue;
+
+        const candidateUtc = zonedDateTimeToUtc(
+            dayParts.year,
+            dayParts.month,
+            dayParts.day,
+            Math.floor(candidateMinutes / 60),
+            candidateMinutes % 60,
+            0,
+            timeZone
+        );
+
+        if (candidateUtc.getTime() < base.getTime()) continue;
+
+        return {
+            scheduledAt: candidateUtc,
+            adjusted: candidateUtc.getTime() !== base.getTime(),
+        };
+    }
+
+    return { scheduledAt: base, adjusted: false };
+}
+
 function inferAppointmentWindowType(rawType: any, targetStage: string | null | undefined, currentStage: string): AppointmentWindowType {
     const type = String(rawType || '').toLowerCase();
     if (type.includes('visit') || type.includes('visita')) return 'visit';
@@ -240,6 +445,7 @@ function generateAvailableSlotsForType(params: {
     timeZone: string;
     windowRule: AppointmentWindowRule;
     busyRanges: Array<{ startMs: number; endMs: number }>;
+    minLeadDays?: number;
     slotMinutes?: number;
     limit?: number;
     lookaheadDays?: number;
@@ -249,6 +455,7 @@ function generateAvailableSlotsForType(params: {
         timeZone,
         windowRule,
         busyRanges,
+        minLeadDays = 0,
         slotMinutes = 30,
         limit = 8,
         lookaheadDays = 14,
@@ -273,6 +480,7 @@ function generateAvailableSlotsForType(params: {
     );
 
     for (let dayOffset = 0; dayOffset <= lookaheadDays && results.length < limit; dayOffset++) {
+        if (dayOffset < minLeadDays) continue;
         const dayProbeUtc = new Date(localTodayNoonUtc.getTime() + (dayOffset * 24 * 60 * 60 * 1000));
         const dayParts = getZonedDateParts(dayProbeUtc, timeZone);
         if (!windowRule.days.includes(dayParts.weekday)) continue;
@@ -303,6 +511,24 @@ function generateAvailableSlotsForType(params: {
     }
 
     return results;
+}
+
+function isSlotRespectingMinLeadDays(
+    slotIso: string,
+    minLeadDays: number,
+    timeZone: string,
+    now: Date
+): boolean {
+    if (minLeadDays <= 0) return true;
+    const slotDate = new Date(slotIso);
+    if (isNaN(slotDate.getTime())) return false;
+
+    const nowParts = getZonedDateParts(now, timeZone);
+    const slotParts = getZonedDateParts(slotDate, timeZone);
+    const nowLocalNoon = zonedDateTimeToUtc(nowParts.year, nowParts.month, nowParts.day, 12, 0, 0, timeZone).getTime();
+    const slotLocalNoon = zonedDateTimeToUtc(slotParts.year, slotParts.month, slotParts.day, 12, 0, 0, timeZone).getTime();
+    const diffDays = Math.floor((slotLocalNoon - nowLocalNoon) / (24 * 60 * 60 * 1000));
+    return diffDays >= minLeadDays;
 }
 
 function formatSlotLabel(slotIso: string, timeZone: string, now: Date): string {
@@ -790,20 +1016,251 @@ function buildStructuredLeadSnapshot(lead: any, currentStage: string): Record<st
     };
 }
 
-function buildDeterministicNextQuestionFallback(currentStage: string, lead: any): string | null {
-    if (currentStage !== 'respondeu') return null;
+type QualificationMissingKey =
+    | 'project_type'
+    | 'consumption_or_bill'
+    | 'location'
+    | 'utility_company'
+    | 'timing'
+    | 'need_reason'
+    | 'budget_fit'
+    | 'decision_makers'
+    | 'address'
+    | 'decision_makers_present';
 
-    if (!lead?.tipo_cliente) {
-        return 'Pra eu seguir certo: e para casa, empresa, agronegocio ou usina/investimento?';
-    }
-    if (!lead?.valor_estimado && !lead?.consumo_kwh) {
-        return 'Perfeito. Quanto voce paga, em media, na conta de luz ou quantos kWh por mes?';
-    }
-    if (!lead?.cidade) {
-        return 'Agora me confirma so a cidade da instalacao.';
+const QUALIFICATION_QUESTION_BY_KEY: Record<QualificationMissingKey, string> = {
+    project_type: 'Pra eu seguir certo: e para casa, empresa, agronegocio ou usina/investimento?',
+    consumption_or_bill: 'Perfeito. Quanto voce paga, em media, na conta de luz ou quantos kWh por mes?',
+    location: 'Agora me confirma so a cidade da instalacao.',
+    utility_company: 'Me confirma tambem qual e a concessionaria de energia ai da sua regiao.',
+    timing: 'Qual o prazo ideal para voce implementar isso: imediato, 30 dias ou mais para frente?',
+    need_reason: 'Qual e o principal objetivo desse projeto agora: economizar, previsibilidade da conta ou valorizacao do imovel?',
+    budget_fit: 'Para eu montar a melhor opcao, hoje voce pretende investir com entrada, parcelar ou financiamento?',
+    decision_makers: 'Quem participa da decisao com voce para aprovar o projeto?',
+    address: 'Para visita tecnica, me confirma o endereco completo da instalacao.',
+    decision_makers_present: 'No dia da visita, os decisores conseguem estar presentes no local?',
+};
+
+function getRespondeuStageSnapshot(lead: any): Record<string, any> {
+    const root = normalizeLeadStageDataRoot(lead?.lead_stage_data);
+    const respondeu = root?.respondeu;
+    if (!respondeu || typeof respondeu !== 'object' || Array.isArray(respondeu)) return {};
+    return respondeu as Record<string, any>;
+}
+
+function getRespondeuQualificationState(lead: any): {
+    missingKeys: QualificationMissingKey[];
+    visitMissingKeys: QualificationMissingKey[];
+    checklist: Record<string, boolean>;
+} {
+    const stageData = getRespondeuStageSnapshot(lead);
+    const meta = parseLeadMeta(lead?.observacoes || '');
+    const collected = stageData?.collected && typeof stageData.collected === 'object' ? stageData.collected : {};
+
+    const hasProjectType = Boolean(String(lead?.tipo_cliente || stageData?.segment || '').trim());
+    const hasConsumptionOrBill = Boolean(
+        Number(lead?.valor_estimado || 0) > 0
+        || Number(lead?.consumo_kwh || 0) > 0
+        || Number((collected as any)?.estimated_value_brl || 0) > 0
+        || Number((collected as any)?.consumption_kwh_month || 0) > 0
+    );
+    const hasLocation = Boolean(String(lead?.cidade || (collected as any)?.city || stageData?.address || '').trim());
+    const hasUtilityCompany = Boolean(String(meta?.utility_company || (collected as any)?.utility_company || '').trim());
+    const hasTiming = Boolean(String(stageData?.timing || '').trim());
+    const hasNeedReason = Boolean(String(stageData?.need_reason || '').trim());
+    const hasBudgetFit = Boolean(String(stageData?.budget_fit || '').trim());
+    const hasDecisionMakers = Array.isArray(stageData?.decision_makers)
+        ? stageData.decision_makers.length > 0
+        : Boolean(String(stageData?.decision_makers || '').trim());
+    const derivedBantComplete = hasTiming && hasNeedReason && hasBudgetFit && hasDecisionMakers;
+    const hasBantComplete = stageData?.bant_complete === true || derivedBantComplete;
+    const hasAddressForVisit = Boolean(String(stageData?.address || '').trim());
+    const decisionMakersPresent = stageData?.decision_makers_present;
+    const hasDecisionMakersPresent = typeof decisionMakersPresent === 'boolean' ? decisionMakersPresent : null;
+
+    const missingKeys: QualificationMissingKey[] = [];
+    if (!hasProjectType) missingKeys.push('project_type');
+    if (!hasConsumptionOrBill) missingKeys.push('consumption_or_bill');
+    if (!hasLocation) missingKeys.push('location');
+    if (!hasUtilityCompany) missingKeys.push('utility_company');
+    if (!hasTiming) missingKeys.push('timing');
+    if (!hasNeedReason) missingKeys.push('need_reason');
+    if (!hasBudgetFit) missingKeys.push('budget_fit');
+    if (!hasDecisionMakers) missingKeys.push('decision_makers');
+    if (!hasBantComplete && !missingKeys.includes('decision_makers')) {
+        // Keep deterministic flow asking one missing key at a time before considering BANT complete.
+        if (!hasTiming) missingKeys.push('timing');
+        if (!hasNeedReason) missingKeys.push('need_reason');
+        if (!hasBudgetFit) missingKeys.push('budget_fit');
     }
 
-    return 'Com esses dados eu sigo melhor. Prefere que eu te passe uma simulacao inicial ou ja alinhamos uma chamada rapida?';
+    const visitMissingKeys: QualificationMissingKey[] = [];
+    if (!hasAddressForVisit) visitMissingKeys.push('address');
+    if (hasDecisionMakersPresent === false || hasDecisionMakersPresent === null) {
+        visitMissingKeys.push('decision_makers_present');
+    }
+
+    return {
+        missingKeys,
+        visitMissingKeys,
+        checklist: {
+            project_type: hasProjectType,
+            consumption_or_bill: hasConsumptionOrBill,
+            location: hasLocation,
+            utility_company: hasUtilityCompany,
+            timing: hasTiming,
+            need_reason: hasNeedReason,
+            budget_fit: hasBudgetFit,
+            decision_makers: hasDecisionMakers,
+            bant_complete: hasBantComplete,
+            visit_address: hasAddressForVisit,
+            decision_makers_present: hasDecisionMakersPresent === true,
+        },
+    };
+}
+
+function buildDeterministicNextQuestionFallback(
+    currentStage: string,
+    lead: any,
+    options?: {
+        preferredMissingKeys?: QualificationMissingKey[];
+        manualReturnMode?: boolean;
+        afterHoursCallBlocked?: boolean;
+    }
+): string | null {
+    if (options?.manualReturnMode) {
+        return 'Perfeito. Vou verificar com o time o melhor horario para ligacao e te retorno por aqui, combinado?';
+    }
+
+    if (options?.afterHoursCallBlocked) {
+        return 'Agora ja passou das 18h por aqui. Vamos seguir por WhatsApp e eu te proponho ligacao em horario comercial, tudo bem?';
+    }
+
+    if (currentStage === 'respondeu') {
+        const qualificationState = getRespondeuQualificationState(lead);
+        const missingKeys = options?.preferredMissingKeys && options.preferredMissingKeys.length > 0
+            ? options.preferredMissingKeys
+            : qualificationState.missingKeys;
+
+        if (missingKeys.length > 0) {
+            return QUALIFICATION_QUESTION_BY_KEY[missingKeys[0]] || QUALIFICATION_QUESTION_BY_KEY.project_type;
+        }
+
+        return 'Com esses dados eu sigo melhor. Prefere que eu te passe uma simulacao inicial ou avancamos para o proximo passo?';
+    }
+
+    if (currentStage === 'nao_compareceu') {
+        return 'Sem problema. Me diz qual periodo fica melhor para retomarmos esse atendimento.';
+    }
+
+    return 'Perfeito, recebi aqui. Vou seguir com seu atendimento e te orientar no proximo passo.';
+}
+
+type CompanyProfileFacts = {
+    company_name?: string | null;
+    headquarters_city?: string | null;
+    headquarters_state?: string | null;
+    headquarters_address?: string | null;
+    service_area_summary?: string | null;
+    business_hours_text?: string | null;
+    public_phone?: string | null;
+    public_whatsapp?: string | null;
+    technical_visit_is_free?: boolean | null;
+    technical_visit_fee_notes?: string | null;
+    supports_financing?: boolean | null;
+    supports_card_installments?: boolean | null;
+    payment_policy_summary?: string | null;
+};
+
+function buildCompanyFactualReply(
+    userText: string,
+    companyProfile: CompanyProfileFacts | null,
+    currentStage: string,
+    lead: any
+): string | null {
+    const text = String(userText || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    if (!text.trim()) return null;
+
+    const companyName = String(companyProfile?.company_name || 'a empresa').trim() || 'a empresa';
+    const city = String(companyProfile?.headquarters_city || '').trim();
+    const state = String(companyProfile?.headquarters_state || '').trim();
+    const address = String(companyProfile?.headquarters_address || '').trim();
+    const serviceArea = String(companyProfile?.service_area_summary || '').trim();
+    const businessHours = String(companyProfile?.business_hours_text || '').trim();
+    const publicPhone = String(companyProfile?.public_phone || '').trim();
+    const publicWhatsApp = String(companyProfile?.public_whatsapp || '').trim();
+
+    const locationQuestion = /(onde|localiz|sede|endereco|cidade da empresa|empresa fica)/i.test(text);
+    const contactQuestion = /(telefone|whatsapp|contato|numero|falar com voces)/i.test(text);
+    const visitCostQuestion = /(visita|orcamento presencial|vistoria).*(custo|preco|valor|cobram|pago|gratuit)/i.test(text);
+    const financingQuestion = /(financiamento|financia|parcelamento|cartao|parcela)/i.test(text);
+    const hoursQuestion = /(horario|atendimento|funcionamento|abrem|fecham)/i.test(text);
+
+    let factualReply: string | null = null;
+
+    if (locationQuestion) {
+        if (address || city || state) {
+            const cityState = [city, state].filter(Boolean).join('/');
+            const addressPart = address ? ` Endereco: ${address}.` : '';
+            factualReply = `A ${companyName} fica em ${cityState || 'localizacao cadastrada'}.${
+                addressPart
+            }`;
+            if (!address && serviceArea) factualReply += ` Area de atendimento: ${serviceArea}.`;
+        } else if (serviceArea) {
+            factualReply = `A ${companyName} atende ${serviceArea}. Se quiser, eu confirmo o endereco exato da base para voce.`;
+        } else {
+            factualReply = `Ainda nao tenho o endereco completo da ${companyName} cadastrado aqui. Posso confirmar com o time e te retornar por aqui.`;
+        }
+    } else if (hoursQuestion) {
+        if (businessHours) {
+            factualReply = `Nosso horario comercial e: ${businessHours}.`;
+        } else {
+            factualReply = 'Ainda nao tenho o horario comercial detalhado cadastrado aqui. Posso confirmar e te retorno por aqui.';
+        }
+    } else if (contactQuestion) {
+        const contactParts = [];
+        if (publicWhatsApp) contactParts.push(`WhatsApp: ${publicWhatsApp}`);
+        if (publicPhone) contactParts.push(`Telefone: ${publicPhone}`);
+        if (contactParts.length > 0) {
+            factualReply = `${contactParts.join(' | ')}.`;
+        } else {
+            factualReply = 'Ainda nao tenho um numero publico cadastrado aqui. Posso confirmar o melhor canal e te retornar.';
+        }
+    } else if (visitCostQuestion) {
+        if (typeof companyProfile?.technical_visit_is_free === 'boolean') {
+            if (companyProfile.technical_visit_is_free) {
+                factualReply = 'A visita tecnica e gratuita.';
+            } else {
+                factualReply = 'A visita tecnica pode ter custo conforme a politica comercial.';
+            }
+            const feeNotes = String(companyProfile?.technical_visit_fee_notes || '').trim();
+            if (feeNotes) factualReply += ` ${feeNotes}`;
+        } else {
+            factualReply = 'Nao tenho a politica de custo da visita cadastrada aqui com precisao. Posso confirmar com o time e te retorno agora.';
+        }
+    } else if (financingQuestion) {
+        const financing = companyProfile?.supports_financing;
+        const card = companyProfile?.supports_card_installments;
+        const policySummary = String(companyProfile?.payment_policy_summary || '').trim();
+
+        const parts: string[] = [];
+        if (typeof financing === 'boolean') parts.push(financing ? 'Temos opcao de financiamento.' : 'No momento nao trabalhamos com financiamento.');
+        if (typeof card === 'boolean') parts.push(card ? 'Tambem temos parcelamento no cartao.' : 'Parcelamento no cartao nao esta disponivel.');
+        if (policySummary) parts.push(policySummary);
+
+        if (parts.length > 0) factualReply = parts.join(' ');
+        else factualReply = 'Ainda nao tenho as regras de financiamento/parcelamento detalhadas cadastradas aqui. Posso confirmar e te retorno.';
+    }
+
+    if (!factualReply) return null;
+    const fallbackNextQuestion = buildDeterministicNextQuestionFallback(currentStage, lead);
+    if (fallbackNextQuestion && currentStage === 'respondeu') {
+        return `${factualReply}\n\n${fallbackNextQuestion}`;
+    }
+    return factualReply;
 }
 
 // --- HELPER: Safe Stage Update (Increment 10) ---
@@ -1048,19 +1505,30 @@ function normalizeFollowUpSequenceConfig(raw: any): { steps: FollowUpStepRule[] 
     return { steps };
 }
 
-async function loadFollowUpSequenceConfig(supabase: any, orgId: string): Promise<{ steps: FollowUpStepRule[] }> {
+async function loadFollowUpRuntimeSettings(
+    supabase: any,
+    orgId: string
+): Promise<{ sequenceConfig: { steps: FollowUpStepRule[] }; windowConfig: FollowUpWindowConfig; timeZone: string }> {
     const { data, error } = await supabase
         .from('ai_settings')
-        .select('follow_up_sequence_config')
+        .select('follow_up_sequence_config, follow_up_window_config, timezone')
         .eq('org_id', orgId)
         .maybeSingle();
 
     if (error) {
-        console.warn('[loadFollowUpSequenceConfig] falling back to default sequence:', error.message);
-        return DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG;
+        console.warn('[loadFollowUpRuntimeSettings] falling back to defaults:', error.message);
+        return {
+            sequenceConfig: DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
+            windowConfig: DEFAULT_FOLLOW_UP_WINDOW_CONFIG,
+            timeZone: 'America/Sao_Paulo',
+        };
     }
 
-    return normalizeFollowUpSequenceConfig((data as any)?.follow_up_sequence_config);
+    return {
+        sequenceConfig: normalizeFollowUpSequenceConfig((data as any)?.follow_up_sequence_config),
+        windowConfig: normalizeFollowUpWindowConfig((data as any)?.follow_up_window_config),
+        timeZone: String((data as any)?.timezone || 'America/Sao_Paulo').trim() || 'America/Sao_Paulo',
+    };
 }
 
 function getFirstEnabledFollowUpStep(config: { steps: FollowUpStepRule[] }): FollowUpStepRule | null {
@@ -1110,13 +1578,19 @@ async function cancelAndScheduleFollowUp(params: {
         return { scheduled: false, skippedReason: 'org_agent_disabled' };
     }
 
-    const followUpSequence = await loadFollowUpSequenceConfig(supabase, orgId);
-    const firstEnabledStep = getFirstEnabledFollowUpStep(followUpSequence);
+    const followUpRuntime = await loadFollowUpRuntimeSettings(supabase, orgId);
+    const firstEnabledStep = getFirstEnabledFollowUpStep(followUpRuntime.sequenceConfig);
     if (!firstEnabledStep) {
         return { scheduled: false, skippedReason: 'fu_sequence_empty' };
     }
 
     const nowIso = new Date().toISOString();
+    const baseScheduleDate = new Date(Date.now() + (firstEnabledStep.delay_minutes * 60_000));
+    const followUpScheduleResolution = resolveFollowUpScheduledAt({
+        baseDate: baseScheduleDate,
+        timeZone: followUpRuntime.timeZone,
+        windowConfig: followUpRuntime.windowConfig,
+    });
     const leadIdNum = Number(leadId);
 
     const { error: cancelErr } = await supabase
@@ -1135,7 +1609,7 @@ async function cancelAndScheduleFollowUp(params: {
         org_id: orgId,
         lead_id: leadIdNum,
         agent_type: 'follow_up',
-        scheduled_at: new Date(Date.now() + (firstEnabledStep.delay_minutes * 60_000)).toISOString(),
+        scheduled_at: followUpScheduleResolution.scheduledAt.toISOString(),
         status: 'pending',
         guard_stage: normalizedStage || null,
         payload: {
@@ -1143,6 +1617,7 @@ async function cancelAndScheduleFollowUp(params: {
             last_outbound_at: nowIso,
             original_stage: normalizedStage || null,
             instance_name: instanceName || null,
+            follow_up_schedule_timezone: followUpRuntime.timeZone,
         },
     };
 
@@ -1188,6 +1663,13 @@ async function cancelAndScheduleFollowUp(params: {
                 stage: normalizedStage || null,
                 step: firstEnabledStep.step,
                 scheduled_in_minutes: firstEnabledStep.delay_minutes,
+                scheduled_at: followUpScheduleResolution.scheduledAt.toISOString(),
+                schedule_timezone: followUpRuntime.timeZone,
+                window_adjusted: followUpScheduleResolution.adjusted,
+                window_start: followUpRuntime.windowConfig.start,
+                window_end: followUpRuntime.windowConfig.end,
+                window_days: followUpRuntime.windowConfig.days.join(','),
+                preferred_time: followUpRuntime.windowConfig.preferred_time || null,
             }),
             success: true,
         });
@@ -2152,6 +2634,16 @@ Deno.serve(async (req) => {
         let scheduleTimezone = 'America/Sao_Paulo';
         let scheduleCatalogText = '';
         let scheduleWindowConfigNormalized: AppointmentWindowConfig = normalizeAppointmentWindowConfig(null);
+        let autoSchedulePolicy: AutoSchedulePolicy = { ...DEFAULT_AUTO_SCHEDULE_POLICY };
+        let schedulePolicyMode: AutoScheduleMode = 'both_on';
+        let scheduleCallMinDays = 0;
+        let scheduleVisitMinDays = 0;
+        let isAfterHoursForCall = false;
+        let afterHoursCallBlocked = false;
+        let manualReturnModeUsed = false;
+        let qualificationGateBlocked = false;
+        let qualificationMissingKeysForLog: string[] = [];
+        let noOutboundFallbackUsed = false;
         let availableSlotsByType: Record<AppointmentWindowType, string[]> = {
             call: [],
             visit: [],
@@ -2166,6 +2658,7 @@ Deno.serve(async (req) => {
         let slotSelectionEvent: string | null = null;
         let slotSelectionStartAt: string | null = null;
         let slotSelectionType: AppointmentWindowType | null = null;
+        let companyProfileFacts: CompanyProfileFacts | null = null;
 
         // 1. STRICT INSTANCE CHECK
         leadId = payload?.leadId ?? null;
@@ -2991,8 +3484,34 @@ Deno.serve(async (req) => {
         let stagePromptText = '';
         if (!stageConfig?.is_active) {
             stageFallbackUsed = true;
-            stagePromptText = STAGE_FALLBACK_PROMPT;
-            console.log(`⚠️ [${runId}] Stage '${configStageKey}' inactive/missing. Using FAQ fallback prompt. stageFallbackUsed=true`);
+            try {
+                const { data: supportStageConfig, error: supportStageErr } = await supabase
+                    .from('ai_stage_config')
+                    .select('is_active, prompt_override, default_prompt')
+                    .eq('org_id', leadOrgId)
+                    .eq('pipeline_stage', 'assistente_geral')
+                    .maybeSingle();
+
+                if (supportStageErr) {
+                    console.warn(`[${runId}] Support prompt lookup failed (non-blocking):`, supportStageErr.message);
+                }
+
+                const supportPromptCandidate =
+                    supportStageConfig?.is_active !== false
+                        ? String(supportStageConfig?.prompt_override || supportStageConfig?.default_prompt || '').trim()
+                        : '';
+
+                if (supportPromptCandidate) {
+                    stagePromptText = supportPromptCandidate;
+                    console.log(`[${runId}] Stage '${configStageKey}' inactive/missing. Using 'assistente_geral' prompt. stageFallbackUsed=true`);
+                } else {
+                    stagePromptText = STAGE_FALLBACK_PROMPT;
+                    console.log(`[${runId}] Stage '${configStageKey}' inactive/missing. Using FAQ fallback prompt. stageFallbackUsed=true`);
+                }
+            } catch (supportPromptErr: any) {
+                stagePromptText = STAGE_FALLBACK_PROMPT;
+                console.warn(`[${runId}] Support prompt fallback exception (using hardcoded fallback):`, supportPromptErr?.message || supportPromptErr);
+            }
         } else {
             stagePromptText = stageConfig.prompt_override || stageConfig.default_prompt || '';
             console.log(`📝 [${runId}] Stage '${configStageKey}' prompt source: ${stageConfig.prompt_override ? 'OVERRIDE' : 'DEFAULT'}. Length: ${stagePromptText.length}. Agent=${effectiveAgentType}`);
@@ -3230,6 +3749,10 @@ Deno.serve(async (req) => {
 
         scheduleTimezone = String(settings?.timezone || 'America/Sao_Paulo').trim() || 'America/Sao_Paulo';
         scheduleWindowConfigNormalized = normalizeAppointmentWindowConfig((settings as any)?.appointment_window_config);
+        autoSchedulePolicy = resolveAutoSchedulePolicy(settings);
+        schedulePolicyMode = autoSchedulePolicy.mode;
+        scheduleCallMinDays = autoSchedulePolicy.callMinDays;
+        scheduleVisitMinDays = autoSchedulePolicy.visitMinDays;
         const busyRanges: Array<{ startMs: number; endMs: number }> = [];
 
         try {
@@ -3260,18 +3783,22 @@ Deno.serve(async (req) => {
         }
 
         const nowForSlots = new Date();
+        const localNowParts = getZonedDateParts(nowForSlots, scheduleTimezone);
+        isAfterHoursForCall = localNowParts.hour >= 18;
         availableSlotsByType = {
             call: generateAvailableSlotsForType({
                 now: nowForSlots,
                 timeZone: scheduleTimezone,
                 windowRule: scheduleWindowConfigNormalized.call,
                 busyRanges,
+                minLeadDays: scheduleCallMinDays,
             }),
             visit: generateAvailableSlotsForType({
                 now: nowForSlots,
                 timeZone: scheduleTimezone,
                 windowRule: scheduleWindowConfigNormalized.visit,
                 busyRanges,
+                minLeadDays: scheduleVisitMinDays,
             }),
             meeting: generateAvailableSlotsForType({
                 now: nowForSlots,
@@ -3286,9 +3813,12 @@ Deno.serve(async (req) => {
                 busyRanges,
             }),
         };
+        if (isAfterHoursForCall) {
+            availableSlotsByType.call = [];
+        }
         scheduleCatalogText = buildSlotCatalogText(availableSlotsByType, scheduleTimezone, nowForSlots);
 
-        const openAIApiKey = Deno.env.get('OPENAI_API_KEY') || settings.openai_api_key || '';
+        const openAIApiKey = Deno.env.get('OPENAI_API_KEY') || '';
         const openai = openAIApiKey ? new OpenAI({ apiKey: openAIApiKey }) : null;
 
         // --- CRM COMMENTS CONTEXT ---
@@ -3364,12 +3894,33 @@ Deno.serve(async (req) => {
             if (kbOrgId) {
                 const { data: companyProfileForName, error: companyNameErr } = await supabase
                     .from('company_profile')
-                    .select('company_name')
+                    .select('company_name, headquarters_city, headquarters_state, headquarters_address, service_area_summary, business_hours_text, public_phone, public_whatsapp, technical_visit_is_free, technical_visit_fee_notes, supports_financing, supports_card_installments, payment_policy_summary')
                     .eq('org_id', kbOrgId)
                     .maybeSingle();
 
                 if (!companyNameErr) {
                     companyNameForPrompt = String(companyProfileForName?.company_name || '').trim();
+                    companyProfileFacts = {
+                        company_name: companyProfileForName?.company_name || null,
+                        headquarters_city: companyProfileForName?.headquarters_city || null,
+                        headquarters_state: companyProfileForName?.headquarters_state || null,
+                        headquarters_address: companyProfileForName?.headquarters_address || null,
+                        service_area_summary: companyProfileForName?.service_area_summary || null,
+                        business_hours_text: companyProfileForName?.business_hours_text || null,
+                        public_phone: companyProfileForName?.public_phone || null,
+                        public_whatsapp: companyProfileForName?.public_whatsapp || null,
+                        technical_visit_is_free: typeof companyProfileForName?.technical_visit_is_free === 'boolean'
+                            ? companyProfileForName.technical_visit_is_free
+                            : null,
+                        technical_visit_fee_notes: companyProfileForName?.technical_visit_fee_notes || null,
+                        supports_financing: typeof companyProfileForName?.supports_financing === 'boolean'
+                            ? companyProfileForName.supports_financing
+                            : null,
+                        supports_card_installments: typeof companyProfileForName?.supports_card_installments === 'boolean'
+                            ? companyProfileForName.supports_card_installments
+                            : null,
+                        payment_policy_summary: companyProfileForName?.payment_policy_summary || null,
+                    };
                 }
             }
         } catch (companyNameFetchErr: any) {
@@ -3589,6 +4140,17 @@ Deno.serve(async (req) => {
         // 7. OPENAI CALL
         let aiRes: AIResponse | null = null;
 
+        const deterministicCompanyReply = !isScheduledTrigger
+            ? buildCompanyFactualReply(lastUserTextAggregated || lastUserText || '', companyProfileFacts, currentStage, lead)
+            : null;
+        if (deterministicCompanyReply) {
+            aiRes = {
+                action: 'send_message',
+                content: deterministicCompanyReply,
+            } as any;
+            console.log(`🏢 [${runId}] company_factual_reply_used`);
+        }
+
         // --- TEST 11: DETERMINISTIC FOLLOWUP TRIGGER ---
         console.log(`Debug Aggregated: ${JSON.stringify(lastUserTextAggregated)}`);
         if (lastUserTextAggregated.includes('[[SMOKE_FOLLOWUP_TEST__9f3c1a]]')) {
@@ -3706,6 +4268,8 @@ IDENTIDADE: ${settings.assistant_identity_name || 'Consultor Solar'}. Consultor 
 Ao se apresentar, use explicitamente o nome "${settings.assistant_identity_name || 'Consultor Solar'}". Evite apresentações genéricas como "assistente da empresa".
 TIMEZONE_OPERACIONAL: ${scheduleTimezone}
 AGORA_UTC_ISO: ${new Date().toISOString()}
+
+${buildSchedulePolicyPromptBlock(autoSchedulePolicy, isAfterHoursForCall)}
 
 ${SOLAR_BR_PACK}
 
@@ -4039,6 +4603,85 @@ CORRECAO OBRIGATORIA:
             }
         }
 
+        const qualificationState = currentStage === 'respondeu'
+            ? getRespondeuQualificationState(lead)
+            : { missingKeys: [], visitMissingKeys: [], checklist: {} as Record<string, boolean> };
+        qualificationMissingKeysForLog = qualificationState.missingKeys;
+
+        const normalizedTargetStagePrePolicy = normalizeStage(aiRes?.target_stage);
+        const hasScheduleTargetStagePrePolicy = normalizedTargetStagePrePolicy === 'chamada_agendada' || normalizedTargetStagePrePolicy === 'visita_agendada';
+        const hasAppointmentObjectPrePolicy = aiRes?.appointment && typeof aiRes.appointment === 'object' && !Array.isArray(aiRes.appointment);
+        const inferredTypePrePolicy = inferAppointmentWindowType(
+            hasAppointmentObjectPrePolicy ? aiRes?.appointment?.type : null,
+            aiRes?.target_stage,
+            currentStage
+        );
+        const textCallIntent = textContainsCallSchedulingIntent(aiRes?.content || '');
+        const textVisitIntent = textContainsVisitSchedulingIntent(aiRes?.content || '');
+        const hasSchedulingIntentPrePolicy =
+            hasScheduleTargetStagePrePolicy ||
+            hasAppointmentObjectPrePolicy ||
+            aiRes?.action === 'create_appointment' ||
+            textCallIntent ||
+            textVisitIntent;
+
+        if (hasSchedulingIntentPrePolicy) {
+            if (autoSchedulePolicy.mode === 'both_off') {
+                manualReturnModeUsed = true;
+                stageGateBlockReason = stageGateBlockReason || 'manual_return_mode';
+                delete aiRes.appointment;
+                delete aiRes.target_stage;
+                aiRes.action = 'send_message';
+                aiRes.content = buildDeterministicNextQuestionFallback(currentStage, lead, { manualReturnMode: true }) || aiRes.content;
+            } else {
+                const scheduleIntentType = inferredTypePrePolicy;
+                const forcingCall = autoSchedulePolicy.mode === 'call_only' && (scheduleIntentType === 'visit' || textVisitIntent);
+                const forcingVisit = autoSchedulePolicy.mode === 'visit_only' && (scheduleIntentType === 'call' || textCallIntent);
+
+                if (forcingCall || forcingVisit) {
+                    const forcedType: AppointmentWindowType = forcingVisit ? 'visit' : 'call';
+                    const forcedTarget = forcedType === 'visit' ? 'visita_agendada' : 'chamada_agendada';
+                    const fallbackContent = buildScheduleRetryContent(
+                        forcedType,
+                        availableSlotsByType,
+                        scheduleTimezone,
+                        new Date()
+                    );
+
+                    stageGateBlockReason = stageGateBlockReason || `forced_${forcedType}_policy`;
+                    delete aiRes.appointment;
+                    aiRes.target_stage = forcedTarget;
+                    aiRes.action = 'send_message';
+                    aiRes.content = fallbackContent;
+                }
+
+                const callSchedulingAttempt =
+                    inferredTypePrePolicy === 'call'
+                    && (hasScheduleTargetStagePrePolicy || hasAppointmentObjectPrePolicy || aiRes?.action === 'create_appointment');
+                if (isAfterHoursForCall && (callSchedulingAttempt || textCallIntent)) {
+                    afterHoursCallBlocked = true;
+                    stageGateBlockReason = stageGateBlockReason || 'after_hours_call_blocked';
+                    delete aiRes.appointment;
+                    if (normalizeStage(aiRes?.target_stage) === 'chamada_agendada') delete aiRes.target_stage;
+                    aiRes.action = 'send_message';
+                    aiRes.content = buildDeterministicNextQuestionFallback(currentStage, lead, { afterHoursCallBlocked: true }) || aiRes.content;
+                }
+            }
+
+            if (currentStage === 'respondeu' && qualificationState.missingKeys.length > 0) {
+                qualificationGateBlocked = true;
+                stageGateBlockReason = stageGateBlockReason || `qualification_incomplete:${qualificationState.missingKeys[0]}`;
+                appointmentPrecheckBlockedReason = appointmentPrecheckBlockedReason || `qualification_incomplete:${qualificationState.missingKeys[0]}`;
+                delete aiRes.appointment;
+                delete aiRes.target_stage;
+                aiRes.action = 'send_message';
+                aiRes.content = buildDeterministicNextQuestionFallback(currentStage, lead, {
+                    preferredMissingKeys: qualificationState.missingKeys,
+                }) || aiRes.content;
+                console.log(`🧭 [${runId}] qualification_gate_blocked: ${qualificationState.missingKeys.join(',')}`);
+            }
+        }
+
         const normalizedTargetStage = normalizeStage(aiRes?.target_stage);
         const hasScheduleTargetStage = normalizedTargetStage === 'chamada_agendada' || normalizedTargetStage === 'visita_agendada';
         const hasAppointmentObject = aiRes?.appointment && typeof aiRes.appointment === 'object' && !Array.isArray(aiRes.appointment);
@@ -4058,6 +4701,9 @@ CORRECAO OBRIGATORIA:
                 const slotStart = new Date(offeredSlot);
                 if (isNaN(slotStart.getTime())) continue;
                 const slotEndMs = slotStart.getTime() + (30 * 60 * 1000);
+                if (inferredTypeFromContext === 'call' && isAfterHoursForCall) continue;
+                const minDaysForType = inferredTypeFromContext === 'visit' ? scheduleVisitMinDays : inferredTypeFromContext === 'call' ? scheduleCallMinDays : 0;
+                if (!isSlotRespectingMinLeadDays(offeredSlot, minDaysForType, scheduleTimezone, new Date())) continue;
                 if (!isSlotWithinWindow(offeredSlot, inferredTypeFromContext, scheduleWindowConfigNormalized, scheduleTimezone)) continue;
                 if (overlapsBusyRange(slotStart.getTime(), slotEndMs, busyRanges)) continue;
                 selectedImplicitSlot = slotStart.toISOString();
@@ -4122,6 +4768,17 @@ CORRECAO OBRIGATORIA:
                     const startIso = startDate.toISOString();
                     if (startDate.getTime() <= nowForValidation.getTime()) {
                         appointmentPrecheckBlockedReason = 'past_slot';
+                    } else if (inferredType === 'call' && isAfterHoursForCall) {
+                        appointmentPrecheckBlockedReason = 'after_hours_call_blocked';
+                    } else if (
+                        !isSlotRespectingMinLeadDays(
+                            startIso,
+                            inferredType === 'visit' ? scheduleVisitMinDays : inferredType === 'call' ? scheduleCallMinDays : 0,
+                            scheduleTimezone,
+                            nowForValidation
+                        )
+                    ) {
+                        appointmentPrecheckBlockedReason = 'min_days_blocked';
                     } else if (!isSlotWithinWindow(startIso, inferredType, scheduleWindowConfigNormalized, scheduleTimezone)) {
                         appointmentPrecheckBlockedReason = 'outside_window';
                     } else {
@@ -4160,6 +4817,9 @@ CORRECAO OBRIGATORIA:
                 } else if (reasonForLog === 'slot_conflict') {
                     slotSelectionEvent = 'slot_conflict';
                     console.log(`📅 [${runId}] slot_conflict: appointment rejected`);
+                } else if (reasonForLog === 'after_hours_call_blocked') {
+                    slotSelectionEvent = 'after_hours_call_blocked';
+                    console.log(`📵 [${runId}] after_hours_call_blocked: appointment rejected`);
                 } else {
                     slotSelectionEvent = slotSelectionEvent || 'slot_selection_blocked';
                     console.log(`📅 [${runId}] slot_selection_blocked: ${reasonForLog}`);
@@ -4176,13 +4836,45 @@ CORRECAO OBRIGATORIA:
                     aiRes.action === 'move_stage' ||
                     aiRes.action === 'create_appointment'
                 ) {
-                    aiRes.content = buildScheduleRetryContent(
-                        typeForRetry,
-                        availableSlotsByType,
-                        scheduleTimezone,
-                        new Date()
-                    );
+                    if (reasonForLog === 'after_hours_call_blocked') {
+                        aiRes.content = buildDeterministicNextQuestionFallback(currentStage, lead, {
+                            afterHoursCallBlocked: true,
+                        }) || aiRes.content;
+                    } else if (reasonForLog === 'min_days_blocked') {
+                        const minDays = typeForRetry === 'visit' ? scheduleVisitMinDays : scheduleCallMinDays;
+                        aiRes.content = `Para ${typeForRetry === 'visit' ? 'visita' : 'ligacao'}, trabalhamos com antecedencia minima de ${minDays} dia(s). Posso te sugerir opcoes dentro dessa regra?`;
+                    } else {
+                        aiRes.content = buildScheduleRetryContent(
+                            typeForRetry,
+                            availableSlotsByType,
+                            scheduleTimezone,
+                            new Date()
+                        );
+                    }
                 }
+            }
+        }
+
+        const hasOutboundCandidateAfterGuards = (
+            (aiRes.action === 'send_message' && String(aiRes.content || '').trim().length > 0) ||
+            (aiRes.action === 'move_stage' && String(aiRes.content || '').trim().length > 0) ||
+            (aiRes.action === 'create_appointment' && String(aiRes.content || '').trim().length > 0)
+        );
+        if (!isScheduledTrigger && !hasOutboundCandidateAfterGuards) {
+            const fallbackContent = buildDeterministicNextQuestionFallback(currentStage, lead, {
+                preferredMissingKeys: qualificationState.missingKeys,
+                manualReturnMode: autoSchedulePolicy.mode === 'both_off',
+                afterHoursCallBlocked: isAfterHoursForCall && textContainsCallSchedulingIntent(lastUserTextAggregated || ''),
+            });
+            if (fallbackContent) {
+                noOutboundFallbackUsed = true;
+                aiRes.action = 'send_message';
+                aiRes.content = fallbackContent;
+                if (!aiRes?.comment?.text || !String(aiRes.comment.text).trim()) {
+                    const fallbackComment = buildFallbackCommentFromText(lastUserTextAggregated || '');
+                    if (fallbackComment) aiRes.comment = fallbackComment;
+                }
+                console.log(`🧩 [${runId}] no_outbound_fallback_used`);
             }
         }
 
@@ -4768,8 +5460,21 @@ CORRECAO OBRIGATORIA:
             // --- V9 GATING LOGIC ---
             let gateCheck = true;
             if (target === 'chamada_agendada' || target === 'visita_agendada') {
-                // Gated: only move if appointment was written OR duplicate
-                if (appointmentWritten || appointmentSkippedReason === 'skipped_duplicate') {
+                if (currentStage === 'respondeu' && qualificationState.missingKeys.length > 0) {
+                    gateCheck = false;
+                    qualificationGateBlocked = true;
+                    stageGateBlockReason = `qualification_incomplete:${qualificationState.missingKeys[0]}`;
+                    console.warn(`🛑 [${runId}] stage_gate_block: target=${target}, reason=${stageGateBlockReason}`);
+                } else if (
+                    target === 'visita_agendada'
+                    && currentStage === 'respondeu'
+                    && qualificationState.visitMissingKeys.length > 0
+                ) {
+                    gateCheck = false;
+                    stageGateBlockReason = `visit_requirements_incomplete:${qualificationState.visitMissingKeys[0]}`;
+                    console.warn(`🛑 [${runId}] stage_gate_block: target=${target}, reason=${stageGateBlockReason}`);
+                } else if (appointmentWritten || appointmentSkippedReason === 'skipped_duplicate') {
+                    // Gated: only move if appointment was written OR duplicate
                     gateCheck = true;
                 } else {
                     gateCheck = false;
@@ -4847,6 +5552,10 @@ CORRECAO OBRIGATORIA:
             web_results_count: webResultsCount,
             web_error: webError,
             schedule_timezone: scheduleTimezone,
+            schedule_policy_mode: schedulePolicyMode,
+            schedule_call_min_days: scheduleCallMinDays,
+            schedule_visit_min_days: scheduleVisitMinDays,
+            after_hours_for_call: isAfterHoursForCall,
             schedule_busy_count: scheduleBusyCount,
             schedule_slots_available_call: availableSlotsByType.call.length,
             schedule_slots_available_visit: availableSlotsByType.visit.length,
@@ -4858,6 +5567,11 @@ CORRECAO OBRIGATORIA:
             appointment_precheck_block_reason: appointmentPrecheckBlockedReason,
             implicit_confirmation_used: implicitConfirmationUsed,
             stage_gate_block_reason: stageGateBlockReason,
+            after_hours_call_blocked: afterHoursCallBlocked,
+            manual_return_mode_used: manualReturnModeUsed,
+            qualification_gate_blocked: qualificationGateBlocked,
+            qualification_missing_keys: qualificationMissingKeysForLog.join(',') || null,
+            no_outbound_fallback_used: noOutboundFallbackUsed,
             evolutionSendStatus,
             transport_mode: transportMode,
             transport_sim_reason: transportSimReason,
@@ -4902,6 +5616,11 @@ CORRECAO OBRIGATORIA:
             appointment_written: appointmentWritten,
             proposal_written: proposalWritten,
             stage_move_result: stageMoveResult,
+            qualification_gate_blocked: qualificationGateBlocked,
+            qualification_missing_keys: qualificationMissingKeysForLog,
+            no_outbound_fallback_used: noOutboundFallbackUsed,
+            schedule_policy_mode: schedulePolicyMode,
+            after_hours_call_blocked: afterHoursCallBlocked,
         };
         latestAiResponse = aiRes as any;
 

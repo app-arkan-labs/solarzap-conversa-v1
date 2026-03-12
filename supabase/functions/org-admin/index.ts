@@ -47,6 +47,12 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function parseBooleanEnv(name: string, fallback = false): boolean {
+  const raw = String(Deno.env.get(name) || '').trim().toLowerCase();
+  if (!raw) return fallback;
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
 function metadataDisplayName(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== 'object') {
     return null;
@@ -334,6 +340,8 @@ async function bootstrapSelf(
   adminClient: ReturnType<typeof createClient>,
   user: { id: string; email?: string | null },
 ) {
+  const autoStartTrial = parseBooleanEnv('ORG_BOOTSTRAP_AUTO_TRIAL', false);
+
   const existingMembership = await resolvePrimaryMembership(adminClient, user.id);
   if (existingMembership) {
     return {
@@ -395,25 +403,38 @@ async function bootstrapSelf(
     throw membershipUpsertError;
   }
 
-  await adminClient
-    .from('organizations')
-    .update({
+  const nowIso = new Date().toISOString();
+  const trialEndsAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const billingUpdate = autoStartTrial
+    ? {
       subscription_status: 'trialing',
-      trial_started_at: new Date().toISOString(),
-      trial_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      trial_started_at: nowIso,
+      trial_ends_at: trialEndsAtIso,
       onboarding_state: 'pending_checkout',
       trial_days: 7,
-    })
-    .eq('id', orgId)
-    .is('trial_starts_at', null);
+    }
+    : {
+      subscription_status: 'pending_checkout',
+      onboarding_state: 'pending_checkout',
+      trial_started_at: null,
+      trial_ends_at: null,
+      trial_days: 7,
+    };
+
+  await adminClient
+    .from('organizations')
+    .update(billingUpdate)
+    .eq('id', orgId);
 
   await adminClient.from('org_billing_timeline').insert({
     org_id: orgId,
-    event_type: 'trial_started',
+    event_type: autoStartTrial ? 'trial_started' : 'checkout_required',
     actor: 'org_admin',
     payload: {
       source: 'bootstrap_self',
-      days: 7,
+      auto_start_trial: autoStartTrial,
+      ...(autoStartTrial ? { days: 7, trial_ends_at: trialEndsAtIso } : {}),
     },
   });
 

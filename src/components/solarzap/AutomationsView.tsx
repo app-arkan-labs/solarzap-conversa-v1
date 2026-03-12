@@ -85,6 +85,8 @@ export function AutomationsView() {
     const {
         settings,
         hasChanges,
+        isSaving,
+        isHydrating,
         updateSetting,
         saveChanges,
         cancelChanges,
@@ -95,8 +97,8 @@ export function AutomationsView() {
     const [expandedMessages, setExpandedMessages] = useState(true);
     const { toast } = useToast();
 
-    const handleSave = () => {
-        const ok = saveChanges();
+    const handleSave = async () => {
+        const ok = await saveChanges();
         if (ok) {
             toast({ title: "✅ Configurações salvas", description: "Suas alterações foram salvas com sucesso." });
         } else {
@@ -218,7 +220,7 @@ export function AutomationsView() {
                                     size="sm"
                                     onClick={handleReset}
                                     className="gap-2 border-border/50 shadow-sm"
-                                    disabled={!canEdit}
+                                    disabled={!canEdit || isSaving || isHydrating}
                                 >
                                     <RotateCcw className="w-4 h-4" />
                                     Restaurar Padrão
@@ -259,7 +261,7 @@ export function AutomationsView() {
                                             checked={settings.skipBackwardMoves}
                                             onCheckedChange={(checked) => updateSetting('skipBackwardMoves', checked)}
                                             className="data-[state=checked]:bg-blue-500"
-                                            disabled={!canEdit}
+                                            disabled={!canEdit || isSaving || isHydrating}
                                         />
                                     </div>
                                 </CardContent>
@@ -293,7 +295,7 @@ export function AutomationsView() {
                                         icon={automation.icon}
                                         enabled={settings[automation.key] as boolean}
                                         onToggle={(enabled) => updateSetting(automation.key, enabled)}
-                                        disabled={!canEdit}
+                                        disabled={!canEdit || isSaving || isHydrating}
                                     />
                                 ))}
                             </CardContent>
@@ -360,7 +362,7 @@ export function AutomationsView() {
                                                     checked={settings[msg.enabledKey] as boolean}
                                                     onCheckedChange={(checked) => updateSetting(msg.enabledKey, checked)}
                                                     className="data-[state=checked]:bg-primary"
-                                                    disabled={!canEdit}
+                                                    disabled={!canEdit || isSaving || isHydrating}
                                                 />
                                             </div>
                                             <p className="text-xs text-muted-foreground">
@@ -372,7 +374,7 @@ export function AutomationsView() {
                                                 onChange={(e) => updateSetting(msg.key, e.target.value)}
                                                 placeholder={msg.placeholder}
                                                 className="min-h-[100px] resize-none"
-                                                disabled={!canEdit || !settings[msg.enabledKey]}
+                                                disabled={!canEdit || !settings[msg.enabledKey] || isSaving || isHydrating}
                                             />
                                         </div>
                                     ))}
@@ -413,17 +415,19 @@ export function AutomationsView() {
                             size="sm"
                             onClick={handleCancel}
                             className="gap-2"
+                            disabled={isSaving || isHydrating}
                         >
                             <X className="w-4 h-4" />
                             Cancelar
                         </Button>
                         <Button
                             size="sm"
-                            onClick={handleSave}
+                            onClick={() => { void handleSave(); }}
                             className="gap-2 bg-primary hover:bg-primary/90"
+                            disabled={isSaving || isHydrating}
                         >
                             <Save className="w-4 h-4" />
-                            Salvar
+                            {isSaving ? 'Salvando...' : 'Salvar'}
                         </Button>
                     </div>
                 </div>

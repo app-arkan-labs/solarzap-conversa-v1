@@ -28,6 +28,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 import { ptBR } from 'date-fns/locale';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
+import { buildTabBlocker } from '@/lib/billingBlocker';
 
 interface AppointmentModalProps {
     isOpen: boolean;
@@ -84,6 +86,7 @@ export function AppointmentModal({
     onSuccess
 }: AppointmentModalProps) {
     const { createAppointment, updateAppointment, deleteAppointment } = useAppointments();
+    const { billing, openBillingBlocker } = useBillingBlocker();
     const { contacts: hookContacts } = useLeads();
     const contacts = providedContacts ?? hookContacts;
     const { toast } = useToast();
@@ -261,6 +264,12 @@ export function AppointmentModal({
 
 
     const onSubmit = async (data: FormData) => {
+        const blocker = buildTabBlocker('calendario', billing);
+        if (blocker) {
+            openBillingBlocker(blocker);
+            return;
+        }
+
         try {
             const [hours, minutes] = data.time.split(':').map(Number);
             const leadId = Number(data.lead_id);
@@ -536,6 +545,11 @@ export function AppointmentModal({
                     <Button variant="outline" onClick={() => setConfirmDeleteOpen(false)}>Cancelar</Button>
                     <Button variant="destructive" onClick={async () => {
                         if (initialData?.id) {
+                            const blocker = buildTabBlocker('calendario', billing);
+                            if (blocker) {
+                                openBillingBlocker(blocker);
+                                return;
+                            }
                             await deleteAppointment(initialData.id);
                             onClose();
                         }

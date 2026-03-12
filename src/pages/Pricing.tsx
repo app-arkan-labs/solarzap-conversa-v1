@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase';
 
 const PLAN_ORDER = ['start', 'pro', 'scale'];
 const PLAN_RANK: Record<string, number> = { free: 0, start: 1, pro: 2, scale: 3 };
+type BillingIntent = 'upgrade' | 'reactivate';
 
 const PLAN_DISPLAY: Record<string, {
   label: string; description: string; icon: typeof Zap;
@@ -64,7 +65,6 @@ const LIMIT_LABELS: Record<string, string> = {
 
 const FEATURE_LABELS: Record<string, string> = {
   ai_enabled: 'Assistente de IA',
-  google_integration_enabled: 'Integração Google',
   appointments_enabled: 'Agendamentos',
   advanced_reports_enabled: 'Relatórios avançados',
   advanced_tracking_enabled: 'Tracking avançado',
@@ -72,8 +72,22 @@ const FEATURE_LABELS: Record<string, string> = {
 
 const CARD_HIGHLIGHTS: Record<string, string[]> = {
   start: ['Leads ativos', 'Instâncias WhatsApp', 'Créditos de disparo/mês', 'Propostas/mês', 'Assistente de IA'],
-  pro: ['Leads ativos', 'Instâncias WhatsApp', 'Créditos de disparo/mês', 'Propostas/mês', 'Integração Google', 'Assistente de IA'],
+  pro: ['Leads ativos', 'Instâncias WhatsApp', 'Créditos de disparo/mês', 'Propostas/mês', 'Assistente de IA'],
   scale: ['Leads ativos', 'Instâncias WhatsApp', 'Créditos de disparo/mês', 'Propostas/mês', 'Tracking avançado', 'Assistente de IA'],
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  tracking: 'Tracking avancado',
+  integracoes: 'Integracoes',
+  calendario: 'Agendamentos',
+  ia_agentes: 'IA Agentes',
+  broadcasts: 'Disparos',
+  broadcast_credits: 'Creditos de disparo',
+  ai_credits: 'Creditos de IA',
+  proposal_ai: 'Propostas com IA',
+  whatsapp_instances: 'Instancias de WhatsApp',
+  propostas: 'Propostas',
+  automacoes: 'Automacoes',
 };
 
 type PlanRow = {
@@ -95,16 +109,27 @@ function formatLimit(value: unknown) {
   if (n < 0) return 'Ilimitado';
   return new Intl.NumberFormat('pt-BR').format(n);
 }
+function normalizePlanQuery(value: string | null) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return PLAN_ORDER.includes(normalized) ? normalized : null;
+}
 
-function getPlanActionLabel(targetPlan: string, currentPlan: string | null) {
+function getPlanActionLabel(targetPlan: string, currentPlan: string | null, intent: BillingIntent) {
+  if (intent === 'reactivate' && targetPlan === currentPlan) return 'Reativar plano';
   if (targetPlan === currentPlan) return 'Plano atual';
   const currentRank = PLAN_RANK[currentPlan ?? 'free'] ?? 0;
   const targetRank = PLAN_RANK[targetPlan] ?? 0;
-  if (!currentPlan || currentPlan === 'free') return 'Testar grátis por 7 dias';
+  if (!currentPlan || currentPlan === 'free') return 'Testar gratis por 7 dias';
   if (targetRank > currentRank) return 'Fazer upgrade';
   if (targetRank < currentRank) return 'Fazer downgrade';
   return 'Selecionar plano';
 }
+
+function isPlanSelectionDisabled(targetPlan: string, currentPlan: string | null, intent: BillingIntent) {
+  if (intent === 'reactivate' && targetPlan === currentPlan) return false;
+  return targetPlan === currentPlan;
+}
+
 
 /* ── component ──────────────────────────────────────────────────── */
 
@@ -122,7 +147,20 @@ export default function Pricing() {
   const billing = billingQuery.data;
   const currentPlan = String(billing?.plan_key || '').trim() || null;
   const checkoutState = String(searchParams.get('checkout') || '').trim();
+  const intent = (searchParams.get('intent') === 'reactivate' ? 'reactivate' : 'upgrade') as BillingIntent;
+  const targetPlan = normalizePlanQuery(searchParams.get('target'));
+  const source = String(searchParams.get('source') || '').trim().toLowerCase();
+  const sourceLabel = SOURCE_LABELS[source] || null;
   const isNoPlan = !currentPlan || currentPlan === 'free';
+  const heroBadgeLabel = intent === 'reactivate' ? 'Reativacao guiada' : 'Upgrade guiado';
+  const heroTitle = intent === 'reactivate'
+    ? 'Retome seu plano e desbloqueie o acesso completo'
+    : 'Escolha o plano ideal para destravar a proxima etapa';
+  const heroDescription = intent === 'reactivate'
+    ? `Regularize a assinatura${sourceLabel ? ` para voltar a usar ${sourceLabel}` : ''} sem friccao.`
+    : sourceLabel
+      ? `Chegue ao recurso de ${sourceLabel} com o plano mais aderente ao seu uso atual.`
+      : 'Compare os planos e siga para o upgrade mais aderente ao seu momento.';
 
   const plans = useMemo(() => {
     if (planCatalog.length > 0) return planCatalog;
@@ -168,7 +206,7 @@ export default function Pricing() {
 
   const handleUpgrade = async (planKey: string) => {
     if (!user) {
-      navigate(`/login?plan=${encodeURIComponent(planKey)}`);
+      navigate(`/login?plan=${encodeURIComponent(planKey)}&mode=signup`);
       return;
     }
     try {
@@ -176,7 +214,7 @@ export default function Pricing() {
       const url = await createPlanCheckoutSession({
         planKey,
         orgId,
-        successUrl: `${window.location.origin}/welcome?checkout=success`,
+        successUrl: `${window.location.origin}/onboarding?checkout=success`,
         cancelUrl: `${window.location.origin}/billing?checkout=cancel`,
       });
       window.location.href = url;
@@ -229,10 +267,10 @@ export default function Pricing() {
         <div className="mb-12 text-center">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-400">
             <Sparkles className="h-3.5 w-3.5" />
-            7 dias grátis em qualquer plano
+            {intent === 'reactivate' ? heroBadgeLabel : '7 dias gratis em qualquer plano'}
           </div>
 
-          {isNoPlan ? (
+          {isNoPlan && intent !== 'reactivate' ? (
             <>
               <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
                 Escolha o plano ideal para{' '}
@@ -241,21 +279,20 @@ export default function Pricing() {
                 </span>
               </h1>
               <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-400">
-                Comece a fechar mais negócios hoje com automação via WhatsApp, IA embarcada e CRM solar completo.
-                Teste qualquer plano grátis por 7 dias.
+                Comece a fechar mais negocios hoje com automacao via WhatsApp, IA embarcada e CRM solar completo.
+                Teste qualquer plano gratis por 7 dias.
               </p>
             </>
           ) : (
             <>
               <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
-                Escale suas vendas com{' '}
+                {heroTitle}{' '}
                 <span className="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
                   SolarZap
                 </span>
               </h1>
               <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-400">
-                Automação inteligente via WhatsApp, IA embarcada e CRM solar completo.
-                Escolha o plano ideal e comece a fechar mais negócios hoje.
+                {heroDescription}
               </p>
             </>
           )}
@@ -308,6 +345,8 @@ export default function Pricing() {
           {plans.map((plan) => {
             const key = String(plan.plan_key);
             const isCurrent = key === currentPlan;
+            const isTarget = targetPlan === key;
+            const isDisabled = isPlanSelectionDisabled(key, currentPlan, intent);
             const isPro = key === 'pro';
             const display = PLAN_DISPLAY[key];
             const Icon = display?.icon ?? Zap;
@@ -320,7 +359,9 @@ export default function Pricing() {
               <div
                 key={key}
                 className={`group relative flex flex-col overflow-hidden rounded-3xl border transition-all duration-300 ${
-                  isPro
+                  isTarget
+                    ? 'border-emerald-300 bg-gradient-to-b from-emerald-400/15 to-transparent shadow-[0_0_70px_-18px_rgba(52,211,153,0.55)] ring-2 ring-emerald-300/70'
+                    : isPro
                     ? 'border-emerald-500/40 bg-gradient-to-b from-emerald-500/[0.08] to-transparent shadow-[0_0_60px_-12px_rgba(16,185,129,0.25)] hover:shadow-[0_0_80px_-12px_rgba(16,185,129,0.35)] lg:scale-[1.03]'
                     : 'border-slate-700/60 bg-slate-800/40 hover:border-slate-600/80 hover:bg-slate-800/60'
                 } backdrop-blur-sm`}
@@ -401,31 +442,31 @@ export default function Pricing() {
                   {/* CTA */}
                   <Button
                     className={`w-full h-12 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                      isCurrent
+                      isDisabled
                         ? 'border border-slate-600 bg-transparent text-slate-400 hover:bg-slate-700/50'
                         : `${display?.buttonGradient ?? ''} text-white shadow-lg hover:shadow-xl`
                     }`}
-                    onClick={() => !isCurrent && handleUpgrade(key)}
-                    disabled={isCurrent || busyPlan === key}
+                    onClick={() => !isDisabled && handleUpgrade(key)}
+                    disabled={isDisabled || busyPlan === key}
                   >
                     {busyPlan === key ? (
                       <span className="flex items-center gap-2">
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                         Redirecionando...
                       </span>
-                    ) : isCurrent ? (
+                    ) : isDisabled ? (
                       <span className="flex items-center gap-2">
                         <Check className="h-4 w-4" />
-                        Plano atual
+                        {intent === 'reactivate' && isCurrent ? 'Plano atual para reativacao' : 'Plano atual'}
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">
-                        {getPlanActionLabel(key, currentPlan)}
+                        {getPlanActionLabel(key, currentPlan, intent)}
                         <ArrowRight className="h-4 w-4" />
                       </span>
                     )}
                   </Button>
-                  {!isCurrent && isNoPlan && (
+                  {!isDisabled && isNoPlan && (
                     <p className="mt-2 text-center text-[11px] text-slate-500">
                       Sem compromisso · Cancele a qualquer momento
                     </p>

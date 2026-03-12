@@ -19,6 +19,7 @@ import { generateProposalPDF } from '@/utils/generateProposalPDF';
 import { prefetchCoverImage, prefetchCoverImages } from '@/hooks/useProposalCoverImage';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { useLeads } from '@/hooks/domain/useLeads';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
@@ -67,6 +68,12 @@ import { FINANCIAL_MODEL_VERSION } from '@/types/proposalFinancial';
 import { calculateProposalFinancials, resolveTariffByPriority } from '@/utils/proposalFinancialModel';
 import type { SolarResourceResponse } from '@/types/solarResource';
 import * as pdfShared from '@/utils/pdf/shared';
+import {
+  buildLimitBlockerForKey,
+  isProposalComposerBillingError,
+  isUnlimitedBillingBypass,
+} from '@/lib/billingBlocker';
+import { resolveSupabaseFunctionErrorDetails } from '@/lib/supabaseFunctionErrors';
 
 const fallbackSanitizeFileToken = (value: string): string => {
   const normalized = String(value || '').trim().replace(/\s+/g, '_');
@@ -226,6 +233,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
   const { updateLead } = useLeads();
   const { orgId } = useAuth();
   const { toast } = useToast();
+  const { billing, openBillingBlocker } = useBillingBlocker();
   const { theme, secondaryColorHex } = useProposalTheme();
   const {
     logoUrl,
@@ -765,7 +773,22 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorDetails = await resolveSupabaseFunctionErrorDetails(
+          error,
+          'Falha ao personalizar proposta com IA',
+        );
+
+        if (isProposalComposerBillingError(errorDetails)) {
+          if (isUnlimitedBillingBypass(billing)) {
+            throw new Error(errorDetails.message);
+          }
+          openBillingBlocker(buildLimitBlockerForKey('max_proposals_month', billing, 'proposal_ai'));
+          return;
+        }
+
+        throw new Error(errorDetails.message);
+      }
       if (!data?.variants?.length) throw new Error('No variants returned');
 
       // Use recommended variant

@@ -15,6 +15,8 @@ import { useToast } from '@/hooks/use-toast';
 import { PageHeader } from './PageHeader';
 import { LeadScopeSelect, type LeadScopeValue } from './LeadScopeSelect';
 import type { MemberDto } from '@/lib/orgAdminClient';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
+import { buildTabBlocker } from '@/lib/billingBlocker';
 
 type CalendarAppointmentErrorBoundaryProps = {
   children: ReactNode;
@@ -107,6 +109,7 @@ export function CalendarView({
   leadScopeLoading = false,
   currentUserId = null,
 }: CalendarViewProps) {
+  const { billing, openBillingBlocker } = useBillingBlocker();
   const [currentDate, setCurrentDate] = useState(new Date());
   const readScope = canViewTeam && leadScope !== 'mine' ? 'org' : 'mine';
   const { appointments } = useAppointments({ readScope });
@@ -247,6 +250,11 @@ export function CalendarView({
   // --- Handlers ---
 
   const handleCreateEvent = () => {
+    const blocker = buildTabBlocker('calendario', billing);
+    if (blocker) {
+      openBillingBlocker(blocker);
+      return;
+    }
     setSelectedAppointment(undefined);
     setModalDate(new Date());
     setAppointmentModalOpen(true);
@@ -261,6 +269,11 @@ export function CalendarView({
       setFeedbackEvent(evt);
       setFeedbackModalOpen(true);
     } else {
+      const blocker = buildTabBlocker('calendario', billing);
+      if (blocker) {
+        openBillingBlocker(blocker);
+        return;
+      }
       setSelectedAppointment(evt);
       setModalDate(undefined);
       setAppointmentModalOpen(true);
@@ -268,6 +281,11 @@ export function CalendarView({
   };
 
   const handleDayClick = (day: number) => {
+    const blocker = buildTabBlocker('calendario', billing);
+    if (blocker) {
+      openBillingBlocker(blocker);
+      return;
+    }
     const date = new Date(year, month, day);
     const now = new Date();
     // Use next rounded 15-min slot instead of hardcoded 9:00

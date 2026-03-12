@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { evolutionApi } from '@/lib/evolutionApi';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
+import { buildLimitBlockerForKey, buildSubscriptionIssueBlocker, isUnlimitedBillingBypass } from '@/lib/billingBlocker';
 
 export interface UserWhatsAppInstance {
   org_id?: string | null;
@@ -77,6 +79,7 @@ function toInstanceStatus(state: string | null | undefined): InstanceConnectionS
 
 export function useUserWhatsAppInstances() {
   const { user, orgId, role } = useAuth();
+  const { billing, openBillingBlocker } = useBillingBlocker();
   const [instances, setInstances] = useState<UserWhatsAppInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -243,7 +246,7 @@ export function useUserWhatsAppInstances() {
   }, [isOrgManager, orgId, user]);
 
   // Create new instance
-  const createInstance = useCallback(async (displayName?: string): Promise<{ qrCode?: string; instance?: UserWhatsAppInstance } | null> => {
+  const createInstance = useCallback(async (displayName?: string): Promise<{ qrCode?: string; instance?: UserWhatsAppInstance; blocked?: boolean } | null> => {
     if (!user) {
       toast.error('Voce precisa estar logado');
       return null;
@@ -267,10 +270,20 @@ export function useUserWhatsAppInstances() {
         throw new Error(`Falha ao validar limite do plano: ${limitError.message}`);
       }
 
+      const accessState = String(billing?.access_state || '').trim().toLowerCase();
+      if (accessState === 'blocked' || accessState === 'read_only') {
+        openBillingBlocker(buildSubscriptionIssueBlocker({
+          billing,
+          source: 'whatsapp_instances',
+          kindOverride: accessState === 'read_only' ? 'read_only' : 'subscription_blocked',
+        }));
+        return { blocked: true };
+      }
+
       const limitRow = Array.isArray(limitData) ? limitData[0] : limitData;
-      if (!limitRow?.allowed || limitRow?.access_state === 'blocked' || limitRow?.access_state === 'read_only') {
-        toast.error('Limite do plano atingido para novas instâncias. Faça upgrade para continuar.');
-        return null;
+      if (!limitRow?.allowed && !isUnlimitedBillingBypass(billing)) {
+        openBillingBlocker(buildLimitBlockerForKey('max_whatsapp_instances', billing, 'whatsapp_instances'));
+        return { blocked: true };
       }
 
       const normalizedDisplayName = displayName?.trim() || 'WhatsApp';
@@ -333,7 +346,7 @@ export function useUserWhatsAppInstances() {
     } finally {
       setCreating(false);
     }
-  }, [user, orgId]);
+  }, [billing, openBillingBlocker, orgId, user]);
 
   // Refresh QR Code
   const refreshQrCode = useCallback(async (instanceName: string): Promise<string | null> => {
@@ -899,6 +912,7 @@ export function useUserWhatsAppInstances() {
     }
   };
 }
+
 
 
 

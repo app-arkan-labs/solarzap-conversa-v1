@@ -68,7 +68,6 @@ function PlanLimitsList({ limits }: { limits: Record<string, unknown> | null }) 
     max_automations_month: 'Automações/mês',
     included_ai_requests_month: 'Requests IA/mês',
     ai_enabled: 'IA habilitada',
-    google_integration_enabled: 'Google integrado',
     appointments_enabled: 'Agendamentos',
     advanced_reports_enabled: 'Relatórios avançados',
     advanced_tracking_enabled: 'Tracking avançado',

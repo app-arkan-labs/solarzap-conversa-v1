@@ -291,12 +291,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: aiSettings } = await serviceClient
-      .from("ai_settings")
-      .select("openai_api_key")
-      .maybeSingle();
-
-    const apiKey = aiSettings?.openai_api_key || Deno.env.get("OPENAI_API_KEY");
+    const apiKey = Deno.env.get("OPENAI_API_KEY");
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "missing_openai_key" }), {
         status: 400,

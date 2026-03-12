@@ -6,11 +6,13 @@ import {
   DEFAULT_AI_SETTINGS,
   DEFAULT_APPOINTMENT_WINDOW_CONFIG,
   DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
+  DEFAULT_FOLLOW_UP_WINDOW_CONFIG,
   type AppointmentWindowConfig,
   type AppointmentWindowType,
   type AppointmentDayKey,
   type FollowUpSequenceConfig,
   type FollowUpStepKey,
+  type FollowUpWindowConfig,
 } from '@/types/ai';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -67,6 +69,8 @@ const APPOINTMENT_DAY_KEYS: AppointmentDayKey[] = ['sun', 'mon', 'tue', 'wed', '
 const FOLLOW_UP_STEP_KEYS: FollowUpStepKey[] = [1, 2, 3, 4, 5];
 const FOLLOW_UP_DELAY_MIN_MINUTES = 5;
 const FOLLOW_UP_DELAY_MAX_MINUTES = 365 * 24 * 60;
+const AUTO_SCHEDULE_MIN_DAYS_MIN = 0;
+const AUTO_SCHEDULE_MIN_DAYS_MAX = 60;
 
 const normalizeTimeHHMM = (raw: unknown, fallback: string): string => {
   const text = String(raw ?? '').trim();
@@ -142,6 +146,44 @@ const normalizeFollowUpSequenceConfig = (raw: unknown): FollowUpSequenceConfig =
   });
 
   return { steps };
+};
+
+const normalizeFollowUpWindowConfig = (raw: unknown): FollowUpWindowConfig => {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {};
+  const start = normalizeTimeHHMM(source.start, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.start);
+  const end = normalizeTimeHHMM(source.end, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.end);
+  const days = Array.isArray(source.days)
+    ? Array.from(new Set(source.days.map((day: unknown) => normalizeDayKey(day)).filter(Boolean))) as AppointmentDayKey[]
+    : [];
+  const preferredTime = (() => {
+    const rawValue = String(source.preferred_time ?? '').trim();
+    if (!rawValue) return null;
+    return normalizeTimeHHMM(rawValue, '');
+  })();
+
+  return {
+    start,
+    end,
+    days: days.length > 0 ? days : [...DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days],
+    preferred_time: preferredTime || null,
+  };
+};
+
+const normalizeBooleanSetting = (raw: unknown, fallback: boolean): boolean =>
+  typeof raw === 'boolean' ? raw : fallback;
+
+const normalizeMinDaysSetting = (raw: unknown, fallback: number): number => {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(
+    AUTO_SCHEDULE_MIN_DAYS_MIN,
+    Math.min(AUTO_SCHEDULE_MIN_DAYS_MAX, Math.round(parsed)),
+  );
+};
+
+const normalizeTimezone = (raw: unknown, fallback: string): string => {
+  const value = String(raw ?? '').trim();
+  return value || fallback;
 };
 
 const toStageTitle = (stage: string): string =>
@@ -227,10 +269,32 @@ export function useAISettings() {
       } else if (!settingsData) {
         setSettings(null);
       } else {
+        const timezone = normalizeTimezone(
+          (settingsData as any)?.timezone,
+          DEFAULT_AI_SETTINGS.timezone || 'America/Sao_Paulo',
+        );
         const normalizedSettings: AISettings = {
           ...settingsData,
+          timezone,
+          auto_schedule_call_enabled: normalizeBooleanSetting(
+            (settingsData as any)?.auto_schedule_call_enabled,
+            DEFAULT_AI_SETTINGS.auto_schedule_call_enabled ?? true,
+          ),
+          auto_schedule_visit_enabled: normalizeBooleanSetting(
+            (settingsData as any)?.auto_schedule_visit_enabled,
+            DEFAULT_AI_SETTINGS.auto_schedule_visit_enabled ?? true,
+          ),
+          auto_schedule_call_min_days: normalizeMinDaysSetting(
+            (settingsData as any)?.auto_schedule_call_min_days,
+            DEFAULT_AI_SETTINGS.auto_schedule_call_min_days ?? 0,
+          ),
+          auto_schedule_visit_min_days: normalizeMinDaysSetting(
+            (settingsData as any)?.auto_schedule_visit_min_days,
+            DEFAULT_AI_SETTINGS.auto_schedule_visit_min_days ?? 0,
+          ),
           appointment_window_config: normalizeAppointmentWindowConfig((settingsData as any)?.appointment_window_config),
           follow_up_sequence_config: normalizeFollowUpSequenceConfig((settingsData as any)?.follow_up_sequence_config),
+          follow_up_window_config: normalizeFollowUpWindowConfig((settingsData as any)?.follow_up_window_config),
         };
         setSettings(normalizedSettings);
 
@@ -300,6 +364,37 @@ export function useAISettings() {
         ...updates,
       };
 
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'timezone')) {
+        normalizedUpdates.timezone = normalizeTimezone(
+          (normalizedUpdates as any).timezone,
+          settings?.timezone || DEFAULT_AI_SETTINGS.timezone || 'America/Sao_Paulo',
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'auto_schedule_call_enabled')) {
+        normalizedUpdates.auto_schedule_call_enabled = normalizeBooleanSetting(
+          (normalizedUpdates as any).auto_schedule_call_enabled,
+          settings?.auto_schedule_call_enabled ?? DEFAULT_AI_SETTINGS.auto_schedule_call_enabled ?? true,
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'auto_schedule_visit_enabled')) {
+        normalizedUpdates.auto_schedule_visit_enabled = normalizeBooleanSetting(
+          (normalizedUpdates as any).auto_schedule_visit_enabled,
+          settings?.auto_schedule_visit_enabled ?? DEFAULT_AI_SETTINGS.auto_schedule_visit_enabled ?? true,
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'auto_schedule_call_min_days')) {
+        normalizedUpdates.auto_schedule_call_min_days = normalizeMinDaysSetting(
+          (normalizedUpdates as any).auto_schedule_call_min_days,
+          settings?.auto_schedule_call_min_days ?? DEFAULT_AI_SETTINGS.auto_schedule_call_min_days ?? 0,
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'auto_schedule_visit_min_days')) {
+        normalizedUpdates.auto_schedule_visit_min_days = normalizeMinDaysSetting(
+          (normalizedUpdates as any).auto_schedule_visit_min_days,
+          settings?.auto_schedule_visit_min_days ?? DEFAULT_AI_SETTINGS.auto_schedule_visit_min_days ?? 0,
+        );
+      }
+
       if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'appointment_window_config')) {
         normalizedUpdates.appointment_window_config = normalizeAppointmentWindowConfig(
           (normalizedUpdates as any).appointment_window_config
@@ -310,6 +405,11 @@ export function useAISettings() {
           (normalizedUpdates as any).follow_up_sequence_config
         );
       }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'follow_up_window_config')) {
+        normalizedUpdates.follow_up_window_config = normalizeFollowUpWindowConfig(
+          (normalizedUpdates as any).follow_up_window_config
+        );
+      }
 
       if (!settings?.id) {
         const initialConfig = normalizeAppointmentWindowConfig(
@@ -318,13 +418,37 @@ export function useAISettings() {
         const initialFollowUpSequence = normalizeFollowUpSequenceConfig(
           (normalizedUpdates as any).follow_up_sequence_config || DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG
         );
+        const initialFollowUpWindow = normalizeFollowUpWindowConfig(
+          (normalizedUpdates as any).follow_up_window_config || DEFAULT_FOLLOW_UP_WINDOW_CONFIG
+        );
         const { error } = await supabase
           .from('ai_settings')
           .insert([{
             ...DEFAULT_AI_SETTINGS,
             ...normalizedUpdates,
+            timezone: normalizeTimezone(
+              (normalizedUpdates as any).timezone,
+              DEFAULT_AI_SETTINGS.timezone || 'America/Sao_Paulo',
+            ),
+            auto_schedule_call_enabled: normalizeBooleanSetting(
+              (normalizedUpdates as any).auto_schedule_call_enabled,
+              DEFAULT_AI_SETTINGS.auto_schedule_call_enabled ?? true,
+            ),
+            auto_schedule_visit_enabled: normalizeBooleanSetting(
+              (normalizedUpdates as any).auto_schedule_visit_enabled,
+              DEFAULT_AI_SETTINGS.auto_schedule_visit_enabled ?? true,
+            ),
+            auto_schedule_call_min_days: normalizeMinDaysSetting(
+              (normalizedUpdates as any).auto_schedule_call_min_days,
+              DEFAULT_AI_SETTINGS.auto_schedule_call_min_days ?? 0,
+            ),
+            auto_schedule_visit_min_days: normalizeMinDaysSetting(
+              (normalizedUpdates as any).auto_schedule_visit_min_days,
+              DEFAULT_AI_SETTINGS.auto_schedule_visit_min_days ?? 0,
+            ),
             appointment_window_config: initialConfig,
             follow_up_sequence_config: initialFollowUpSequence,
+            follow_up_window_config: initialFollowUpWindow,
             org_id: orgId
           }])
           .select()

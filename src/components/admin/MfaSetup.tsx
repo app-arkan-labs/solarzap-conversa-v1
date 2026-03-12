@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code';
-import { Loader2, ShieldCheck } from 'lucide-react';
+import { Copy, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,8 @@ export default function MfaSetup() {
   const [loadingVerify, setLoadingVerify] = useState(false);
   const [enrollment, setEnrollment] = useState<EnrollmentState | null>(null);
   const [code, setCode] = useState('');
+  const [showSecret, setShowSecret] = useState(false);
+  const [copyingSecret, setCopyingSecret] = useState(false);
 
   const canVerify = useMemo(
     () => !!enrollment?.factorId && code.trim().length >= 6,
@@ -50,6 +52,7 @@ export default function MfaSetup() {
         qrCode,
         secret: data.totp?.secret ?? null,
       });
+      setShowSecret(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Falha no enrollment MFA';
       toast({
@@ -100,6 +103,34 @@ export default function MfaSetup() {
     }
   };
 
+  const maskSecret = (secret: string) => {
+    if (secret.length <= 8) {
+      return '********';
+    }
+    return `${secret.slice(0, 4)}******${secret.slice(-4)}`;
+  };
+
+  const copySecret = async () => {
+    if (!enrollment?.secret || copyingSecret) return;
+
+    try {
+      setCopyingSecret(true);
+      await navigator.clipboard.writeText(enrollment.secret);
+      toast({
+        title: 'Chave copiada',
+        description: 'A chave manual foi copiada para a area de transferencia.',
+      });
+    } catch {
+      toast({
+        title: 'Falha ao copiar',
+        description: 'Copie a chave manualmente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCopyingSecret(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-green-50 flex items-center justify-center px-4 py-8">
       <Card className="w-full max-w-md">
@@ -123,9 +154,35 @@ export default function MfaSetup() {
                 <QRCode value={enrollment.qrCode} size={180} />
               </div>
               {enrollment.secret ? (
-                <p className="text-xs text-muted-foreground break-all">
-                  Chave manual: <span className="font-mono">{enrollment.secret}</span>
-                </p>
+                <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Chave manual TOTP (oculta por padrao para reduzir exposicao em tela).
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="flex-1 text-xs font-mono break-all text-slate-700">
+                      {showSecret ? enrollment.secret : maskSecret(enrollment.secret)}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowSecret((current) => !current)}
+                      aria-label={showSecret ? 'Ocultar chave manual' : 'Revelar chave manual'}
+                    >
+                      {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={copySecret}
+                      disabled={copyingSecret}
+                      aria-label="Copiar chave manual"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               ) : null}
               <div className="space-y-2">
                 <Label htmlFor="totp-setup-code">Codigo de 6 digitos</Label>

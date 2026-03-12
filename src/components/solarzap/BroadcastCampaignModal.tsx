@@ -36,6 +36,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
+import { isBillingInterruptionError } from '@/lib/billingBlocker';
 
 interface BroadcastCampaignModalProps {
   isOpen: boolean;
@@ -339,6 +340,9 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
 
       handleClose();
     } catch (submitError) {
+      if (isBillingInterruptionError(submitError)) {
+        return;
+      }
       const message = submitError instanceof Error ? submitError.message : 'Falha ao salvar campanha';
       toast({ title: 'Erro ao salvar campanha', description: message, variant: 'destructive' });
     } finally {

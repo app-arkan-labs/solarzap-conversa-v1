@@ -42,7 +42,7 @@ export default function BillingSetupWizard() {
         planKey: normalizedPlan,
         orgId,
         orgName: orgId ? undefined : orgName.trim(),
-        successUrl: `${window.location.origin}/welcome?checkout=success`,
+        successUrl: `${window.location.origin}/onboarding?checkout=success`,
         cancelUrl: `${window.location.origin}/billing?checkout=cancel`,
       });
 

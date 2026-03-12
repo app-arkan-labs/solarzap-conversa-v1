@@ -76,6 +76,9 @@ export function IntegrationsView() {
     if (!newInstanceName.trim()) return;
 
     const result = await createInstance(newInstanceName);
+    if (result?.blocked) {
+      return;
+    }
     if (result?.qrCode) {
       setCurrentQR({ instanceName: result.instance?.instance_name || '', qrCode: result.qrCode });
       setNewInstanceName('');

@@ -209,6 +209,162 @@ const DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG: { steps: FollowUpStepRule[] } = {
         { step: 5, enabled: true, delay_minutes: 10080 },
     ],
 }
+type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat'
+type FollowUpWindowConfig = {
+    start: string
+    end: string
+    days: DayKey[]
+    preferred_time: string | null
+}
+const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+const DEFAULT_FOLLOW_UP_WINDOW_CONFIG: FollowUpWindowConfig = {
+    start: '09:00',
+    end: '18:00',
+    days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    preferred_time: null,
+}
+
+function normalizeDayKey(raw: unknown): DayKey | null {
+    const value = String(raw ?? '').trim().toLowerCase()
+    return DAY_KEYS.includes(value as DayKey) ? (value as DayKey) : null
+}
+
+function normalizeHHMM(raw: unknown, fallback: string): string {
+    const text = String(raw ?? '').trim()
+    const match = /^(\d{1,2}):(\d{2})$/.exec(text)
+    if (!match) return fallback
+    const hour = Number(match[1])
+    const minute = Number(match[2])
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return fallback
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function parseHHMMToMinutes(value: string): number {
+    const match = /^(\d{2}):(\d{2})$/.exec(String(value || '').trim())
+    if (!match) return -1
+    return (Number(match[1]) * 60) + Number(match[2])
+}
+
+function normalizeFollowUpWindowConfig(raw: unknown): FollowUpWindowConfig {
+    const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {}
+    const incomingDays = Array.isArray(source.days) ? source.days : []
+    const normalizedDays = Array.from(
+        new Set(
+            incomingDays
+                .map((day: unknown) => normalizeDayKey(day))
+                .filter((day): day is DayKey => !!day)
+        ),
+    )
+    const preferredRaw = String(source.preferred_time ?? '').trim()
+    const preferred = preferredRaw ? normalizeHHMM(preferredRaw, '') : ''
+    return {
+        start: normalizeHHMM(source.start, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.start),
+        end: normalizeHHMM(source.end, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.end),
+        days: normalizedDays.length > 0 ? normalizedDays : [...DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days],
+        preferred_time: preferred || null,
+    }
+}
+
+function getZonedDateParts(
+    date: Date,
+    timeZone: string,
+): { year: number; month: number; day: number; hour: number; minute: number; second: number; weekday: DayKey } {
+    const datePartFormatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    })
+    const weekdayFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        weekday: 'short',
+    })
+
+    const parts = datePartFormatter.formatToParts(date)
+    const year = Number(parts.find((p) => p.type === 'year')?.value || '0')
+    const month = Number(parts.find((p) => p.type === 'month')?.value || '0')
+    const day = Number(parts.find((p) => p.type === 'day')?.value || '0')
+    const hour = Number(parts.find((p) => p.type === 'hour')?.value || '0')
+    const minute = Number(parts.find((p) => p.type === 'minute')?.value || '0')
+    const second = Number(parts.find((p) => p.type === 'second')?.value || '0')
+    const weekdayRaw = String(weekdayFormatter.format(date) || '').toLowerCase().slice(0, 3)
+    const weekday = (DAY_KEYS.includes(weekdayRaw as DayKey) ? weekdayRaw : 'mon') as DayKey
+    return { year, month, day, hour, minute, second, weekday }
+}
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
+    const parts = getZonedDateParts(date, timeZone)
+    const localAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second)
+    return localAsUtc - date.getTime()
+}
+
+function zonedDateTimeToUtc(
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number,
+    second: number,
+    timeZone: string
+): Date {
+    const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second))
+    const offset = getTimeZoneOffsetMs(utcGuess, timeZone)
+    return new Date(utcGuess.getTime() - offset)
+}
+
+function resolveFollowUpScheduledAt(params: {
+    baseDate: Date
+    timeZone: string
+    windowConfig: FollowUpWindowConfig
+}): Date {
+    const { baseDate, timeZone, windowConfig } = params
+    const base = new Date(baseDate.getTime())
+    if (isNaN(base.getTime())) return new Date(Date.now() + (3 * 60 * 60 * 1000))
+
+    const startMinutes = parseHHMMToMinutes(windowConfig.start)
+    const endMinutes = parseHHMMToMinutes(windowConfig.end)
+    if (startMinutes < 0 || endMinutes <= startMinutes) return base
+
+    const preferredRaw = windowConfig.preferred_time ? parseHHMMToMinutes(windowConfig.preferred_time) : -1
+    const preferredMinutes = preferredRaw >= startMinutes && preferredRaw < endMinutes ? preferredRaw : -1
+    const allowedDays = windowConfig.days.length > 0 ? windowConfig.days : DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days
+
+    const baseParts = getZonedDateParts(base, timeZone)
+    const baseLocalNoon = zonedDateTimeToUtc(baseParts.year, baseParts.month, baseParts.day, 12, 0, 0, timeZone)
+    const baseMinutesOfDay = (baseParts.hour * 60) + baseParts.minute + (baseParts.second > 0 ? 1 : 0)
+
+    for (let dayOffset = 0; dayOffset <= 30; dayOffset++) {
+        const dayProbe = new Date(baseLocalNoon.getTime() + (dayOffset * 24 * 60 * 60 * 1000))
+        const dayParts = getZonedDateParts(dayProbe, timeZone)
+        if (!allowedDays.includes(dayParts.weekday)) continue
+
+        let candidateMinutes = preferredMinutes >= 0 ? preferredMinutes : startMinutes
+        if (dayOffset === 0) {
+            if (preferredMinutes >= 0 && preferredMinutes < baseMinutesOfDay) continue
+            if (preferredMinutes < 0) candidateMinutes = Math.max(startMinutes, baseMinutesOfDay)
+        }
+        if (candidateMinutes >= endMinutes) continue
+
+        const candidateUtc = zonedDateTimeToUtc(
+            dayParts.year,
+            dayParts.month,
+            dayParts.day,
+            Math.floor(candidateMinutes / 60),
+            candidateMinutes % 60,
+            0,
+            timeZone
+        )
+        if (candidateUtc.getTime() < base.getTime()) continue
+        return candidateUtc
+    }
+
+    return base
+}
 
 async function isOrgFollowUpAgentActive(supabase: any, orgId: string): Promise<boolean> {
     const { data, error } = await supabase
@@ -255,19 +411,30 @@ function normalizeFollowUpSequenceConfig(raw: any): { steps: FollowUpStepRule[] 
     return { steps }
 }
 
-async function loadFollowUpSequenceConfig(supabase: any, orgId: string): Promise<{ steps: FollowUpStepRule[] }> {
+async function loadFollowUpRuntimeSettings(
+    supabase: any,
+    orgId: string
+): Promise<{ sequenceConfig: { steps: FollowUpStepRule[] }; windowConfig: FollowUpWindowConfig; timeZone: string }> {
     const { data, error } = await supabase
         .from('ai_settings')
-        .select('follow_up_sequence_config')
+        .select('follow_up_sequence_config, follow_up_window_config, timezone')
         .eq('org_id', orgId)
         .maybeSingle()
 
     if (error) {
-        console.warn('Failed to load follow_up_sequence_config in webhook, using defaults:', error.message)
-        return DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG
+        console.warn('Failed to load follow_up runtime settings in webhook, using defaults:', error.message)
+        return {
+            sequenceConfig: DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
+            windowConfig: DEFAULT_FOLLOW_UP_WINDOW_CONFIG,
+            timeZone: 'America/Sao_Paulo',
+        }
     }
 
-    return normalizeFollowUpSequenceConfig((data as any)?.follow_up_sequence_config)
+    return {
+        sequenceConfig: normalizeFollowUpSequenceConfig((data as any)?.follow_up_sequence_config),
+        windowConfig: normalizeFollowUpWindowConfig((data as any)?.follow_up_window_config),
+        timeZone: String((data as any)?.timezone || 'America/Sao_Paulo').trim() || 'America/Sao_Paulo',
+    }
 }
 
 function getFirstEnabledFollowUpStep(config: { steps: FollowUpStepRule[] }): FollowUpStepRule | null {
@@ -340,18 +507,24 @@ async function scheduleFollowUpStep1FromOutbound(params: {
         return { scheduled: false, reason: 'org_agent_disabled' }
     }
 
-    const followUpSequence = await loadFollowUpSequenceConfig(supabase, orgId)
-    const firstEnabledStep = getFirstEnabledFollowUpStep(followUpSequence)
+    const followUpRuntime = await loadFollowUpRuntimeSettings(supabase, orgId)
+    const firstEnabledStep = getFirstEnabledFollowUpStep(followUpRuntime.sequenceConfig)
     if (!firstEnabledStep) {
         return { scheduled: false, reason: 'fu_sequence_empty' }
     }
 
     const nowIso = new Date().toISOString()
+    const scheduledAt = resolveFollowUpScheduledAt({
+        baseDate: new Date(Date.now() + (firstEnabledStep.delay_minutes * 60_000)),
+        timeZone: followUpRuntime.timeZone,
+        windowConfig: followUpRuntime.windowConfig,
+    }).toISOString()
     const payload = {
         fu_step: firstEnabledStep.step,
         last_outbound_at: nowIso,
         original_stage: normalizedStage || null,
         instance_name: instanceName || null,
+        follow_up_schedule_timezone: followUpRuntime.timeZone,
     }
 
     await cancelPendingFollowUpJobs(supabase, leadId, 'new_outbound_superseded')
@@ -363,7 +536,7 @@ async function scheduleFollowUpStep1FromOutbound(params: {
                 org_id: orgId,
                 lead_id: leadId,
                 agent_type: 'follow_up',
-                scheduled_at: new Date(Date.now() + (firstEnabledStep.delay_minutes * 60_000)).toISOString(),
+                scheduled_at: scheduledAt,
                 status: 'pending',
                 guard_stage: normalizedStage || null,
                 payload,

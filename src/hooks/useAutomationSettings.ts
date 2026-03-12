@@ -48,6 +48,8 @@ export function useAutomationSettings() {
         activeSettings, // Use "saved/active" as the source of truth for logic
         pendingSettings, // Use "pending" for UI editing
         hasChanges,
+        isSaving,
+        isHydrating,
         updateSetting,
         saveChanges,
         cancelChanges,
@@ -112,6 +114,8 @@ export function useAutomationSettings() {
         activeSettings, // Valid alias
 
         hasChanges,
+        isSaving,
+        isHydrating,
         updateSetting,
         saveChanges,
         cancelChanges,

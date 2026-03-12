@@ -113,6 +113,9 @@ export function WhatsAppInstancesManager() {
   // Handle creating new instance
   const handleCreate = async () => {
     const result = await createInstance(newInstanceName || undefined);
+    if (result?.blocked) {
+      return;
+    }
     if (result?.qrCode && result?.instance) {
       setCreateModalOpen(false);
       setNewInstanceName('');

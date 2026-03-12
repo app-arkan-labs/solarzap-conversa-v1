@@ -94,7 +94,7 @@ if (password.length < 8) {
                         title: 'Senha atualizada!',
                         description: 'Senha redefinida com sucesso. Entrando automaticamente...',
                     });
-                    navigate('/');
+                    navigate('/onboarding');
                     return;
                 }
 
@@ -103,7 +103,7 @@ if (password.length < 8) {
 
             toast({
                 title: 'Senha atualizada!',
-                description: 'Sua senha foi redefinida com sucesso. Faça login.',
+                description: 'Sua senha foi redefinida com sucesso. Faï¿½a login.',
             });
 
             await supabase.auth.signOut();

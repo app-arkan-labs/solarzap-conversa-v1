@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { evolutionApi } from '@/lib/evolutionApi';
-import {
-  buildUpsertLeadCanonicalPayload,
-  doesLeadBelongToOrg,
-} from '@/lib/multiOrgLeadScoping';
 import { normalizeImportedClientType } from '@/utils/importClientType';
 import type { ClientType } from '@/types/solarzap';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
+import {
+  BillingInterruptionError,
+  buildLimitBlockerForKey,
+  isUnlimitedBillingBypass,
+} from '@/lib/billingBlocker';
 import type {
   BroadcastCampaign,
   BroadcastCampaignStatus,
@@ -74,19 +75,10 @@ const normalizeCampaignClientType = (value: unknown): ClientType => (
   normalizeImportedClientType(value) || 'residencial'
 );
 
-const computeDispatchDelayMs = (intervalSeconds: number): number => {
-  const base = Math.max(intervalSeconds, 10);
-  const jitter = base * 0.3;
-  const min = base - jitter;
-  const max = base + jitter;
-  const seconds = min + Math.random() * (max - min);
-  return Math.max(1000, Math.round(seconds * 1000));
-};
-
 const toBroadcastCampaign = (row: CampaignRow): BroadcastCampaign => ({
   id: String(row.id),
   org_id: String(row.org_id),
-  user_id: String(row.user_id),
+  user_id: String(row.user_id || ''),
   assigned_to_user_id: row.assigned_to_user_id == null ? null : String(row.assigned_to_user_id),
   lead_client_type: normalizeCampaignClientType(row.lead_client_type),
   name: String(row.name || ''),
@@ -119,32 +111,22 @@ const toBroadcastRecipient = (row: RecipientRow): BroadcastRecipient => ({
   created_at: String(row.created_at || ''),
 });
 
-const isMissingColumnError = (error: { code?: string; message?: string } | null | undefined): boolean => {
+const isSchemaMismatchError = (error: { code?: string; message?: string } | null | undefined): boolean => {
   if (!error) return false;
   const code = String(error.code || '');
-  if (code === '42703' || code === 'PGRST204') return true;
-  return /column/i.test(String(error.message || '')) && /not exist|schema cache/i.test(String(error.message || ''));
+  if (code === '42703' || code === 'PGRST204' || code === '42883') return true;
+  return /column|function|schema cache/i.test(String(error.message || ''));
 };
 
 export function useBroadcasts() {
   const { user, orgId } = useAuth();
+  const { billing, openBillingBlocker } = useBillingBlocker();
 
   const [campaigns, setCampaigns] = useState<BroadcastCampaign[]>([]);
   const [recipientsByCampaign, setRecipientsByCampaign] = useState<Record<string, BroadcastRecipient[]>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const campaignMapRef = useRef<Map<string, BroadcastCampaign>>(new Map());
-  const campaignTickInFlightRef = useRef<Set<string>>(new Set());
-
-  const clearCampaignTimer = useCallback((campaignId: string) => {
-    const timer = timersRef.current.get(campaignId);
-    if (timer) {
-      clearTimeout(timer);
-      timersRef.current.delete(campaignId);
-    }
-  }, []);
+  const isMountedRef = useRef(true);
 
   const countRecipients = useCallback(async (campaignId: string, status?: BroadcastRecipientStatus): Promise<number> => {
     let query = supabase
@@ -191,9 +173,18 @@ export function useBroadcasts() {
   const refreshCampaignProgress = useCallback(async (campaignId: string) => {
     if (!orgId) return;
 
-    const counts = await getCampaignRecipientCounts(campaignId);
-    const current = campaignMapRef.current.get(campaignId);
+    const { error: rpcError } = await supabase.rpc('broadcast_refresh_campaign_progress', {
+      p_campaign_id: campaignId,
+    });
 
+    if (!rpcError) return;
+    if (!isSchemaMismatchError(rpcError)) {
+      throw rpcError;
+    }
+
+    // Compatibility fallback while migration is not applied.
+    const counts = await getCampaignRecipientCounts(campaignId);
+    const campaign = await fetchCampaignById(campaignId);
     const updatePayload: Record<string, unknown> = {
       total_recipients: counts.total,
       sent_count: counts.sent,
@@ -201,7 +192,7 @@ export function useBroadcasts() {
       updated_at: new Date().toISOString(),
     };
 
-    if (current?.status === 'running' && counts.pending === 0 && counts.sending === 0) {
+    if (campaign?.status === 'running' && counts.pending === 0 && counts.sending === 0) {
       updatePayload.status = 'completed';
       updatePayload.completed_at = new Date().toISOString();
     }
@@ -213,17 +204,21 @@ export function useBroadcasts() {
       .eq('org_id', orgId);
 
     if (updateError) throw updateError;
-  }, [getCampaignRecipientCounts, orgId]);
+  }, [fetchCampaignById, getCampaignRecipientCounts, orgId]);
 
   const fetchCampaigns = useCallback(async () => {
     if (!orgId) {
-      setCampaigns([]);
-      setRecipientsByCampaign({});
-      return;
+      if (isMountedRef.current) {
+        setCampaigns([]);
+        setRecipientsByCampaign({});
+      }
+      return [];
     }
 
-    setIsLoading(true);
-    setError(null);
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     const { data, error: campaignsError } = await supabase
       .from('broadcast_campaigns')
@@ -232,14 +227,18 @@ export function useBroadcasts() {
       .order('created_at', { ascending: false });
 
     if (campaignsError) {
-      setError(campaignsError.message || 'Falha ao carregar campanhas');
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setError(campaignsError.message || 'Falha ao carregar campanhas');
+        setIsLoading(false);
+      }
       throw campaignsError;
     }
 
     const mappedCampaigns = (data || []).map((row) => toBroadcastCampaign(row as CampaignRow));
-    setCampaigns(mappedCampaigns);
-    setIsLoading(false);
+    if (isMountedRef.current) {
+      setCampaigns(mappedCampaigns);
+      setIsLoading(false);
+    }
 
     return mappedCampaigns;
   }, [orgId]);
@@ -254,387 +253,12 @@ export function useBroadcasts() {
     if (recipientsError) throw recipientsError;
 
     const mappedRecipients = (data || []).map((row) => toBroadcastRecipient(row as RecipientRow));
-    setRecipientsByCampaign((previous) => ({ ...previous, [campaignId]: mappedRecipients }));
+    if (isMountedRef.current) {
+      setRecipientsByCampaign((previous) => ({ ...previous, [campaignId]: mappedRecipients }));
+    }
 
     return mappedRecipients;
   }, []);
-
-  const upsertLeadForRecipient = useCallback(async (
-    campaign: BroadcastCampaign,
-    recipient: BroadcastRecipient,
-  ): Promise<number | null> => {
-    if (!user || !orgId) return null;
-
-    const normalizedPhone = normalizePhone(recipient.phone);
-    if (!normalizedPhone) return null;
-
-    const campaignAssigneeId = campaign.assigned_to_user_id || campaign.user_id || user.id;
-    const campaignClientType = normalizeCampaignClientType(campaign.lead_client_type);
-    let leadId: number | null = null;
-    let isNewLead = false;
-    let existingLeadClientType: string | null = null;
-
-    const { data: rpcData, error: rpcError } = await supabase
-      .rpc('upsert_lead_canonical', buildUpsertLeadCanonicalPayload({
-        userId: user.id,
-        orgId,
-        instanceName: campaign.instance_name,
-        phoneE164: normalizedPhone,
-        telefone: normalizedPhone,
-        name: recipient.name,
-        pushName: recipient.name,
-        source: campaign.source_channel || 'cold_list',
-      }))
-      .maybeSingle();
-
-    if (!rpcError && rpcData) {
-      const rpcLeadId = Number((rpcData as Record<string, unknown>).id || 0) || null;
-      if (rpcLeadId) {
-        const { data: rpcLead } = await supabase
-          .from('leads')
-          .select('id, org_id, tipo_cliente')
-          .eq('id', rpcLeadId)
-          .maybeSingle();
-
-        if (doesLeadBelongToOrg(rpcLead, orgId)) {
-          leadId = rpcLeadId;
-          existingLeadClientType = String(rpcLead?.tipo_cliente || '').trim() || null;
-        } else {
-          console.warn('Discarding cross-org lead returned by upsert_lead_canonical', {
-            orgId,
-            rpcLeadId,
-            rpcLeadOrgId: rpcLead?.org_id ?? null,
-            campaignId: campaign.id,
-            recipientId: recipient.id,
-          });
-        }
-      }
-    }
-
-    if (!leadId) {
-      const { data: existingLead } = await supabase
-        .from('leads')
-        .select('id, tipo_cliente')
-        .eq('org_id', orgId)
-        .or(`phone_e164.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
-        .order('id', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (existingLead?.id) {
-        leadId = Number(existingLead.id);
-        existingLeadClientType = String(existingLead.tipo_cliente || '').trim() || null;
-      }
-    }
-
-    if (!leadId) {
-      const baseInsertPayload: Record<string, unknown> = {
-        org_id: orgId,
-        user_id: user.id,
-        assigned_to_user_id: campaignAssigneeId,
-        nome: recipient.name || normalizedPhone,
-        telefone: normalizedPhone,
-        phone_e164: normalizedPhone,
-        email: recipient.email || null,
-        canal: campaign.source_channel || 'cold_list',
-        status_pipeline: campaign.pipeline_stage || 'novo_lead',
-        tipo_cliente: campaignClientType,
-        consumo_kwh: 0,
-        valor_estimado: 0,
-        observacoes: '',
-        instance_name: campaign.instance_name,
-        ai_enabled: true,
-      };
-
-      let insertResult = await supabase
-        .from('leads')
-        .insert(baseInsertPayload)
-        .select('id')
-        .single();
-
-      if (insertResult.error && isMissingColumnError(insertResult.error)) {
-        const fallbackPayload = {
-          org_id: orgId,
-          user_id: user.id,
-          assigned_to_user_id: campaignAssigneeId,
-          nome: recipient.name || normalizedPhone,
-          telefone: normalizedPhone,
-          email: recipient.email || null,
-          canal: campaign.source_channel || 'cold_list',
-          status_pipeline: campaign.pipeline_stage || 'novo_lead',
-          consumo_kwh: 0,
-          valor_estimado: 0,
-          observacoes: '',
-        };
-
-        insertResult = await supabase
-          .from('leads')
-          .insert(fallbackPayload)
-          .select('id')
-          .single();
-      }
-
-      if (insertResult.error) throw insertResult.error;
-      leadId = Number(insertResult.data?.id || 0) || null;
-      isNewLead = Boolean(leadId);
-      if (isNewLead) {
-        existingLeadClientType = campaignClientType;
-      }
-    }
-
-    if (leadId) {
-      const fullUpdatePayload: Record<string, unknown> = {
-        status_pipeline: campaign.pipeline_stage || 'novo_lead',
-        canal: campaign.source_channel || 'cold_list',
-        ai_enabled: true,
-        ai_paused_reason: null,
-        ai_paused_at: null,
-        phone_e164: normalizedPhone,
-        telefone: normalizedPhone,
-        instance_name: campaign.instance_name,
-        assigned_to_user_id: campaignAssigneeId,
-      };
-      if (!isNewLead && !existingLeadClientType) {
-        fullUpdatePayload.tipo_cliente = campaignClientType;
-      }
-
-      let updateResult = await supabase
-        .from('leads')
-        .update(fullUpdatePayload)
-        .eq('id', leadId)
-        .eq('org_id', orgId)
-        .select('id')
-        .maybeSingle();
-
-      if (updateResult.error && isMissingColumnError(updateResult.error)) {
-        updateResult = await supabase
-          .from('leads')
-          .update({
-            status_pipeline: campaign.pipeline_stage || 'novo_lead',
-            canal: campaign.source_channel || 'cold_list',
-          })
-          .eq('id', leadId)
-          .eq('org_id', orgId)
-          .select('id')
-          .maybeSingle();
-      }
-
-      if (updateResult.error) {
-        // Keep dispatch flow alive: lead exists and was upserted already.
-        console.warn('Broadcast lead update warning:', updateResult.error.message || updateResult.error);
-      }
-    }
-
-    return leadId;
-  }, [orgId, user]);
-
-  const pickRandomMessage = useCallback((campaign: BroadcastCampaign): string => {
-    const messagePool = sanitizeMessages(campaign.messages);
-    if (messagePool.length < 1) {
-      throw new Error('A campanha precisa ter pelo menos 1 mensagem');
-    }
-    const index = Math.floor(Math.random() * messagePool.length);
-    return messagePool[index];
-  }, []);
-
-  const claimNextPendingRecipient = useCallback(async (campaignId: string): Promise<BroadcastRecipient | null> => {
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      const { data: candidate, error: candidateError } = await supabase
-        .from('broadcast_recipients')
-        .select('*')
-        .eq('campaign_id', campaignId)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (candidateError) throw candidateError;
-      if (!candidate) return null;
-
-      const { data: claimed, error: claimError } = await supabase
-        .from('broadcast_recipients')
-        .update({ status: 'sending', error_message: null })
-        .eq('id', candidate.id)
-        .eq('status', 'pending')
-        .select('*')
-        .maybeSingle();
-
-      if (claimError) throw claimError;
-      if (claimed) return toBroadcastRecipient(claimed as RecipientRow);
-    }
-
-    return null;
-  }, []);
-
-  const markRecipientStatus = useCallback(async (
-    recipientId: string,
-    payload: {
-      status: BroadcastRecipientStatus;
-      lead_id?: number | null;
-      error_message?: string | null;
-      sent_at?: string | null;
-    },
-  ) => {
-    const { error: recipientError } = await supabase
-      .from('broadcast_recipients')
-      .update(payload)
-      .eq('id', recipientId);
-
-    if (recipientError) throw recipientError;
-  }, []);
-
-  const insertOutboundInteraction = useCallback(async (
-    campaign: BroadcastCampaign,
-    recipient: BroadcastRecipient,
-    leadId: number | null,
-    message: string,
-    waMessageId: string | null,
-  ) => {
-    if (!orgId || !user) return;
-
-    const normalizedPhone = normalizePhone(recipient.phone);
-    const remoteJid = normalizedPhone ? `${normalizedPhone}@s.whatsapp.net` : null;
-
-    const { error: interactionError } = await supabase
-      .from('interacoes')
-      .insert({
-        org_id: orgId,
-        user_id: user.id,
-        lead_id: leadId,
-        mensagem: message,
-        tipo: 'mensagem_vendedor',
-        wa_from_me: true,
-        instance_name: campaign.instance_name,
-        phone_e164: normalizedPhone,
-        remote_jid: remoteJid,
-        wa_message_id: waMessageId,
-      });
-
-    if (interactionError) throw interactionError;
-  }, [orgId, user]);
-
-  const dispatchRecipient = useCallback(async (campaign: BroadcastCampaign, recipient: BroadcastRecipient) => {
-    const normalizedPhone = normalizePhone(recipient.phone);
-    if (!normalizedPhone) {
-      await markRecipientStatus(recipient.id, {
-        status: 'failed',
-        error_message: 'Telefone invalido para envio',
-      });
-      return;
-    }
-
-    const selectedMessage = pickRandomMessage(campaign);
-    let leadId: number | null = null;
-
-    try {
-      leadId = await upsertLeadForRecipient(campaign, recipient);
-
-      const response = await evolutionApi.sendMessage(
-        campaign.instance_name,
-        normalizedPhone,
-        selectedMessage,
-        undefined,
-        { orgId: orgId || undefined },
-      );
-
-      if (!response.success) {
-        throw new Error(response.error || 'Falha ao enviar via Evolution API');
-      }
-
-      const waMessageId = response.data?.key?.id || null;
-
-      await insertOutboundInteraction(campaign, recipient, leadId, selectedMessage, waMessageId);
-
-      await markRecipientStatus(recipient.id, {
-        status: 'sent',
-        lead_id: leadId,
-        sent_at: new Date().toISOString(),
-        error_message: null,
-      });
-
-      if (orgId) {
-        void supabase.rpc('record_usage', {
-          p_org_id: orgId,
-          p_event_type: 'broadcast_credit_consumed',
-          p_quantity: 1,
-          p_metadata: {
-            campaign_id: campaign.id,
-            recipient_id: recipient.id,
-          },
-        }).then(({ error: usageError }) => {
-          if (usageError) {
-            console.warn('Broadcast usage metering failed:', usageError.message || usageError);
-          }
-        });
-      }
-    } catch (dispatchError) {
-      const message = dispatchError instanceof Error ? dispatchError.message : 'Erro desconhecido no disparo';
-      await markRecipientStatus(recipient.id, {
-        status: 'failed',
-        lead_id: leadId,
-        error_message: message,
-      });
-    }
-  }, [insertOutboundInteraction, markRecipientStatus, orgId, pickRandomMessage, upsertLeadForRecipient]);
-
-  const scheduleCampaignTick = useCallback((campaignId: string, delayMs: number, tickFn: (id: string) => Promise<void>) => {
-    clearCampaignTimer(campaignId);
-    const timeout = setTimeout(() => {
-      timersRef.current.delete(campaignId);
-      void tickFn(campaignId);
-    }, delayMs);
-    timersRef.current.set(campaignId, timeout);
-  }, [clearCampaignTimer]);
-
-  const processCampaignTick = useCallback(async (campaignId: string) => {
-    if (!orgId) return;
-    if (campaignTickInFlightRef.current.has(campaignId)) return;
-
-    campaignTickInFlightRef.current.add(campaignId);
-
-    try {
-      const latestCampaign = await fetchCampaignById(campaignId);
-      if (!latestCampaign || latestCampaign.status !== 'running') {
-        clearCampaignTimer(campaignId);
-        return;
-      }
-
-      const claimedRecipient = await claimNextPendingRecipient(campaignId);
-
-      if (!claimedRecipient) {
-        await refreshCampaignProgress(campaignId);
-        await fetchCampaigns();
-        clearCampaignTimer(campaignId);
-        return;
-      }
-
-      await dispatchRecipient(latestCampaign, claimedRecipient);
-      await refreshCampaignProgress(campaignId);
-      await fetchCampaignRecipients(campaignId);
-      const updatedCampaign = await fetchCampaignById(campaignId);
-
-      if (updatedCampaign?.status === 'running') {
-        const delay = computeDispatchDelayMs(clampIntervalSeconds(updatedCampaign.interval_seconds));
-        scheduleCampaignTick(campaignId, delay, processCampaignTick);
-      } else {
-        clearCampaignTimer(campaignId);
-      }
-
-      await fetchCampaigns();
-    } finally {
-      campaignTickInFlightRef.current.delete(campaignId);
-    }
-  }, [
-    claimNextPendingRecipient,
-    clearCampaignTimer,
-    dispatchRecipient,
-    fetchCampaignById,
-    fetchCampaignRecipients,
-    fetchCampaigns,
-    orgId,
-    refreshCampaignProgress,
-    scheduleCampaignTick,
-  ]);
 
   const addRecipients = useCallback(async (campaignId: string, recipients: BroadcastRecipientInput[]) => {
     if (!recipients.length) {
@@ -695,8 +319,9 @@ export function useBroadcasts() {
     }
 
     const limitRow = Array.isArray(limitData) ? limitData[0] : limitData;
-    if (!limitRow?.allowed || limitRow?.access_state === 'blocked') {
-      throw new Error('Limite mensal de disparos atingido. Faça upgrade para continuar.');
+    if (!limitRow?.allowed && !isUnlimitedBillingBypass(billing)) {
+      openBillingBlocker(buildLimitBlockerForKey('max_campaigns_month', billing, 'broadcasts'));
+      throw new BillingInterruptionError('Bloqueado por billing em campanhas de disparo');
     }
 
     const recipientCount = Array.isArray(input.recipients) ? input.recipients.length : 0;
@@ -708,12 +333,13 @@ export function useBroadcasts() {
       });
 
       if (creditsError) {
-        throw new Error(`Falha ao validar créditos de disparo: ${creditsError.message}`);
+        throw new Error(`Falha ao validar creditos de disparo: ${creditsError.message}`);
       }
 
       const creditsRow = Array.isArray(creditsData) ? creditsData[0] : creditsData;
-      if (!creditsRow?.allowed || creditsRow?.access_state === 'blocked') {
-        throw new Error('Créditos de disparo insuficientes para a quantidade de destinatários.');
+      if (!creditsRow?.allowed && !isUnlimitedBillingBypass(billing)) {
+        openBillingBlocker(buildLimitBlockerForKey('monthly_broadcast_credits', billing, 'broadcasts'));
+        throw new BillingInterruptionError('Bloqueado por billing em creditos de disparo');
       }
     }
 
@@ -754,7 +380,7 @@ export function useBroadcasts() {
 
     const latest = await fetchCampaignById(createdCampaign.id);
     return latest || createdCampaign;
-  }, [addRecipients, fetchCampaignById, fetchCampaigns, orgId, refreshCampaignProgress, user]);
+  }, [addRecipients, billing, fetchCampaignById, fetchCampaigns, openBillingBlocker, orgId, refreshCampaignProgress, user]);
 
   const setCampaignStatus = useCallback(async (
     campaignId: string,
@@ -798,74 +424,88 @@ export function useBroadcasts() {
       throw new Error('A campanha precisa ter ao menos 1 mensagem para iniciar');
     }
 
-    const { error: markSendingError } = await supabase
+    const resetSendingPayload = {
+      status: 'pending' as BroadcastRecipientStatus,
+      error_message: null,
+      processing_started_at: null,
+      next_attempt_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    let resetSendingResult = await supabase
       .from('broadcast_recipients')
-      .update({
-        status: 'failed',
-        error_message: 'Envio interrompido antes de confirmacao. Retomado sem duplicidade.',
-      })
+      .update(resetSendingPayload)
       .eq('campaign_id', campaignId)
       .eq('status', 'sending');
 
-    if (markSendingError) throw markSendingError;
+    if (resetSendingResult.error && isSchemaMismatchError(resetSendingResult.error)) {
+      resetSendingResult = await supabase
+        .from('broadcast_recipients')
+        .update({
+          status: 'pending',
+          error_message: null,
+        })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'sending');
+    }
+
+    if (resetSendingResult.error) throw resetSendingResult.error;
 
     await refreshCampaignProgress(campaignId);
-
     const counts = await getCampaignRecipientCounts(campaignId);
+
     if (counts.pending === 0 && counts.sending === 0) {
       await setCampaignStatus(campaignId, 'completed');
       await fetchCampaigns();
-      clearCampaignTimer(campaignId);
       return;
     }
 
     await setCampaignStatus(campaignId, 'running');
     await fetchCampaigns();
-
-    scheduleCampaignTick(campaignId, 250, processCampaignTick);
-  }, [
-    clearCampaignTimer,
-    fetchCampaignById,
-    fetchCampaigns,
-    getCampaignRecipientCounts,
-    orgId,
-    processCampaignTick,
-    refreshCampaignProgress,
-    scheduleCampaignTick,
-    setCampaignStatus,
-  ]);
+  }, [fetchCampaignById, fetchCampaigns, getCampaignRecipientCounts, orgId, refreshCampaignProgress, setCampaignStatus]);
 
   const pauseCampaign = useCallback(async (campaignId: string) => {
     await setCampaignStatus(campaignId, 'paused');
-    clearCampaignTimer(campaignId);
     await fetchCampaigns();
-  }, [clearCampaignTimer, fetchCampaigns, setCampaignStatus]);
+  }, [fetchCampaigns, setCampaignStatus]);
 
   const resumeCampaign = useCallback(async (campaignId: string) => {
     await startCampaign(campaignId);
   }, [startCampaign]);
 
   const cancelCampaign = useCallback(async (campaignId: string) => {
-    clearCampaignTimer(campaignId);
-
-    const { error: skipError } = await supabase
+    let skipResult = await supabase
       .from('broadcast_recipients')
-      .update({ status: 'skipped', error_message: 'Campanha cancelada pelo usuario' })
+      .update({
+        status: 'skipped',
+        error_message: 'Campanha cancelada pelo usuario',
+        processing_started_at: null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('campaign_id', campaignId)
       .in('status', SENDING_RECIPIENT_STATES);
 
-    if (skipError) throw skipError;
+    if (skipResult.error && isSchemaMismatchError(skipResult.error)) {
+      skipResult = await supabase
+        .from('broadcast_recipients')
+        .update({
+          status: 'skipped',
+          error_message: 'Campanha cancelada pelo usuario',
+        })
+        .eq('campaign_id', campaignId)
+        .in('status', SENDING_RECIPIENT_STATES);
+    }
+
+    if (skipResult.error) throw skipResult.error;
 
     await refreshCampaignProgress(campaignId);
     await setCampaignStatus(campaignId, 'canceled');
     await fetchCampaignRecipients(campaignId);
     await fetchCampaigns();
-  }, [clearCampaignTimer, fetchCampaignRecipients, fetchCampaigns, refreshCampaignProgress, setCampaignStatus]);
+  }, [fetchCampaignRecipients, fetchCampaigns, refreshCampaignProgress, setCampaignStatus]);
 
   const deleteCampaign = useCallback(async (campaignId: string) => {
     if (!orgId) return;
-
-    clearCampaignTimer(campaignId);
 
     const { error: deleteRecipientsError } = await supabase
       .from('broadcast_recipients')
@@ -882,33 +522,32 @@ export function useBroadcasts() {
 
     if (deleteError) throw deleteError;
 
-    setRecipientsByCampaign((previous) => {
-      const next = { ...previous };
-      delete next[campaignId];
-      return next;
-    });
+    if (isMountedRef.current) {
+      setRecipientsByCampaign((previous) => {
+        const next = { ...previous };
+        delete next[campaignId];
+        return next;
+      });
+    }
 
     await fetchCampaigns();
-  }, [clearCampaignTimer, fetchCampaigns, orgId]);
-
-  const campaignsById = useMemo(() => {
-    const map = new Map<string, BroadcastCampaign>();
-    campaigns.forEach((campaign) => {
-      map.set(campaign.id, campaign);
-    });
-    return map;
-  }, [campaigns]);
+  }, [fetchCampaigns, orgId]);
 
   useEffect(() => {
-    campaignMapRef.current = campaignsById;
-  }, [campaignsById]);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!user || !orgId) {
-      setCampaigns([]);
-      setRecipientsByCampaign({});
-      setError(null);
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setCampaigns([]);
+        setRecipientsByCampaign({});
+        setError(null);
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -922,30 +561,6 @@ export function useBroadcasts() {
       clearInterval(interval);
     };
   }, [fetchCampaigns, orgId, user]);
-
-  useEffect(() => {
-    const runningCampaignIds = new Set(campaigns.filter((campaign) => campaign.status === 'running').map((campaign) => campaign.id));
-
-    campaigns
-      .filter((campaign) => campaign.status === 'running')
-      .forEach((campaign) => {
-        if (!timersRef.current.has(campaign.id)) {
-          scheduleCampaignTick(campaign.id, 300, processCampaignTick);
-        }
-      });
-
-    for (const campaignId of Array.from(timersRef.current.keys())) {
-      if (!runningCampaignIds.has(campaignId)) {
-        clearCampaignTimer(campaignId);
-      }
-    }
-  }, [campaigns, clearCampaignTimer, processCampaignTick, scheduleCampaignTick]);
-
-  useEffect(() => () => {
-    Array.from(timersRef.current.keys()).forEach((campaignId) => {
-      clearCampaignTimer(campaignId);
-    });
-  }, [clearCampaignTimer]);
 
   return {
     campaigns,

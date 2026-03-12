@@ -29,16 +29,18 @@ import {
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { PageHeader } from './PageHeader';
-import { PackPurchaseModal } from '@/components/billing/PackPurchaseModal';
 import {
     DEFAULT_APPOINTMENT_WINDOW_CONFIG,
     DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
+    DEFAULT_FOLLOW_UP_WINDOW_CONFIG,
     type AppointmentWindowConfig,
     type AppointmentWindowType,
     type AppointmentDayKey,
     type FollowUpSequenceConfig,
     type FollowUpStepKey,
+    type FollowUpWindowConfig,
 } from '@/types/ai';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 
 type SpecialAgentDef = {
     stage: 'follow_up' | 'agente_disparos';
@@ -64,6 +66,8 @@ const SPECIAL_AGENTS: SpecialAgentDef[] = [
         description: 'Ativa apenas para respostas de leads com vínculo determinístico em broadcast_recipients.',
     },
 ];
+
+const SUPPORT_AGENT_STAGE_KEY = 'assistente_geral';
 
 const APPOINTMENT_WINDOW_TYPE_OPTIONS: Array<{ key: AppointmentWindowType; label: string }> = [
     { key: 'call', label: 'Chamada' },
@@ -125,6 +129,61 @@ const normalizeWindowConfig = (raw: unknown): AppointmentWindowConfig => {
         };
     }
     return next;
+};
+
+const normalizeDayKey = (raw: unknown): AppointmentDayKey | null => {
+    const value = String(raw ?? '').trim().toLowerCase();
+    return APPOINTMENT_DAY_OPTIONS.some((day) => day.key === value) ? (value as AppointmentDayKey) : null;
+};
+
+const cloneFollowUpWindowConfig = (config: FollowUpWindowConfig): FollowUpWindowConfig => ({
+    start: config.start,
+    end: config.end,
+    days: [...config.days],
+    preferred_time: config.preferred_time ? String(config.preferred_time) : null,
+});
+
+const normalizeFollowUpWindowConfig = (raw: unknown): FollowUpWindowConfig => {
+    const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {};
+    const startMin = parseTimeToMinutes(String(source.start || ''));
+    const endMin = parseTimeToMinutes(String(source.end || ''));
+    const days = Array.isArray(source.days)
+        ? Array.from(
+            new Set(
+                source.days
+                    .map((day: unknown) => normalizeDayKey(day))
+                    .filter(Boolean)
+            )
+        ) as AppointmentDayKey[]
+        : [];
+    const preferredRaw = String(source.preferred_time || '').trim();
+    const preferredMin = preferredRaw ? parseTimeToMinutes(preferredRaw) : null;
+
+    return {
+        start: startMin === null ? DEFAULT_FOLLOW_UP_WINDOW_CONFIG.start : formatMinutesToHHMM(startMin),
+        end: endMin === null ? DEFAULT_FOLLOW_UP_WINDOW_CONFIG.end : formatMinutesToHHMM(endMin),
+        days: days.length > 0 ? days : [...DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days],
+        preferred_time: preferredMin === null ? null : formatMinutesToHHMM(preferredMin),
+    };
+};
+
+const validateFollowUpWindowConfig = (config: FollowUpWindowConfig): string | null => {
+    const startMin = parseTimeToMinutes(config.start);
+    const endMin = parseTimeToMinutes(config.end);
+    if (startMin === null || endMin === null || endMin <= startMin) {
+        return 'Horario final deve ser maior que o inicial';
+    }
+    if (!Array.isArray(config.days) || config.days.length === 0) {
+        return 'Selecione ao menos 1 dia util para follow-up';
+    }
+    if (config.preferred_time) {
+        const preferredMin = parseTimeToMinutes(config.preferred_time);
+        if (preferredMin === null) return 'Horario preferencial invalido';
+        if (preferredMin < startMin || preferredMin >= endMin) {
+            return 'Horario preferencial precisa estar dentro da janela';
+        }
+    }
+    return null;
 };
 
 const validateWindowConfig = (config: AppointmentWindowConfig): Record<AppointmentWindowType, string | null> => {
@@ -277,9 +336,41 @@ const formatMinutesCompact = (minutes: number): string => {
     return `${minutes}min`;
 };
 
+type AutoScheduleSettingsDraft = {
+    timezone: string;
+    auto_schedule_call_enabled: boolean;
+    auto_schedule_visit_enabled: boolean;
+    auto_schedule_call_min_days: number;
+    auto_schedule_visit_min_days: number;
+};
+
+const AUTO_SCHEDULE_MIN_DAYS_MIN = 0;
+const AUTO_SCHEDULE_MIN_DAYS_MAX = 60;
+
+const normalizeAutoScheduleMinDays = (raw: unknown, fallback: number): number => {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(AUTO_SCHEDULE_MIN_DAYS_MIN, Math.min(AUTO_SCHEDULE_MIN_DAYS_MAX, Math.round(parsed)));
+};
+
+const buildAutoScheduleDraftFromSettings = (settings: any): AutoScheduleSettingsDraft => ({
+    timezone: String(settings?.timezone || 'America/Sao_Paulo').trim() || 'America/Sao_Paulo',
+    auto_schedule_call_enabled: settings?.auto_schedule_call_enabled !== false,
+    auto_schedule_visit_enabled: settings?.auto_schedule_visit_enabled !== false,
+    auto_schedule_call_min_days: normalizeAutoScheduleMinDays(
+        settings?.auto_schedule_call_min_days,
+        0
+    ),
+    auto_schedule_visit_min_days: normalizeAutoScheduleMinDays(
+        settings?.auto_schedule_visit_min_days,
+        0
+    ),
+});
+
 export function AIAgentsView() {
     const { settings, stageConfigs, updateGlobalSettings, updateStageConfig, loading, restoreDefaultPrompt } = useAISettings();
     const { instances: whatsappInstances, setInstanceAiEnabled, activateAiForAllLeads } = useUserWhatsAppInstances();
+    const { openPackPurchase } = useBillingBlocker();
     const { role, orgId } = useAuth();
     const canEdit = role === 'owner' || role === 'admin';
     const [editingStage, setEditingStage] = useState<string | null>(null);
@@ -288,7 +379,6 @@ export function AIAgentsView() {
     const [isWarningOpen, setIsWarningOpen] = useState(false);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
-    const [isAiPackModalOpen, setIsAiPackModalOpen] = useState(false);
     const [tempPrompt, setTempPrompt] = useState('');
 
     // Local state for Assistant Name to prevent auto-refresh/focus loss
@@ -302,7 +392,15 @@ export function AIAgentsView() {
         toFollowUpCadenceDraft(DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG)
     );
     const [followUpCadenceDirty, setFollowUpCadenceDirty] = useState(false);
+    const [followUpWindowDraft, setFollowUpWindowDraft] = useState<FollowUpWindowConfig>(
+        cloneFollowUpWindowConfig(DEFAULT_FOLLOW_UP_WINDOW_CONFIG)
+    );
+    const [followUpWindowDirty, setFollowUpWindowDirty] = useState(false);
     const [followUpCadenceExpanded, setFollowUpCadenceExpanded] = useState(false);
+    const [autoScheduleDraft, setAutoScheduleDraft] = useState<AutoScheduleSettingsDraft>(
+        buildAutoScheduleDraftFromSettings(settings)
+    );
+    const [autoScheduleDirty, setAutoScheduleDirty] = useState(false);
 
     // Sync local state when settings load
     React.useEffect(() => {
@@ -324,6 +422,25 @@ export function AIAgentsView() {
         setFollowUpCadenceDraft(toFollowUpCadenceDraft(incoming));
         setFollowUpCadenceDirty(false);
     }, [settings?.follow_up_sequence_config]);
+
+    React.useEffect(() => {
+        const incoming = normalizeFollowUpWindowConfig(
+            settings?.follow_up_window_config || DEFAULT_FOLLOW_UP_WINDOW_CONFIG
+        );
+        setFollowUpWindowDraft(cloneFollowUpWindowConfig(incoming));
+        setFollowUpWindowDirty(false);
+    }, [settings?.follow_up_window_config]);
+
+    React.useEffect(() => {
+        setAutoScheduleDraft(buildAutoScheduleDraftFromSettings(settings));
+        setAutoScheduleDirty(false);
+    }, [
+        settings?.timezone,
+        settings?.auto_schedule_call_enabled,
+        settings?.auto_schedule_visit_enabled,
+        settings?.auto_schedule_call_min_days,
+        settings?.auto_schedule_visit_min_days,
+    ]);
 
     const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setLocalAssistantName(e.target.value);
@@ -442,6 +559,96 @@ export function AIAgentsView() {
         setFollowUpCadenceDirty(false);
     };
 
+    const handleFollowUpWindowTimeChange = (field: 'start' | 'end' | 'preferred_time', value: string) => {
+        setFollowUpWindowDraft((prev) => ({
+            ...prev,
+            [field]: field === 'preferred_time'
+                ? (value ? value : null)
+                : value,
+        }));
+        setFollowUpWindowDirty(true);
+    };
+
+    const handleFollowUpWindowDayToggle = (day: AppointmentDayKey) => {
+        setFollowUpWindowDraft((prev) => {
+            const currentDays = prev.days || [];
+            const nextDays = currentDays.includes(day)
+                ? currentDays.filter((d) => d !== day)
+                : [...currentDays, day];
+            return {
+                ...prev,
+                days: nextDays,
+            };
+        });
+        setFollowUpWindowDirty(true);
+    };
+
+    const handleFollowUpWindowCancel = () => {
+        const incoming = normalizeFollowUpWindowConfig(
+            settings?.follow_up_window_config || DEFAULT_FOLLOW_UP_WINDOW_CONFIG
+        );
+        setFollowUpWindowDraft(cloneFollowUpWindowConfig(incoming));
+        setFollowUpWindowDirty(false);
+    };
+
+    const handleFollowUpWindowSave = async () => {
+        const normalized = normalizeFollowUpWindowConfig(followUpWindowDraft);
+        const error = validateFollowUpWindowConfig(normalized);
+        if (error) {
+            toast.error(error);
+            return;
+        }
+        await updateGlobalSettings({ follow_up_window_config: normalized });
+        setFollowUpWindowDirty(false);
+    };
+
+    const handleAutoScheduleToggle = (
+        field: 'auto_schedule_call_enabled' | 'auto_schedule_visit_enabled',
+        value: boolean,
+    ) => {
+        setAutoScheduleDraft((prev) => ({
+            ...prev,
+            [field]: value,
+        }));
+        setAutoScheduleDirty(true);
+    };
+
+    const handleAutoScheduleMinDaysChange = (
+        field: 'auto_schedule_call_min_days' | 'auto_schedule_visit_min_days',
+        value: number,
+    ) => {
+        setAutoScheduleDraft((prev) => ({
+            ...prev,
+            [field]: normalizeAutoScheduleMinDays(value, prev[field]),
+        }));
+        setAutoScheduleDirty(true);
+    };
+
+    const handleAutoScheduleTimezoneChange = (value: string) => {
+        setAutoScheduleDraft((prev) => ({
+            ...prev,
+            timezone: value,
+        }));
+        setAutoScheduleDirty(true);
+    };
+
+    const handleAutoScheduleCancel = () => {
+        setAutoScheduleDraft(buildAutoScheduleDraftFromSettings(settings));
+        setAutoScheduleDirty(false);
+    };
+
+    const handleAutoScheduleSave = async () => {
+        const timezone = String(autoScheduleDraft.timezone || '').trim() || 'America/Sao_Paulo';
+        await updateGlobalSettings({
+            timezone,
+            auto_schedule_call_enabled: autoScheduleDraft.auto_schedule_call_enabled,
+            auto_schedule_visit_enabled: autoScheduleDraft.auto_schedule_visit_enabled,
+            auto_schedule_call_min_days: normalizeAutoScheduleMinDays(autoScheduleDraft.auto_schedule_call_min_days, 0),
+            auto_schedule_visit_min_days: normalizeAutoScheduleMinDays(autoScheduleDraft.auto_schedule_visit_min_days, 0),
+        });
+        setAutoScheduleDirty(false);
+    };
+
     const handleEditClick = (agent: PipelineAgentDef, currentPrompt: string) => {
         setEditingStage(agent.stage);
         setEditingAgent(agent);
@@ -498,6 +705,13 @@ export function AIAgentsView() {
         setIsWarningOpen(true);
     };
 
+    const handleEditSupportPrompt = () => {
+        setEditingStage(SUPPORT_AGENT_STAGE_KEY);
+        setEditingAgent(null);
+        setTempPrompt(getStagePromptByKey(SUPPORT_AGENT_STAGE_KEY));
+        setIsWarningOpen(true);
+    };
+
     const handleSpecialAgentToggle = async (stageKey: 'follow_up' | 'agente_disparos', checked: boolean) => {
         await updateStageConfig(stageKey, { is_active: checked });
 
@@ -540,6 +754,7 @@ export function AIAgentsView() {
     const editingSpecialAgent = SPECIAL_AGENTS.find((agent) => agent.stage === editingStage);
     const editingStageTitle = editingAgent?.label
         || editingSpecialAgent?.label
+        || (editingStage === SUPPORT_AGENT_STAGE_KEY ? 'Agente de Apoio Global' : null)
         || (editingStage && (PIPELINE_STAGES as Record<string, { title: string }>)[editingStage]?.title)
         || '';
     const editingPromptVersion = editingConfig?.prompt_override_version ?? 0;
@@ -548,11 +763,20 @@ export function AIAgentsView() {
     const hasWindowConfigErrors = Object.values(windowConfigErrors).some(Boolean);
     const followUpCadenceErrors = validateFollowUpCadenceDraft(followUpCadenceDraft);
     const hasFollowUpCadenceErrors = Object.values(followUpCadenceErrors).some(Boolean);
+    const followUpWindowError = validateFollowUpWindowConfig(followUpWindowDraft);
+    const hasFollowUpWindowErrors = Boolean(followUpWindowError);
     const followUpEnabledSteps = followUpCadenceDraft.filter((item) => item.enabled).length;
     const followUpCadencePreview = followUpDraftToConfig(followUpCadenceDraft).steps
         .filter((step) => step.enabled)
         .map((step) => `E${step.step}: ${formatMinutesCompact(step.delay_minutes)}`)
         .join(' -> ');
+    const autoScheduleModeLabel = autoScheduleDraft.auto_schedule_call_enabled && autoScheduleDraft.auto_schedule_visit_enabled
+        ? 'Ambos ativos: IA escolhe entre ligacao e visita.'
+        : autoScheduleDraft.auto_schedule_call_enabled
+            ? 'Somente ligacao ativa: IA segue por ligacao.'
+            : autoScheduleDraft.auto_schedule_visit_enabled
+                ? 'Somente visita ativa: IA segue por visita.'
+                : 'Ambos desativados: IA nao agenda automaticamente e informa retorno.';
     const promptWarnings = [
         promptLength > 0 && promptLength < 50 ? `Prompt curto (${promptLength} < 50 caracteres)` : null,
         promptLength > 15000 ? `Prompt longo (${promptLength} > 15000 caracteres)` : null,
@@ -570,7 +794,9 @@ export function AIAgentsView() {
                     <div className="flex items-center gap-3">
                         <Button
                             variant="outline"
-                            onClick={() => setIsAiPackModalOpen(true)}
+                            onClick={() => {
+                                void openPackPurchase('ai', { source: 'ai_credits', targetPlan: 'pro' });
+                            }}
                             className="gap-2 font-semibold h-9"
                         >
                             <Brain className="w-4 h-4" />
@@ -675,6 +901,116 @@ export function AIAgentsView() {
                         </Card>
                     </div>
 
+                    <Card className="shadow-sm" data-testid="auto-schedule-controls-card">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm">Politica de Agendamento Automatico</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <div className="rounded-md border bg-white p-3">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <Label className="text-xs font-semibold uppercase text-slate-500">
+                                                Agendamento de Ligacoes
+                                            </Label>
+                                            <p className="mt-1 text-[11px] text-slate-500">
+                                                Ativa/desativa convite automatico para chamada.
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={autoScheduleDraft.auto_schedule_call_enabled}
+                                            onCheckedChange={(checked) => handleAutoScheduleToggle('auto_schedule_call_enabled', checked)}
+                                            disabled={!canEdit}
+                                            className="data-[state=checked]:bg-green-500"
+                                        />
+                                    </div>
+                                    <div className="mt-3 space-y-1">
+                                        <Label className="text-[11px] text-slate-500">Dias minimos para ligacao</Label>
+                                        <Input
+                                            type="number"
+                                            min={AUTO_SCHEDULE_MIN_DAYS_MIN}
+                                            max={AUTO_SCHEDULE_MIN_DAYS_MAX}
+                                            step={1}
+                                            value={autoScheduleDraft.auto_schedule_call_min_days}
+                                            onChange={(event) => handleAutoScheduleMinDaysChange(
+                                                'auto_schedule_call_min_days',
+                                                Number(event.target.value || 0),
+                                            )}
+                                            disabled={!canEdit}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="rounded-md border bg-white p-3">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <Label className="text-xs font-semibold uppercase text-slate-500">
+                                                Agendamento de Visitas
+                                            </Label>
+                                            <p className="mt-1 text-[11px] text-slate-500">
+                                                Ativa/desativa convite automatico para visita tecnica.
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={autoScheduleDraft.auto_schedule_visit_enabled}
+                                            onCheckedChange={(checked) => handleAutoScheduleToggle('auto_schedule_visit_enabled', checked)}
+                                            disabled={!canEdit}
+                                            className="data-[state=checked]:bg-green-500"
+                                        />
+                                    </div>
+                                    <div className="mt-3 space-y-1">
+                                        <Label className="text-[11px] text-slate-500">Dias minimos para visita</Label>
+                                        <Input
+                                            type="number"
+                                            min={AUTO_SCHEDULE_MIN_DAYS_MIN}
+                                            max={AUTO_SCHEDULE_MIN_DAYS_MAX}
+                                            step={1}
+                                            value={autoScheduleDraft.auto_schedule_visit_min_days}
+                                            onChange={(event) => handleAutoScheduleMinDaysChange(
+                                                'auto_schedule_visit_min_days',
+                                                Number(event.target.value || 0),
+                                            )}
+                                            disabled={!canEdit}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-md border bg-slate-50 p-3">
+                                <Label className="text-xs font-semibold uppercase text-slate-500">Timezone operacional</Label>
+                                <Input
+                                    className="mt-2"
+                                    value={autoScheduleDraft.timezone}
+                                    onChange={(event) => handleAutoScheduleTimezoneChange(event.target.value)}
+                                    placeholder="Ex: America/Sao_Paulo"
+                                    disabled={!canEdit}
+                                />
+                                <p className="mt-2 text-[11px] text-slate-500">{autoScheduleModeLabel}</p>
+                                <p className="mt-1 text-[11px] text-slate-500">
+                                    Regra fixa em runtime: apos 18:00 no timezone acima, a IA nao convida para ligacao.
+                                </p>
+                            </div>
+
+                            {canEdit && (
+                                <div className="flex items-center justify-end gap-2">
+                                    {autoScheduleDirty && (
+                                        <Button variant="outline" onClick={handleAutoScheduleCancel}>
+                                            Cancelar
+                                        </Button>
+                                    )}
+                                    <Button
+                                        onClick={handleAutoScheduleSave}
+                                        disabled={!autoScheduleDirty}
+                                        data-testid="auto-schedule-controls-save"
+                                    >
+                                        <Save className="mr-2 h-4 w-4" />
+                                        Salvar Politica
+                                    </Button>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
                     <Card className="shadow-sm" data-testid="appointment-window-config-card">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm">Janela de Agendamento da IA</CardTitle>
@@ -772,6 +1108,17 @@ export function AIAgentsView() {
                                     <Badge variant="outline" className="text-xs">
                                         {AI_SUPPORT_ELIGIBLE_STAGES.length} etapas elegíveis
                                     </Badge>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 text-xs"
+                                        onClick={handleEditSupportPrompt}
+                                        disabled={!canEdit}
+                                        data-testid="support-ai-edit-prompt-button"
+                                    >
+                                        <Pencil className="w-3 h-3 mr-1.5" />
+                                        Editar Prompt
+                                    </Button>
                                     <Switch
                                         data-testid="support-ai-toggle"
                                         checked={settings?.support_ai_enabled ?? true}
@@ -961,6 +1308,89 @@ export function AIAgentsView() {
                                                     <Badge variant="outline" className="text-[10px] h-5 px-2">
                                                         {followUpEnabledSteps}/5 etapas ativas
                                                     </Badge>
+                                                </div>
+
+                                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 space-y-3">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-slate-700">Janela Comercial do Follow-up</p>
+                                                            <p className="text-[11px] text-slate-500">
+                                                                O worker so dispara follow-up dentro desta janela e nos dias selecionados.
+                                                            </p>
+                                                        </div>
+                                                        {hasFollowUpWindowErrors && (
+                                                            <span className="text-[11px] font-medium text-red-600">{followUpWindowError}</span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[11px] text-slate-500">Inicio</Label>
+                                                            <Input
+                                                                type="time"
+                                                                value={followUpWindowDraft.start}
+                                                                onChange={(event) => handleFollowUpWindowTimeChange('start', event.target.value)}
+                                                                disabled={!canEdit}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[11px] text-slate-500">Fim</Label>
+                                                            <Input
+                                                                type="time"
+                                                                value={followUpWindowDraft.end}
+                                                                onChange={(event) => handleFollowUpWindowTimeChange('end', event.target.value)}
+                                                                disabled={!canEdit}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[11px] text-slate-500">Horario preferencial (opcional)</Label>
+                                                            <Input
+                                                                type="time"
+                                                                value={followUpWindowDraft.preferred_time || ''}
+                                                                onChange={(event) => handleFollowUpWindowTimeChange('preferred_time', event.target.value)}
+                                                                disabled={!canEdit}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {APPOINTMENT_DAY_OPTIONS.map((day) => {
+                                                            const active = followUpWindowDraft.days.includes(day.key);
+                                                            return (
+                                                                <Button
+                                                                    key={`follow-up-window-${day.key}`}
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant={active ? 'default' : 'outline'}
+                                                                    className="h-7 px-2 text-[11px]"
+                                                                    onClick={() => handleFollowUpWindowDayToggle(day.key)}
+                                                                    disabled={!canEdit}
+                                                                >
+                                                                    {day.label}
+                                                                </Button>
+                                                            );
+                                                        })}
+                                                    </div>
+
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="h-8 text-xs"
+                                                            onClick={handleFollowUpWindowCancel}
+                                                            disabled={!canEdit || !followUpWindowDirty}
+                                                        >
+                                                            Reverter Janela
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            className="h-8 text-xs"
+                                                            onClick={handleFollowUpWindowSave}
+                                                            disabled={!canEdit || !followUpWindowDirty || hasFollowUpWindowErrors}
+                                                        >
+                                                            Salvar Janela
+                                                        </Button>
+                                                    </div>
                                                 </div>
 
                                                 {followUpCadenceExpanded && (
@@ -1178,12 +1608,6 @@ export function AIAgentsView() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
-            <PackPurchaseModal
-                open={isAiPackModalOpen}
-                onOpenChange={setIsAiPackModalOpen}
-                packType="ai"
-            />
         </div>
     );
 }

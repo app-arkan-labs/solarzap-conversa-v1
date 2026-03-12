@@ -1,4 +1,4 @@
-import { Component, ReactNode, useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { Component, ReactNode, Suspense, lazy, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLeads } from '@/hooks/domain/useLeads';
@@ -9,19 +9,6 @@ import { SolarZapNav } from './SolarZapNav';
 import { ConversationList } from './ConversationList';
 import { ChatArea } from './ChatArea';
 import { ActionsPanel } from './ActionsPanel';
-import { PipelineView } from './PipelineView';
-import { CalendarView } from './CalendarView';
-import { ContactsView } from './ContactsView';
-import { DashboardView } from './DashboardView';
-import { IntegrationsView } from './IntegrationsView';
-import { TrackingView } from './TrackingView';
-import { AutomationsView } from './AutomationsView';
-import { AIAgentsView } from './AIAgentsView';
-import { KnowledgeBaseView } from './KnowledgeBaseView';
-import { ProposalsView } from './ProposalsView';
-import { BroadcastView } from './BroadcastView';
-import { ConfiguracoesContaView } from './ConfiguracoesContaView';
-import { MeuPlanoView } from './MeuPlanoView';
 import { NotificationsPanel } from './NotificationsPanel';
 import { CreateLeadModal, CreateLeadData } from './CreateLeadModal';
 import { AppointmentModal } from './AppointmentModal';
@@ -38,7 +25,6 @@ import { LeadCommentsModal } from './LeadCommentsModal';
 import { FollowUpExhaustedModal, type FollowUpLostReasonKey } from './FollowUpExhaustedModal';
 import { Loader2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
@@ -49,12 +35,15 @@ import { useSellerPermissions } from '@/hooks/useSellerPermissions';
 import { supabase } from '@/lib/supabase';
 import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
 import { OrganizationSelectorPanel } from '@/components/organization/OrganizationSelectorPanel';
-import AdminMembersPage from '@/pages/AdminMembersPage';
 import type { UpdateLeadData } from './EditLeadModal';
-import { useOrgBillingInfo } from '@/hooks/useOrgBilling';
-import FeatureSoftWall from '@/components/billing/FeatureSoftWall';
 import BillingBanner from '@/components/billing/BillingBanner';
+import FeatureSoftWall from '@/components/billing/FeatureSoftWall';
 import { buildLossReasonSummary, findLossReasonByKey } from '@/hooks/useLossReasons';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
+import { buildTabBlocker } from '@/lib/billingBlocker';
+import { useGuidedTour } from '@/hooks/useGuidedTour';
+import GuidedTour from '@/components/onboarding/GuidedTour';
+import { TAB_WELCOME_COPY } from '@/components/onboarding/tourSteps';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -97,6 +86,48 @@ const CONVERSAS_SIDEBAR_MIN_WIDTH = 280;
 const CONVERSAS_SIDEBAR_MAX_WIDTH = 560;
 const CONVERSAS_SIDEBAR_DEFAULT_WIDTH = 320;
 const CONVERSAS_SIDEBAR_STORAGE_KEY = 'solarzap_conversas_sidebar_width';
+const BILLING_GOVERNED_TABS = new Set<ActiveTab>([
+  'disparos',
+  'propostas',
+  'automacoes',
+  'tracking',
+  'integracoes',
+  'calendario',
+  'ia_agentes',
+]);
+const BILLING_USAGE_TARGET_SELECTOR =
+  'button, a[href], input, select, textarea, [role="button"], [role="switch"], [contenteditable="true"], [contenteditable=""]';
+
+const shouldBlockBillingGovernedInteraction = (target: EventTarget | null): boolean => {
+  if (!target || !(target instanceof Element)) return false;
+  return target.closest(BILLING_USAGE_TARGET_SELECTOR) !== null;
+};
+
+const PipelineView = lazy(() => import('./PipelineView').then((module) => ({ default: module.PipelineView })));
+const CalendarView = lazy(() => import('./CalendarView').then((module) => ({ default: module.CalendarView })));
+const ContactsView = lazy(() => import('./ContactsView').then((module) => ({ default: module.ContactsView })));
+const DashboardView = lazy(() => import('./DashboardView').then((module) => ({ default: module.DashboardView })));
+const IntegrationsView = lazy(() => import('./IntegrationsView').then((module) => ({ default: module.IntegrationsView })));
+const TrackingView = lazy(() => import('./TrackingView').then((module) => ({ default: module.TrackingView })));
+const AutomationsView = lazy(() => import('./AutomationsView').then((module) => ({ default: module.AutomationsView })));
+const AIAgentsView = lazy(() => import('./AIAgentsView').then((module) => ({ default: module.AIAgentsView })));
+const KnowledgeBaseView = lazy(() => import('./KnowledgeBaseView').then((module) => ({ default: module.KnowledgeBaseView })));
+const ProposalsView = lazy(() => import('./ProposalsView').then((module) => ({ default: module.ProposalsView })));
+const BroadcastView = lazy(() => import('./BroadcastView').then((module) => ({ default: module.BroadcastView })));
+const ConfiguracoesContaView = lazy(() => import('./ConfiguracoesContaView').then((module) => ({ default: module.ConfiguracoesContaView })));
+const MeuPlanoView = lazy(() => import('./MeuPlanoView').then((module) => ({ default: module.MeuPlanoView })));
+const AdminMembersPage = lazy(() => import('@/pages/AdminMembersPage'));
+
+function TabLoadingFallback({ label }: { label: string }) {
+  return (
+    <div className="flex-1 min-h-0 flex items-center justify-center bg-background">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-sm">{label}</span>
+      </div>
+    </div>
+  );
+}
 
 export function SolarZapLayout() {
   const { user, orgId, role, hasMultipleOrganizations, organizations, selectOrganization, signOut } = useAuth();
@@ -120,11 +151,13 @@ export function SolarZapLayout() {
   }, [user]);
   const userDisplayName = useMemo(() => (user ? getAuthUserDisplayName(user) : ''), [user]);
   const { permissions: sellerPerms } = useSellerPermissions();
-  const billingQuery = useOrgBillingInfo(Boolean(orgId));
-  const accessState = billingQuery.data?.access_state ?? 'full';
-  const billingFeatures = billingQuery.data?.features ?? {};
-  const isGoogleIntegrationEnabled = billingFeatures.google_integration_enabled === true;
-  const isAdvancedTrackingEnabled = billingFeatures.advanced_tracking_enabled === true;
+  const { billing, openBillingBlocker } = useBillingBlocker();
+  const accessState = billing?.access_state ?? 'full';
+  const trackingFeatureBlocker = useMemo(() => {
+    if (!billing) return null;
+    const blocker = buildTabBlocker('tracking', billing);
+    return blocker?.kind === 'feature_locked' ? blocker : null;
+  }, [billing]);
   // Domain Hooks
   const {
     contacts,
@@ -187,6 +220,10 @@ export function SolarZapLayout() {
     return Math.min(CONVERSAS_SIDEBAR_MAX_WIDTH, Math.max(CONVERSAS_SIDEBAR_MIN_WIDTH, parsed));
   });
   const [isResizingConversationsSidebar, setIsResizingConversationsSidebar] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 1023px)').matches;
+  });
   const conversationsSidebarRef = useRef<HTMLDivElement | null>(null);
   const proposalPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const projectPaidFinanceResolverRef = useRef<((completed: boolean) => void) | null>(null);
@@ -219,6 +256,25 @@ export function SolarZapLayout() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(CONVERSAS_SIDEBAR_STORAGE_KEY, String(conversationsSidebarWidth));
   }, [conversationsSidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 1023px)');
+
+    const handleMediaChange = (event: MediaQueryListEvent) => {
+      setIsMobileViewport(event.matches);
+    };
+
+    setIsMobileViewport(media.matches);
+
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', handleMediaChange);
+      return () => media.removeEventListener('change', handleMediaChange);
+    }
+
+    media.addListener(handleMediaChange);
+    return () => media.removeListener(handleMediaChange);
+  }, []);
 
   useEffect(() => {
     if (!isResizingConversationsSidebar) return;
@@ -254,53 +310,75 @@ export function SolarZapLayout() {
     event.preventDefault();
     setIsResizingConversationsSidebar(true);
   }, []);
+  const openTab = useCallback((tab: ActiveTab) => {
+    setActiveTab(tab);
+    if (location.pathname !== '/') {
+      navigate('/');
+    }
+    return true;
+  }, [location.pathname, navigate]);
 
   const handleTabChange = useCallback((tab: ActiveTab) => {
-    setActiveTab(tab);
-    if (location.pathname !== '/') {
-      navigate('/');
-    }
-  }, [location.pathname, navigate]);
+    return openTab(tab);
+  }, [openTab]);
 
-  const lockedTabs = useMemo<Partial<Record<ActiveTab, string>>>(() => {
-    const next: Partial<Record<ActiveTab, string>> = {};
+  const handleBillingGovernedInteractionCapture = useCallback((event: React.SyntheticEvent<HTMLElement>) => {
+    if (!BILLING_GOVERNED_TABS.has(activeTab)) return;
+    if (!shouldBlockBillingGovernedInteraction(event.target)) return;
 
-    if (accessState === 'read_only') {
-      next.disparos = 'Seu plano está em modo leitura. Faça upgrade para continuar enviando.';
-      next.propostas = 'Seu plano está em modo leitura. Faça upgrade para continuar gerando propostas.';
-      next.automacoes = 'Seu plano está em modo leitura. Faça upgrade para continuar automações.';
-    }
+    const blocker = buildTabBlocker(activeTab, billing);
+    if (!blocker) return;
 
-    if (!isGoogleIntegrationEnabled) {
-      next.integracoes = 'Disponível no plano Pro';
-    }
+    event.preventDefault();
+    event.stopPropagation();
+    openBillingBlocker(blocker);
+  }, [activeTab, billing, openBillingBlocker]);
 
-    if (!isAdvancedTrackingEnabled) {
-      next.tracking = 'Disponível no plano Scale';
-    }
-
-    return next;
-  }, [accessState, isAdvancedTrackingEnabled, isGoogleIntegrationEnabled]);
-
-  const handleLockedTabClick = useCallback((tab: ActiveTab, reason?: string) => {
-    console.warn('Locked tab by billing', reason || 'upgrade_required');
-    setActiveTab(tab);
-    if (location.pathname !== '/') {
-      navigate('/');
-    }
-  }, [location.pathname, navigate]);
-
-  const activeFeatureSoftWall = useMemo(() => {
-    if (activeTab === 'tracking' && !isAdvancedTrackingEnabled) {
-      return {
-        featureName: 'Tracking Avançado',
-        requiredPlan: 'Scale',
-        description: 'Acompanhe conversões e eventos com maior profundidade para otimizar suas campanhas.',
-      };
+  const handleBillingGovernedKeyDownCapture = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    if (!BILLING_GOVERNED_TABS.has(activeTab)) return;
+    if (!shouldBlockBillingGovernedInteraction(event.target)) return;
+    if (
+      event.key === 'Tab' ||
+      event.key === 'Shift' ||
+      event.key === 'Escape' ||
+      event.key.startsWith('Arrow')
+    ) {
+      return;
     }
 
-    return null;
-  }, [activeTab, isAdvancedTrackingEnabled, isGoogleIntegrationEnabled]);
+    const blocker = buildTabBlocker(activeTab, billing);
+    if (!blocker) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    openBillingBlocker(blocker);
+  }, [activeTab, billing, openBillingBlocker]);
+
+  const openProposalFlow = useCallback((contact: Contact | null) => {
+    const blocker = buildTabBlocker('propostas', billing);
+    if (blocker) {
+      openBillingBlocker(blocker);
+      return false;
+    }
+
+    setActionContact(contact || null);
+    setIsProposalOpen(true);
+    return true;
+  }, [billing, openBillingBlocker]);
+
+  const openScheduleFlow = useCallback((contact: Contact | null, type: 'reuniao' | 'visita') => {
+    const blocker = buildTabBlocker('calendario', billing);
+    if (blocker) {
+      openBillingBlocker(blocker);
+      return false;
+    }
+
+    setActionContact(contact || null);
+    setScheduleType(type);
+    setIsScheduleOpen(true);
+    return true;
+  }, [billing, openBillingBlocker]);
+
 
   // Derivar a conversa ativa da lista atualizada de conversas para garantir que temos as mensagens mais recentes
   const activeConversation = useMemo(() => {
@@ -608,28 +686,23 @@ export function SolarZapLayout() {
         break;
 
       case 'schedule':
-        setActionContact(targetContact || null);
-        setScheduleType('reuniao');
-        setIsScheduleOpen(true);
+        openScheduleFlow(targetContact || null, 'reuniao');
         break;
 
       case 'proposal':
-        setActionContact(targetContact || null);
-        setIsProposalOpen(true);
+        openProposalFlow(targetContact || null);
         break;
 
       case 'visit':
-        setActionContact(targetContact || null);
-        setScheduleType('visita');
-        setIsScheduleOpen(true);
+        openScheduleFlow(targetContact || null, 'visita');
         break;
 
       case 'pipeline':
-        setActiveTab('pipelines');
+        handleTabChange('pipelines');
         break;
 
       case 'details':
-        setActiveTab('contatos');
+        handleTabChange('contatos');
         break;
 
       case 'comments':
@@ -641,7 +714,7 @@ export function SolarZapLayout() {
         if (targetContact?.id) {
           localStorage.setItem('solarzap_proposals_filter_lead_id', String(targetContact.id));
         }
-        setActiveTab('propostas');
+        handleTabChange('propostas');
         setIsDetailsPanelOpen(false);
         break;
     }
@@ -767,7 +840,7 @@ export function SolarZapLayout() {
 
   const handleGenerateProposalPrompt = () => {
     setGenerateProposalPromptOpen(false);
-    setIsProposalOpen(true);
+    openProposalFlow(actionContact || null);
   };
 
   const handleProposalReadyGoToConversation = (contactId: string, prefilledMessage: string) => {
@@ -870,17 +943,13 @@ export function SolarZapLayout() {
 
       case 'chamada_agendada':
         if (!options.skipScheduleModal && isDragDropEnabled(newStage, oldStage)) {
-          setActionContact(contact);
-          setScheduleType('reuniao');
-          setIsScheduleOpen(true);
+          openScheduleFlow(contact, 'reuniao');
         }
         break;
 
       case 'visita_agendada':
         if (!options.skipScheduleModal && isDragDropEnabled(newStage, oldStage)) {
-          setActionContact(contact);
-          setScheduleType('visita');
-          setIsScheduleOpen(true);
+          openScheduleFlow(contact, 'visita');
         }
         break;
 
@@ -899,7 +968,7 @@ export function SolarZapLayout() {
         break;
     }
 
-  }, [contacts, moveToPipeline, onStageChanged, toast, isDragDropEnabled, openProjectPaidFinanceGate]);
+  }, [contacts, moveToPipeline, onStageChanged, toast, isDragDropEnabled, openProjectPaidFinanceGate, openScheduleFlow]);
 
   const compactLeadPatch = useCallback((data: UpdateLeadData): UpdateLeadData => {
     return Object.fromEntries(
@@ -1264,6 +1333,14 @@ export function SolarZapLayout() {
     return saveResult;
   };
 
+  const showConversationList = !isMobileViewport || !activeConversation;
+  const showConversationChat = !isMobileViewport || Boolean(activeConversation);
+  const guidedTour = useGuidedTour(activeTab, Boolean(user));
+  const welcomeCopy = TAB_WELCOME_COPY[activeTab] || {
+    title: 'Boas-vindas',
+    description: 'Conheca os principais pontos desta aba.',
+  };
+
   if (isInitialLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
@@ -1298,9 +1375,7 @@ export function SolarZapLayout() {
           minha_conta: sellerPerms.tab_minha_conta,
           meu_plano: canAccessAdmin,
         }}
-        lockedTabs={lockedTabs}
-        onLockedTabClick={handleLockedTabClick}
-        currentPlanKey={billingQuery.data?.plan_key ?? null}
+        currentPlanKey={billing?.plan_key ?? null}
       />
 
       <Dialog
@@ -1369,7 +1444,7 @@ export function SolarZapLayout() {
 
       <div className="absolute top-0 left-[60px] right-0 z-20 px-4 py-2 space-y-2 pointer-events-none">
         <div className="pointer-events-auto">
-          <BillingBanner billing={billingQuery.data} />
+          <BillingBanner billing={billing} />
         </div>
       </div>
 
@@ -1379,13 +1454,34 @@ export function SolarZapLayout() {
         </div>
       ) : null}
 
+      <GuidedTour
+        showWelcome={guidedTour.showWelcome}
+        running={guidedTour.running}
+        steps={guidedTour.steps}
+        stepIndex={guidedTour.stepIndex}
+        welcomeTitle={welcomeCopy.title}
+        welcomeDescription={welcomeCopy.description}
+        onStart={guidedTour.startTour}
+        onSkip={() => {
+          void guidedTour.closeTour(true);
+        }}
+        onClose={() => {
+          void guidedTour.closeTour(true);
+        }}
+        onNext={() => {
+          void guidedTour.nextStep();
+        }}
+        onPrev={guidedTour.previousStep}
+      />
+
       {activeTab === 'conversas' && (
         <>
-          <div
-            ref={conversationsSidebarRef}
-            className="relative flex-shrink-0"
-            style={{ width: conversationsSidebarWidth }}
-          >
+          {showConversationList && (
+            <div
+              ref={conversationsSidebarRef}
+              className={`relative ${isMobileViewport ? 'flex-1 min-w-0' : 'flex-shrink-0'}`}
+              style={isMobileViewport ? undefined : { width: conversationsSidebarWidth }}
+            >
             <ConversationList
               conversations={filteredConversations}
               contacts={contacts}
@@ -1406,23 +1502,28 @@ export function SolarZapLayout() {
               onImportContacts={importContacts}
               onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
             />
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Redimensionar aba lateral"
-              className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors"
-              onMouseDown={handleConversationsSidebarResizeStart}
-            />
+              {!isMobileViewport && (
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Redimensionar aba lateral"
+                  className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors"
+                  onMouseDown={handleConversationsSidebarResizeStart}
+                />
+              )}
             <Button
               onClick={() => setIsCreateLeadOpen(true)}
               size="icon"
+              data-testid="open-create-lead-modal"
               className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg"
             >
               <Plus className="w-6 h-6" />
             </Button>
-          </div>
+            </div>
+          )}
 
-          <ChatArea
+          {showConversationChat && (
+            <ChatArea
             conversation={activeConversation}
             conversations={conversations}
             onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
@@ -1500,9 +1601,9 @@ export function SolarZapLayout() {
                 setPendingVisitScheduleContactId(null);
               }
             }}
-            onSendReaction={async (messageId, waMessageId, remoteJid, emoji, instanceName) => {
+            onSendReaction={async (messageId, waMessageId, remoteJid, emoji, instanceName, fromMe) => {
               try {
-                await sendReaction({ messageId, waMessageId, remoteJid, emoji, instanceName });
+                await sendReaction({ messageId, waMessageId, remoteJid, emoji, instanceName, fromMe });
                 toast({
                   title: "Reação enviada!",
                   description: `${emoji}`,
@@ -1533,174 +1634,250 @@ export function SolarZapLayout() {
                 description: "Revise a mensagem e envie para o cliente quando estiver pronto.",
               });
             }}
+            onBack={isMobileViewport ? () => {
+              setSelectedConversation(null);
+              setIsDetailsPanelOpen(false);
+            } : undefined}
           />
+          )}
 
           {isDetailsPanelOpen && (
-            <ActionsPanel
-              conversation={activeConversation}
-              onMoveToPipeline={handlePipelineStageChange}
-              onAction={handleAction}
-              onClose={() => setIsDetailsPanelOpen(false)}
-              onUpdateLead={handleLeadUpdateWithoutStage}
-              onToggleLeadFollowUp={toggleLeadFollowUp}
-            />
+            <div className={isMobileViewport ? 'absolute inset-0 z-30 bg-background' : ''}>
+              <ActionsPanel
+                conversation={activeConversation}
+                onMoveToPipeline={handlePipelineStageChange}
+                onAction={handleAction}
+                onClose={() => setIsDetailsPanelOpen(false)}
+                onUpdateLead={handleLeadUpdateWithoutStage}
+                onToggleLeadFollowUp={toggleLeadFollowUp}
+              />
+            </div>
           )}
         </>
       )}
 
       {activeTab === 'pipelines' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-          <PipelineView
-            contacts={contacts}
-            events={events}
-            onMoveToPipeline={handlePipelineStageChange}
-            onUpdateLead={handleLeadUpdateWithStageGuard}
-            onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
-            canViewTeam={canViewTeam}
-            leadScope={leadScope}
-            onLeadScopeChange={setLeadScope}
-            leadScopeMembers={leadScopeMembers}
-            leadScopeLoading={isLoadingLeadScopeMembers}
-            currentUserId={user?.id ?? null}
-            onGoToConversation={goToConversation}
-            onCallAction={(contact) => {
-              setPendingCallContact(contact);
-              setCallConfirmOpen(true);
-            }}
-            onGenerateProposal={handleProposal}
-            onImportContacts={importContacts}
-            onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
-            onSchedule={(contact, type) => {
-              setActionContact(contact);
-              setScheduleType(type === 'reuniao' ? 'reuniao' : 'visita');
-              setIsScheduleOpen(true);
-            }}
-            onOpenFollowUpExhausted={openFollowUpExhaustedForLead}
-          />
-          <Button
-            onClick={() => setIsCreateLeadOpen(true)}
-            size="icon"
-            data-testid="open-create-lead-modal"
-            className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
-          >
-            <Plus className="w-6 h-6" />
-          </Button>
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando pipeline..." />}>
+          <div data-tour="tab-pipelines-root" className="flex-1 min-w-0 flex flex-col h-full overflow-hidden relative">
+            <PipelineView
+              contacts={contacts}
+              events={events}
+              onMoveToPipeline={handlePipelineStageChange}
+              onUpdateLead={handleLeadUpdateWithStageGuard}
+              onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
+              canViewTeam={canViewTeam}
+              leadScope={leadScope}
+              onLeadScopeChange={setLeadScope}
+              leadScopeMembers={leadScopeMembers}
+              leadScopeLoading={isLoadingLeadScopeMembers}
+              currentUserId={user?.id ?? null}
+              onGoToConversation={goToConversation}
+              onCallAction={(contact) => {
+                setPendingCallContact(contact);
+                setCallConfirmOpen(true);
+              }}
+              onGenerateProposal={handleProposal}
+              onImportContacts={importContacts}
+              onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
+              onSchedule={(contact, type) => {
+                openScheduleFlow(contact, type === 'reuniao' ? 'reuniao' : 'visita');
+              }}
+              onOpenFollowUpExhausted={openFollowUpExhaustedForLead}
+            />
+            <Button
+              onClick={() => setIsCreateLeadOpen(true)}
+              size="icon"
+              data-testid="open-create-lead-modal"
+              className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
+            >
+              <Plus className="w-6 h-6" />
+            </Button>
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'calendario' && (
-        <CalendarView
-          contacts={contacts}
-          canViewTeam={canViewTeam}
-          leadScope={leadScope}
-          onLeadScopeChange={setLeadScope}
-          leadScopeMembers={leadScopeMembers}
-          leadScopeLoading={isLoadingLeadScopeMembers}
-          currentUserId={user?.id ?? null}
-        />
+        <Suspense fallback={<TabLoadingFallback label="Carregando calendário..." />}>
+          <div
+            data-tour="tab-calendario-root"
+            className="flex-1 min-w-0 h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <CalendarView
+              contacts={contacts}
+              canViewTeam={canViewTeam}
+              leadScope={leadScope}
+              onLeadScopeChange={setLeadScope}
+              leadScopeMembers={leadScopeMembers}
+              leadScopeLoading={isLoadingLeadScopeMembers}
+              currentUserId={user?.id ?? null}
+            />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'contatos' && (
-        <div className="flex-1 relative">
-          <ContactsView
-            contacts={contacts}
-            onUpdateLead={handleLeadUpdateWithStageGuard}
-            onImportContacts={importContacts}
-            onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
-            onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
+        <Suspense fallback={<TabLoadingFallback label="Carregando contatos..." />}>
+          <div className="flex-1 min-w-0 relative">
+            <ContactsView
+              contacts={contacts}
+              onUpdateLead={handleLeadUpdateWithStageGuard}
+              onImportContacts={importContacts}
+              onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
+              onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
+              canViewTeam={canViewTeam}
+              leadScope={leadScope}
+              onLeadScopeChange={setLeadScope}
+              leadScopeMembers={leadScopeMembers}
+              leadScopeLoading={isLoadingLeadScopeMembers}
+              currentUserId={user?.id ?? null}
+              onOpenFollowUpExhausted={openFollowUpExhaustedForLead}
+            />
+            <Button
+              onClick={() => setIsCreateLeadOpen(true)}
+              size="icon"
+              data-testid="open-create-lead-modal"
+              className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
+            >
+              <Plus className="w-6 h-6" />
+            </Button>
+          </div>
+        </Suspense>
+      )}
+
+      {activeTab === 'disparos' && (
+        <Suspense fallback={<TabLoadingFallback label="Carregando disparos..." />}>
+          <div
+            data-tour="tab-disparos-root"
+            className="flex-1 min-w-0 h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <BroadcastView />
+          </div>
+        </Suspense>
+      )}
+
+      {activeTab === 'dashboard' && (
+        <Suspense fallback={<TabLoadingFallback label="Carregando dashboard..." />}>
+          <DashboardView
+            onNavigate={(tab) => handleTabChange(tab as any)}
             canViewTeam={canViewTeam}
             leadScope={leadScope}
             onLeadScopeChange={setLeadScope}
             leadScopeMembers={leadScopeMembers}
-            leadScopeLoading={isLoadingLeadScopeMembers}
-            currentUserId={user?.id ?? null}
-            onOpenFollowUpExhausted={openFollowUpExhaustedForLead}
+            isLoadingLeadScopeMembers={isLoadingLeadScopeMembers}
           />
-          <Button
-            onClick={() => setIsCreateLeadOpen(true)}
-            size="icon"
-            data-testid="open-create-lead-modal"
-            className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
-          >
-            <Plus className="w-6 h-6" />
-          </Button>
-        </div>
-      )}
-
-      {activeTab === 'disparos' && (
-        <div className="flex-1 h-full overflow-hidden">
-          <BroadcastView />
-        </div>
-      )}
-
-      {activeTab === 'dashboard' && (
-        <DashboardView
-          onNavigate={(tab) => handleTabChange(tab as any)}
-          canViewTeam={canViewTeam}
-          leadScope={leadScope}
-          onLeadScopeChange={setLeadScope}
-          leadScopeMembers={leadScopeMembers}
-          isLoadingLeadScopeMembers={isLoadingLeadScopeMembers}
-        />
+        </Suspense>
       )}
 
       {activeTab === 'propostas' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
-          <ProposalsView />
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando propostas..." />}>
+          <div
+            className="flex-1 min-w-0 flex flex-col h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <ProposalsView />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'admin_members' && (
-        <div className="flex-1 h-full overflow-hidden">
-          <AdminMembersPage embedded />
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando equipe..." />}>
+          <div className="flex-1 min-w-0 h-full overflow-hidden">
+            <AdminMembersPage embedded />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'integracoes' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
-          <IntegrationsView />
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando integrações..." />}>
+          <div
+            className="flex-1 min-w-0 flex flex-col h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <IntegrationsView />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'tracking' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
-          {activeFeatureSoftWall ? (
+        <Suspense fallback={<TabLoadingFallback label="Carregando tracking..." />}>
+          {trackingFeatureBlocker ? (
             <FeatureSoftWall
-              featureName={activeFeatureSoftWall.featureName}
-              requiredPlan={activeFeatureSoftWall.requiredPlan}
-              description={activeFeatureSoftWall.description}
-              onUpgrade={() => navigate('/billing')}
+              featureName="Tracking Avancado"
+              requiredPlan="Scale"
+              description="Faca upgrade para acompanhar conversoes e eventos com mais profundidade."
+              onUpgrade={() => openBillingBlocker(trackingFeatureBlocker)}
             />
           ) : (
-            <TrackingView />
+            <div
+              className="flex-1 min-w-0 flex flex-col h-full overflow-hidden"
+              onPointerDownCapture={handleBillingGovernedInteractionCapture}
+              onClickCapture={handleBillingGovernedInteractionCapture}
+              onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+            >
+              <TrackingView />
+            </div>
           )}
-        </div>
+        </Suspense>
       )}
 
       {activeTab === 'automacoes' && (
-        <AutomationsView />
+        <Suspense fallback={<TabLoadingFallback label="Carregando automações..." />}>
+          <div
+            className="flex-1 min-w-0 h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <AutomationsView />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'ia_agentes' && (
-        <AIAgentsView />
+        <Suspense fallback={<TabLoadingFallback label="Carregando IA..." />}>
+          <div
+            className="flex-1 min-w-0 h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <AIAgentsView />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'banco_ia' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
-          <KnowledgeBaseView />
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando base de conhecimento..." />}>
+          <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
+            <KnowledgeBaseView />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'minha_conta' && (
-        <div className="flex-1 h-full overflow-auto">
-          <ConfiguracoesContaView />
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando conta..." />}>
+          <div className="flex-1 min-w-0 h-full overflow-auto">
+            <ConfiguracoesContaView />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'meu_plano' && canAccessAdmin && (
-        <div className="flex-1 h-full overflow-auto">
-          <MeuPlanoView />
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando plano..." />}>
+          <div className="flex-1 min-w-0 h-full overflow-auto">
+            <MeuPlanoView />
+          </div>
+        </Suspense>
       )}
 
       <CreateLeadModal
@@ -1867,9 +2044,7 @@ export function SolarZapLayout() {
         onConfirm={(approved) => {
           setVisitScheduleConfirmOpen(false);
           if (approved && pendingVisitContact) {
-            setActionContact(pendingVisitContact);
-            setScheduleType('visita');
-            setIsScheduleOpen(true);
+            openScheduleFlow(pendingVisitContact, 'visita');
           }
           setPendingVisitContact(null);
         }}

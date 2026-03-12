@@ -1,8 +1,9 @@
-﻿import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Contact, ClientType } from '@/types/solarzap';
 import { generateProposalPDF } from '@/utils/generateProposalPDF';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { useLeads } from '@/hooks/domain/useLeads';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
@@ -53,6 +54,12 @@ import { FINANCIAL_MODEL_VERSION } from '@/types/proposalFinancial';
 import { calculateProposalFinancials, resolveTariffByPriority } from '@/utils/proposalFinancialModel';
 import { useSolarResource, isStrictPvgisSource } from '@/hooks/useSolarResource';
 import * as pdfShared from '@/utils/pdf/shared';
+import {
+  buildLimitBlockerForKey,
+  isProposalComposerBillingError,
+  isUnlimitedBillingBypass,
+} from '@/lib/billingBlocker';
+import { resolveSupabaseFunctionErrorDetails } from '@/lib/supabaseFunctionErrors';
 
 const ENERGY_DISTRIBUTOR_OPTIONS = energyDistributors.ENERGY_DISTRIBUTOR_OPTIONS;
 const inferDistributor = energyDistributors.inferDistributor;
@@ -267,6 +274,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   const { updateLead } = useLeads();
   const { orgId } = useAuth();
   const { toast } = useToast();
+  const { billing, openBillingBlocker } = useBillingBlocker();
   const { themeId, theme, secondaryColorHex, hydrated: themeHydrated } = useProposalTheme();
   const {
     logoUrl,
@@ -1109,7 +1117,22 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorDetails = await resolveSupabaseFunctionErrorDetails(
+          error,
+          'Falha ao personalizar proposta com IA',
+        );
+
+        if (isProposalComposerBillingError(errorDetails)) {
+          if (isUnlimitedBillingBypass(billing)) {
+            throw new Error(errorDetails.message);
+          }
+          openBillingBlocker(buildLimitBlockerForKey('max_proposals_month', billing, 'proposal_ai'));
+          return;
+        }
+
+        throw new Error(errorDetails.message);
+      }
       if (!data?.variants?.length) throw new Error('No variants returned');
 
       // Use recommended variant

@@ -26,6 +26,7 @@ describe('pipeline new agents config', () => {
     expect(DEFAULT_PROMPTS_BY_STAGE.chamada_realizada).toBe(AI_PIPELINE_STAGE_PROMPTS_PDF.chamada_realizada);
     expect(DEFAULT_PROMPTS_BY_STAGE.follow_up).toBe(AI_PIPELINE_STAGE_PROMPTS_PDF.follow_up);
     expect(DEFAULT_PROMPTS_BY_STAGE.agente_disparos).toBe(AI_PIPELINE_STAGE_PROMPTS_PDF.agente_disparos);
+    expect(DEFAULT_PROMPTS_BY_STAGE.assistente_geral).toBe(AI_PIPELINE_STAGE_PROMPTS_PDF.assistente_geral);
   });
 
   it('keeps follow_up and agente_disparos outside PipelineStage managed list', () => {
@@ -37,5 +38,11 @@ describe('pipeline new agents config', () => {
     expect(managedStages).toContain('chamada_realizada');
     expect(managedStages).not.toContain('follow_up');
     expect(managedStages).not.toContain('agente_disparos');
+  });
+
+  it('keeps assistente_geral prompt markers for support agent', () => {
+    const prompt = AI_PIPELINE_STAGE_PROMPTS_PDF.assistente_geral;
+    expect(prompt).toContain('ETAPA: ASSISTENTE_GERAL');
+    expect(prompt).toContain('INCREMENTO_CIRURGICO_V1_20260312_ASSISTENTE_GERAL');
   });
 });

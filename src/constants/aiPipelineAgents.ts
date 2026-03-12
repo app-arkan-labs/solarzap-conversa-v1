@@ -408,6 +408,7 @@ export const DEFAULT_PROMPTS_BY_STAGE: Record<string, string> = {
   financiamento: AI_PIPELINE_STAGE_PROMPTS_PDF.financiamento,
   follow_up: AI_PIPELINE_STAGE_PROMPTS_PDF.follow_up,
   agente_disparos: AI_PIPELINE_STAGE_PROMPTS_PDF.agente_disparos,
+  assistente_geral: AI_PIPELINE_STAGE_PROMPTS_PDF.assistente_geral,
 };
 
 

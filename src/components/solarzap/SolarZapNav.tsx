@@ -1,7 +1,6 @@
 import { cn } from '@/lib/utils';
 import { ActiveTab } from '@/types/solarzap';
 import { MessageCircle, Kanban, Calendar, Users, Send, FileText, BarChart3, Bell, Settings, Plug, Zap, Brain, Bot, UserCog, User, Building2, Activity, CreditCard } from 'lucide-react';
-import { GoogleAccountButton } from './GoogleAccountButton';
 import {
   Popover,
   PopoverContent,
@@ -36,8 +35,6 @@ interface SolarZapNavProps {
     minha_conta: boolean;
     meu_plano: boolean;
   };
-  lockedTabs?: Partial<Record<ActiveTab, string>>;
-  onLockedTabClick?: (tab: ActiveTab, reason?: string) => void;
 }
 
 const navItems: { id: ActiveTab; icon: typeof MessageCircle; label: string }[] = [
@@ -63,8 +60,6 @@ export function SolarZapNav({
   userAvatarUrl,
   userDisplayName,
   tabPermissions,
-  lockedTabs,
-  onLockedTabClick,
   currentPlanKey,
 }: SolarZapNavProps) {
   const tp = tabPermissions ?? { ia_agentes: true, automacoes: true, integracoes: true, tracking: true, banco_ia: true, minha_conta: true, meu_plano: true };
@@ -73,6 +68,10 @@ export function SolarZapNav({
     ? userAvatarUrl.trim()
     : null;
   const userInitial = userDisplayName?.trim().charAt(0).toUpperCase() || '';
+  const getMenuItemClass = () => cn(
+    'w-full flex items-center gap-2 p-2 rounded-lg transition-colors text-sm font-medium',
+    'hover:bg-muted text-foreground',
+  );
   return (
     <nav className="w-[60px] h-full bg-secondary flex flex-col items-center py-4">
       {/* Logo + Plan badge */}
@@ -90,37 +89,26 @@ export function SolarZapNav({
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
-          const lockReason = lockedTabs?.[item.id];
-          const isLocked = typeof lockReason === 'string' && lockReason.length > 0;
 
           return (
             <button
               key={item.id}
-              onClick={() => {
-                if (isLocked) {
-                  onLockedTabClick?.(item.id, lockReason);
-                  return;
-                }
-                onTabChange(item.id);
-              }}
+              data-testid={`nav-tab-${item.id}`}
+              aria-label={item.label}
+              onClick={() => onTabChange(item.id)}
               className={cn(
                 'w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 relative group',
-                isLocked ? 'opacity-60 cursor-not-allowed' : 'hover:bg-primary/10',
+                'hover:bg-primary/10',
                 isActive
                   ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105'
                   : 'text-whatsapp-gray hover:text-primary'
               )}
-              title={isLocked ? `${item.label} (bloqueado pelo plano)` : item.label}
+              title={item.label}
             >
               <Icon className={cn(
                 "w-5 h-5 transition-transform duration-300",
                 isActive ? "scale-110" : "group-hover:scale-110"
               )} />
-              {isLocked ? (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold bg-amber-500 text-white rounded-full shadow-sm">
-                  !
-                </span>
-              ) : null}
             </button>
           );
         })}
@@ -189,7 +177,8 @@ export function SolarZapNav({
                 <button
                   data-testid="nav-ia-agentes"
                   onClick={() => onTabChange('ia_agentes')}
-                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                  className={getMenuItemClass()}
+                  title="Inteligencia Artificial"
                 >
                   <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Bot className="w-4 h-4 text-primary" />
@@ -202,7 +191,8 @@ export function SolarZapNav({
                 <button
                   data-testid="nav-automacoes"
                   onClick={() => onTabChange('automacoes')}
-                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                  className={getMenuItemClass()}
+                  title="Automacoes"
                 >
                   <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Zap className="w-4 h-4 text-primary" />
@@ -215,7 +205,8 @@ export function SolarZapNav({
                 <button
                   data-testid="nav-tracking"
                   onClick={() => onTabChange('tracking')}
-                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                  className={getMenuItemClass()}
+                  title="Tracking e Conversoes"
                 >
                   <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Activity className="w-4 h-4 text-primary" />
@@ -226,8 +217,10 @@ export function SolarZapNav({
 
               {tp.integracoes ? (
                 <button
+                  data-testid="nav-integracoes"
                   onClick={() => onTabChange('integracoes')}
-                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium text-foreground"
+                  className={getMenuItemClass()}
+                  title="Central de Integracoes"
                 >
                   <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Plug className="w-4 h-4 text-primary" />

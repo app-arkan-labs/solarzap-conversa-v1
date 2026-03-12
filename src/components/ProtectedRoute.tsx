@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button';
 import OrgSuspendedScreen from '@/components/admin/OrgSuspendedScreen';
 import { useOrgBillingInfo } from '@/hooks/useOrgBilling';
 import BillingSetupWizard from '@/components/billing/BillingSetupWizard';
+import { BillingBlockerProvider } from '@/contexts/BillingBlockerContext';
+import { useOnboardingProgress } from '@/hooks/useOnboardingProgress';
 import SubscriptionRequiredScreen from '@/components/billing/SubscriptionRequiredScreen';
-import BillingBanner from '@/components/billing/BillingBanner';
+import { isUnlimitedBillingBypass } from '@/lib/billingBlocker';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -39,6 +41,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   const { toast } = useToast();
   const location = useLocation();
   const billingQuery = useOrgBillingInfo(Boolean(user && orgId));
+  const onboardingQuery = useOnboardingProgress(Boolean(user && orgId));
   const hasShownAccessToastRef = useRef(false);
 
   const missingRequiredRole =
@@ -150,29 +153,30 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
 
   const accessState = billingQuery.data?.access_state;
   const subscriptionStatus = String(billingQuery.data?.subscription_status || '').toLowerCase();
+  const isUnlimited = isUnlimitedBillingBypass(billingQuery.data);
   const isBillingRoute = location.pathname === '/pricing' || location.pathname === '/billing';
-  const isWelcomeRoute = location.pathname === '/welcome';
-
-  if (!billingQuery.isLoading && subscriptionStatus === 'pending_checkout' && !isBillingRoute) {
+  const isOnboardingRoute = location.pathname === '/onboarding';
+  if (!billingQuery.isLoading && !isUnlimited && subscriptionStatus === 'pending_checkout' && !isBillingRoute) {
     return <BillingSetupWizard />;
   }
 
-  if (!billingQuery.isLoading && accessState === 'blocked' && !isBillingRoute && !isWelcomeRoute) {
+  if (!billingQuery.isLoading && !isUnlimited && accessState === 'blocked' && !isBillingRoute) {
     return <SubscriptionRequiredScreen />;
+  }
+
+  const hasBillingAccess =
+    !billingQuery.isLoading &&
+    (isUnlimited || (subscriptionStatus !== 'pending_checkout' && accessState !== 'blocked'));
+
+  if (hasBillingAccess && !isOnboardingRoute && !onboardingQuery.isLoading) {
+    if (onboardingQuery.data && onboardingQuery.data.is_complete !== true) {
+      return <Navigate to="/onboarding" replace />;
+    }
   }
 
   if (missingRequiredRole) {
     return <Navigate to="/" replace />;
   }
 
-  if (accessState === 'read_only') {
-    return (
-      <div className="space-y-2 p-2">
-        <BillingBanner billing={billingQuery.data} />
-        {children}
-      </div>
-    );
-  }
-
-  return <>{children}</>;
+  return <BillingBlockerProvider billing={billingQuery.data}>{children}</BillingBlockerProvider>;
 };

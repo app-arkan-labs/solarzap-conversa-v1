@@ -507,7 +507,6 @@ export function MeuPlanoView() {
                   .map(([key]) => {
                     const labels: Record<string, string> = {
                       ai_enabled: 'Assistente de IA',
-                      google_integration_enabled: 'Integração Google',
                       appointments_enabled: 'Agendamentos',
                       advanced_reports_enabled: 'Relatórios avançados',
                       advanced_tracking_enabled: 'Tracking avançado',

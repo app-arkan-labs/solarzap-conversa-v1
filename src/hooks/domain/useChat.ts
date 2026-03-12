@@ -1495,12 +1495,13 @@ export function useChat(contacts: Contact[] = []) {
 
     // --- SEND REACTION MUTATION ---
     const sendReactionMutation = useMutation({
-        mutationFn: async ({ messageId, waMessageId, remoteJid, emoji, instanceName }: {
+        mutationFn: async ({ messageId, waMessageId, remoteJid, emoji, instanceName, fromMe }: {
             messageId: string;
             waMessageId: string;
             remoteJid: string;
             emoji: string;
             instanceName: string;
+            fromMe: boolean;
         }) => {
             if (!user) throw new Error('User not authenticated');
             if (!orgId) throw new Error('Organização não vinculada ao usuário');
@@ -1515,7 +1516,7 @@ export function useChat(contacts: Contact[] = []) {
                     instanceName,
                     key: {
                         remoteJid,
-                        fromMe: false, // Reacting to client message
+                        fromMe,
                         id: waMessageId
                     },
                     reaction: emoji
