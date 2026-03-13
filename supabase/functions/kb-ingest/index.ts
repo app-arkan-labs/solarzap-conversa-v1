@@ -442,7 +442,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ ...results, generatedAt: new Date().toISOString() }, corsHeaders, 200);
   } catch (error: any) {
     console.error("kb-ingest error:", error);
-    return jsonResponse({ error: error?.message || "unexpected_error" }, corsHeaders, 500);
+    return jsonResponse({ error: "ingestion_failed" }, corsHeaders, 500);
   }
 });
 

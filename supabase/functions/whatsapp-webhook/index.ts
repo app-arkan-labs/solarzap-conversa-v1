@@ -20,10 +20,16 @@ const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
 if (!ALLOWED_ORIGIN) {
     throw new Error('Missing ALLOWED_ORIGIN env')
 }
+const EDGE_INTERNAL_API_KEY = String(Deno.env.get('EDGE_INTERNAL_API_KEY') || '').trim()
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-arkan-webhook-secret',
+}
+
+function buildInternalInvokeHeaders(): Record<string, string> {
+    if (!EDGE_INTERNAL_API_KEY) return {}
+    return { 'x-internal-api-key': EDGE_INTERNAL_API_KEY }
 }
 
 function onlyDigits(str: string | null | undefined): string {
@@ -1462,6 +1468,7 @@ Deno.serve(async (req: Request) => {
 
                     supabase.functions
                         .invoke('ai-pipeline-agent', {
+                            headers: buildInternalInvokeHeaders(),
                             body: { leadId, triggerType: 'incoming_message', interactionId: inserted.id, instanceName }
                         })
                         .then(async ({ data: invokeData, error: invokeError }: { data?: unknown; error: { message: string } | null }) => {

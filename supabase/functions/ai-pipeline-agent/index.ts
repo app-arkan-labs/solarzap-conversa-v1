@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import OpenAI from "npm:openai";
 import { buildAgentResultEnvelope } from "../_shared/aiPipelineOutcome.ts";
+import { validateServiceInvocationAuth } from "../_shared/invocationAuth.ts";
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
 if (!ALLOWED_ORIGIN) {
@@ -2554,6 +2555,29 @@ Deno.serve(async (req) => {
     if (req.method !== 'POST') {
         return new Response(JSON.stringify({ error: 'method_not_allowed' }), {
             status: 405,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+
+    const serviceRoleKey = String(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
+    const internalApiKey = String(Deno.env.get('EDGE_INTERNAL_API_KEY') || '').trim();
+    if (!serviceRoleKey) {
+        return new Response(JSON.stringify({ error: 'missing_runtime_env' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+
+    const invocationAuth = validateServiceInvocationAuth(req, {
+        serviceRoleKey,
+        internalApiKey,
+    });
+    if (!invocationAuth.ok) {
+        return new Response(JSON.stringify({
+            error: invocationAuth.code,
+            reason: invocationAuth.reason,
+        }), {
+            status: invocationAuth.status,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
     }

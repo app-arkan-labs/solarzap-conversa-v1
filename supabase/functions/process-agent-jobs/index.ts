@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { checkLimit, recordUsage } from '../_shared/billing.ts'
 import { resolveRequestCors } from '../_shared/cors.ts'
+import { validateServiceInvocationAuth } from '../_shared/invocationAuth.ts'
 import {
   buildInvokeFailureEnvelope,
   normalizeAgentInvokeResult,
@@ -230,6 +231,11 @@ const buildResponse = (status: number, body: Record<string, unknown>, corsHeader
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
+const buildInternalInvokeHeaders = (): Record<string, string> => {
+  const internalApiKey = String(Deno.env.get('EDGE_INTERNAL_API_KEY') || '').trim()
+  if (!internalApiKey) return {}
+  return { 'x-internal-api-key': internalApiKey }
+}
 
 const isLeadRespondedAfter = async (supabase: any, leadId: number, sinceIso: string) => {
   const { count, error } = await supabase
@@ -782,6 +788,7 @@ const processPostCallJob = async (supabase: any, job: ScheduledAgentJob, lead: L
   }
 
   const { data: invokeData, error: invokeError } = await supabase.functions.invoke('ai-pipeline-agent', {
+    headers: buildInternalInvokeHeaders(),
     body: {
       leadId: lead.id,
       instanceName: resolvedInstance,
@@ -945,6 +952,7 @@ const processFollowUpJob = async (supabase: any, job: ScheduledAgentJob, lead: L
   }
 
   const { data: invokeData, error: invokeError } = await supabase.functions.invoke('ai-pipeline-agent', {
+    headers: buildInternalInvokeHeaders(),
     body: {
       leadId: lead.id,
       instanceName: resolvedInstance,
@@ -1086,9 +1094,32 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const supabaseUrl = String(Deno.env.get('SUPABASE_URL') || '').trim()
+    const serviceRoleKey = String(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim()
+    const internalApiKey = String(Deno.env.get('EDGE_INTERNAL_API_KEY') || '').trim()
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return buildResponse(500, { error: 'missing_runtime_env' }, corsHeaders)
+    }
+
+    const invocationAuth = validateServiceInvocationAuth(req, {
+      serviceRoleKey,
+      internalApiKey,
+    })
+    if (!invocationAuth.ok) {
+      return buildResponse(
+        invocationAuth.status,
+        {
+          error: invocationAuth.code,
+          reason: invocationAuth.reason,
+        },
+        corsHeaders,
+      )
+    }
+
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') || '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
+      supabaseUrl,
+      serviceRoleKey,
     )
 
     const queueHealthBefore = await collectQueueHealth(supabase)
