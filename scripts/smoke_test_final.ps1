@@ -1,23 +1,167 @@
 $ErrorActionPreference = "Continue"
-$SUPABASE_URL = "https://ucwmcmdwbvrwotuzlmxh.supabase.co"
-$SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8"
-$ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMzkyMTEsImV4cCI6MjA4MzYxNTIxMX0.KMk4XqFCm4FkvOZg7LNWaI_4lknMwcdCkYSGjBjDdOg"
-$ACCESS_TOKEN = "sbp_c0582b1b87bfca0867632f521082d84f147e8281"
-$ORG_ID = "70d3af46-37f6-4ff4-a6f6-4cebd6341129"
+$SUPABASE_URL = $env:SUPABASE_URL
+$SERVICE_KEY = $env:SUPABASE_SERVICE_ROLE_KEY
+$ANON_KEY = $env:SUPABASE_ANON_KEY
+$ACCESS_TOKEN = $env:SUPABASE_ACCESS_TOKEN
+$ORG_ID = $env:ORG_ID
+$SMOKE_EMAIL = $env:SMOKE_TEST_EMAIL
+$SMOKE_PASSWORD = $env:SMOKE_TEST_PASSWORD
+
+if ([string]::IsNullOrWhiteSpace($SUPABASE_URL)) { throw "Missing SUPABASE_URL env var" }
+if ([string]::IsNullOrWhiteSpace($SERVICE_KEY)) { throw "Missing SUPABASE_SERVICE_ROLE_KEY env var" }
+if ([string]::IsNullOrWhiteSpace($ANON_KEY)) { throw "Missing SUPABASE_ANON_KEY env var" }
+if ([string]::IsNullOrWhiteSpace($ACCESS_TOKEN)) { throw "Missing SUPABASE_ACCESS_TOKEN env var" }
+
+$hasOrgId = -not [string]::IsNullOrWhiteSpace($ORG_ID)
+$hasSmokeCreds = -not [string]::IsNullOrWhiteSpace($SMOKE_EMAIL) -and -not [string]::IsNullOrWhiteSpace($SMOKE_PASSWORD)
+$fullMode = $hasOrgId -and $hasSmokeCreds
 
 Write-Host "===== SOLARZAP FINAL SMOKE TESTS ====="
 Write-Host ""
+
+if (-not $fullMode) {
+  Write-Host "[INFO] Running in LITE mode (missing ORG_ID and/or SMOKE_TEST credentials)."
+  Write-Host "[INFO] Full business-flow tests are skipped; critical auth and function health checks still run."
+}
+
+$pass = 0; $fail = 0; $info = 0
+
+if (-not $fullMode) {
+  try {
+    Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/process-agent-jobs" -Method POST `
+      -Headers @{ "Content-Type" = "application/json" } `
+      -Body '{}' -UseBasicParsing | Out-Null
+    Write-Host "[FAIL] L01 process-agent-jobs sem auth (expected 401)"; $fail++
+  } catch {
+    $code = $_.Exception.Response.StatusCode.value__
+    if ($code -eq 401) { Write-Host "[PASS] L01 process-agent-jobs sem auth (401)"; $pass++ }
+    else { Write-Host "[FAIL] L01 process-agent-jobs sem auth ($code)"; $fail++ }
+  }
+
+  try {
+    Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/ai-pipeline-agent" -Method POST `
+      -Headers @{ "Content-Type" = "application/json" } `
+      -Body '{}' -UseBasicParsing | Out-Null
+    Write-Host "[FAIL] L02 ai-pipeline-agent sem auth (expected 401)"; $fail++
+  } catch {
+    $code = $_.Exception.Response.StatusCode.value__
+    if ($code -eq 401) { Write-Host "[PASS] L02 ai-pipeline-agent sem auth (401)"; $pass++ }
+    else { Write-Host "[FAIL] L02 ai-pipeline-agent sem auth ($code)"; $fail++ }
+  }
+
+  try {
+    $r = Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/process-agent-jobs" -Method POST `
+      -Headers @{ "Authorization" = "Bearer $SERVICE_KEY"; "Content-Type" = "application/json" } `
+      -Body '{}' -UseBasicParsing
+    Write-Host "[PASS] L03 process-agent-jobs service_role ($($r.StatusCode))"; $pass++
+  } catch {
+    $code = $_.Exception.Response.StatusCode.value__
+    Write-Host "[FAIL] L03 process-agent-jobs service_role ($code)"; $fail++
+  }
+
+  try {
+    $r = Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/notification-worker" -Method POST `
+      -Headers @{ "Authorization" = "Bearer $SERVICE_KEY"; "Content-Type" = "application/json" } `
+      -Body '{}' -UseBasicParsing
+    Write-Host "[PASS] L04 notification-worker ($($r.StatusCode))"; $pass++
+  } catch {
+    $code = $_.Exception.Response.StatusCode.value__
+    Write-Host "[FAIL] L04 notification-worker ($code)"; $fail++
+  }
+
+  try {
+    $r = Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/broadcast-worker" -Method POST `
+      -Headers @{ "Authorization" = "Bearer $SERVICE_KEY"; "Content-Type" = "application/json" } `
+      -Body '{}' -UseBasicParsing
+    Write-Host "[PASS] L05 broadcast-worker ($($r.StatusCode))"; $pass++
+  } catch {
+    $code = $_.Exception.Response.StatusCode.value__
+    Write-Host "[FAIL] L05 broadcast-worker ($code)"; $fail++
+  }
+
+  Write-Host ""
+  Write-Host "===== LITE RESULTS: $pass PASS, $fail FAIL, $info INFO ====="
+  if ($fail -eq 0) {
+    Write-Host "LITE SMOKE PASSED" -ForegroundColor Green
+  } else {
+    Write-Host "$fail TEST(S) FAILED" -ForegroundColor Red
+  }
+  exit $fail
+}
 
 # Login
 $login = Invoke-WebRequest -Uri "$SUPABASE_URL/auth/v1/token?grant_type=password" `
   -Method POST `
   -Headers @{ "apikey" = $ANON_KEY; "Content-Type" = "application/json" } `
-  -Body '{"email":"rodrigosenafernandes@gmail.com","password":"AtsWp@3fB&"}' `
+  -Body (@{ email = $SMOKE_EMAIL; password = $SMOKE_PASSWORD } | ConvertTo-Json) `
   -UseBasicParsing
-$JWT = ($login.Content | ConvertFrom-Json).access_token
-Write-Host "[OK] JWT obtained"
+$loginPayload = $login.Content | ConvertFrom-Json
+$JWT = $loginPayload.access_token
+$SMOKE_USER_ID = $loginPayload.user.id
+if ([string]::IsNullOrWhiteSpace($JWT)) { throw "Failed to obtain JWT" }
+if ([string]::IsNullOrWhiteSpace($SMOKE_USER_ID)) { throw "Failed to resolve smoke user id from login payload" }
+Write-Host "[OK] JWT obtained for user $SMOKE_USER_ID"
 
-$pass = 0; $fail = 0; $info = 0
+function Invoke-MgmtQuery {
+  param([string]$Query)
+
+  $body = @{ query = $Query } | ConvertTo-Json -Depth 5
+  $resp = Invoke-WebRequest -Uri "https://api.supabase.com/v1/projects/ucwmcmdwbvrwotuzlmxh/database/query" `
+    -Method POST `
+    -Headers @{ "Authorization" = "Bearer $ACCESS_TOKEN"; "Content-Type" = "application/json" } `
+    -Body $body `
+    -UseBasicParsing
+
+  return ($resp.Content | ConvertFrom-Json)
+}
+
+function Resolve-SmokeLeadId {
+  $lookup = Invoke-WebRequest -Uri "$SUPABASE_URL/rest/v1/leads?select=id,user_id&org_id=eq.$ORG_ID&user_id=eq.$SMOKE_USER_ID&order=id.desc&limit=1" `
+    -Headers @{ "apikey" = $SERVICE_KEY; "Authorization" = "Bearer $SERVICE_KEY" } `
+    -UseBasicParsing
+
+  $rows = $lookup.Content | ConvertFrom-Json
+  if ($rows.Count -ge 1 -and $rows[0].id) {
+    return [int]$rows[0].id
+  }
+
+  $seedSuffix = Get-Date -Format "yyyyMMddHHmmss"
+  $seedPhone = "55$([int](Get-Random -Minimum 1100000000 -Maximum 1199999999))"
+  $seedPayload = @{
+    org_id = $ORG_ID
+    user_id = $SMOKE_USER_ID
+    assigned_to_user_id = $SMOKE_USER_ID
+    nome = "Smoke Lead $seedSuffix"
+    telefone = $seedPhone
+    phone_e164 = $seedPhone
+    canal = "whatsapp"
+    status_pipeline = "respondeu"
+    consumo_kwh = 0
+    valor_estimado = 0
+    ai_enabled = $true
+  } | ConvertTo-Json
+
+  $created = Invoke-WebRequest -Uri "$SUPABASE_URL/rest/v1/leads?select=id" `
+    -Method POST `
+    -Headers @{
+      "apikey" = $SERVICE_KEY
+      "Authorization" = "Bearer $SERVICE_KEY"
+      "Content-Type" = "application/json"
+      "Prefer" = "return=representation"
+    } `
+    -Body $seedPayload `
+    -UseBasicParsing
+
+  $createdRows = $created.Content | ConvertFrom-Json
+  if ($createdRows.Count -ge 1 -and $createdRows[0].id) {
+    return [int]$createdRows[0].id
+  }
+
+  throw "Unable to resolve or seed lead id for smoke tests"
+}
+
+$SMOKE_LEAD_ID = Resolve-SmokeLeadId
+Write-Host "[INFO] Using lead id $SMOKE_LEAD_ID for lead-scoped tests"
 
 # T01: DB connectivity + ai_enabled
 try {
@@ -82,7 +226,7 @@ try {
 try {
   $r = Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/proposal-context-engine" -Method POST `
     -Headers @{ "Authorization" = "Bearer $JWT"; "Content-Type" = "application/json" } `
-    -Body "{`"leadId`":481,`"orgId`":`"$ORG_ID`"}" -UseBasicParsing
+    -Body "{`"leadId`":$SMOKE_LEAD_ID,`"orgId`":`"$ORG_ID`"}" -UseBasicParsing
   Write-Host "[PASS] T07 proposal-context-engine ($($r.StatusCode))"; $pass++
 } catch {
   $code = $_.Exception.Response.StatusCode.value__
@@ -91,9 +235,31 @@ try {
 
 # T08: ai-pipeline-agent (service_role)
 try {
+  Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/process-agent-jobs" -Method POST `
+    -Headers @{ "Content-Type" = "application/json" } `
+    -Body '{}' -UseBasicParsing | Out-Null
+  Write-Host "[FAIL] T08a process-agent-jobs sem auth (expected 401)"; $fail++
+} catch {
+  $code = $_.Exception.Response.StatusCode.value__
+  if ($code -eq 401) { Write-Host "[PASS] T08a process-agent-jobs sem auth (401)"; $pass++ }
+  else { Write-Host "[FAIL] T08a process-agent-jobs sem auth ($code)"; $fail++ }
+}
+
+try {
+  Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/ai-pipeline-agent" -Method POST `
+    -Headers @{ "Content-Type" = "application/json" } `
+    -Body '{}' -UseBasicParsing | Out-Null
+  Write-Host "[FAIL] T08b ai-pipeline-agent sem auth (expected 401)"; $fail++
+} catch {
+  $code = $_.Exception.Response.StatusCode.value__
+  if ($code -eq 401) { Write-Host "[PASS] T08b ai-pipeline-agent sem auth (401)"; $pass++ }
+  else { Write-Host "[FAIL] T08b ai-pipeline-agent sem auth ($code)"; $fail++ }
+}
+
+try {
   $r = Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/ai-pipeline-agent" -Method POST `
     -Headers @{ "Authorization" = "Bearer $SERVICE_KEY"; "Content-Type" = "application/json" } `
-    -Body "{`"leadId`":481,`"orgId`":`"$ORG_ID`",`"text`":`"Oi quero um orcamento`"}" -UseBasicParsing
+    -Body "{`"leadId`":$SMOKE_LEAD_ID,`"orgId`":`"$ORG_ID`",`"text`":`"Oi quero um orcamento`"}" -UseBasicParsing
   Write-Host "[PASS] T08 ai-pipeline-agent ($($r.StatusCode))"; $pass++
 } catch {
   $code = $_.Exception.Response.StatusCode.value__
@@ -110,6 +276,18 @@ try {
 } catch {
   $code = $_.Exception.Response.StatusCode.value__
   Write-Host "[FAIL] T09 notification-worker ($code)"; $fail++
+}
+
+# T09b: broadcast-worker
+try {
+  $r = Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/broadcast-worker" -Method POST `
+    -Headers @{ "Authorization" = "Bearer $SERVICE_KEY"; "Content-Type" = "application/json" } `
+    -Body '{}' -UseBasicParsing
+  $d = $r.Content | ConvertFrom-Json
+  Write-Host "[PASS] T09b broadcast-worker (claimed:$($d.claimed), processed:$($d.processed), sent:$($d.sent), failed:$($d.failed))"; $pass++
+} catch {
+  $code = $_.Exception.Response.StatusCode.value__
+  Write-Host "[FAIL] T09b broadcast-worker ($code)"; $fail++
 }
 
 # T10: list_proposals RPC (service_role)
@@ -140,7 +318,7 @@ try {
 try {
   $r = Invoke-WebRequest -Uri "$SUPABASE_URL/rest/v1/rpc/get_lead_proposals" -Method POST `
     -Headers @{ "apikey" = $SERVICE_KEY; "Authorization" = "Bearer $SERVICE_KEY"; "Content-Type" = "application/json" } `
-    -Body "{`"p_org_id`":`"$ORG_ID`",`"p_lead_id`":481}" -UseBasicParsing
+    -Body "{`"p_org_id`":`"$ORG_ID`",`"p_lead_id`":$SMOKE_LEAD_ID}" -UseBasicParsing
   $d = $r.Content | ConvertFrom-Json
   Write-Host "[PASS] T12 get_lead_proposals ($($d.Count) rows)"; $pass++
 } catch {
@@ -150,15 +328,169 @@ try {
 
 # T13: DB migration columns via Management API
 try {
-  $r = Invoke-WebRequest -Uri "https://api.supabase.com/v1/projects/ucwmcmdwbvrwotuzlmxh/database/query" `
-    -Method POST `
-    -Headers @{ "Authorization" = "Bearer $ACCESS_TOKEN"; "Content-Type" = "application/json" } `
-    -Body '{"query":"SELECT column_name FROM information_schema.columns WHERE table_name=''leads'' AND column_name IN (''ai_enabled'',''ai_paused_reason'',''ai_paused_at'') ORDER BY column_name"}' `
-    -UseBasicParsing
-  $d = $r.Content | ConvertFrom-Json
+  $d = Invoke-MgmtQuery "SELECT column_name FROM information_schema.columns WHERE table_name='leads' AND column_name IN ('ai_enabled','ai_paused_reason','ai_paused_at') ORDER BY column_name"
   if ($d.Count -eq 3) { Write-Host "[PASS] T13 DB migration columns ($($d.Count)/3)"; $pass++ }
   else { Write-Host "[FAIL] T13 DB migration columns ($($d.Count)/3 expected)"; $fail++ }
 } catch { Write-Host "[FAIL] T13 DB migration: $_"; $fail++ }
+
+# T14: Stage configs dos 3 agentes por org
+try {
+  $r = Invoke-WebRequest -Uri "$SUPABASE_URL/rest/v1/ai_stage_config?org_id=eq.$ORG_ID&pipeline_stage=in.(agente_disparos,follow_up,chamada_realizada)&select=pipeline_stage,is_active" `
+    -Headers @{ "apikey" = $SERVICE_KEY; "Authorization" = "Bearer $SERVICE_KEY" } -UseBasicParsing
+  $d = $r.Content | ConvertFrom-Json
+  $missing = @('agente_disparos', 'follow_up', 'chamada_realizada') | Where-Object { -not ($d.pipeline_stage -contains $_) }
+  $inactive = @($d | Where-Object { $_.is_active -ne $true } | Select-Object -ExpandProperty pipeline_stage)
+  if ($missing.Count -eq 0 -and $inactive.Count -eq 0) {
+    Write-Host "[PASS] T14 ai_stage_config ativos para disparos/follow_up/chamada_realizada"; $pass++
+  } else {
+    Write-Host "[FAIL] T14 ai_stage_config missing=[$($missing -join ',')] inactive=[$($inactive -join ',')]"; $fail++
+  }
+} catch { Write-Host "[FAIL] T14 ai_stage_config: $_"; $fail++ }
+
+# T15: Estrutura de fila (tabela + RPC)
+try {
+  $d = Invoke-MgmtQuery "SELECT (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='scheduled_agent_jobs') AS table_count, (SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname='public' AND p.proname='claim_due_agent_jobs') AS rpc_count"
+  $row = $d | Select-Object -First 1
+  if ([int]$row.table_count -eq 1 -and [int]$row.rpc_count -ge 1) {
+    Write-Host "[PASS] T15 scheduled_agent_jobs + claim_due_agent_jobs presentes"; $pass++
+  } else {
+    Write-Host "[FAIL] T15 Estrutura fila ausente (table=$($row.table_count), rpc=$($row.rpc_count))"; $fail++
+  }
+} catch { Write-Host "[FAIL] T15 Estrutura fila: $_"; $fail++ }
+
+# T16: Cron process-agent-jobs ativo
+try {
+  $expectedWorkerUrl = "$($SUPABASE_URL.TrimEnd('/'))/functions/v1/process-agent-jobs"
+  $d = Invoke-MgmtQuery "SELECT jobid, active, schedule, command FROM cron.job WHERE jobname='process-agent-jobs-worker' ORDER BY jobid DESC LIMIT 1"
+  $rows = @($d)
+  $row = if ($rows.Count -ge 1) { $rows[0] } else { $null }
+  $isActive = ($null -ne $row -and ([string]$row.active).ToLowerInvariant() -in @('true','t','1'))
+  $urlMatches = ($null -ne $row -and [string]$row.command -like "*$expectedWorkerUrl*")
+  if ($isActive -and $urlMatches) {
+    Write-Host "[PASS] T16 Cron process-agent-jobs ativo e apontando para o worker correto (jobid=$($row.jobid), schedule=$($row.schedule))"; $pass++
+  } else {
+    Write-Host "[FAIL] T16 Cron process-agent-jobs ausente/inativo ou apontando para URL divergente"; $fail++
+  }
+} catch { Write-Host "[FAIL] T16 Cron process-agent-jobs: $_"; $fail++ }
+
+# T17: Cron executou nas ultimas 6h
+try {
+  $d = Invoke-MgmtQuery "SELECT COUNT(*)::int AS runs FROM cron.job_run_details d JOIN cron.job j ON j.jobid=d.jobid WHERE j.jobname='process-agent-jobs-worker' AND d.start_time > now() - interval '6 hours'"
+  $runs = [int]($d | Select-Object -First 1).runs
+  if ($runs -gt 0) {
+    Write-Host "[PASS] T17 Cron process-agent-jobs com execucoes recentes ($runs runs/6h)"; $pass++
+  } else {
+    Write-Host "[FAIL] T17 Cron sem execucoes recentes (0 runs/6h)"; $fail++
+  }
+} catch { Write-Host "[FAIL] T17 Cron runs: $_"; $fail++ }
+
+# T18: Health de invoke do worker
+try {
+  $r = Invoke-WebRequest -Uri "$SUPABASE_URL/functions/v1/process-agent-jobs" -Method POST `
+    -Headers @{ "Authorization" = "Bearer $SERVICE_KEY"; "Content-Type" = "application/json" } `
+    -Body '{"source":"smoke_test_final"}' -UseBasicParsing
+  $d = $r.Content | ConvertFrom-Json
+  if ($null -ne $d.processed) {
+    Write-Host "[PASS] T18 process-agent-jobs invoke (processed=$($d.processed))"; $pass++
+  } else {
+    Write-Host "[FAIL] T18 process-agent-jobs resposta inesperada"; $fail++
+  }
+} catch {
+  $code = $_.Exception.Response.StatusCode.value__
+  Write-Host "[FAIL] T18 process-agent-jobs invoke ($code)"; $fail++
+}
+
+# T19: Backlog critico da fila de agentes
+try {
+  $d = Invoke-MgmtQuery "SELECT (SELECT COUNT(*) FROM public.scheduled_agent_jobs WHERE status='pending' AND scheduled_at < now() - interval '15 minutes')::int AS pending_stale_15m, (SELECT COUNT(*) FROM public.scheduled_agent_jobs WHERE status='processing' AND updated_at < now() - interval '5 minutes')::int AS processing_stale_5m"
+  $row = $d | Select-Object -First 1
+  $pendingStale = [int]$row.pending_stale_15m
+  $processingStale = [int]$row.processing_stale_5m
+  if ($pendingStale -eq 0 -and $processingStale -eq 0) {
+    Write-Host "[PASS] T19 Fila saudavel (pending_stale_15m=0, processing_stale_5m=0)"; $pass++
+  } else {
+    Write-Host "[FAIL] T19 Backlog detectado (pending_stale_15m=$pendingStale, processing_stale_5m=$processingStale)"; $fail++
+  }
+} catch { Write-Host "[FAIL] T19 Backlog fila: $_"; $fail++ }
+
+# T20: Evidencias recentes de execucao dos agentes (INFO)
+try {
+  $d = Invoke-MgmtQuery "SELECT action_type, COUNT(*)::int AS total FROM public.ai_action_logs WHERE created_at > now() - interval '24 hours' AND action_type IN ('agent_routed_to_disparos','follow_up_agent_executed','post_call_agent_executed','agent_invoke_failed') GROUP BY action_type ORDER BY action_type"
+  if ($d.Count -gt 0) {
+    $summary = ($d | ForEach-Object { "$($_.action_type)=$($_.total)" }) -join ', '
+    Write-Host "[INFO] T20 ai_action_logs_24h $summary"; $info++
+  } else {
+    Write-Host "[INFO] T20 ai_action_logs_24h sem eventos"; $info++
+  }
+} catch { Write-Host "[INFO] T20 ai_action_logs_24h erro: $_"; $info++ }
+
+# T21: Cron invoke-broadcast-worker ativo e com URL correta
+try {
+  $expectedBroadcastUrl = "$($SUPABASE_URL.TrimEnd('/'))/functions/v1/broadcast-worker"
+  $d = Invoke-MgmtQuery "SELECT jobid, active, schedule, command FROM cron.job WHERE jobname='invoke-broadcast-worker' ORDER BY jobid DESC LIMIT 1"
+  $rows = @($d)
+  $row = if ($rows.Count -ge 1) { $rows[0] } else { $null }
+  $isActive = ($null -ne $row -and ([string]$row.active).ToLowerInvariant() -in @('true','t','1'))
+  $urlMatches = ($null -ne $row -and [string]$row.command -like "*$expectedBroadcastUrl*")
+  if ($isActive -and $urlMatches) {
+    Write-Host "[PASS] T21 Cron invoke-broadcast-worker ativo e apontando para URL correta (jobid=$($row.jobid), schedule=$($row.schedule))"; $pass++
+  } else {
+    Write-Host "[FAIL] T21 Cron invoke-broadcast-worker ausente/inativo ou com URL divergente"; $fail++
+  }
+} catch { Write-Host "[FAIL] T21 Cron broadcast-worker: $_"; $fail++ }
+
+# T22: Cron invoke-broadcast-worker executou nas ultimas 6h
+try {
+  $d = Invoke-MgmtQuery "SELECT COUNT(*)::int AS runs FROM cron.job_run_details d JOIN cron.job j ON j.jobid=d.jobid WHERE j.jobname='invoke-broadcast-worker' AND d.start_time > now() - interval '6 hours'"
+  $runs = [int]($d | Select-Object -First 1).runs
+  if ($runs -gt 0) {
+    Write-Host "[PASS] T22 Cron broadcast-worker com execucoes recentes ($runs runs/6h)"; $pass++
+  } else {
+    Write-Host "[INFO] T22 Cron broadcast-worker sem execucoes recentes (0 runs/6h)"; $info++
+  }
+} catch { Write-Host "[INFO] T22 Cron broadcast runs: $_"; $info++ }
+
+# T23: Health runtime sem alertas criticos abertos no escopo operacional
+try {
+  $d = Invoke-MgmtQuery "SELECT alert_type, open_count, COALESCE(last_severity, '') AS last_severity FROM public.notification_runtime_health_latest WHERE alert_type IN ('stripe_webhook_failure','broadcast_worker_backlog','broadcast_worker_cron_missing','ai_error_anomaly') ORDER BY alert_type"
+  $criticalOpen = @($d | Where-Object { [int]$_.open_count -gt 0 -and ($_.last_severity -eq 'critical' -or $_.alert_type -eq 'broadcast_worker_cron_missing') })
+  if ($criticalOpen.Count -eq 0) {
+    Write-Host "[PASS] T23 notification_runtime_health_latest sem alertas criticos operacionais abertos"; $pass++
+  } else {
+    $summary = ($criticalOpen | ForEach-Object { "$($_.alert_type)=$($_.open_count)" }) -join ', '
+    Write-Host "[FAIL] T23 Alertas criticos operacionais abertos: $summary"; $fail++
+  }
+} catch { Write-Host "[FAIL] T23 Runtime health view: $_"; $fail++ }
+
+# T24: Backlog critico de broadcast controlado
+try {
+  $d = Invoke-MgmtQuery "SELECT (SELECT COUNT(*) FROM public.broadcast_recipients WHERE status='pending' AND COALESCE(next_attempt_at, created_at) < now() - interval '15 minutes')::int AS pending_stale_15m, (SELECT COUNT(*) FROM public.broadcast_recipients WHERE status='sending' AND COALESCE(processing_started_at, updated_at, created_at) < now() - interval '5 minutes')::int AS sending_stale_5m"
+  $row = $d | Select-Object -First 1
+  $pendingStale = [int]$row.pending_stale_15m
+  $sendingStale = [int]$row.sending_stale_5m
+  if ($pendingStale -eq 0 -and $sendingStale -eq 0) {
+    Write-Host "[PASS] T24 Fila de broadcast saudavel (pending_stale_15m=0, sending_stale_5m=0)"; $pass++
+  } else {
+    Write-Host "[FAIL] T24 Backlog de broadcast detectado (pending_stale_15m=$pendingStale, sending_stale_5m=$sendingStale)"; $fail++
+  }
+} catch {
+  if ($_.Exception.Message -match 'Unauthorized') {
+    Write-Host "[INFO] T24 Backlog broadcast sem permissao de consulta direta (coberto por T23)"; $info++
+  } else {
+    Write-Host "[FAIL] T24 Backlog broadcast: $_"; $fail++
+  }
+}
+
+# T25: scan_notification_runtime_health executa com sucesso
+try {
+  $d = Invoke-MgmtQuery "SELECT public.scan_notification_runtime_health() AS payload"
+  $payload = $d | Select-Object -First 1
+  if ($null -ne $payload.payload) {
+    Write-Host "[PASS] T25 scan_notification_runtime_health executado"; $pass++
+  } else {
+    Write-Host "[FAIL] T25 scan_notification_runtime_health retorno inesperado"; $fail++
+  }
+} catch { Write-Host "[FAIL] T25 scan_notification_runtime_health: $_"; $fail++ }
 
 Write-Host ""
 Write-Host "===== RESULTS: $pass PASS, $fail FAIL, $info INFO ====="
@@ -167,3 +499,4 @@ if ($fail -eq 0) {
 } else {
   Write-Host "$fail TEST(S) FAILED" -ForegroundColor Red
 }
+

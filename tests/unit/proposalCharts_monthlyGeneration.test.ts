@@ -7,13 +7,13 @@ describe('calcMonthlyGeneration', () => {
   beforeEach(() => { process.env.VITE_USE_SOLAR_RESOURCE_API = 'false'; });
   afterEach(() => { if (prevSRA === undefined) delete process.env.VITE_USE_SOLAR_RESOURCE_API; else process.env.VITE_USE_SOLAR_RESOURCE_API = prevSRA; });
 
-  it('usa consumo mensal como base e mantem anual proximo do esperado', () => {
+  it('usa potencia como base quando potencia instalada e informada', () => {
     const monthly = calcMonthlyGeneration(3.3, 350);
     const annual = monthly.reduce((acc, value) => acc + value, 0);
 
     expect(monthly).toHaveLength(12);
-    expect(monthly).toEqual([417, 407, 382, 336, 276, 247, 262, 311, 339, 378, 410, 435]);
-    expect(annual).toBe(4200);
+    expect(monthly).toEqual([425, 414, 389, 342, 281, 252, 266, 317, 346, 385, 418, 443]);
+    expect(annual).toBe(4278);
   });
 
   it('faz fallback pela potencia instalada quando consumo nao e informado', () => {
@@ -34,8 +34,8 @@ describe('calcMonthlyGeneration', () => {
     const annual = monthly.reduce((acc, value) => acc + value, 0);
 
     expect(monthly).toHaveLength(12);
-    expect(new Set(monthly)).toEqual(new Set([350]));
-    expect(annual).toBe(4200);
+    expect(new Set(monthly)).toEqual(new Set([356]));
+    expect(annual).toBe(4272);
   });
 
   it('usa fallback sazonal regional por UF quando fatores externos nao estao disponiveis', () => {
@@ -46,10 +46,10 @@ describe('calcMonthlyGeneration', () => {
     expect(monthlyNorth).toHaveLength(12);
     const annualSouth = monthlySouth.reduce((acc, value) => acc + value, 0);
     const annualNorth = monthlyNorth.reduce((acc, value) => acc + value, 0);
-    expect(annualSouth).toBeGreaterThanOrEqual(4195);
-    expect(annualSouth).toBeLessThanOrEqual(4205);
-    expect(annualNorth).toBeGreaterThanOrEqual(4195);
-    expect(annualNorth).toBeLessThanOrEqual(4205);
+    expect(annualSouth).toBeGreaterThanOrEqual(4270);
+    expect(annualSouth).toBeLessThanOrEqual(4285);
+    expect(annualNorth).toBeGreaterThanOrEqual(4270);
+    expect(annualNorth).toBeLessThanOrEqual(4285);
     expect(monthlySouth).not.toEqual(monthlyNorth);
   });
 });

@@ -124,7 +124,7 @@ test.afterAll(async () => {
 test('M8 admin members: list, invite(default), update, remove', async ({ page }) => {
   await login(page, state.ownerEmail, state.ownerPassword);
 
-  await page.goto('/admin/members');
+  await page.goto('/settings/members');
   await expect(page.getByTestId('admin-members-page')).toBeVisible();
   await expect(page.getByTestId('members-table')).toBeVisible();
 

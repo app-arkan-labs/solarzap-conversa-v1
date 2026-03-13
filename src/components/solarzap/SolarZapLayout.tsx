@@ -1,4 +1,4 @@
-import { Component, ReactNode, useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { Component, ReactNode, Suspense, lazy, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLeads } from '@/hooks/domain/useLeads';
@@ -6,23 +6,10 @@ import { useChat } from '@/hooks/domain/useChat';
 import { useAutomationSettings } from '@/hooks/useAutomationSettings';
 import { usePipeline } from '@/hooks/domain/usePipeline';
 import { SolarZapNav } from './SolarZapNav';
-import { ConversationList } from './ConversationList';
-import { ChatArea } from './ChatArea';
-import { ActionsPanel } from './ActionsPanel';
-import { PipelineView } from './PipelineView';
-import { CalendarView } from './CalendarView';
-import { ContactsView } from './ContactsView';
-import { DashboardView } from './DashboardView';
-import { IntegrationsView } from './IntegrationsView';
-import { AutomationsView } from './AutomationsView';
-import { AIAgentsView } from './AIAgentsView';
-import { KnowledgeBaseView } from './KnowledgeBaseView';
-import { ProposalsView } from './ProposalsView';
-import { ConfiguracoesContaView } from './ConfiguracoesContaView';
-import { NotificationsPanel } from './NotificationsPanel';
 import { CreateLeadModal, CreateLeadData } from './CreateLeadModal';
 import { AppointmentModal } from './AppointmentModal';
 import { VisitOutcomeAfterModal, VisitOutcomeItem } from './VisitOutcomeAfterModal';
+import { ProjectPaidFinanceModal } from './ProjectPaidFinanceModal';
 // import { ScheduleModal, ScheduleData } from './ScheduleModal'; // Replaced by AppointmentModal
 import { ProposalModal, ProposalData } from './ProposalModal';
 import { CallConfirmModal } from './CallConfirmModal';
@@ -31,9 +18,9 @@ import { MoveToProposalModal } from './MoveToProposalModal';
 import { GenerateProposalPromptModal } from './GenerateProposalPromptModal';
 import { ProposalReadyModal } from './ProposalReadyModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
+import { FollowUpExhaustedModal, type FollowUpLostReasonKey } from './FollowUpExhaustedModal';
 import { Loader2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
@@ -44,7 +31,14 @@ import { useSellerPermissions } from '@/hooks/useSellerPermissions';
 import { supabase } from '@/lib/supabase';
 import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
 import { OrganizationSelectorPanel } from '@/components/organization/OrganizationSelectorPanel';
-import AdminMembersPage from '@/pages/AdminMembersPage';
+import type { UpdateLeadData } from './EditLeadModal';
+import BillingBanner from '@/components/billing/BillingBanner';
+import FeatureSoftWall from '@/components/billing/FeatureSoftWall';
+import { buildLossReasonSummary, findLossReasonByKey } from '@/hooks/useLossReasons';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
+import { buildTabBlocker } from '@/lib/billingBlocker';
+import { useGuidedTour } from '@/hooks/useGuidedTour';
+import GuidedTour from '@/components/onboarding/GuidedTour';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -59,6 +53,7 @@ type PipelineStageChangeOptions = {
   skipScheduleModal?: boolean;
   skipMoveToProposalModal?: boolean;
   skipGenerateProposalPromptModal?: boolean;
+  skipProjectPaidFinanceModal?: boolean;
 };
 
 class AppointmentModalErrorBoundary extends Component<AppointmentModalErrorBoundaryProps, AppointmentModalErrorBoundaryState> {
@@ -81,11 +76,57 @@ class AppointmentModalErrorBoundary extends Component<AppointmentModalErrorBound
   }
 }
 
-const isAdminMembersPath = (pathname: string): boolean => pathname === '/admin/members';
+const isAdminMembersPath = (pathname: string): boolean => pathname === '/settings/members';
 const CONVERSAS_SIDEBAR_MIN_WIDTH = 280;
 const CONVERSAS_SIDEBAR_MAX_WIDTH = 560;
 const CONVERSAS_SIDEBAR_DEFAULT_WIDTH = 320;
 const CONVERSAS_SIDEBAR_STORAGE_KEY = 'solarzap_conversas_sidebar_width';
+const BILLING_GOVERNED_TABS = new Set<ActiveTab>([
+  'disparos',
+  'propostas',
+  'automacoes',
+  'tracking',
+  'integracoes',
+  'calendario',
+  'ia_agentes',
+]);
+const BILLING_USAGE_TARGET_SELECTOR =
+  'button, a[href], input, select, textarea, [role="button"], [role="switch"], [contenteditable="true"], [contenteditable=""]';
+
+const shouldBlockBillingGovernedInteraction = (target: EventTarget | null): boolean => {
+  if (!target || !(target instanceof Element)) return false;
+  return target.closest(BILLING_USAGE_TARGET_SELECTOR) !== null;
+};
+
+const PipelineView = lazy(() => import('./PipelineView').then((module) => ({ default: module.PipelineView })));
+const CalendarView = lazy(() => import('./CalendarView').then((module) => ({ default: module.CalendarView })));
+const ContactsView = lazy(() => import('./ContactsView').then((module) => ({ default: module.ContactsView })));
+const DashboardView = lazy(() => import('./DashboardView').then((module) => ({ default: module.DashboardView })));
+const IntegrationsView = lazy(() => import('./IntegrationsView').then((module) => ({ default: module.IntegrationsView })));
+const TrackingView = lazy(() => import('./TrackingView').then((module) => ({ default: module.TrackingView })));
+const AutomationsView = lazy(() => import('./AutomationsView').then((module) => ({ default: module.AutomationsView })));
+const AIAgentsView = lazy(() => import('./AIAgentsView').then((module) => ({ default: module.AIAgentsView })));
+const KnowledgeBaseView = lazy(() => import('./KnowledgeBaseView').then((module) => ({ default: module.KnowledgeBaseView })));
+const ProposalsView = lazy(() => import('./ProposalsView').then((module) => ({ default: module.ProposalsView })));
+const BroadcastView = lazy(() => import('./BroadcastView').then((module) => ({ default: module.BroadcastView })));
+const ConfiguracoesContaView = lazy(() => import('./ConfiguracoesContaView').then((module) => ({ default: module.ConfiguracoesContaView })));
+const MeuPlanoView = lazy(() => import('./MeuPlanoView').then((module) => ({ default: module.MeuPlanoView })));
+const AdminMembersPage = lazy(() => import('@/pages/AdminMembersPage'));
+const ConversationList = lazy(() => import('./ConversationList').then((module) => ({ default: module.ConversationList })));
+const ChatArea = lazy(() => import('./ChatArea').then((module) => ({ default: module.ChatArea })));
+const ActionsPanel = lazy(() => import('./ActionsPanel').then((module) => ({ default: module.ActionsPanel })));
+const NotificationsPanel = lazy(() => import('./NotificationsPanel').then((module) => ({ default: module.NotificationsPanel })));
+
+function TabLoadingFallback({ label }: { label: string }) {
+  return (
+    <div className="flex-1 min-h-0 flex items-center justify-center bg-background">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-sm">{label}</span>
+      </div>
+    </div>
+  );
+}
 
 export function SolarZapLayout() {
   const { user, orgId, role, hasMultipleOrganizations, organizations, selectOrganization, signOut } = useAuth();
@@ -109,6 +150,13 @@ export function SolarZapLayout() {
   }, [user]);
   const userDisplayName = useMemo(() => (user ? getAuthUserDisplayName(user) : ''), [user]);
   const { permissions: sellerPerms } = useSellerPermissions();
+  const { billing, openBillingBlocker } = useBillingBlocker();
+  const accessState = billing?.access_state ?? 'full';
+  const trackingFeatureBlocker = useMemo(() => {
+    if (!billing) return null;
+    const blocker = buildTabBlocker('tracking', billing);
+    return blocker?.kind === 'feature_locked' ? blocker : null;
+  }, [billing]);
   // Domain Hooks
   const {
     contacts,
@@ -117,14 +165,13 @@ export function SolarZapLayout() {
     setLeadScope,
     leadScopeMembers,
     isLoadingLeadScopeMembers,
-    showTeamLeads,
-    setShowTeamLeads,
     canViewTeam,
     createLead,
     updateLead,
     deleteLead,
     importContacts,
-    toggleLeadAi
+    toggleLeadAi,
+    toggleLeadFollowUp,
   } = useLeads();
 
   const {
@@ -172,13 +219,22 @@ export function SolarZapLayout() {
     return Math.min(CONVERSAS_SIDEBAR_MAX_WIDTH, Math.max(CONVERSAS_SIDEBAR_MIN_WIDTH, parsed));
   });
   const [isResizingConversationsSidebar, setIsResizingConversationsSidebar] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 1023px)').matches;
+  });
   const conversationsSidebarRef = useRef<HTMLDivElement | null>(null);
   const proposalPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const projectPaidFinanceResolverRef = useRef<((completed: boolean) => void) | null>(null);
 
   // Cleanup proposal prompt timer on unmount
   useEffect(() => {
     return () => {
       if (proposalPromptTimerRef.current) clearTimeout(proposalPromptTimerRef.current);
+      if (projectPaidFinanceResolverRef.current) {
+        projectPaidFinanceResolverRef.current(false);
+        projectPaidFinanceResolverRef.current = null;
+      }
     };
   }, []);
 
@@ -199,6 +255,25 @@ export function SolarZapLayout() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(CONVERSAS_SIDEBAR_STORAGE_KEY, String(conversationsSidebarWidth));
   }, [conversationsSidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 1023px)');
+
+    const handleMediaChange = (event: MediaQueryListEvent) => {
+      setIsMobileViewport(event.matches);
+    };
+
+    setIsMobileViewport(media.matches);
+
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', handleMediaChange);
+      return () => media.removeEventListener('change', handleMediaChange);
+    }
+
+    media.addListener(handleMediaChange);
+    return () => media.removeListener(handleMediaChange);
+  }, []);
 
   useEffect(() => {
     if (!isResizingConversationsSidebar) return;
@@ -234,13 +309,75 @@ export function SolarZapLayout() {
     event.preventDefault();
     setIsResizingConversationsSidebar(true);
   }, []);
-
-  const handleTabChange = useCallback((tab: ActiveTab) => {
+  const openTab = useCallback((tab: ActiveTab) => {
     setActiveTab(tab);
     if (location.pathname !== '/') {
       navigate('/');
     }
+    return true;
   }, [location.pathname, navigate]);
+
+  const handleTabChange = useCallback((tab: ActiveTab) => {
+    return openTab(tab);
+  }, [openTab]);
+
+  const handleBillingGovernedInteractionCapture = useCallback((event: React.SyntheticEvent<HTMLElement>) => {
+    if (!BILLING_GOVERNED_TABS.has(activeTab)) return;
+    if (!shouldBlockBillingGovernedInteraction(event.target)) return;
+
+    const blocker = buildTabBlocker(activeTab, billing);
+    if (!blocker) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    openBillingBlocker(blocker);
+  }, [activeTab, billing, openBillingBlocker]);
+
+  const handleBillingGovernedKeyDownCapture = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    if (!BILLING_GOVERNED_TABS.has(activeTab)) return;
+    if (!shouldBlockBillingGovernedInteraction(event.target)) return;
+    if (
+      event.key === 'Tab' ||
+      event.key === 'Shift' ||
+      event.key === 'Escape' ||
+      event.key.startsWith('Arrow')
+    ) {
+      return;
+    }
+
+    const blocker = buildTabBlocker(activeTab, billing);
+    if (!blocker) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    openBillingBlocker(blocker);
+  }, [activeTab, billing, openBillingBlocker]);
+
+  const openProposalFlow = useCallback((contact: Contact | null) => {
+    const blocker = buildTabBlocker('propostas', billing);
+    if (blocker) {
+      openBillingBlocker(blocker);
+      return false;
+    }
+
+    setActionContact(contact || null);
+    setIsProposalOpen(true);
+    return true;
+  }, [billing, openBillingBlocker]);
+
+  const openScheduleFlow = useCallback((contact: Contact | null, type: 'reuniao' | 'visita') => {
+    const blocker = buildTabBlocker('calendario', billing);
+    if (blocker) {
+      openBillingBlocker(blocker);
+      return false;
+    }
+
+    setActionContact(contact || null);
+    setScheduleType(type);
+    setIsScheduleOpen(true);
+    return true;
+  }, [billing, openBillingBlocker]);
+
 
   // Derivar a conversa ativa da lista atualizada de conversas para garantir que temos as mensagens mais recentes
   const activeConversation = useMemo(() => {
@@ -289,6 +426,8 @@ export function SolarZapLayout() {
     onVisitScheduled,
     onProposalReady,
     onCallCompleted,
+    confirmInstallmentPaid,
+    rescheduleInstallment,
   } = useNotifications();
 
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
@@ -313,6 +452,8 @@ export function SolarZapLayout() {
   const [moveToProposalOpen, setMoveToProposalOpen] = useState(false);
   const [generateProposalPromptOpen, setGenerateProposalPromptOpen] = useState(false);
   const [proposalReadyOpen, setProposalReadyOpen] = useState(false);
+  const [projectPaidFinanceOpen, setProjectPaidFinanceOpen] = useState(false);
+  const [projectPaidFinanceContact, setProjectPaidFinanceContact] = useState<Contact | null>(null);
 
   // Last proposal data (for seller script in ProposalReadyModal)
   const [lastProposalSellerData, setLastProposalSellerData] = useState<any>(null);
@@ -326,8 +467,39 @@ export function SolarZapLayout() {
   const [visitOutcomeSubmitting, setVisitOutcomeSubmitting] = useState(false);
   const [pendingVisitOutcome, setPendingVisitOutcome] = useState<VisitOutcomeItem | null>(null);
   const [dismissedVisitOutcomeIds, setDismissedVisitOutcomeIds] = useState<Set<string>>(new Set());
+  const [followUpExhaustedModalOpen, setFollowUpExhaustedModalOpen] = useState(false);
+  const [followUpExhaustedLeadId, setFollowUpExhaustedLeadId] = useState<string | null>(null);
+  const [followUpExhaustedSubmitting, setFollowUpExhaustedSubmitting] = useState(false);
 
   const { toast } = useToast();
+
+  const openFollowUpExhaustedForLead = useCallback((leadId: string) => {
+    const candidate = contacts.find((contact) => contact.id === leadId);
+    if (!candidate) return;
+    if ((candidate.followUpStep ?? 0) < 5) return;
+    if (candidate.followUpExhaustedSeen !== false) return;
+
+    setFollowUpExhaustedLeadId(candidate.id);
+    setFollowUpExhaustedModalOpen(true);
+  }, [contacts]);
+
+  const followUpExhaustedLead = useMemo(() => {
+    if (!followUpExhaustedLeadId) return null;
+    return contacts.find((contact) => contact.id === followUpExhaustedLeadId) || null;
+  }, [contacts, followUpExhaustedLeadId]);
+
+  useEffect(() => {
+    if (activeTab !== 'conversas') return;
+    const candidate = activeConversation?.contact;
+    if (!candidate) return;
+    openFollowUpExhaustedForLead(candidate.id);
+  }, [
+    activeTab,
+    activeConversation?.id,
+    activeConversation?.contact?.followUpStep,
+    activeConversation?.contact?.followUpExhaustedSeen,
+    openFollowUpExhaustedForLead,
+  ]);
 
   const handleSelectOrganizationFromModal = useCallback(async (nextOrgId: string) => {
     try {
@@ -513,28 +685,23 @@ export function SolarZapLayout() {
         break;
 
       case 'schedule':
-        setActionContact(targetContact || null);
-        setScheduleType('reuniao');
-        setIsScheduleOpen(true);
+        openScheduleFlow(targetContact || null, 'reuniao');
         break;
 
       case 'proposal':
-        setActionContact(targetContact || null);
-        setIsProposalOpen(true);
+        openProposalFlow(targetContact || null);
         break;
 
       case 'visit':
-        setActionContact(targetContact || null);
-        setScheduleType('visita');
-        setIsScheduleOpen(true);
+        openScheduleFlow(targetContact || null, 'visita');
         break;
 
       case 'pipeline':
-        setActiveTab('pipelines');
+        handleTabChange('pipelines');
         break;
 
       case 'details':
-        setActiveTab('contatos');
+        handleTabChange('contatos');
         break;
 
       case 'comments':
@@ -546,7 +713,7 @@ export function SolarZapLayout() {
         if (targetContact?.id) {
           localStorage.setItem('solarzap_proposals_filter_lead_id', String(targetContact.id));
         }
-        setActiveTab('propostas');
+        handleTabChange('propostas');
         setIsDetailsPanelOpen(false);
         break;
     }
@@ -577,16 +744,37 @@ export function SolarZapLayout() {
         if (contact.id && orgId) {
           void (async () => {
             try {
+              const leadId = parseInt(contact.id, 10);
               const { error: commentError } = await supabase
                 .from('comentarios_leads')
                 .insert([{
                   org_id: orgId,
-                  lead_id: parseInt(contact.id, 10),
+                  lead_id: leadId,
                   texto: `[Feedback Ligacao]: ${normalizedFeedback}`,
                   autor: 'Vendedor',
                 }]);
               if (commentError) {
                 console.error('Error saving call comment:', commentError);
+                return;
+              }
+
+              const { error: scheduleError } = await supabase
+                .from('scheduled_agent_jobs')
+                .insert({
+                  org_id: orgId,
+                  lead_id: leadId,
+                  agent_type: 'post_call',
+                  scheduled_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+                  status: 'pending',
+                  guard_stage: 'chamada_realizada',
+                  payload: {
+                    comment_text: normalizedFeedback,
+                    instance_name: contact.instanceName || null,
+                  },
+                });
+
+              if (scheduleError) {
+                console.error('Error scheduling post-call agent job:', scheduleError);
               }
             } catch (commentError) {
               console.error('Unexpected error saving call comment:', commentError);
@@ -651,7 +839,7 @@ export function SolarZapLayout() {
 
   const handleGenerateProposalPrompt = () => {
     setGenerateProposalPromptOpen(false);
-    setIsProposalOpen(true);
+    openProposalFlow(actionContact || null);
   };
 
   const handleProposalReadyGoToConversation = (contactId: string, prefilledMessage: string) => {
@@ -661,6 +849,24 @@ export function SolarZapLayout() {
     }
     setActionContact(null);
   };
+
+  const openProjectPaidFinanceGate = useCallback((contact: Contact) => {
+    return new Promise<boolean>((resolve) => {
+      projectPaidFinanceResolverRef.current = resolve;
+      setProjectPaidFinanceContact(contact);
+      setProjectPaidFinanceOpen(true);
+    });
+  }, []);
+
+  const resolveProjectPaidFinanceGate = useCallback((completed: boolean) => {
+    setProjectPaidFinanceOpen(false);
+    setProjectPaidFinanceContact(null);
+    const resolver = projectPaidFinanceResolverRef.current;
+    projectPaidFinanceResolverRef.current = null;
+    if (resolver) {
+      resolver(completed);
+    }
+  }, []);
 
   /* 
     CENTRALIZED PIPELINE AUTOMATION HANDLER 
@@ -674,6 +880,20 @@ export function SolarZapLayout() {
 
     const contact = contacts.find(c => c.id === contactId);
     const oldStage = contact?.pipelineStage;
+
+    if (
+      newStage === 'projeto_pago' &&
+      !options.skipProjectPaidFinanceModal
+    ) {
+      if (!contact) {
+        throw new Error('Lead nao encontrado para abrir o fechamento financeiro.');
+      }
+
+      const financeCompleted = await openProjectPaidFinanceGate(contact);
+      if (!financeCompleted) {
+        return;
+      }
+    }
 
     // Perform the move
     await moveToPipeline({ contactId, newStage });
@@ -722,17 +942,13 @@ export function SolarZapLayout() {
 
       case 'chamada_agendada':
         if (!options.skipScheduleModal && isDragDropEnabled(newStage, oldStage)) {
-          setActionContact(contact);
-          setScheduleType('reuniao');
-          setIsScheduleOpen(true);
+          openScheduleFlow(contact, 'reuniao');
         }
         break;
 
       case 'visita_agendada':
         if (!options.skipScheduleModal && isDragDropEnabled(newStage, oldStage)) {
-          setActionContact(contact);
-          setScheduleType('visita');
-          setIsScheduleOpen(true);
+          openScheduleFlow(contact, 'visita');
         }
         break;
 
@@ -751,7 +967,35 @@ export function SolarZapLayout() {
         break;
     }
 
-  }, [contacts, moveToPipeline, onStageChanged, toast, isDragDropEnabled]);
+  }, [contacts, moveToPipeline, onStageChanged, toast, isDragDropEnabled, openProjectPaidFinanceGate, openScheduleFlow]);
+
+  const compactLeadPatch = useCallback((data: UpdateLeadData): UpdateLeadData => {
+    return Object.fromEntries(
+      Object.entries(data || {}).filter(([, value]) => value !== undefined),
+    ) as UpdateLeadData;
+  }, []);
+
+  const handleLeadUpdateWithoutStage = useCallback(async (contactId: string, data: UpdateLeadData) => {
+    const { status_pipeline: _ignoredStage, ...rest } = data || {};
+    const payload = compactLeadPatch(rest as UpdateLeadData);
+    if (Object.keys(payload).length === 0) return;
+    await updateLead({ contactId, data: payload });
+  }, [compactLeadPatch, updateLead]);
+
+  const handleLeadUpdateWithStageGuard = useCallback(async (contactId: string, data: UpdateLeadData) => {
+    const { status_pipeline: requestedStage, ...rest } = data || {};
+    const payload = compactLeadPatch(rest as UpdateLeadData);
+    if (Object.keys(payload).length > 0) {
+      await updateLead({ contactId, data: payload });
+    }
+
+    if (!requestedStage) return;
+
+    const currentStage = contacts.find((item) => item.id === contactId)?.pipelineStage;
+    if (requestedStage !== currentStage) {
+      await handlePipelineStageChange(contactId, requestedStage);
+    }
+  }, [compactLeadPatch, contacts, handlePipelineStageChange, updateLead]);
 
   const handleVisitOutcomeSubmit = useCallback(async (targetStage: string, notes: string) => {
     if (!pendingVisitOutcome) return;
@@ -806,6 +1050,128 @@ export function SolarZapLayout() {
       setVisitOutcomeSubmitting(false);
     }
   }, [contacts, handlePipelineStageChange, orgId, pendingVisitOutcome, toast, updateAppointment]);
+
+  const closeFollowUpExhaustedModal = useCallback(() => {
+    setFollowUpExhaustedModalOpen(false);
+    setFollowUpExhaustedLeadId(null);
+  }, []);
+
+  const handleFollowUpKeepCurrent = useCallback(async () => {
+    if (!followUpExhaustedLead) return;
+
+    setFollowUpExhaustedSubmitting(true);
+    try {
+      await updateLead({
+        contactId: followUpExhaustedLead.id,
+        data: { follow_up_exhausted_seen: true },
+      });
+      closeFollowUpExhaustedModal();
+    } catch (error) {
+      console.error('Failed to acknowledge follow-up exhausted modal (keep current):', error);
+      toast({
+        title: 'Erro ao atualizar lead',
+        description: 'Nao foi possivel confirmar o follow-up exaurido.',
+        variant: 'destructive',
+      });
+    } finally {
+      setFollowUpExhaustedSubmitting(false);
+    }
+  }, [closeFollowUpExhaustedModal, followUpExhaustedLead, toast, updateLead]);
+
+  const handleFollowUpDisableForLead = useCallback(async () => {
+    if (!followUpExhaustedLead) return;
+
+    setFollowUpExhaustedSubmitting(true);
+    try {
+      await toggleLeadFollowUp({
+        leadId: followUpExhaustedLead.id,
+        enabled: false,
+      });
+      await updateLead({
+        contactId: followUpExhaustedLead.id,
+        data: { follow_up_exhausted_seen: true, follow_up_step: 0 },
+      });
+      closeFollowUpExhaustedModal();
+    } catch (error) {
+      console.error('Failed to disable follow-up for exhausted lead:', error);
+      toast({
+        title: 'Erro ao desabilitar follow-up',
+        description: 'Nao foi possivel desabilitar o follow-up para este lead.',
+        variant: 'destructive',
+      });
+    } finally {
+      setFollowUpExhaustedSubmitting(false);
+    }
+  }, [closeFollowUpExhaustedModal, followUpExhaustedLead, toast, toggleLeadFollowUp, updateLead]);
+
+  const handleFollowUpMoveToLost = useCallback(async (reasonKey: FollowUpLostReasonKey, reasonDetail?: string) => {
+    if (!followUpExhaustedLead) return;
+
+    const reasonMap: Record<FollowUpLostReasonKey, string> = {
+      sem_resposta: 'Nao respondeu',
+      sem_interesse: 'Sem interesse',
+      concorrente: 'Fechou com concorrente',
+      timing: 'Nao e o momento',
+      financeiro: 'Sem condicao financeira',
+      outro: 'Outro',
+    };
+
+    const baseReason = reasonMap[reasonKey] || 'Outro';
+    const normalizedReason = buildLossReasonSummary(baseReason, reasonDetail);
+
+    setFollowUpExhaustedSubmitting(true);
+    try {
+      await toggleLeadFollowUp({
+        leadId: followUpExhaustedLead.id,
+        enabled: false,
+      });
+
+      await updateLead({
+        contactId: followUpExhaustedLead.id,
+        data: {
+          lost_reason: normalizedReason,
+          follow_up_exhausted_seen: true,
+        },
+      });
+
+      await handlePipelineStageChange(followUpExhaustedLead.id, 'perdido');
+
+      if (orgId) {
+        const matchingReason = await findLossReasonByKey(orgId, reasonKey);
+        if (matchingReason) {
+          const { error: lossError } = await supabase.from('perdas_leads').insert({
+            org_id: orgId,
+            lead_id: Number(followUpExhaustedLead.id),
+            motivo_id: matchingReason.id,
+            motivo_detalhe: reasonDetail?.trim() || null,
+            registrado_por: 'Sistema',
+          });
+
+          if (lossError) {
+            throw lossError;
+          }
+        }
+
+        await supabase.from('comentarios_leads').insert({
+          org_id: orgId,
+          lead_id: Number(followUpExhaustedLead.id),
+          texto: `[Follow Up Esgotado]: ${normalizedReason}`,
+          autor: 'Sistema',
+        });
+      }
+
+      closeFollowUpExhaustedModal();
+    } catch (error) {
+      console.error('Failed to move exhausted follow-up lead to perdido:', error);
+      toast({
+        title: 'Erro ao mover para perdido',
+        description: 'Nao foi possivel concluir a acao para follow-up exaurido.',
+        variant: 'destructive',
+      });
+    } finally {
+      setFollowUpExhaustedSubmitting(false);
+    }
+  }, [closeFollowUpExhaustedModal, followUpExhaustedLead, handlePipelineStageChange, orgId, toast, toggleLeadFollowUp, updateLead]);
 
   const handleCreateLead = async (data: CreateLeadData) => {
     await createLead(data);
@@ -944,7 +1310,7 @@ export function SolarZapLayout() {
         uf: data.estado,
         concessionaria: data.concessionaria,
         tipo_ligacao: data.tipoLigacao,
-        tarifa_kwh: data.rentabilityRatePerKwh ?? data.tarifaKwh,
+        tarifa_kwh: data.tarifaKwh ?? data.rentabilityRatePerKwh,
         custo_disponibilidade_kwh: data.custoDisponibilidadeKwh,
         performance_ratio: data.performanceRatio,
         preco_por_kwp: data.precoPorKwp,
@@ -966,6 +1332,10 @@ export function SolarZapLayout() {
     return saveResult;
   };
 
+  const showConversationList = !isMobileViewport || !activeConversation;
+  const showConversationChat = !isMobileViewport || Boolean(activeConversation);
+  const guidedTour = useGuidedTour(activeTab, handleTabChange, Boolean(user));
+
   if (isInitialLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
@@ -985,7 +1355,7 @@ export function SolarZapLayout() {
         unreadNotifications={unreadNotifications}
         onNotificationsClick={() => setIsNotificationsPanelOpen(true)}
         isAdminUser={canAccessAdmin}
-        onAdminMembersClick={() => navigate('/admin/members')}
+        onAdminMembersClick={() => navigate('/settings/members')}
         hasMultipleOrganizations={hasMultipleOrganizations}
         onSwitchOrganization={() => setIsOrganizationSwitcherOpen(true)}
         activeOrganizationName={activeOrganizationName ?? undefined}
@@ -995,9 +1365,13 @@ export function SolarZapLayout() {
           ia_agentes: sellerPerms.tab_ia_agentes,
           automacoes: sellerPerms.tab_automacoes,
           integracoes: sellerPerms.tab_integracoes,
+          tracking: sellerPerms.tab_integracoes,
           banco_ia: sellerPerms.tab_banco_ia,
           minha_conta: sellerPerms.tab_minha_conta,
+          meu_plano: canAccessAdmin,
         }}
+        currentPlanKey={billing?.plan_key ?? null}
+        onHelpClick={() => guidedTour.startTour('manual')}
       />
 
       <Dialog
@@ -1044,305 +1418,469 @@ export function SolarZapLayout() {
         </DialogContent>
       </Dialog>
 
-      <NotificationsPanel
-        notifications={notifications}
-        isOpen={isNotificationsPanelOpen}
-        onClose={() => setIsNotificationsPanelOpen(false)}
-        onMarkAsRead={markNotificationAsRead}
-        onMarkAllAsRead={markAllNotificationsAsRead}
-        onDelete={deleteNotification}
-        onClearAll={clearAllNotifications}
-        onGoToContact={(contactId) => {
-          const conv = conversations.find(c => c.id === contactId);
-          if (conv) {
-            handleTabChange('conversas');
-            setSelectedConversation(conv);
-            markAsRead(conv.id);
-          }
+      <Suspense fallback={null}>
+        <NotificationsPanel
+          notifications={notifications}
+          isOpen={isNotificationsPanelOpen}
+          onClose={() => setIsNotificationsPanelOpen(false)}
+          onMarkAsRead={markNotificationAsRead}
+          onMarkAllAsRead={markAllNotificationsAsRead}
+          onDelete={deleteNotification}
+          onClearAll={clearAllNotifications}
+          onConfirmInstallmentPaid={confirmInstallmentPaid}
+          onRescheduleInstallment={rescheduleInstallment}
+          onGoToContact={(contactId) => {
+            const conv = conversations.find(c => c.id === contactId);
+            if (conv) {
+              handleTabChange('conversas');
+              setSelectedConversation(conv);
+              markAsRead(conv.id);
+            }
+          }}
+        />
+      </Suspense>
+
+      <div className="absolute top-0 left-[60px] right-0 z-20 px-4 py-2 space-y-2 pointer-events-none">
+        <div className="pointer-events-auto">
+          <BillingBanner billing={billing} />
+        </div>
+      </div>
+
+      {accessState === 'read_only' ? (
+        <div className="absolute top-14 left-[60px] right-0 z-20 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-900 text-sm">
+          Seu acesso está em modo leitura. Algumas ações estão bloqueadas até a regularização da assinatura.
+        </div>
+      ) : null}
+
+      <GuidedTour
+        showWelcome={guidedTour.showWelcome}
+        running={guidedTour.running}
+        steps={guidedTour.steps}
+        stepIndex={guidedTour.stepIndex}
+        welcomeTitle="Bem-vindo ao novo SolarZap"
+        welcomeDescription="Preparamos um tour rapido para apresentar os principais atalhos e fluxos."
+        onStart={() => guidedTour.startTour('auto')}
+        onSkip={() => {
+          void guidedTour.closeTour('skip');
         }}
+        onClose={() => {
+          void guidedTour.closeTour('close');
+        }}
+        onNext={() => {
+          void guidedTour.nextStep();
+        }}
+        onPrev={guidedTour.previousStep}
       />
 
       {activeTab === 'conversas' && (
         <>
-          <div
-            ref={conversationsSidebarRef}
-            className="relative flex-shrink-0"
-            style={{ width: conversationsSidebarWidth }}
-          >
-            <ConversationList
-              conversations={filteredConversations}
-              contacts={contacts}
-              canViewTeam={canViewTeam}
-              showTeamLeads={showTeamLeads}
-              onToggleTeamLeads={setShowTeamLeads}
-              selectedId={selectedConversation?.id || null}
-              channelFilter={channelFilter}
-              searchQuery={searchQuery}
-              stageFilter={stageFilter}
-              onSelect={handleSelectConversation}
-              onChannelFilterChange={setChannelFilter}
-              onSearchChange={setSearchQuery}
-              onStageFilterChange={setStageFilter}
-              onImportContacts={importContacts}
-              onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
-            />
+          {showConversationList && (
             <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Redimensionar aba lateral"
-              className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors"
-              onMouseDown={handleConversationsSidebarResizeStart}
-            />
+              ref={conversationsSidebarRef}
+              className={`relative ${isMobileViewport ? 'flex-1 min-w-0' : 'flex-shrink-0'}`}
+              style={isMobileViewport ? undefined : { width: conversationsSidebarWidth }}
+            >
+            <Suspense fallback={<TabLoadingFallback label="Carregando conversas..." />}>
+              <ConversationList
+                conversations={filteredConversations}
+                contacts={contacts}
+                canViewTeam={canViewTeam}
+                leadScope={leadScope}
+                onLeadScopeChange={setLeadScope}
+                leadScopeMembers={leadScopeMembers}
+                leadScopeLoading={isLoadingLeadScopeMembers}
+                currentUserId={user?.id ?? null}
+                selectedId={selectedConversation?.id || null}
+                channelFilter={channelFilter}
+                searchQuery={searchQuery}
+                stageFilter={stageFilter}
+                onSelect={handleSelectConversation}
+                onChannelFilterChange={setChannelFilter}
+                onSearchChange={setSearchQuery}
+                onStageFilterChange={setStageFilter}
+                onImportContacts={importContacts}
+                onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
+              />
+            </Suspense>
+              {!isMobileViewport && (
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Redimensionar aba lateral"
+                  className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors"
+                  onMouseDown={handleConversationsSidebarResizeStart}
+                />
+              )}
             <Button
               onClick={() => setIsCreateLeadOpen(true)}
               size="icon"
+              data-testid="open-create-lead-modal"
               className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg"
             >
               <Plus className="w-6 h-6" />
             </Button>
-          </div>
+            </div>
+          )}
 
-          <ChatArea
-            conversation={activeConversation}
-            conversations={conversations}
-            onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
-            onSendMessage={async (conversationId, content, instanceName, replyTo, options) => {
-              import.meta.env.DEV && console.log('SolarZapLayout: onSendMessage called', {
-                conversationId,
-                contentLength: content.length,
-                instanceName,
-                replyTo,
-                hasContactPhone: Boolean(options?.contactPhone || options?.contactPhoneE164),
-                hasReplyMeta: Boolean(options?.replyMeta),
-              });
-              try {
-                await sendMessage({
+          {showConversationChat && (
+            <Suspense fallback={<TabLoadingFallback label="Carregando conversa..." />}>
+              <ChatArea
+              conversation={activeConversation}
+              conversations={conversations}
+              onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
+              onSendMessage={async (conversationId, content, instanceName, replyTo, options) => {
+                import.meta.env.DEV && console.log('SolarZapLayout: onSendMessage called', {
                   conversationId,
-                  content,
+                  contentLength: content.length,
                   instanceName,
                   replyTo,
-                  contactPhone: options?.contactPhone,
-                  contactPhoneE164: options?.contactPhoneE164,
-                  replyMeta: options?.replyMeta,
+                  hasContactPhone: Boolean(options?.contactPhone || options?.contactPhoneE164),
+                  hasReplyMeta: Boolean(options?.replyMeta),
                 });
-                onSellerResponse(conversationId);
-              } catch (error) {
-                console.error('Failed to send message:', error);
-                toast({
-                  title: "Erro ao enviar mensagem",
-                  description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
-                  variant: "destructive"
-                });
-              }
-            }}
-            onSendAttachment={async (id, file, type, caption, instanceName) => {
-              try {
-                await sendAttachment({ conversationId: id, file, fileType: type, caption, instanceName });
-                onSellerResponse(id);
-              } catch (error) {
-                console.error('Failed to send attachment:', error);
-                toast({
-                  title: "Erro ao enviar anexo",
-                  description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
-                  variant: "destructive"
-                });
-              }
-            }}
-            onSendAudio={async (id, blob, duration, instanceName) => {
-              try {
-                await sendAudio({ conversationId: id, audioBlob: blob, duration, instanceName });
-                onSellerResponse(id);
-              } catch (error) {
-                console.error('Failed to send audio:', error);
-                toast({
-                  title: "Erro ao enviar áudio",
-                  description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
-                  variant: "destructive"
-                });
-              }
-            }}
-            onOpenDetails={() => setIsDetailsPanelOpen(true)}
-            isDetailsOpen={isDetailsPanelOpen}
-            onCallAction={(contact) => {
-              setPendingCallContact(contact);
-              setCallConfirmOpen(true);
-            }}
-            onImportContacts={importContacts}
-            initialMessage={pendingChatMessage}
-            onInitialMessageUsed={() => setPendingChatMessage('')}
-            onClientMessage={(conversationId) => {
-              if (pendingVisitScheduleContactId && conversationId === pendingVisitScheduleContactId) {
-                const contact = conversations.find(c => c.id === conversationId)?.contact;
-                if (contact) {
-                  setPendingVisitContact(contact);
-                  setVisitScheduleConfirmOpen(true);
+                try {
+                  await sendMessage({
+                    conversationId,
+                    content,
+                    instanceName,
+                    replyTo,
+                    contactPhone: options?.contactPhone,
+                    contactPhoneE164: options?.contactPhoneE164,
+                    replyMeta: options?.replyMeta,
+                  });
+                  onSellerResponse(conversationId);
+                } catch (error) {
+                  console.error('Failed to send message:', error);
+                  toast({
+                    title: "Erro ao enviar mensagem",
+                    description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
+                    variant: "destructive"
+                  });
                 }
-                setPendingVisitScheduleContactId(null);
-              }
-            }}
-            onSendReaction={async (messageId, waMessageId, remoteJid, emoji, instanceName) => {
-              try {
-                await sendReaction({ messageId, waMessageId, remoteJid, emoji, instanceName });
+              }}
+              onSendAttachment={async (id, file, type, caption, instanceName) => {
+                try {
+                  await sendAttachment({ conversationId: id, file, fileType: type, caption, instanceName });
+                  onSellerResponse(id);
+                } catch (error) {
+                  console.error('Failed to send attachment:', error);
+                  toast({
+                    title: "Erro ao enviar anexo",
+                    description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
+                    variant: "destructive"
+                  });
+                }
+              }}
+              onSendAudio={async (id, blob, duration, instanceName) => {
+                try {
+                  await sendAudio({ conversationId: id, audioBlob: blob, duration, instanceName });
+                  onSellerResponse(id);
+                } catch (error) {
+                  console.error('Failed to send audio:', error);
+                  toast({
+                    title: "Erro ao enviar áudio",
+                    description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
+                    variant: "destructive"
+                  });
+                }
+              }}
+              onOpenDetails={() => setIsDetailsPanelOpen(true)}
+              isDetailsOpen={isDetailsPanelOpen}
+              onCallAction={(contact) => {
+                setPendingCallContact(contact);
+                setCallConfirmOpen(true);
+              }}
+              onImportContacts={importContacts}
+              initialMessage={pendingChatMessage}
+              onInitialMessageUsed={() => setPendingChatMessage('')}
+              onClientMessage={(conversationId) => {
+                if (pendingVisitScheduleContactId && conversationId === pendingVisitScheduleContactId) {
+                  const contact = conversations.find(c => c.id === conversationId)?.contact;
+                  if (contact) {
+                    setPendingVisitContact(contact);
+                    setVisitScheduleConfirmOpen(true);
+                  }
+                  setPendingVisitScheduleContactId(null);
+                }
+              }}
+              onSendReaction={async (messageId, waMessageId, remoteJid, emoji, instanceName, fromMe) => {
+                try {
+                  await sendReaction({ messageId, waMessageId, remoteJid, emoji, instanceName, fromMe });
+                  toast({
+                    title: "Reação enviada!",
+                    description: `${emoji}`,
+                  });
+                } catch (error) {
+                  console.error('Failed to send reaction:', error);
+                  toast({
+                    title: "Erro ao enviar reação",
+                    description: error instanceof Error ? error.message : "Ocorreu um erro",
+                    variant: "destructive"
+                  });
+                }
+              }}
+              onVideoCallAction={(contact) => {
+                import.meta.env.DEV && console.log('Video Call Action Triggered', contact);
+                const videoCallMsg = getMessage('videoCallMessage', { nome: contact.name || 'Cliente' });
+                import.meta.env.DEV && console.log('Generated Video Msg:', videoCallMsg);
+
+                if (!videoCallMsg) {
+                  console.warn("Empty video call message config!");
+                }
+
+                setPendingChatMessage(videoCallMsg || "Vamos agendar uma videochamada?");
+
                 toast({
-                  title: "Reação enviada!",
-                  description: `${emoji}`,
+                  title: "Link do Meet aberto",
+                  description: "Revise a mensagem e envie para o cliente quando estiver pronto.",
                 });
-              } catch (error) {
-                console.error('Failed to send reaction:', error);
-                toast({
-                  title: "Erro ao enviar reação",
-                  description: error instanceof Error ? error.message : "Ocorreu um erro",
-                  variant: "destructive"
-                });
-              }
-            }}
-            onVideoCallAction={(contact) => {
-              // Pre-fill message instead of auto-sending - seller reviews and sends
-              import.meta.env.DEV && console.log('Video Call Action Triggered', contact);
-              const videoCallMsg = getMessage('videoCallMessage', { nome: contact.name || 'Cliente' });
-              import.meta.env.DEV && console.log('Generated Video Msg:', videoCallMsg);
-
-              if (!videoCallMsg) {
-                console.warn("Empty video call message config!");
-              }
-
-              setPendingChatMessage(videoCallMsg || "Vamos agendar uma videochamada?"); // Fallback
-
-              toast({
-                title: "Link do Meet aberto",
-                description: "Revise a mensagem e envie para o cliente quando estiver pronto.",
-              });
-            }}
-          />
+              }}
+              onBack={isMobileViewport ? () => {
+                setSelectedConversation(null);
+                setIsDetailsPanelOpen(false);
+              } : undefined}
+            />
+            </Suspense>
+          )}
 
           {isDetailsPanelOpen && (
-            <ActionsPanel
-              conversation={activeConversation}
-              onMoveToPipeline={handlePipelineStageChange}
-              onAction={handleAction}
-              onClose={() => setIsDetailsPanelOpen(false)}
-              onUpdateLead={async (contactId, data) => { await updateLead({ contactId, data }); }}
-            />
+            <div className={isMobileViewport ? 'absolute inset-0 z-30 bg-background' : ''}>
+              <Suspense fallback={<TabLoadingFallback label="Carregando detalhes..." />}>
+                <ActionsPanel
+                  conversation={activeConversation}
+                  onMoveToPipeline={handlePipelineStageChange}
+                  onAction={handleAction}
+                  onClose={() => setIsDetailsPanelOpen(false)}
+                  onUpdateLead={handleLeadUpdateWithoutStage}
+                  onToggleLeadFollowUp={toggleLeadFollowUp}
+                />
+              </Suspense>
+            </div>
           )}
         </>
       )}
 
       {activeTab === 'pipelines' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-          <PipelineView
-            contacts={contacts}
-            events={events}
-            onMoveToPipeline={handlePipelineStageChange}
-            onUpdateLead={async (contactId, data) => { await updateLead({ contactId, data }); }}
-            onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
-            canViewTeam={canViewTeam}
-            leadScope={leadScope}
-            onLeadScopeChange={setLeadScope}
-            leadScopeMembers={leadScopeMembers}
-            leadScopeLoading={isLoadingLeadScopeMembers}
-            currentUserId={user?.id ?? null}
-            onGoToConversation={goToConversation}
-            onCallAction={(contact) => {
-              setPendingCallContact(contact);
-              setCallConfirmOpen(true);
-            }}
-            onGenerateProposal={handleProposal}
-            onImportContacts={importContacts}
-            onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
-            onSchedule={(contact, type) => {
-              setActionContact(contact);
-              setScheduleType(type === 'reuniao' ? 'reuniao' : 'visita');
-              setIsScheduleOpen(true);
-            }}
-          />
-          <Button
-            onClick={() => setIsCreateLeadOpen(true)}
-            size="icon"
-            data-testid="open-create-lead-modal"
-            className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
-          >
-            <Plus className="w-6 h-6" />
-          </Button>
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando pipeline..." />}>
+          <div data-tour="tab-pipelines-root" className="flex-1 min-w-0 flex flex-col h-full overflow-hidden relative">
+            <PipelineView
+              contacts={contacts}
+              events={events}
+              onMoveToPipeline={handlePipelineStageChange}
+              onUpdateLead={handleLeadUpdateWithStageGuard}
+              onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
+              canViewTeam={canViewTeam}
+              leadScope={leadScope}
+              onLeadScopeChange={setLeadScope}
+              leadScopeMembers={leadScopeMembers}
+              leadScopeLoading={isLoadingLeadScopeMembers}
+              currentUserId={user?.id ?? null}
+              onGoToConversation={goToConversation}
+              onCallAction={(contact) => {
+                setPendingCallContact(contact);
+                setCallConfirmOpen(true);
+              }}
+              onGenerateProposal={handleProposal}
+              onImportContacts={importContacts}
+              onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
+              onSchedule={(contact, type) => {
+                openScheduleFlow(contact, type === 'reuniao' ? 'reuniao' : 'visita');
+              }}
+              onOpenFollowUpExhausted={openFollowUpExhaustedForLead}
+            />
+            <Button
+              onClick={() => setIsCreateLeadOpen(true)}
+              size="icon"
+              data-testid="open-create-lead-modal"
+              className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
+            >
+              <Plus className="w-6 h-6" />
+            </Button>
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'calendario' && (
-        <CalendarView contacts={contacts} />
+        <Suspense fallback={<TabLoadingFallback label="Carregando calendário..." />}>
+          <div
+            data-tour="tab-calendario-root"
+            className="flex-1 min-w-0 h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <CalendarView
+              contacts={contacts}
+              canViewTeam={canViewTeam}
+              leadScope={leadScope}
+              onLeadScopeChange={setLeadScope}
+              leadScopeMembers={leadScopeMembers}
+              leadScopeLoading={isLoadingLeadScopeMembers}
+              currentUserId={user?.id ?? null}
+            />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'contatos' && (
-        <div className="flex-1 relative">
-          <ContactsView
-            contacts={contacts}
-            onUpdateLead={async (contactId, data) => { await updateLead({ contactId, data }); }}
-            onImportContacts={importContacts}
-            onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
-            onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
+        <Suspense fallback={<TabLoadingFallback label="Carregando contatos..." />}>
+          <div className="flex-1 min-w-0 relative">
+            <ContactsView
+              contacts={contacts}
+              onUpdateLead={handleLeadUpdateWithStageGuard}
+              onImportContacts={importContacts}
+              onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
+              onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
+              canViewTeam={canViewTeam}
+              leadScope={leadScope}
+              onLeadScopeChange={setLeadScope}
+              leadScopeMembers={leadScopeMembers}
+              leadScopeLoading={isLoadingLeadScopeMembers}
+              currentUserId={user?.id ?? null}
+              onOpenFollowUpExhausted={openFollowUpExhaustedForLead}
+            />
+            <Button
+              onClick={() => setIsCreateLeadOpen(true)}
+              size="icon"
+              data-testid="open-create-lead-modal"
+              className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
+            >
+              <Plus className="w-6 h-6" />
+            </Button>
+          </div>
+        </Suspense>
+      )}
+
+      {activeTab === 'disparos' && (
+        <Suspense fallback={<TabLoadingFallback label="Carregando disparos..." />}>
+          <div
+            data-tour="tab-disparos-root"
+            className="flex-1 min-w-0 h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <BroadcastView />
+          </div>
+        </Suspense>
+      )}
+
+      {activeTab === 'dashboard' && (
+        <Suspense fallback={<TabLoadingFallback label="Carregando dashboard..." />}>
+          <DashboardView
+            onNavigate={(tab) => handleTabChange(tab as any)}
             canViewTeam={canViewTeam}
             leadScope={leadScope}
             onLeadScopeChange={setLeadScope}
             leadScopeMembers={leadScopeMembers}
-            leadScopeLoading={isLoadingLeadScopeMembers}
-            currentUserId={user?.id ?? null}
+            isLoadingLeadScopeMembers={isLoadingLeadScopeMembers}
           />
-          <Button
-            onClick={() => setIsCreateLeadOpen(true)}
-            size="icon"
-            data-testid="open-create-lead-modal"
-            className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
-          >
-            <Plus className="w-6 h-6" />
-          </Button>
-        </div>
-      )}
-
-      {activeTab === 'dashboard' && (
-        <DashboardView
-          onNavigate={(tab) => handleTabChange(tab as any)}
-          canViewTeam={canViewTeam}
-          leadScope={leadScope}
-          onLeadScopeChange={setLeadScope}
-          leadScopeMembers={leadScopeMembers}
-          isLoadingLeadScopeMembers={isLoadingLeadScopeMembers}
-        />
+        </Suspense>
       )}
 
       {activeTab === 'propostas' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
-          <ProposalsView />
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando propostas..." />}>
+          <div
+            className="flex-1 min-w-0 flex flex-col h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <ProposalsView />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'admin_members' && (
-        <div className="flex-1 h-full overflow-hidden">
-          <AdminMembersPage embedded />
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando equipe..." />}>
+          <div className="flex-1 min-w-0 h-full overflow-hidden">
+            <AdminMembersPage embedded />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'integracoes' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
-          <IntegrationsView />
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando integrações..." />}>
+          <div
+            className="flex-1 min-w-0 flex flex-col h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <IntegrationsView />
+          </div>
+        </Suspense>
+      )}
+
+      {activeTab === 'tracking' && (
+        <Suspense fallback={<TabLoadingFallback label="Carregando tracking..." />}>
+          {trackingFeatureBlocker ? (
+            <FeatureSoftWall
+              featureName="Tracking Avancado"
+              requiredPlan="Scale"
+              description="Faca upgrade para acompanhar conversoes e eventos com mais profundidade."
+              onUpgrade={() => openBillingBlocker(trackingFeatureBlocker)}
+            />
+          ) : (
+            <div
+              className="flex-1 min-w-0 flex flex-col h-full overflow-hidden"
+              onPointerDownCapture={handleBillingGovernedInteractionCapture}
+              onClickCapture={handleBillingGovernedInteractionCapture}
+              onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+            >
+              <TrackingView />
+            </div>
+          )}
+        </Suspense>
       )}
 
       {activeTab === 'automacoes' && (
-        <AutomationsView />
+        <Suspense fallback={<TabLoadingFallback label="Carregando automações..." />}>
+          <div
+            className="flex-1 min-w-0 h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <AutomationsView />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'ia_agentes' && (
-        <AIAgentsView />
+        <Suspense fallback={<TabLoadingFallback label="Carregando IA..." />}>
+          <div
+            className="flex-1 min-w-0 h-full overflow-hidden"
+            onPointerDownCapture={handleBillingGovernedInteractionCapture}
+            onClickCapture={handleBillingGovernedInteractionCapture}
+            onKeyDownCapture={handleBillingGovernedKeyDownCapture}
+          >
+            <AIAgentsView />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'banco_ia' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
-          <KnowledgeBaseView />
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando base de conhecimento..." />}>
+          <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
+            <KnowledgeBaseView />
+          </div>
+        </Suspense>
       )}
 
       {activeTab === 'minha_conta' && (
-        <div className="flex-1 h-full overflow-auto">
-          <ConfiguracoesContaView />
-        </div>
+        <Suspense fallback={<TabLoadingFallback label="Carregando conta..." />}>
+          <div className="flex-1 min-w-0 h-full overflow-auto">
+            <ConfiguracoesContaView />
+          </div>
+        </Suspense>
+      )}
+
+      {activeTab === 'meu_plano' && canAccessAdmin && (
+        <Suspense fallback={<TabLoadingFallback label="Carregando plano..." />}>
+          <div className="flex-1 min-w-0 h-full overflow-auto">
+            <MeuPlanoView />
+          </div>
+        </Suspense>
       )}
 
       <CreateLeadModal
@@ -1420,6 +1958,14 @@ export function SolarZapLayout() {
         onGenerate={handleProposal}
       />
 
+      <ProjectPaidFinanceModal
+        isOpen={projectPaidFinanceOpen}
+        contact={projectPaidFinanceContact}
+        orgId={orgId}
+        onCancel={() => resolveProjectPaidFinanceGate(false)}
+        onCompleted={() => resolveProjectPaidFinanceGate(true)}
+      />
+
       <CallConfirmModal
         isOpen={callConfirmOpen}
         onClose={() => {
@@ -1483,6 +2029,15 @@ export function SolarZapLayout() {
         onClose={closeVisitOutcomeModal}
       />
 
+      <FollowUpExhaustedModal
+        open={followUpExhaustedModalOpen && !!followUpExhaustedLead}
+        leadName={followUpExhaustedLead?.name || ''}
+        submitting={followUpExhaustedSubmitting}
+        onKeepCurrent={handleFollowUpKeepCurrent}
+        onDisableFollowUp={handleFollowUpDisableForLead}
+        onMoveToLost={handleFollowUpMoveToLost}
+      />
+
       <VisitScheduleConfirmModal
         isOpen={visitScheduleConfirmOpen}
         onClose={() => {
@@ -1492,9 +2047,7 @@ export function SolarZapLayout() {
         onConfirm={(approved) => {
           setVisitScheduleConfirmOpen(false);
           if (approved && pendingVisitContact) {
-            setActionContact(pendingVisitContact);
-            setScheduleType('visita');
-            setIsScheduleOpen(true);
+            openScheduleFlow(pendingVisitContact, 'visita');
           }
           setPendingVisitContact(null);
         }}

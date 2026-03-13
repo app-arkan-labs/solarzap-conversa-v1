@@ -1,5 +1,5 @@
-/**
- * SolarZap — HTML Email Templates
+﻿/**
+ * SolarZap - HTML Email Templates
  *
  * Shared module used by notification-worker and ai-digest-worker.
  * All templates use inline CSS for maximum email-client compatibility
@@ -9,7 +9,7 @@
  *  Primary  #16a34a (green-600)
  *  Dark     #14532d (green-950)
  *  Light BG #f0fdf4 (green-50)
- *  Accent   #eab308 (yellow-500) — for highlights
+ *  Accent   #eab308 (yellow-500) - for highlights
  */
 
 import {
@@ -20,7 +20,7 @@ import {
   getDigestTitle,
 } from './digestContract.ts'
 
-/* ─────────── helpers ─────────── */
+/* -------- helpers -------- */
 
 function esc(val: unknown): string {
   return String(val ?? '')
@@ -37,7 +37,7 @@ function formatDateTimeBR(value: unknown): string {
   return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
-/* ─────────── base layout ─────────── */
+/* -------- base layout -------- */
 
 function baseLayout(opts: {
   iconEmoji: string
@@ -109,7 +109,7 @@ function baseLayout(opts: {
     ${opts.footerExtra || ''}
     <p style="margin:0;font-size:11px;color:#a1a1aa;line-height:1.5;text-align:center;">
       Enviado por <strong style="color:#71717a;">${esc(brand)}</strong> via SolarZap CRM<br>
-      &copy; ${year} — Você recebe este e-mail porque está cadastrado como destinatário de notificações.
+      &copy; ${year} - Você recebe este e-mail porque está cadastrado como destinatário de notificações.
     </p>
   </td></tr>
 
@@ -124,7 +124,7 @@ function baseLayout(opts: {
 </html>`
 }
 
-/* ─────────── info row helper ─────────── */
+/* -------- info row helper -------- */
 
 function infoRow(label: string, value: string, color = '#18181b'): string {
   if (!value) return ''
@@ -139,19 +139,19 @@ function infoTable(rows: string): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`
 }
 
-/* ─────────── badge helper ─────────── */
+/* -------- badge helper -------- */
 
 function badge(text: string, bg: string, fg: string): string {
   return `<span style="display:inline-block;padding:3px 10px;border-radius:20px;background-color:${bg};color:${fg};font-size:11px;font-weight:700;letter-spacing:0.3px;text-transform:uppercase;">${esc(text)}</span>`
 }
 
-/* ─────────── stage pill ─────────── */
+/* -------- stage pill -------- */
 
 function stagePill(stage: string, color: string): string {
   return `<span style="display:inline-block;padding:4px 12px;border-radius:8px;background-color:${color}15;color:${color};font-size:13px;font-weight:600;border:1px solid ${color}30;">${esc(stage)}</span>`
 }
 
-/* ═══════════════════════════════ TEMPLATES ═══════════════════════════════ */
+/* =============================== TEMPLATES =============================== */
 
 export interface TemplateContext {
   senderName?: string | null
@@ -161,6 +161,9 @@ export interface TemplateContext {
   startAt?: string
   fromStage?: string
   toStage?: string
+  dueOn?: string
+  amount?: string
+  installmentNo?: number
 }
 
 export interface SystemAccessTemplateContext {
@@ -190,7 +193,7 @@ function roleLabel(role?: 'owner' | 'admin' | 'user' | 'consultant' | string): s
   }
 }
 
-/* ── 1. NOVO LEAD ── */
+/* -- 1. NOVO LEAD -- */
 
 export function novoLeadEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const subject = `🟢 Novo lead: ${ctx.leadName}`
@@ -224,7 +227,7 @@ export function novoLeadEmail(ctx: TemplateContext): { subject: string; html: st
   }
 }
 
-/* ── 2. VISITA AGENDADA ── */
+/* -- 2. VISITA AGENDADA -- */
 
 export function visitaAgendadaEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const dateStr = ctx.startAt ? formatDateTimeBR(ctx.startAt) : ''
@@ -260,7 +263,7 @@ export function visitaAgendadaEmail(ctx: TemplateContext): { subject: string; ht
   }
 }
 
-/* ── 3. VISITA REALIZADA ── */
+/* -- 3. VISITA REALIZADA -- */
 
 export function visitaRealizadaEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const subject = `✅ Visita realizada: ${ctx.leadName}`
@@ -295,7 +298,7 @@ export function visitaRealizadaEmail(ctx: TemplateContext): { subject: string; h
   }
 }
 
-/* ── 4. CHAMADA AGENDADA ── */
+/* -- 4. CHAMADA AGENDADA -- */
 
 export function chamadaAgendadaEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const dateStr = ctx.startAt ? formatDateTimeBR(ctx.startAt) : ''
@@ -331,7 +334,7 @@ export function chamadaAgendadaEmail(ctx: TemplateContext): { subject: string; h
   }
 }
 
-/* ── 5. CHAMADA REALIZADA ── */
+/* -- 5. CHAMADA REALIZADA -- */
 
 export function chamadaRealizadaEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const subject = `✅ Chamada realizada: ${ctx.leadName}`
@@ -366,7 +369,7 @@ export function chamadaRealizadaEmail(ctx: TemplateContext): { subject: string; 
   }
 }
 
-/* ── 6. MUDANÇA DE ETAPA (STAGE CHANGED) ── */
+/* -- 6. MUDANÇA DE ETAPA (STAGE CHANGED) -- */
 
 export function stageChangedEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const from = ctx.fromStage || 'origem'
@@ -407,7 +410,44 @@ export function stageChangedEmail(ctx: TemplateContext): { subject: string; html
   }
 }
 
-/* ── 7. FINANCIAMENTO UPDATE ── */
+export function installmentDueCheckEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
+  const installmentLabel = ctx.installmentNo ? `Parcela #${ctx.installmentNo}` : 'Parcela'
+  const dueLabel = ctx.dueOn ? formatDateTimeBR(ctx.dueOn) : 'Data não informada'
+  const amountLabel = ctx.amount || 'Valor não informado'
+  const subject = `Parcela pendente: ${ctx.leadName}`
+
+  const bodyHtml = `
+    <p style="margin:0 0 16px;font-size:14px;color:#3f3f46;line-height:1.6;">
+      Uma parcela venceu e está aguardando confirmação de pagamento no CRM.
+    </p>
+    ${infoTable(
+      infoRow('Lead', ctx.leadName) +
+      infoRow('Telefone', ctx.leadPhone || '') +
+      infoRow('Parcela', installmentLabel) +
+      infoRow('Vencimento', dueLabel) +
+      infoRow('Valor', amountLabel, '#166534')
+    )}
+    <div style="margin-top:20px;padding:14px 16px;border-radius:10px;background-color:#fefce8;border:1px solid #fde68a;">
+      <p style="margin:0;font-size:13px;color:#854d0e;line-height:1.5;">
+        <strong>Ação requerida:</strong> confirme pagamento ou reagende a cobrança no CRM com nova data.
+      </p>
+    </div>`
+
+  return {
+    subject,
+    html: baseLayout({
+      iconEmoji: '💸',
+      iconBg: '#fef9c3',
+      title: 'Parcela Pendente de Confirmação',
+      subtitle: `${ctx.leadName} • ${installmentLabel}`,
+      bodyHtml,
+      senderName: ctx.senderName,
+    }),
+    text: `${installmentLabel} de ${ctx.leadName} venceu em ${dueLabel} (${amountLabel}). Confirme pagamento ou reagende.`,
+  }
+}
+
+/* -- 7. FINANCIAMENTO UPDATE -- */
 
 export function financiamentoUpdateEmail(ctx: TemplateContext): { subject: string; html: string; text: string } {
   const from = ctx.fromStage || 'origem'
@@ -448,7 +488,7 @@ export function financiamentoUpdateEmail(ctx: TemplateContext): { subject: strin
   }
 }
 
-/* ── 8. DIGEST (DAILY / WEEKLY) ── */
+/* -- 8. DIGEST (DAILY / WEEKLY) -- */
 
 export interface DigestLeadSummary {
   leadName: string
@@ -468,7 +508,7 @@ export function digestEmail(opts: {
   const isWeekly = opts.digestType === 'weekly'
   const titleText = getDigestTitle(opts.digestType)
   const digestIntro = getDigestIntro(opts.digestType)
-  const subject = `📊 ${titleText} — ${opts.dateBucket}`
+  const subject = `📊 ${titleText} - ${opts.dateBucket}`
 
   let leadsHtml = ''
   for (let i = 0; i < opts.leads.length; i++) {
@@ -511,10 +551,10 @@ export function digestEmail(opts: {
     <p style="margin:0 0 8px;font-size:14px;color:#3f3f46;line-height:1.6;">
       ${digestIntro} do seu CRM.
       <strong>${opts.leads.length} lead${opts.leads.length !== 1 ? 's' : ''}</strong> 
-      ${opts.leads.length !== 1 ? 'tiveram' : 'teve'} atividade no período.
+      ${opts.leads.length !== 1 ? 'tiveram' : 'teve'} atividade no periodo.
     </p>
     <div style="margin-top:16px;">
-      ${leadsHtml || '<p style="text-align:center;color:#a1a1aa;font-size:13px;padding:20px 0;">Nenhum lead com atividade no período.</p>'}
+      ${leadsHtml || '<p style="text-align:center;color:#a1a1aa;font-size:13px;padding:20px 0;">Nenhum lead com atividade no periodo.</p>'}
     </div>`
 
   // plain text fallback
@@ -527,7 +567,7 @@ export function digestEmail(opts: {
     ),
   ]
 
-  const subtitleSuffix = isWeekly ? 'com atividade no período' : 'com atividade nas últimas 24h'
+  const subtitleSuffix = isWeekly ? 'com atividade no periodo' : 'com atividade nas ultimas 24h'
 
   return {
     subject,
@@ -535,7 +575,7 @@ export function digestEmail(opts: {
       iconEmoji: isWeekly ? '📈' : '📊',
       iconBg: isWeekly ? '#ede9fe' : '#dbeafe',
       title: titleText,
-      subtitle: `${opts.leads.length} lead${opts.leads.length !== 1 ? 's' : ''} ${subtitleSuffix} — ${opts.dateBucket}`,
+      subtitle: `${opts.leads.length} lead${opts.leads.length !== 1 ? 's' : ''} ${subtitleSuffix} - ${opts.dateBucket}`,
       bodyHtml,
       senderName: opts.senderName,
     }),
@@ -543,7 +583,7 @@ export function digestEmail(opts: {
   }
 }
 
-/* ── SYSTEM AUTH: CONVITE DE ACESSO ── */
+/* -- SYSTEM AUTH: CONVITE DE ACESSO -- */
 
 export function systemInviteEmail(ctx: SystemAccessTemplateContext): { subject: string; html: string; text: string } {
   const subject = '\uD83D\uDD10 Convite de acesso \u2014 SolarZap'
@@ -709,7 +749,7 @@ export function defaultEventEmail(ctx: TemplateContext & { eventType: string }):
   }
 }
 
-/* ── ROUTER — maps event_type to template ── */
+/* -- ROUTER - maps event_type to template -- */
 
 export function buildEmailContent(
   eventType: string,
@@ -730,7 +770,10 @@ export function buildEmailContent(
       return stageChangedEmail(ctx)
     case 'financiamento_update':
       return financiamentoUpdateEmail(ctx)
+    case 'installment_due_check':
+      return installmentDueCheckEmail(ctx)
     default:
       return defaultEventEmail({ ...ctx, eventType })
   }
 }
+

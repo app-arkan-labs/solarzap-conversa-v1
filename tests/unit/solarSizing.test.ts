@@ -73,4 +73,65 @@ describe('calculateSolarSizing', () => {
       else process.env.VITE_USE_SOLAR_RESOURCE_API = previous;
     }
   });
+
+  it('mantem o sizing legado quando sombreamento e 0%', () => {
+    const legacy = calculateSolarSizing({
+      consumoMensal: 500,
+      irradiancia: 4.5,
+      moduloPotenciaW: 550,
+      performanceRatio: 0.8,
+      precoPorKwp: 4500,
+    });
+    const withZeroShade = calculateSolarSizing({
+      consumoMensal: 500,
+      irradiancia: 4.5,
+      moduloPotenciaW: 550,
+      performanceRatio: 0.8,
+      precoPorKwp: 4500,
+      sombreamentoPct: 0,
+    });
+
+    expect(withZeroShade).toEqual(legacy);
+  });
+
+  it('aumenta o consumo base em 15% de sombreamento', () => {
+    const result = calculateSolarSizing({
+      consumoMensal: 500,
+      irradiancia: 4.5,
+      moduloPotenciaW: 550,
+      performanceRatio: 0.8,
+      precoPorKwp: 4500,
+      sombreamentoPct: 15,
+    });
+
+    expect(result.consumoBaseDimensionamentoKwh).toBeCloseTo(588.2353, 4);
+    expect(result.basePotenciaKwp).toBeCloseTo(5.4466, 4);
+  });
+
+  it('aplica perda leve de 3% para telhado norte', () => {
+    const result = calculateSolarSizing({
+      consumoMensal: 500,
+      irradiancia: 4.5,
+      moduloPotenciaW: 550,
+      performanceRatio: 0.8,
+      precoPorKwp: 4500,
+      sombreamentoPct: 3,
+    });
+
+    expect(result.consumoBaseDimensionamentoKwh).toBeCloseTo(515.4639, 4);
+  });
+
+  it('aplica perda forte de 25% para telhado sul', () => {
+    const result = calculateSolarSizing({
+      consumoMensal: 500,
+      irradiancia: 4.5,
+      moduloPotenciaW: 550,
+      performanceRatio: 0.8,
+      precoPorKwp: 4500,
+      sombreamentoPct: 25,
+    });
+
+    expect(result.consumoBaseDimensionamentoKwh).toBeCloseTo(666.6667, 4);
+    expect(result.basePotenciaKwp).toBeCloseTo(6.1728, 4);
+  });
 });

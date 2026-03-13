@@ -19,9 +19,16 @@ export type CreateAppointmentData = {
 
 export type UpdateAppointmentData = Partial<CreateAppointmentData>;
 
-export function useAppointments() {
+export type AppointmentsReadScope = 'mine' | 'org';
+
+interface UseAppointmentsOptions {
+    readScope?: AppointmentsReadScope;
+}
+
+export function useAppointments(options: UseAppointmentsOptions = {}) {
     const { user, orgId } = useAuth();
     const queryClient = useQueryClient();
+    const readScope = options.readScope || 'mine';
 
     // Real-time subscription
     useEffect(() => {
@@ -49,16 +56,21 @@ export function useAppointments() {
     }, [user, orgId, queryClient]);
 
     const appointmentsQuery = useQuery({
-        queryKey: ['appointments', orgId, user?.id],
+        queryKey: ['appointments', orgId, user?.id, readScope],
         queryFn: async () => {
             if (!user || !orgId) return [];
 
-            const { data, error } = await supabase
+            let query = supabase
                 .from('appointments')
                 .select('*')
-                .eq('user_id', user.id)
                 .eq('org_id', orgId)
                 .order('start_at', { ascending: true });
+
+            if (readScope === 'mine') {
+                query = query.eq('user_id', user.id);
+            }
+
+            const { data, error } = await query;
 
             if (error) {
                 console.error('Error fetching appointments:', error);

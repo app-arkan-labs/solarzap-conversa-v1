@@ -24,6 +24,7 @@ import {
   drawBeforeAfterComparison,
   calcEnvironmentalImpact,
   calcMonthlyGeneration,
+  buildMonthlyChartSeriesFromAnnual,
   type ChartTheme,
 } from '@/utils/proposalCharts';
 import {
@@ -31,6 +32,7 @@ import {
   type FinancingCondition,
   type PaymentConditionOptionId,
 } from '@/types/proposalFinancing';
+import { resolveCashDiscountSnapshot } from '@/utils/proposalCashDiscount';
 import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
 import { calculateProposalFinancials } from '@/utils/proposalFinancialModel';
 import {
@@ -38,7 +40,6 @@ import {
   isOmCostModelEnabled,
   isSolarResourceApiEnabled,
   isTusdTeSimplifiedEnabled,
-  isUnifiedGenerationEnabled,
 } from '@/config/featureFlags';
 import {
   DEFAULT_ANALYSIS_YEARS,
@@ -76,9 +77,13 @@ const buildSellerScriptFileName = pdfShared.buildSellerScriptFileName ?? fallbac
 export interface ProposalPDFData {
   contact: Contact;
   consumoMensal: number;
+  contaLuzMensal?: number;
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
+  descontoAvistaValor?: number;
+  valorAvistaLiquido?: number;
+  investimentoBaseMetricas?: number;
   economiaAnual: number;
   paybackMeses: number;
   garantiaAnos: number;
@@ -144,9 +149,13 @@ export interface ProposalPDFData {
 export interface SellerScriptPDFData {
   contact: Contact;
   consumoMensal: number;
+  contaLuzMensal?: number;
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
+  descontoAvistaValor?: number;
+  valorAvistaLiquido?: number;
+  investimentoBaseMetricas?: number;
   economiaAnual: number;
   paybackMeses: number;
   garantiaAnos: number;
@@ -424,7 +433,7 @@ function buildTermsConditionsFromSelection(params: {
     params.isUsina
       ? 'A receita projetada considera a tarifa vigente e pode variar conforme reajustes tarifarios e condicoes contratuais.'
       : 'A economia projetada considera a tarifa vigente e pode variar conforme reajustes tarifarios.',
-    `Garantia dos equipamentos e servicos: modulo (${params.moduloGarantia || 25} anos), inversor (${params.inversorGarantia || 10} anos) e servicos (${params.garantiaServicos || 25} anos).`,
+    `Garantia dos equipamentos e servicos: modulo (${params.moduloGarantia || 25} anos), inversor (${params.inversorGarantia || 25} anos) e servicos (${params.garantiaServicos || 25} anos).`,
     'A instalacao inclui projeto eletrico, instalacao mecanica e eletrica, comissionamento e solicitacao de vistoria junto a concessionaria.',
     'Prazo estimado de instalacao: 7 a 15 dias uteis apos aprovacao do projeto e disponibilidade de materiais.',
     paymentText,
@@ -489,12 +498,12 @@ function buildChartTheme(P: Palette): ChartTheme {
 //  Accent sanitisation for Helvetica (standard 14 font  no Unicode glyphs) 
 /** Transliterate common Portuguese/Spanish accented chars so Helvetica can render them. */
 function repairMojibake(text: string): string {
-  if (!/[ÃÂâ]/.test(text)) return text;
+  if (!/[ÃƒÃ‚Ã¢]/.test(text)) return text;
   try {
     const bytes = Uint8Array.from(text, (char) => char.charCodeAt(0) & 0xff);
     const decoded = new TextDecoder('utf-8').decode(bytes);
-    const badOriginal = (text.match(/[ÃÂâ]/g) || []).length;
-    const badDecoded = (decoded.match(/[ÃÂâ]/g) || []).length;
+    const badOriginal = (text.match(/[ÃƒÃ‚Ã¢]/g) || []).length;
+    const badDecoded = (decoded.match(/[ÃƒÃ‚Ã¢]/g) || []).length;
     return badDecoded < badOriginal ? decoded : text;
   } catch {
     return text;
@@ -600,11 +609,18 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   );
   const resolvedFinancialInputs: FinancialInputs = {
     tipoCliente: data.tipo_cliente,
-    investimentoTotal: Math.max(0, Number(data.valorTotal) || 0),
+    investimentoTotal: Math.max(0, Number(data.investimentoBaseMetricas ?? data.valorTotal) || 0),
     consumoMensalKwh: Math.max(0, Number(data.consumoMensal) || 0),
+    contaLuzMensalReferencia: Math.max(
+      0,
+      Number(data.contaLuzMensal ?? data.financialInputs?.contaLuzMensalReferencia ?? 0) || 0,
+    ),
     potenciaSistemaKwp: Math.max(0, Number(data.potenciaSistema) || 0),
     rentabilityRatePerKwh: resolvedRentabilityRate,
-    tarifaKwh: resolvedRentabilityRate,
+    tarifaKwh: Math.max(
+      0,
+      Number(data.tarifaKwh ?? data.financialInputs?.tarifaKwh ?? resolvedRentabilityRate) || 0,
+    ),
     rentabilitySource: data.financialInputs?.rentabilitySource || data.financialInputs?.tariffSource || 'fallback',
     tariffSource: data.financialInputs?.tariffSource || data.financialInputs?.rentabilitySource || 'fallback',
     custoDisponibilidadeKwh: Math.max(
@@ -633,7 +649,47 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
       Number(data.financialInputs?.analysisYears || DEFAULT_ANALYSIS_YEARS) || DEFAULT_ANALYSIS_YEARS,
     ),
     uf: data.financialInputs?.uf || data.contact?.state,
+    avgDailyIrradiance: Math.max(
+      0.01,
+      Number(data.financialInputs?.avgDailyIrradiance ?? data.irradiancia ?? 4.5) || 4.5,
+    ),
+    performanceRatio: Math.max(
+      0.01,
+      Number(data.financialInputs?.performanceRatio ?? data.performanceRatio ?? 0.8) || 0.8,
+    ),
+    daysInMonth: Math.max(
+      1,
+      Number(
+        data.financialInputs?.daysInMonth
+        ?? ((data.irradianceSource || data.financialInputs?.irradianceSource) === 'pvgis' ? 30.4375 : 30),
+      ) || 30,
+    ),
+    monthlyGenerationFactors: data.financialInputs?.monthlyGenerationFactors || data.monthlyGenerationFactors,
+    irradianceSource: (
+      data.financialInputs?.irradianceSource || data.irradianceSource
+    ) as FinancialInputs['irradianceSource'] | undefined,
+    latitude: Number.isFinite(Number(data.financialInputs?.latitude ?? data.latitude))
+      ? Number(data.financialInputs?.latitude ?? data.latitude)
+      : undefined,
+    longitude: Number.isFinite(Number(data.financialInputs?.longitude ?? data.longitude))
+      ? Number(data.financialInputs?.longitude ?? data.longitude)
+      : undefined,
   };
+  const cashDiscountSnapshot = resolveCashDiscountSnapshot({
+    valorTotal: data.valorTotal,
+    descontoAvistaValor: data.descontoAvistaValor,
+    paymentConditions: data.paymentConditions,
+  });
+  const descontoAvistaValor = cashDiscountSnapshot.descontoAvistaValor;
+  const valorAvistaLiquido = Number.isFinite(Number(data.valorAvistaLiquido))
+    ? Math.max(0, Number(data.valorAvistaLiquido) || 0)
+    : cashDiscountSnapshot.valorAvistaLiquido;
+  const investimentoBaseMetricas = Number.isFinite(Number(data.investimentoBaseMetricas))
+    ? Math.max(0, Number(data.investimentoBaseMetricas) || 0)
+    : cashDiscountSnapshot.investimentoBaseMetricas;
+  const showCashDiscountBreakdown = descontoAvistaValor > 0
+    || Math.abs(investimentoBaseMetricas - Math.max(0, Number(data.valorTotal) || 0)) > 0.009;
+  resolvedFinancialInputs.investimentoTotal = investimentoBaseMetricas;
   const financialOutputs: FinancialOutputs = data.financialOutputs
     ? (data.financialOutputs as FinancialOutputs)
     : calculateProposalFinancials(resolvedFinancialInputs);
@@ -678,10 +734,10 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const paybackYearsNumber = (financialOutputs?.paybackYearsDecimal ?? 0) > 0
     ? (financialOutputs?.paybackYearsDecimal || 0)
     : (paybackMonths > 0 ? paybackMonths / 12 : 0);
-  const roi25Pct = data.valorTotal > 0
-    ? (((longTermSavings - data.valorTotal) / data.valorTotal) * 100)
+  const roi25Pct = investimentoBaseMetricas > 0
+    ? (((longTermSavings - investimentoBaseMetricas) / investimentoBaseMetricas) * 100)
     : 0;
-  const roi25 = data.valorTotal > 0 ? `${roi25Pct.toFixed(1)}%` : '-';
+  const roi25 = investimentoBaseMetricas > 0 ? `${roi25Pct.toFixed(1)}%` : '-';
   const cumulativeSeries = Array.isArray(financialOutputs?.cumulativeRevenueSeries)
     ? financialOutputs!.cumulativeRevenueSeries
     : [];
@@ -692,42 +748,34 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   };
   const receita5Anos = cumulativeAtYear(5);
   const receita15Anos = cumulativeAtYear(15);
-  const retornoPorReal = data.valorTotal > 0
+  const retornoPorReal = investimentoBaseMetricas > 0
     ? ((financialOutputs?.retornoPorReal ?? 0) > 0
       ? (financialOutputs?.retornoPorReal || 0)
-      : (longTermSavings / data.valorTotal))
+      : (longTermSavings / investimentoBaseMetricas))
     : 0;
   const segLabel = (data.tipo_cliente || 'residencial').charAt(0).toUpperCase() + (data.tipo_cliente || 'residencial').slice(1);
   const today = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   // logoDataUrl should always be a valid data:image/... string from useProposalLogo
   const logoSrc = data.logoDataUrl || null;
-  const envImpact: EnvironmentalImpact = premium?.environmentalImpact
-    || calcEnvironmentalImpact(data.consumoMensal * 12, 25);
-  const unifiedGenerationEnabled = isUnifiedGenerationEnabled();
-  const fallbackMonthlyGen = calcMonthlyGeneration(data.potenciaSistema, data.consumoMensal, {
-    monthlyGenerationFactors: data.monthlyGenerationFactors || data.financialInputs?.monthlyGenerationFactors,
-    uf: data.contact?.state || data.financialInputs?.uf,
-  });
-  const premiumMonthlyGen = Array.isArray(premium?.monthlyGeneration)
-    ? premium.monthlyGeneration.slice(0, 12).map((v) => {
-      const n = Number(v);
-      return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
-    })
-    : null;
-  const monthlySpread = premiumMonthlyGen && premiumMonthlyGen.length === 12
-    ? (Math.max(...premiumMonthlyGen) - Math.min(...premiumMonthlyGen))
-      / Math.max(1, premiumMonthlyGen.reduce((acc, v) => acc + v, 0) / premiumMonthlyGen.length)
-    : 0;
-  const monthlyGen: number[] = unifiedGenerationEnabled
-    ? fallbackMonthlyGen
-    : (premiumMonthlyGen && monthlySpread >= 0.25
-      ? premiumMonthlyGen
-      : fallbackMonthlyGen);
-  const annualGenerationFromMonthly = monthlyGen.reduce((acc, value) => acc + Math.max(0, Number(value) || 0), 0);
-  const annualGenerationKwh = unifiedGenerationEnabled && Number.isFinite(financialOutputs?.annualGenerationKwhYear1)
-    ? Math.max(0, Number(financialOutputs.annualGenerationKwhYear1) || 0)
-    : annualGenerationFromMonthly;
+  const envImpact: EnvironmentalImpact = calcEnvironmentalImpact(data.consumoMensal * 12, 25);
+  const fallbackMonthlyGen = calcMonthlyGeneration(
+    resolvedFinancialInputs.potenciaSistemaKwp,
+    resolvedFinancialInputs.consumoMensalKwh,
+    {
+      monthlyGenerationFactors: resolvedFinancialInputs.monthlyGenerationFactors,
+      uf: resolvedFinancialInputs.uf,
+      avgDailyIrradiance: resolvedFinancialInputs.avgDailyIrradiance,
+      performanceRatio: resolvedFinancialInputs.performanceRatio,
+      daysInMonth: resolvedFinancialInputs.daysInMonth,
+    },
+  );
+  const annualGenerationFromModel = Number(financialOutputs?.annualGenerationKwhYear1);
+  const annualGenerationKwh = Number.isFinite(annualGenerationFromModel) && annualGenerationFromModel > 0
+    ? Math.max(0, annualGenerationFromModel || 0)
+    : fallbackMonthlyGen.reduce((acc, value) => acc + Math.max(0, Number(value) || 0), 0);
+  const annualBaseForChart = annualGenerationKwh;
+  const monthlyGenChart = buildMonthlyChartSeriesFromAnnual(annualBaseForChart);
   const avgMonthlyGenerationKwh = annualGenerationKwh / 12;
   const daysInMonthAssumption = solarResourceApiEnabled ? 30.4375 : 30;
   const resolvedPerformanceRatio = Math.max(0, Number(data.performanceRatio ?? 0.8) || 0.8);
@@ -749,6 +797,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     || tusdTeSimplifiedEnabled;
   const mapIrradianceSourceLabel = (source: string): string => {
     if (source === 'pvgis') return 'PVGIS georreferenciado';
+    if (source === 'pvgis_cache_degraded') return 'PVGIS cache degradado';
     if (source === 'open_meteo') return 'Open-Meteo georreferenciado';
     if (source === 'cache') return 'cache georreferenciado';
     if (source === 'uf_fallback') return 'fallback por UF';
@@ -767,7 +816,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     : (annualGenerationKwh > 0 ? (econAnual / annualGenerationKwh) : 0);
   const equipSpecs: EquipmentSpec[] = premium?.equipmentSpecs || [
     { item: 'Modulos Fotovoltaicos', spec: 'Monocristalino 550W+ Tier 1', qty: data.quantidadePaineis, warranty: '12 anos produto / 25 anos performance' },
-    { item: 'Inversor', spec: 'On-Grid alta eficiencia (>97%)', qty: 1, warranty: '10 anos' },
+    { item: 'Inversor', spec: 'On-Grid alta eficiencia (>97%)', qty: 1, warranty: '25 anos' },
     { item: 'Estrutura de Fixacao', spec: 'Aluminio anodizado', qty: `${data.quantidadePaineis} conjuntos`, warranty: '15 anos' },
     { item: 'Cabos e Conectores', spec: 'Solar CC 6mm\u00B2 + MC4', qty: 'Kit completo', warranty: '10 anos' },
     { item: 'String Box / Protecao', spec: 'DPS + chave seccionadora CC/CA', qty: 1, warranty: '5 anos' },
@@ -775,18 +824,30 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   // Monthly bill comparison for before/after chart.
   const billBeforeFromModel = Number(financialOutputs.billBeforeMonthly);
   const billAfterFromModel = Number(financialOutputs.billAfterMonthly);
+  const contaLuzMensalReferencia = Math.max(
+    0,
+    Number(data.contaLuzMensal ?? resolvedFinancialInputs.contaLuzMensalReferencia ?? 0) || 0,
+  );
   const fallbackBillBefore = data.consumoMensal * effectiveTotalRate;
   const fallbackBillAfter = Math.min(data.consumoMensal, resolvedFinancialInputs.custoDisponibilidadeKwh || 0) * effectiveTotalRate;
   const contaEstimada = !isUsina
-    ? (Number.isFinite(billBeforeFromModel) ? billBeforeFromModel : fallbackBillBefore)
+    ? (contaLuzMensalReferencia > 0
+      ? contaLuzMensalReferencia
+      : (Number.isFinite(billBeforeFromModel) ? billBeforeFromModel : fallbackBillBefore))
     : 0;
-  const contaComSolar = !isUsina
+  const contaComSolarRaw = !isUsina
     ? (Number.isFinite(billAfterFromModel) ? billAfterFromModel : fallbackBillAfter)
     : 0;
-  if (!isUsina) {
-    const comparableSavingsMonthly = Number.isFinite(financialOutputs.savingsMonthly as number)
+  const billSavingsMonthly = !isUsina
+    ? (Number.isFinite(financialOutputs.savingsMonthly as number)
       ? Math.max(0, Number(financialOutputs.savingsMonthly) || 0)
-      : econMensal;
+      : Math.max(0, contaEstimada - contaComSolarRaw))
+    : 0;
+  const contaComSolar = !isUsina
+    ? Math.max(0, contaEstimada - billSavingsMonthly)
+    : contaComSolarRaw;
+  if (!isUsina) {
+    const comparableSavingsMonthly = billSavingsMonthly;
     const diff = Math.abs((contaEstimada - contaComSolar) - comparableSavingsMonthly);
     if (diff > 0.01) {
       console.warn('[proposal-pdf] Incoerencia financeira detectada no comparativo.', { diff });
@@ -906,7 +967,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   };
 
 // ---
-  // PAGE 0  COVER (clean modern layout — white bg, brand stripe, partial photo)
+  // PAGE 0  COVER (clean modern layout â€” white bg, brand stripe, partial photo)
 // ---
   const coverImageSrc = data.coverImageDataUrl || null;
   const coverImageList = Array.isArray(data.coverImageDataUrls)
@@ -1007,7 +1068,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   doc.setLineWidth(0.6);
   doc.line(txL, 66, txL + 35, 66);
 
-  // 8. Title block — strong typographic hierarchy
+  // 8. Title block â€” strong typographic hierarchy
   doc.setTextColor(35, 35, 35);
   doc.setFontSize(30);
   doc.setFont('helvetica', 'bold');
@@ -1051,7 +1112,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     doc.text(data.contact.city, txL, 252);
   }
 
-  // Segment label — pure typography, no badge
+  // Segment label â€” pure typography, no badge
   doc.setTextColor(C.header[0], C.header[1], C.header[2]);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
@@ -1130,7 +1191,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const cardWidth = (W - 2 * M - 8) / 3;
   const metricH = 20;
   const metricsArr = [
-    { label: 'INVESTIMENTO ESTIMADO', value: fmtCurrency(data.valorTotal) },
+    { label: 'INVESTIMENTO ESTIMADO', value: fmtCurrency(investimentoBaseMetricas) },
     { label: isUsina ? 'RECEITA MENSAL ESTIMADA' : 'ECONOMIA MENSAL ESTIMADA', value: fmtCurrency(econMensal) },
     { label: 'PAYBACK ESTIMADO', value: paybackYears },
   ];
@@ -1165,8 +1226,8 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   }
 
   const narrative = isUsina
-    ? `${fmtCurrency(data.valorTotal)} de investimento estimado para gerar receita de cerca de ${fmtCurrency(econMensal)}/mes (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Receita acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulacao).`
-    : `${fmtCurrency(data.valorTotal)} de investimento estimado para economizar cerca de ${fmtCurrency(econMensal)}/mes (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Economia acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulacao).`;
+    ? `${fmtCurrency(investimentoBaseMetricas)} de investimento estimado para gerar receita de cerca de ${fmtCurrency(econMensal)}/mes (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Receita acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulacao).`
+    : `${fmtCurrency(investimentoBaseMetricas)} de investimento estimado para economizar cerca de ${fmtCurrency(econMensal)}/mes (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Economia acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulacao).`;
   doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
   doc.setFontSize(9.6); doc.setFont('helvetica', 'normal');
   const narLines = doc.splitTextToSize(narrative, W - 2 * M);
@@ -1196,7 +1257,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   //  "Por que confiar" 
   const trustItems = [
     ...(premium?.proofPoints || []),
-    `Garantias comerciais: modulo ${data.moduloGarantia || 25} anos, inversor ${data.inversorGarantia || 10} anos e servicos ${data.garantiaAnos} anos.`,
+    `Garantias comerciais: modulo ${data.moduloGarantia || 25} anos, inversor ${data.inversorGarantia || 25} anos e servicos ${data.garantiaAnos} anos.`,
     'Dimensionamento alinhado ao consumo informado e as regras vigentes de geracao distribuida.',
   ];
   sectionTitle('Por que confiar');
@@ -1213,36 +1274,37 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   // Before/After comparison table (only for non-usina)
   if (!isUsina) {
     sectionTitle('Comparativo: Sem Solar vs Com Solar');
+    const custo25AnosSem = contaEstimada * 12 * 25;
     const baData = {
       contaAtual: contaEstimada,
       contaComSolar,
-      economiaMensal: econMensal,
+      economiaMensal: billSavingsMonthly,
       econAnual,
-      custo25AnosSem: contaEstimada * 12 * 25,
-      custo25AnosCom: contaComSolar * 12 * 25,
+      custo25AnosSem,
+      custo25AnosCom: Math.max(0, custo25AnosSem - longTermSavings),
+      economia25Anos: longTermSavings,
     };
     const baH = drawBeforeAfterComparison(doc, M, y, W - 2 * M, baData, chartTheme, false);
     y += baH + TABLE_GAP;
   } else {
     // Usina: Revenue projection table
     sectionTitle('Projecao de Receita e Retorno');
-    const retPerReal = data.valorTotal > 0 ? retornoPorReal.toFixed(1) : '-';
+    const retPerReal = investimentoBaseMetricas > 0 ? retornoPorReal.toFixed(1) : '-';
     autoTable(doc, {
       startY: y,
       margin: { left: M, right: M },
       head: [['Indicador', 'Valor']],
       body: [
-        ['Investimento Total', fmtCurrency(data.valorTotal)],
+        ...(showCashDiscountBreakdown
+          ? [
+            ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
+            ['Desconto a Vista', fmtCurrency(descontoAvistaValor)],
+            ['Valor a Vista Liquido', fmtCurrency(valorAvistaLiquido)],
+            ['Investimento Base (Metricas)', fmtCurrency(investimentoBaseMetricas)],
+          ]
+          : [['Investimento Total', fmtCurrency(investimentoBaseMetricas)]]),
         ['Receita Mensal Estimada', fmtCurrency(econMensal)],
         ['Receita Anual Estimada', fmtCurrency(econAnual)],
-        ['Rentabilidade aplicada', `R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh`],
-        ...(tusdTeSimplifiedEnabled
-          ? [
-            ['Tarifa TE', `R$ ${fmtDecimal(effectiveTeRate, 2, 4)} / kWh`],
-            ['Tarifa TUSD', `R$ ${fmtDecimal(effectiveTusdRate, 2, 4)} / kWh`],
-            ['Compensacao TUSD', `${fmtDecimal(effectiveTusdCompensationPct, 0, 2)}%`],
-          ]
-          : []),
         ['Receita Acumulada (5 anos)', fmtCurrency(receita5Anos)],
         ['Receita Acumulada (15 anos)', fmtCurrency(receita15Anos)],
         ['Payback Estimado', paybackYearsDetailed],
@@ -1293,7 +1355,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   if (isUsina) {
     drawRevenueBarChart(doc, M, y, chartRowW, topChartsCardH, {
-      investimento: data.valorTotal,
+      investimento: investimentoBaseMetricas,
       receitaAnual: econAnual,
       receita5Anos,
       receita15Anos,
@@ -1304,20 +1366,20 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     drawSavingsBarChart(doc, M, y, chartRowW, topChartsCardH, {
       contaAtual: contaEstimada,
       contaComSolar,
-      economiaMensal: econMensal,
+      economiaMensal: billSavingsMonthly,
     }, chartTheme);
   }
 
   drawROIPieChart(doc, M + chartRowW + 6, y, chartRowW, topChartsCardH, {
-    valorTotal: data.valorTotal,
-    retornoLiquido: longTermSavings - data.valorTotal,
+    valorTotal: investimentoBaseMetricas,
+    retornoLiquido: longTermSavings - investimentoBaseMetricas,
   }, chartTheme);
   y += topChartsStep;
 
   // Cumulative chart (full width)
   if (!isUsina) checkPageBreak(65);
   drawCumulativeSavingsChart(doc, M, y, W - 2 * M, cumulativeCardH, {
-    valorTotal: data.valorTotal,
+    valorTotal: investimentoBaseMetricas,
     economiaMensal: econMensal,
     paybackMeses: paybackMonths,
     cumulativeRevenueSeries: financialOutputs?.cumulativeRevenueSeries,
@@ -1328,7 +1390,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   if (showProjectionSummary && y + 20 < H - 28) {
     doc.setTextColor(C.header[0], C.header[1], C.header[2]);
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-    const retPerReal = data.valorTotal > 0 ? retornoPorReal.toFixed(1) : '-';
+    const retPerReal = investimentoBaseMetricas > 0 ? retornoPorReal.toFixed(1) : '-';
     doc.text(
       `Para cada R$ 1,00 investido, voce recupera R$ ${retPerReal} ao longo de 25 anos.`,
       W / 2, y, { align: 'center' }
@@ -1373,7 +1435,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const invMarca = data.inversorMarca || '';
   const invPot = data.inversorPotencia || data.potenciaSistema;
   const invTensao = data.inversorTensao || 220;
-  const invGar = data.inversorGarantia || 10;
+  const invGar = data.inversorGarantia || 25;
   const invQtd = data.inversorQtd || 1;
   const estrutura = data.estruturaTipo || (isUsina ? 'Solo' : 'Telhado');
 
@@ -1400,7 +1462,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   // Monthly Generation Chart
   checkPageBreak(82);
-  drawMonthlyGenerationChart(doc, M, y, W - 2 * M, 76, monthlyGen, chartTheme);
+  drawMonthlyGenerationChart(doc, M, y, W - 2 * M, 76, monthlyGenChart, chartTheme);
   y += 82;
 
   // Environmental Impact Infographic
@@ -1419,17 +1481,16 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     startY: y,
     head: [['Descricao', 'Valor']],
     body: [
-      ['Investimento Total', fmtCurrency(data.valorTotal)],
+      ...(showCashDiscountBreakdown
+        ? [
+          ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
+          ['Desconto a Vista', fmtCurrency(descontoAvistaValor)],
+          ['Valor a Vista Liquido', fmtCurrency(valorAvistaLiquido)],
+          ['Investimento Base (Metricas)', fmtCurrency(investimentoBaseMetricas)],
+        ]
+        : [['Investimento Total', fmtCurrency(investimentoBaseMetricas)]]),
       [isUsina ? 'Receita Mensal Estimada' : 'Economia Mensal Estimada', fmtCurrency(econMensal)],
       [isUsina ? 'Receita Anual Estimada' : 'Economia Anual Estimada', fmtCurrency(econAnual)],
-      ['Rentabilidade aplicada', `R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh`],
-      ...(tusdTeSimplifiedEnabled
-        ? [
-          ['Tarifa TE', `R$ ${fmtDecimal(effectiveTeRate, 2, 4)} / kWh`],
-          ['Tarifa TUSD', `R$ ${fmtDecimal(effectiveTusdRate, 2, 4)} / kWh`],
-          ['Compensacao TUSD', `${fmtDecimal(effectiveTusdCompensationPct, 0, 2)}%`],
-        ]
-        : []),
       ['Tempo de Retorno (Payback)', paybackYearsDetailed],
       [isUsina ? 'Receita em 25 anos' : 'Economia em 25 anos', fmtCurrency(longTermSavings)],
       ['ROI em 25 anos', roi25],
@@ -1509,48 +1570,8 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   const assumptionsFromPremium = premium?.assumptions || [];
   const assumptionsSnapshot = (financialOutputs?.assumptionsSnapshot || {}) as Record<string, unknown>;
-  const resolvedSnapshotOmEnabled = typeof assumptionsSnapshot.omCostModelEnabled === 'boolean'
-    ? Boolean(assumptionsSnapshot.omCostModelEnabled)
-    : omCostModelEnabled;
-  const resolvedSnapshotDegradationAllClients = typeof assumptionsSnapshot.degradationAllClientsEnabled === 'boolean'
-    ? Boolean(assumptionsSnapshot.degradationAllClientsEnabled)
-    : degradationAllClientsEnabled;
-  const resolvedSnapshotTusdTeEnabled = typeof assumptionsSnapshot.tusdTeSimplifiedEnabled === 'boolean'
-    ? Boolean(assumptionsSnapshot.tusdTeSimplifiedEnabled)
-    : tusdTeSimplifiedEnabled;
-  const transparencyAssumptions: string[] = showExtendedAssumptions
-    ? [
-      `Fonte de irradiancia: ${mapIrradianceSourceLabel(resolvedIrradianceSource)}.`,
-      ...(Number.isFinite(resolvedLat) && Number.isFinite(resolvedLon)
-        ? [`Coordenadas de referencia: lat ${fmtDecimal(resolvedLat, 4, 4)} | lon ${fmtDecimal(resolvedLon, 4, 4)}.`]
-        : []),
-      ...(resolvedIrradiance > 0
-        ? [`Irradiancia media utilizada: ${fmtDecimal(resolvedIrradiance, 2, 4)} kWh/m2/dia.`]
-        : []),
-      `Dias medios por mes no dimensionamento: ${fmtDecimal(daysInMonthAssumption, 3, 4)}.`,
-      `Performance ratio (PR) aplicado: ${fmtDecimal(resolvedPerformanceRatio * 100, 1, 3)}%.`,
-      ...(resolvedSnapshotTusdTeEnabled
-        ? [
-          `Tarifa TE: R$ ${fmtDecimal(effectiveTeRate, 2, 4)} / kWh.`,
-          `Tarifa TUSD: R$ ${fmtDecimal(effectiveTusdRate, 2, 4)} / kWh.`,
-          `Compensacao de TUSD aplicada: ${fmtDecimal(effectiveTusdCompensationPct, 0, 2)}%.`,
-          `Rentabilidade efetiva (TE + TUSD compensada): R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh.`,
-        ]
-        : [`Tarifa de referencia aplicada: R$ ${fmtDecimal(effectiveTotalRate, 2, 4)} / kWh.`]),
-      ...(resolvedSnapshotOmEnabled
-        ? [
-          `O&M anual considerado: ${fmtDecimal(effectiveOmCostPct, 1, 3)}% do CAPEX + R$ ${fmtDecimal(effectiveOmCostFixed)} por ano.`,
-        ]
-        : ['O&M anual nao aplicado neste calculo.']),
-      `Degradacao anual de modulos: ${fmtDecimal(effectiveModuleDegradationPct, 1, 3)}%.`,
-      resolvedSnapshotDegradationAllClients
-        ? 'Degradacao aplicada para todos os segmentos habilitados.'
-        : 'Degradacao aplicada apenas ao segmento usina (comportamento legado).',
-      `Reajuste anual projetado de energia/tarifa: ${fmtDecimal(effectiveAnnualIncreasePct, 1, 3)}%.`,
-      `Horizonte de analise: ${resolvedHorizonYears} anos.`,
-      `Versao do modelo financeiro: ${data.financialModelVersion || 'nao informada'}.`,
-    ]
-    : [];
+  // Hidden in client-facing proposal by request.
+  const transparencyAssumptions: string[] = [];
 
   // Assumptions
   if (assumptionsFromPremium.length > 0 || transparencyAssumptions.length > 0) {
@@ -1563,25 +1584,6 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
       const lines = doc.splitTextToSize(a, W - 2 * M - 8);
       doc.text(lines, M + 6, y); y += lines.length * 4 + 3;
     });
-    if (transparencyAssumptions.length > 0) {
-      if (assumptionsFromPremium.length > 0) y += 1;
-      checkPageBreak(8);
-      doc.setTextColor(C.header[0], C.header[1], C.header[2]);
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Premissas tecnicas e financeiras aplicadas', M, y);
-      y += 5;
-      doc.setTextColor(100, 100, 100);
-      doc.setFont('helvetica', 'normal');
-      transparencyAssumptions.forEach((item) => {
-        checkPageBreak(10);
-        doc.setFillColor(120, 120, 120);
-        doc.circle(M + 2, y - 1, 1, 'F');
-        const lines = doc.splitTextToSize(item, W - 2 * M - 8);
-        doc.text(lines, M + 6, y);
-        y += lines.length * 4 + 2.5;
-      });
-    }
     y += 4;
   }
 
@@ -1758,12 +1760,26 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
       ?? data.financialOutputs?.cumulativeRevenueSeries?.[data.financialOutputs.cumulativeRevenueSeries.length - 1]
       ?? (econAnual * 25))
     : (econAnual * 25);
+  const cashDiscountSnapshot = resolveCashDiscountSnapshot({
+    valorTotal: data.valorTotal,
+    descontoAvistaValor: data.descontoAvistaValor,
+    paymentConditions: data.paymentConditions,
+  });
+  const descontoAvistaValor = cashDiscountSnapshot.descontoAvistaValor;
+  const valorAvistaLiquido = Number.isFinite(Number(data.valorAvistaLiquido))
+    ? Math.max(0, Number(data.valorAvistaLiquido) || 0)
+    : cashDiscountSnapshot.valorAvistaLiquido;
+  const investimentoBaseMetricas = Number.isFinite(Number(data.investimentoBaseMetricas))
+    ? Math.max(0, Number(data.investimentoBaseMetricas) || 0)
+    : cashDiscountSnapshot.investimentoBaseMetricas;
+  const showCashDiscountBreakdown = descontoAvistaValor > 0
+    || Math.abs(investimentoBaseMetricas - Math.max(0, Number(data.valorTotal) || 0)) > 0.009;
   const paybackMonths = (data.financialOutputs?.paybackMonths ?? 0) > 0
     ? (data.financialOutputs?.paybackMonths || 0)
     : data.paybackMeses;
   const paybackYears = fmtYears(paybackMonths);
-  const roi25 = data.valorTotal > 0
-    ? `${(((longTermSavings - data.valorTotal) / data.valorTotal) * 100).toFixed(1)}%`
+  const roi25 = investimentoBaseMetricas > 0
+    ? `${(((longTermSavings - investimentoBaseMetricas) / investimentoBaseMetricas) * 100).toFixed(1)}%`
     : '-';
   const hasLegacyFinancingData = (Number(data.taxaFinanciamento) || 0) > 0
     || (Number(data.parcela36x) || 0) > 0
@@ -1890,7 +1906,14 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
     startY: y,
     head: [['Indicador', 'Valor']],
     body: [
-      ['Investimento', fmtCurrency(data.valorTotal)],
+      ...(showCashDiscountBreakdown
+        ? [
+          ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
+          ['Desconto a Vista', fmtCurrency(descontoAvistaValor)],
+          ['Valor a Vista Liquido', fmtCurrency(valorAvistaLiquido)],
+          ['Investimento Base (Metricas)', fmtCurrency(investimentoBaseMetricas)],
+        ]
+        : [['Investimento', fmtCurrency(investimentoBaseMetricas)]]),
       ['Economia mensal estimada', fmtCurrency(econMensal)],
       ['Economia anual estimada', fmtCurrency(econAnual)],
       ['Payback estimado', paybackYears],

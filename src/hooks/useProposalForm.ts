@@ -3,9 +3,11 @@ import { Contact, ClientType } from '@/types/solarzap';
 import { generateProposalPDF } from '@/utils/generateProposalPDF';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { useLeads } from '@/hooks/domain/useLeads';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
+import { scopeProposalVersionByIdQuery } from '@/lib/multiOrgLeadScoping';
 import {
   prefetchCoverImage,
   prefetchCoverImages,
@@ -16,14 +18,16 @@ import { supabase } from '@/lib/supabase';
 import { BRAZIL_STATES, getIrradianceByUF } from '@/constants/solarIrradiance';
 import {
   isFinancialShadowModeEnabled,
-  isTusdTeSimplifiedEnabled,
 } from '@/config/featureFlags';
 import * as energyDistributors from '@/constants/energyDistributors';
 import {
   DEFAULT_ANALYSIS_YEARS,
   DEFAULT_ANNUAL_INCREASE_PCT,
   DEFAULT_MODULE_DEGRADATION_PCT,
+  DEFAULT_RENTABILITY_RATE,
   DEFAULT_TARIFF_FALLBACK,
+  TE_PCT_OF_TARIFF,
+  TUSD_PCT_OF_TARIFF,
 } from '@/constants/financialDefaults';
 import { calculateSolarSizing } from '@/utils/solarSizing';
 import {
@@ -44,11 +48,18 @@ import {
   type GracePeriodUnit,
   type PaymentConditionOptionId,
 } from '@/types/proposalFinancing';
+import { resolveCashDiscountSnapshot } from '@/utils/proposalCashDiscount';
 import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
 import { FINANCIAL_MODEL_VERSION } from '@/types/proposalFinancial';
 import { calculateProposalFinancials, resolveTariffByPriority } from '@/utils/proposalFinancialModel';
-import type { SolarResourceResponse } from '@/types/solarResource';
+import { useSolarResource, isStrictPvgisSource } from '@/hooks/useSolarResource';
 import * as pdfShared from '@/utils/pdf/shared';
+import {
+  buildLimitBlockerForKey,
+  isProposalComposerBillingError,
+  isUnlimitedBillingBypass,
+} from '@/lib/billingBlocker';
+import { resolveSupabaseFunctionErrorDetails } from '@/lib/supabaseFunctionErrors';
 
 const ENERGY_DISTRIBUTOR_OPTIONS = energyDistributors.ENERGY_DISTRIBUTOR_OPTIONS;
 const inferDistributor = energyDistributors.inferDistributor;
@@ -98,6 +109,14 @@ const fallbackTriggerBlobDownload = (blob: Blob, rawFileName: string): void => {
 const buildProposalFileNameSafe = pdfShared.buildProposalFileName ?? fallbackBuildProposalFileName;
 const triggerBlobDownloadSafe = pdfShared.triggerBlobDownload ?? fallbackTriggerBlobDownload;
 
+const deriveTariffComponents = (tariffRaw: number | null | undefined) => {
+  const tariff = Math.max(0, Number(tariffRaw) || 0);
+  return {
+    teRatePerKwh: tariff * TE_PCT_OF_TARIFF,
+    tusdRatePerKwh: tariff * TUSD_PCT_OF_TARIFF,
+  };
+};
+
 export interface UseProposalFormOptions {
   isOpen: boolean;
   onClose: () => void;
@@ -112,6 +131,9 @@ export interface ProposalData {
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
+  descontoAvistaValor?: number;
+  valorAvistaLiquido?: number;
+  investimentoBaseMetricas?: number;
   economiaAnual: number;
   paybackMeses: number;
   garantiaAnos: number;
@@ -154,6 +176,7 @@ export interface ProposalData {
   latitude?: number;
   longitude?: number;
   irradianceRefAt?: string;
+  irradianceRequestId?: string;
   premiumPayload?: Record<string, unknown>;
   contextEngine?: unknown;
   // Sprint 3: Pass theme/logo for seller script
@@ -167,6 +190,8 @@ export interface ProposalData {
   signatureCompanyCnpj?: string;
   signatureContractorName?: string;
   signatureContractorCnpj?: string;
+  posicaoTelhado?: RoofPosition;
+  sombreamentoPct?: number;
 }
 
 import { calcPMT } from '@/utils/financingCalc';
@@ -179,20 +204,20 @@ export const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'usina', label: 'Usina Solar' },
 ];
 
-// ── PMT calc — uses shared utility ──
+// â”€â”€ PMT calc â€” uses shared utility â”€â”€
 
 export const RATE_SHORTCUTS = [
   { label: 'Otimista 1,30%', rate: 1.3 },
-  { label: 'Padrão 1,50%', rate: 1.5 },
+  { label: 'PadrÃ£o 1,50%', rate: 1.5 },
   { label: 'Conservador 1,90%', rate: 1.9 },
 ];
 
 export type TipoLigacao = 'monofasico' | 'bifasico' | 'trifasico';
 
 export const TIPOS_LIGACAO: { value: TipoLigacao; label: string }[] = [
-  { value: 'monofasico', label: 'Monofásico (30 kWh)' },
-  { value: 'bifasico', label: 'Bifásico (50 kWh)' },
-  { value: 'trifasico', label: 'Trifásico (100 kWh)' },
+  { value: 'monofasico', label: 'MonofÃ¡sico (30 kWh)' },
+  { value: 'bifasico', label: 'BifÃ¡sico (50 kWh)' },
+  { value: 'trifasico', label: 'TrifÃ¡sico (100 kWh)' },
 ];
 
 export const CUSTO_DISPONIBILIDADE_POR_LIGACAO: Record<TipoLigacao, number> = {
@@ -212,6 +237,22 @@ export const MODULE_TYPE_OPTIONS = [
   'N-Type',
 ];
 
+export type RoofPosition = 'norte' | 'leste_oeste' | 'sul' | 'nao_definido';
+
+export const ROOF_POSITION_LOSS_MAP: Record<RoofPosition, number> = {
+  norte: 3,
+  leste_oeste: 6,
+  sul: 25,
+  nao_definido: 15,
+};
+
+export const ROOF_POSITION_OPTIONS: Array<{ value: RoofPosition; label: string }> = [
+  { value: 'norte', label: 'Norte' },
+  { value: 'leste_oeste', label: 'Leste-Oeste' },
+  { value: 'sul', label: 'Sul' },
+  { value: 'nao_definido', label: 'Nao Definido' },
+];
+
 export function createDefaultFinancingCondition(): FinancingCondition {
   return {
     id: crypto.randomUUID(),
@@ -225,14 +266,15 @@ export function createDefaultFinancingCondition(): FinancingCondition {
 
 export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UseProposalFormOptions) {
   const [isLoading, setIsLoading] = useState(false);
-  const [locationLoading, setLocationLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiContent, setAiContent] = useState<PremiumProposalContent | null>(null);
   const [aiHeadline, setAiHeadline] = useState('');
   const [rentabilityManuallyEdited, setRentabilityManuallyEdited] = useState(false);
+  const [tariffManuallyEdited, setTariffManuallyEdited] = useState(false);
   const { updateLead } = useLeads();
   const { orgId } = useAuth();
   const { toast } = useToast();
+  const { billing, openBillingBlocker } = useBillingBlocker();
   const { themeId, theme, secondaryColorHex, hydrated: themeHydrated } = useProposalTheme();
   const {
     logoUrl,
@@ -240,13 +282,19 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     initialized: logoInitialized,
     ensureLogoDataUrl,
   } = useProposalLogo();
+  const solarResource = useSolarResource();
 
   const [formData, setFormData] = useState({
     consumoMensal: contact?.consumption || 0,
-    contaLuzMensal: Math.max(0, (contact?.consumption || 0) * (contact?.energyTariffKwh || DEFAULT_TARIFF_FALLBACK)),
+    contaLuzMensal: (Number(contact?.averageMonthlyBill) || 0) > 0
+      ? Math.max(0, Number(contact?.averageMonthlyBill) || 0)
+      : undefined,
     potenciaSistema: 0,
     quantidadePaineis: 0,
     valorTotal: contact?.projectValue || 0,
+    descontoAvistaValor: 0,
+    valorAvistaLiquido: Math.max(0, Number(contact?.projectValue) || 0),
+    investimentoBaseMetricas: Math.max(0, Number(contact?.projectValue) || 0),
     economiaAnual: 0,
     paybackMeses: 0,
     garantiaAnos: 25,
@@ -271,9 +319,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     moduleDegradationPct: DEFAULT_MODULE_DEGRADATION_PCT,
     annualOmCostPct: 1,
     annualOmCostFixed: 0,
-    teRatePerKwh: DEFAULT_TARIFF_FALLBACK,
-    tusdRatePerKwh: 0,
-    tusdCompensationPct: 0,
+    teRatePerKwh: deriveTariffComponents(DEFAULT_TARIFF_FALLBACK).teRatePerKwh,
+    tusdRatePerKwh: deriveTariffComponents(DEFAULT_TARIFF_FALLBACK).tusdRatePerKwh,
+    tusdCompensationPct: 100,
     financialInputs: undefined as FinancialInputs | undefined,
     financialOutputs: undefined as FinancialOutputs | undefined,
     financialModelVersion: FINANCIAL_MODEL_VERSION as typeof FINANCIAL_MODEL_VERSION,
@@ -282,17 +330,20 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     irradiancia: 4.5,
     concessionaria: '',
     tipoLigacao: 'bifasico' as TipoLigacao,
-    rentabilityRatePerKwh: DEFAULT_TARIFF_FALLBACK,
+    rentabilityRatePerKwh: DEFAULT_RENTABILITY_RATE,
     tarifaKwh: DEFAULT_TARIFF_FALLBACK,
     custoDisponibilidadeKwh: 50,
     performanceRatio: 0.8,
     precoPorKwp: 4500,
     abaterCustoDisponibilidadeNoDimensionamento: false,
+    posicaoTelhado: 'nao_definido' as RoofPosition,
+    sombreamentoPct: ROOF_POSITION_LOSS_MAP.nao_definido,
     monthlyGenerationFactors: undefined as number[] | undefined,
     irradianceSource: undefined as string | undefined,
     latitude: undefined as number | undefined,
     longitude: undefined as number | undefined,
     irradianceRefAt: undefined as string | undefined,
+    irradianceRequestId: undefined as string | undefined,
     moduloNome: '',
     moduloMarca: '',
     moduloPotencia: 550,
@@ -302,12 +353,32 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     inversorMarca: '',
     inversorPotencia: 0,
     inversorTensao: 220,
-    inversorGarantia: 10,
+    inversorGarantia: 25,
     inversorQtd: 1,
     estruturaTipo: '',
   });
+  const contactRef = React.useRef(contact);
+  const formDataRef = React.useRef(formData);
+  const rentabilityManuallyEditedRef = React.useRef(rentabilityManuallyEdited);
+  const tariffManuallyEditedRef = React.useRef(tariffManuallyEdited);
 
-  // ── Storage Upload (best-effort) ──
+  React.useEffect(() => {
+    contactRef.current = contact;
+  }, [contact]);
+
+  React.useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+
+  React.useEffect(() => {
+    rentabilityManuallyEditedRef.current = rentabilityManuallyEdited;
+  }, [rentabilityManuallyEdited]);
+
+  React.useEffect(() => {
+    tariffManuallyEditedRef.current = tariffManuallyEdited;
+  }, [tariffManuallyEdited]);
+
+  // â”€â”€ Storage Upload (best-effort) â”€â”€
   const uploadPdfToStorage = async (blob: Blob, leadId: string, fileName: string): Promise<{ bucket: string; path: string } | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('proposal-storage-intent', {
@@ -320,7 +391,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     } catch { return null; }
   };
 
-  // ── Share Link (best-effort) ──
+  // â”€â”€ Share Link (best-effort) â”€â”€
   const generateShareLink = async (versionId: string): Promise<{ url: string; token: string; exp: number } | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('proposal-share-link', { body: { proposalVersionId: versionId } });
@@ -329,7 +400,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     } catch { return null; }
   };
 
-  // ── Track Download (best-effort) ──
+  // â”€â”€ Track Download (best-effort) â”€â”€
   const trackDownloadEvent = async (versionId: string, propostaId: number, leadId: number, kind: string) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -341,76 +412,45 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     } catch { /* non-blocking */ }
   };
 
-  const resolveSolarResource = useCallback(async (params: {
-    city?: string | null;
-    uf?: string | null;
-    addressLine?: string | null;
-    zip?: string | null;
-    lat?: number;
-    lon?: number;
-  }): Promise<SolarResourceResponse | null> => {
-    try {
-      const geocodingApiKey = String((import.meta as any)?.env?.VITE_GOOGLE_GEOCODING_API_KEY || '').trim() || undefined;
-      const { data, error } = await supabase.functions.invoke('solar-resource', {
-        body: {
-          city: params.city || undefined,
-          uf: params.uf || undefined,
-          addressLine: params.addressLine || undefined,
-          zip: params.zip || undefined,
-          lat: params.lat,
-          lon: params.lon,
-          strictPvgisOnly: true,
-          geocodingApiKey,
-        },
-      });
-      if (error || !data) return null;
-      const monthlyFactors = Array.isArray((data as any).monthlyGenerationFactors)
-        ? ((data as any).monthlyGenerationFactors as unknown[])
-          .slice(0, 12)
-          .map((value) => Math.max(0, Number(value) || 0))
-        : [];
-      if (monthlyFactors.length !== 12) return null;
-      const monthlyIrradiance = Array.isArray((data as any).monthlyIrradianceKwhM2Day)
-        ? ((data as any).monthlyIrradianceKwhM2Day as unknown[])
-          .slice(0, 12)
-          .map((value) => Math.max(0, Number(value) || 0))
-        : [];
-      if (monthlyIrradiance.length !== 12) return null;
-      if (String((data as any).source || '').toLowerCase() !== 'pvgis') return null;
 
-      return {
-        source: ((data as any).source || 'pvgis') as SolarResourceResponse['source'],
-        lat: Number.isFinite(Number((data as any).lat)) ? Number((data as any).lat) : null,
-        lon: Number.isFinite(Number((data as any).lon)) ? Number((data as any).lon) : null,
-        annualIrradianceKwhM2Day: Math.max(0.01, Number((data as any).annualIrradianceKwhM2Day) || 4.5),
-        monthlyIrradianceKwhM2Day: monthlyIrradiance,
-        monthlyGenerationFactors: monthlyFactors,
-        referenceYear: Number.isFinite(Number((data as any).referenceYear)) ? Number((data as any).referenceYear) : null,
-        cached: Boolean((data as any).cached),
-      };
-    } catch (err) {
-      console.warn('solar-resource strict PVGIS request failed:', err);
-      return null;
-    }
-  }, []);
 
   const buildFinancialSnapshot = useCallback((next: typeof formData) => {
+    const currentContact = contactRef.current;
     const inferredTariff = getDefaultTariffByDistributor(next.concessionaria || '');
     const tariffResolved = resolveTariffByPriority({
-      manualTariffKwh: next.rentabilityRatePerKwh ?? next.tarifaKwh ?? null,
-      leadTariffKwh: contact?.energyTariffKwh ?? null,
+      manualTariffKwh: next.tarifaKwh ?? null,
+      leadTariffKwh: currentContact?.energyTariffKwh ?? null,
       inferredTariffKwh: inferredTariff,
       fallbackTariffKwh: DEFAULT_TARIFF_FALLBACK,
+    });
+    const derivedTariffRates = deriveTariffComponents(tariffResolved.tariffKwh);
+    const rawRentabilityRatePerKwh = Number(next.rentabilityRatePerKwh);
+    const rawTeRatePerKwh = Number(next.teRatePerKwh);
+    const rawTusdRatePerKwh = Number(next.tusdRatePerKwh);
+    const contaLuzMensalReferencia = next.tipo_cliente === 'usina'
+      ? 0
+      : Math.max(0, Number(next.contaLuzMensal) || 0);
+    const cashDiscountSnapshot = resolveCashDiscountSnapshot({
+      valorTotal: next.valorTotal,
+      descontoAvistaValor: next.descontoAvistaValor,
+      paymentConditions: next.paymentConditions,
     });
 
     const financialInputs: FinancialInputs = {
       tipoCliente: next.tipo_cliente,
-      investimentoTotal: Math.max(0, Number(next.valorTotal) || 0),
+      investimentoTotal: cashDiscountSnapshot.investimentoBaseMetricas,
       consumoMensalKwh: Math.max(0, Number(next.consumoMensal) || 0),
+      contaLuzMensalReferencia: contaLuzMensalReferencia > 0 ? contaLuzMensalReferencia : undefined,
       potenciaSistemaKwp: Math.max(0, Number(next.potenciaSistema) || 0),
-      rentabilityRatePerKwh: tariffResolved.tariffKwh,
+      avgDailyIrradiance: Math.max(0.01, Number(next.irradiancia) || 4.5),
+      performanceRatio: Math.max(0.01, Number(next.performanceRatio) || 0.8),
+      daysInMonth: next.irradianceSource === 'pvgis' ? 30.4375 : 30,
+      rentabilityRatePerKwh: Math.max(
+        0,
+        Number.isFinite(rawRentabilityRatePerKwh) ? rawRentabilityRatePerKwh : DEFAULT_RENTABILITY_RATE,
+      ),
       tarifaKwh: tariffResolved.tariffKwh,
-      rentabilitySource: tariffResolved.source,
+      rentabilitySource: rentabilityManuallyEditedRef.current ? 'manual' : tariffResolved.source,
       tariffSource: tariffResolved.source,
       custoDisponibilidadeKwh: Math.max(0, Number(next.custoDisponibilidadeKwh) || 0),
       abaterCustoDisponibilidadeNoDimensionamento: Boolean(next.abaterCustoDisponibilidadeNoDimensionamento),
@@ -420,20 +460,29 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       annualOmCostFixed: Math.max(0, Number(next.annualOmCostFixed) || 0),
       teRatePerKwh: Math.max(
         0,
-        Number(next.teRatePerKwh)
-        || Number(next.rentabilityRatePerKwh)
-        || Number(next.tarifaKwh)
-        || tariffResolved.tariffKwh,
+        Number.isFinite(rawTeRatePerKwh) ? rawTeRatePerKwh : derivedTariffRates.teRatePerKwh,
       ),
-      tusdRatePerKwh: Math.max(0, Number(next.tusdRatePerKwh) || 0),
+      tusdRatePerKwh: Math.max(
+        0,
+        Number.isFinite(rawTusdRatePerKwh) ? rawTusdRatePerKwh : derivedTariffRates.tusdRatePerKwh,
+      ),
       tusdCompensationPct: Math.max(0, Math.min(100, Number(next.tusdCompensationPct) || 0)),
       analysisYears: DEFAULT_ANALYSIS_YEARS,
       monthlyGenerationFactors: next.monthlyGenerationFactors,
       uf: next.estado,
+      irradianceSource: next.irradianceSource as FinancialInputs['irradianceSource'] | undefined,
+      latitude: Number.isFinite(Number(next.latitude)) ? Number(next.latitude) : undefined,
+      longitude: Number.isFinite(Number(next.longitude)) ? Number(next.longitude) : undefined,
     };
     const financialOutputs = calculateProposalFinancials(financialInputs);
-    return { financialInputs, financialOutputs };
-  }, [contact?.energyTariffKwh]);
+    return {
+      financialInputs,
+      financialOutputs,
+      descontoAvistaValor: cashDiscountSnapshot.descontoAvistaValor,
+      valorAvistaLiquido: cashDiscountSnapshot.valorAvistaLiquido,
+      investimentoBaseMetricas: cashDiscountSnapshot.investimentoBaseMetricas,
+    };
+  }, []);
 
   const recalculateSizing = useCallback((
     next: typeof formData,
@@ -447,6 +496,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       precoPorKwp: next.precoPorKwp || 4500,
       custoDisponibilidadeKwh: next.custoDisponibilidadeKwh ?? 50,
       aplicarCustoDisponibilidadeNoDimensionamento: Boolean(next.abaterCustoDisponibilidadeNoDimensionamento),
+      sombreamentoPct: next.sombreamentoPct ?? 0,
     });
 
     const manualValorTotal = Math.max(0, Number(next.valorTotal) || 0);
@@ -457,14 +507,25 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       potenciaSistema: sizing.potenciaSistemaKwp,
       valorTotal: options?.preserveValorTotal ? manualValorTotal : (autoValorTotal || manualValorTotal),
     };
-    const { financialInputs, financialOutputs } = buildFinancialSnapshot(nextWithSizing);
+    const {
+      financialInputs,
+      financialOutputs,
+      descontoAvistaValor,
+      valorAvistaLiquido,
+      investimentoBaseMetricas,
+    } = buildFinancialSnapshot(nextWithSizing);
 
     return {
       ...nextWithSizing,
+      descontoAvistaValor,
+      valorAvistaLiquido,
+      investimentoBaseMetricas,
       economiaAnual: Math.max(0, Number(financialOutputs.annualRevenueYear1) || 0),
       paybackMeses: Math.max(0, Number(financialOutputs.paybackMonths) || 0),
-      rentabilityRatePerKwh: financialInputs.rentabilityRatePerKwh ?? financialInputs.tarifaKwh,
+      rentabilityRatePerKwh: financialInputs.rentabilityRatePerKwh,
       tarifaKwh: financialInputs.tarifaKwh,
+      teRatePerKwh: financialInputs.teRatePerKwh,
+      tusdRatePerKwh: financialInputs.tusdRatePerKwh,
       financialInputs,
       financialOutputs,
       financialModelVersion: FINANCIAL_MODEL_VERSION,
@@ -482,26 +543,17 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
   const normalizeCep = (value: string) => value.replace(/\D/g, '').slice(0, 8);
 
-  const resolveBillTariff = (next: typeof formData) => {
-    const rawTariff = Number(next.rentabilityRatePerKwh ?? next.tarifaKwh ?? next.teRatePerKwh);
-    return Math.max(0.01, Number.isFinite(rawTariff) && rawTariff > 0 ? rawTariff : DEFAULT_TARIFF_FALLBACK);
-  };
-
-  const billToConsumptionKwh = (billValue: number, tariffKwh: number) => {
-    const bill = Math.max(0, Number(billValue) || 0);
-    return bill / Math.max(0.01, Number(tariffKwh) || DEFAULT_TARIFF_FALLBACK);
-  };
-
-  const buildConcessionariaPatch = (
+  const buildConcessionariaPatch = useCallback((
     prev: typeof formData,
     location: { uf?: string; cidade?: string; cep?: string },
   ): Partial<typeof formData> => {
-    const uf = normalizeUf(location.uf || prev.estado || contact?.state || '') || undefined;
-    const cidade = String(location.cidade || prev.cidade || contact?.city || '').trim() || undefined;
-    const cep = normalizeCep(String(location.cep || prev.cep || contact?.zip || '')) || undefined;
+    const currentContact = contactRef.current;
+    const uf = normalizeUf(location.uf || prev.estado || currentContact?.state || '') || undefined;
+    const cidade = String(location.cidade || prev.cidade || currentContact?.city || '').trim() || undefined;
+    const cep = normalizeCep(String(location.cep || prev.cep || currentContact?.zip || '')) || undefined;
 
     const inference = inferDistributor({
-      distributor: prev.concessionaria || contact?.energyDistributor || null,
+      distributor: prev.concessionaria || currentContact?.energyDistributor || null,
       uf: uf || null,
       city: cidade || null,
       cep: cep || null,
@@ -513,17 +565,15 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     }
 
     const tariffFromInference = getDefaultTariffByDistributor(inference?.distributor || patch.concessionaria || prev.concessionaria || '');
-    if (!rentabilityManuallyEdited && tariffFromInference !== null) {
+    if (!tariffManuallyEditedRef.current && tariffFromInference !== null) {
+      const derivedTariffRates = deriveTariffComponents(tariffFromInference);
       patch.tarifaKwh = tariffFromInference;
-      patch.rentabilityRatePerKwh = tariffFromInference;
-      patch.teRatePerKwh = tariffFromInference;
-      if (prev.tipo_cliente !== 'usina') {
-        patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, tariffFromInference);
-      }
+      patch.teRatePerKwh = derivedTariffRates.teRatePerKwh;
+      patch.tusdRatePerKwh = derivedTariffRates.tusdRatePerKwh;
     }
 
     return patch;
-  };
+  }, []);
 
   const toFiniteOrUndefined = (value: unknown): number | undefined => {
     const numeric = Number(value);
@@ -539,114 +589,56 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     longitude?: number;
   };
 
-  const resolveLocationRequestSeqRef = React.useRef(0);
-
   const resolvePreciseLocation = useCallback(async (override?: LocationOverride) => {
-    const requestSeq = ++resolveLocationRequestSeqRef.current;
+    const currentFormData = formDataRef.current;
+    const currentContact = contactRef.current;
     const uf = String(
       override?.estado
-      || formData.estado
-      || normalizeUf(contact?.state)
-      || inferUfFromCep(override?.cep || formData.cep || contact?.zip)
+      || currentFormData.estado
+      || normalizeUf(currentContact?.state)
+      || inferUfFromCep(override?.cep || currentFormData.cep || currentContact?.zip)
       || '',
     ).toUpperCase();
-    const cidade = String(override?.cidade || formData.cidade || contact?.city || '').trim();
-    const endereco = String(override?.endereco || formData.endereco || contact?.address || '').trim();
-    const cep = normalizeCep(String(override?.cep || formData.cep || contact?.zip || ''));
-    const hasTextualLocation = Boolean(cidade || endereco || cep);
-    const overrideLatitude = toFiniteOrUndefined(override?.latitude);
-    const overrideLongitude = toFiniteOrUndefined(override?.longitude);
-    const hasOverrideCoordinates = overrideLatitude !== undefined && overrideLongitude !== undefined;
-    const currentLatitude = toFiniteOrUndefined(formData.latitude ?? contact?.latitude);
-    const currentLongitude = toFiniteOrUndefined(formData.longitude ?? contact?.longitude);
+    const cidade = String(override?.cidade || currentFormData.cidade || currentContact?.city || '').trim();
+    const endereco = String(override?.endereco || currentFormData.endereco || currentContact?.address || '').trim();
+    const cep = normalizeCep(String(override?.cep || currentFormData.cep || currentContact?.zip || ''));
 
-    // Force fresh geocoding from textual location when available.
-    const latitude = hasOverrideCoordinates
-      ? overrideLatitude
-      : (!hasTextualLocation ? currentLatitude : undefined);
-    const longitude = hasOverrideCoordinates
-      ? overrideLongitude
-      : (!hasTextualLocation ? currentLongitude : undefined);
+    const result = await solarResource.resolve({
+      estado: uf,
+      cidade,
+      endereco,
+      cep,
+      latitude: toFiniteOrUndefined(override?.latitude),
+      longitude: toFiniteOrUndefined(override?.longitude),
+    });
 
-    setLocationLoading(true);
-    try {
-      const solarResource = await resolveSolarResource({
-        city: cidade || undefined,
-        uf: uf || undefined,
-        addressLine: endereco || undefined,
-        zip: cep || undefined,
-        lat: latitude,
-        lon: longitude,
-      });
-
-      if (!solarResource) {
-        toast({
-          title: 'PVGIS indisponivel',
-          description: 'Nao foi possivel obter irradiancia precisa via geocodificacao + PVGIS.',
-          variant: 'destructive',
-        });
-        return null;
-      }
-      if (requestSeq !== resolveLocationRequestSeqRef.current) {
-        return null;
-      }
-
+    if (result) {
       setFormData((prev) => patchAndRecalculate(prev, {
         estado: uf || prev.estado,
         cidade: cidade || prev.cidade,
         endereco: endereco || prev.endereco,
         cep: cep || prev.cep,
-        irradiancia: solarResource.annualIrradianceKwhM2Day,
-        monthlyGenerationFactors: solarResource.monthlyGenerationFactors,
-        irradianceSource: solarResource.source,
-        latitude: solarResource.lat ?? latitude ?? prev.latitude,
-        longitude: solarResource.lon ?? longitude ?? prev.longitude,
+        irradiancia: result.annualIrradianceKwhM2Day,
+        monthlyGenerationFactors: result.monthlyGenerationFactors,
+        irradianceSource: result.source,
+        latitude: result.lat ?? toFiniteOrUndefined(override?.latitude) ?? prev.latitude,
+        longitude: result.lon ?? toFiniteOrUndefined(override?.longitude) ?? prev.longitude,
         irradianceRefAt: new Date().toISOString(),
+        irradianceRequestId: result.requestId ?? prev.irradianceRequestId,
         ...buildConcessionariaPatch(prev, {
           uf: uf || prev.estado,
           cidade: cidade || prev.cidade,
           cep: cep || prev.cep,
         }),
       }, { preserveValorTotal: true }));
-
-      return solarResource;
-    } catch (error) {
-      console.error('resolvePreciseLocation error:', error);
-      if (requestSeq === resolveLocationRequestSeqRef.current) {
-        toast({
-          title: 'Falha ao buscar dados solares',
-          description: 'Tente novamente em alguns segundos.',
-          variant: 'destructive',
-        });
-      }
-      return null;
-    } finally {
-      if (requestSeq === resolveLocationRequestSeqRef.current) {
-        setLocationLoading(false);
-      }
     }
-  }, [
-    contact?.address,
-    contact?.city,
-    contact?.energyDistributor,
-    contact?.latitude,
-    contact?.longitude,
-    contact?.state,
-    contact?.zip,
-    formData.cep,
-    formData.cidade,
-    formData.endereco,
-    formData.estado,
-    formData.latitude,
-    formData.longitude,
-    patchAndRecalculate,
-    rentabilityManuallyEdited,
-    resolveSolarResource,
-    toast,
-  ]);
+
+    return result;
+  }, [buildConcessionariaPatch, patchAndRecalculate, solarResource.resolve]);
 
   const autofillAddressByCep = useCallback(async (rawCep?: string) => {
-    const cep = normalizeCep(rawCep || formData.cep || '');
+    const currentFormData = formDataRef.current;
+    const cep = normalizeCep(rawCep || currentFormData.cep || '');
     if (cep.length !== 8) {
       toast({
         title: 'CEP invalido',
@@ -656,8 +648,31 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       return null;
     }
 
-    setLocationLoading(true);
     try {
+      const fetchJsonWithRetry = async (url: string, retries = 1, timeoutMs = 6000): Promise<Response | null> => {
+        for (let attempt = 0; attempt <= retries; attempt += 1) {
+          let timeout: number | undefined;
+          try {
+            const controller = new AbortController();
+            timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+            const response = await fetch(url, { signal: controller.signal });
+            if (response.ok) return response;
+            if (attempt === retries) return response;
+          } catch (error) {
+            if (attempt === retries) {
+              console.warn('CEP provider fetch failed after retries:', { url, error });
+              return null;
+            }
+          } finally {
+            if (timeout !== undefined) {
+              window.clearTimeout(timeout);
+            }
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 350 * (attempt + 1)));
+        }
+        return null;
+      };
+
       let uf = '';
       let cidade = '';
       let endereco = '';
@@ -665,8 +680,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       let longitude: number | undefined;
 
       try {
-        const brApiResponse = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`);
-        if (brApiResponse.ok) {
+        const brApiResponse = await fetchJsonWithRetry(`https://brasilapi.com.br/api/cep/v2/${cep}`, 1);
+        if (brApiResponse?.ok) {
           const brApiData = await brApiResponse.json();
           uf = normalizeUf(String(brApiData?.state || brApiData?.uf || '')) || uf;
           cidade = String(brApiData?.city || brApiData?.locality || '').trim() || cidade;
@@ -682,27 +697,36 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       }
 
       if (!uf || !cidade) {
-        const viaCepResponse = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-        if (!viaCepResponse.ok) throw new Error(`viacep_${viaCepResponse.status}`);
-        const viaCepData = await viaCepResponse.json();
-        if (viaCepData?.erro) throw new Error('cep_not_found');
-
-        uf = normalizeUf(String(viaCepData.uf || '')) || uf;
-        cidade = String(viaCepData.localidade || cidade || '').trim();
-        const logradouro = String(viaCepData.logradouro || '').trim();
-        const bairro = String(viaCepData.bairro || '').trim();
-        if (!endereco) {
-          endereco = [logradouro, bairro].filter(Boolean).join(', ');
+        try {
+          const viaCepResponse = await fetchJsonWithRetry(`https://viacep.com.br/ws/${cep}/json/`, 1);
+          if (!viaCepResponse?.ok) {
+            console.warn(`viacep CEP lookup failed: status ${viaCepResponse?.status ?? 'network_error'}`);
+          } else {
+            const viaCepData = await viaCepResponse.json();
+            if (viaCepData?.erro) {
+              console.warn(`viacep CEP lookup returned erro for cep=${cep}`);
+            } else {
+              uf = normalizeUf(String(viaCepData.uf || '')) || uf;
+              cidade = String(viaCepData.localidade || cidade || '').trim();
+              const logradouro = String(viaCepData.logradouro || '').trim();
+              const bairro = String(viaCepData.bairro || '').trim();
+              if (!endereco) {
+                endereco = [logradouro, bairro].filter(Boolean).join(', ');
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('viacep CEP lookup failed:', error);
         }
       }
 
       const nextOverride: LocationOverride = {
         cep,
-        estado: uf || formData.estado || undefined,
-        cidade: cidade || formData.cidade || undefined,
-        endereco: endereco || formData.endereco || undefined,
-        latitude: undefined,
-        longitude: undefined,
+        estado: uf || currentFormData.estado || undefined,
+        cidade: cidade || currentFormData.cidade || undefined,
+        endereco: endereco || currentFormData.endereco || undefined,
+        latitude,
+        longitude,
       };
 
       setFormData((prev) => patchAndRecalculate(prev, {
@@ -710,10 +734,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         estado: nextOverride.estado || prev.estado,
         cidade: nextOverride.cidade || prev.cidade,
         endereco: nextOverride.endereco || prev.endereco,
-        latitude: undefined,
-        longitude: undefined,
-        irradianceSource: undefined,
-        irradianceRefAt: undefined,
+        latitude: nextOverride.latitude,
+        longitude: nextOverride.longitude,
         ...buildConcessionariaPatch(prev, {
           uf: nextOverride.estado || prev.estado,
           cidade: nextOverride.cidade || prev.cidade,
@@ -725,47 +747,26 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     } catch (error) {
       console.error('autofillAddressByCep error:', error);
       toast({
-        title: 'Falha ao buscar CEP',
-        description: 'Nao foi possivel localizar o CEP informado em nenhum provedor.',
+        title: 'Falha no autofill de CEP',
+        description: 'Vamos tentar calcular pela geocodificacao do backend.',
         variant: 'destructive',
       });
-      return null;
-    } finally {
-      setLocationLoading(false);
+      return {
+        cep,
+        estado: currentFormData.estado || undefined,
+        cidade: currentFormData.cidade || undefined,
+        endereco: currentFormData.endereco || undefined,
+      };
     }
-  }, [
-    contact?.city,
-    contact?.energyDistributor,
-    contact?.state,
-    contact?.zip,
-    formData.cep,
-    formData.cidade,
-    formData.endereco,
-    formData.estado,
-    patchAndRecalculate,
-    rentabilityManuallyEdited,
-    toast,
-  ]);
+  }, [patchAndRecalculate, toast]);
 
-  // ── Auto-calculate system for ALL types using Kit equipment data ──
+  // â”€â”€ Auto-calculate system for ALL types using Kit equipment data â”€â”€
 
 
   const calculateSystem = useCallback((consumoInput: number) => {
-    setFormData((prev) => {
-      if (prev.tipo_cliente === 'usina') {
-        return patchAndRecalculate(prev, {
-          consumoMensal: Math.max(0, Number(consumoInput) || 0),
-          contaLuzMensal: undefined,
-        });
-      }
-
-      const contaLuzMensal = Math.max(0, Number(consumoInput) || 0);
-      const consumoMensal = billToConsumptionKwh(contaLuzMensal, resolveBillTariff(prev));
-      return patchAndRecalculate(prev, {
-        contaLuzMensal,
-        consumoMensal,
-      });
-    });
+    setFormData((prev) => patchAndRecalculate(prev, {
+      consumoMensal: Math.max(0, Number(consumoInput) || 0),
+    }));
   }, [patchAndRecalculate]);
 
   const handleChange = (field: keyof typeof formData, value: number | string | boolean) => {
@@ -774,22 +775,20 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       return;
     }
 
+    if (field === 'contaLuzMensal') {
+      const contaLuzMensal = Math.max(0, Number(value) || 0);
+      setFormData((prev) => ({
+        ...prev,
+        contaLuzMensal: contaLuzMensal > 0 ? contaLuzMensal : undefined,
+      }));
+      return;
+    }
+
     if (field === 'tipo_cliente') {
       const nextTipo = value as ClientType;
       // Pre-fetch cover gallery for the selected segment
       void prefetchCoverImages(nextTipo, 3);
-      setFormData(prev => {
-        const patch: Partial<typeof formData> = {
-          tipo_cliente: nextTipo,
-        };
-        if (nextTipo === 'usina') {
-          patch.contaLuzMensal = undefined;
-        } else {
-          const tarifa = resolveBillTariff(prev);
-          patch.contaLuzMensal = Math.max(0, Number(prev.consumoMensal) || 0) * tarifa;
-        }
-        return patchAndRecalculate(prev, patch);
-      });
+      setFormData(prev => patchAndRecalculate(prev, { tipo_cliente: nextTipo }));
       return;
     }
 
@@ -806,6 +805,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       || field === 'teRatePerKwh'
       || field === 'tusdRatePerKwh'
       || field === 'tusdCompensationPct'
+      || field === 'descontoAvistaValor'
       || field === 'abaterCustoDisponibilidadeNoDimensionamento'
     ) {
       setFormData(prev => patchAndRecalculate(prev, { [field]: value } as Partial<typeof formData>));
@@ -814,18 +814,11 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     if (field === 'rentabilityRatePerKwh') {
       const rate = Math.max(0, Number(value) || 0);
+      rentabilityManuallyEditedRef.current = true;
       setRentabilityManuallyEdited(true);
-      setFormData(prev => {
-        const patch: Partial<typeof formData> = {
-          rentabilityRatePerKwh: rate,
-          tarifaKwh: rate,
-          teRatePerKwh: isTusdTeSimplifiedEnabled() ? rate : prev.teRatePerKwh,
-        };
-        if (prev.tipo_cliente !== 'usina') {
-          patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, Math.max(0.01, rate || DEFAULT_TARIFF_FALLBACK));
-        }
-        return patchAndRecalculate(prev, patch);
-      });
+      setFormData(prev => patchAndRecalculate(prev, {
+        rentabilityRatePerKwh: rate,
+      }));
       return;
     }
 
@@ -841,16 +834,15 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     if (field === 'tarifaKwh') {
       const rate = Math.max(0, Number(value) || 0);
-      setRentabilityManuallyEdited(true);
+      const derivedTariffRates = deriveTariffComponents(rate);
+      tariffManuallyEditedRef.current = true;
+      setTariffManuallyEdited(true);
       setFormData(prev => {
         const patch: Partial<typeof formData> = {
           tarifaKwh: rate,
-          rentabilityRatePerKwh: rate,
-          teRatePerKwh: isTusdTeSimplifiedEnabled() ? rate : prev.teRatePerKwh,
+          teRatePerKwh: derivedTariffRates.teRatePerKwh,
+          tusdRatePerKwh: derivedTariffRates.tusdRatePerKwh,
         };
-        if (prev.tipo_cliente !== 'usina') {
-          patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, Math.max(0.01, rate || DEFAULT_TARIFF_FALLBACK));
-        }
         return patchAndRecalculate(prev, patch);
       });
       return;
@@ -875,13 +867,11 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           patch.concessionaria = inference.distributor;
         }
         const tariffFromInference = getDefaultTariffByDistributor(inference?.distributor || patch.concessionaria || '');
-        if (!rentabilityManuallyEdited && tariffFromInference !== null) {
+        if (!tariffManuallyEditedRef.current && tariffFromInference !== null) {
+          const derivedTariffRates = deriveTariffComponents(tariffFromInference);
           patch.tarifaKwh = tariffFromInference;
-          patch.rentabilityRatePerKwh = tariffFromInference;
-          patch.teRatePerKwh = tariffFromInference;
-          if (prev.tipo_cliente !== 'usina') {
-            patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, tariffFromInference);
-          }
+          patch.teRatePerKwh = derivedTariffRates.teRatePerKwh;
+          patch.tusdRatePerKwh = derivedTariffRates.tusdRatePerKwh;
         }
         return patchAndRecalculate(prev, patch);
       });
@@ -902,13 +892,11 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       setFormData(prev => {
         const patch: Partial<typeof formData> = { concessionaria };
         const inferredTariff = getDefaultTariffByDistributor(concessionaria);
-        if (!rentabilityManuallyEdited && inferredTariff !== null) {
+        if (!tariffManuallyEditedRef.current && inferredTariff !== null) {
+          const derivedTariffRates = deriveTariffComponents(inferredTariff);
           patch.tarifaKwh = inferredTariff;
-          patch.rentabilityRatePerKwh = inferredTariff;
-          patch.teRatePerKwh = inferredTariff;
-          if (prev.tipo_cliente !== 'usina') {
-            patch.consumoMensal = billToConsumptionKwh(prev.contaLuzMensal || 0, inferredTariff);
-          }
+          patch.teRatePerKwh = derivedTariffRates.teRatePerKwh;
+          patch.tusdRatePerKwh = derivedTariffRates.tusdRatePerKwh;
         }
         return patchAndRecalculate(prev, patch);
       });
@@ -924,6 +912,21 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       return;
     }
 
+    if (field === 'posicaoTelhado') {
+      const posicaoTelhado = value as RoofPosition;
+      setFormData(prev => patchAndRecalculate(prev, {
+        posicaoTelhado,
+        sombreamentoPct: ROOF_POSITION_LOSS_MAP[posicaoTelhado],
+      }));
+      return;
+    }
+
+    if (field === 'sombreamentoPct') {
+      const sombreamentoPct = Math.max(0, Math.min(99, Number(value) || 0));
+      setFormData(prev => patchAndRecalculate(prev, { sombreamentoPct }));
+      return;
+    }
+
     if (field === 'cep') {
       setFormData((prev) => ({
         ...prev,
@@ -932,6 +935,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         longitude: undefined,
         irradianceSource: undefined,
         irradianceRefAt: undefined,
+        irradianceRequestId: undefined,
       }));
       return;
     }
@@ -945,9 +949,18 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     if (field === 'potenciaSistema' || field === 'quantidadePaineis') {
       setFormData(prev => {
         const next = { ...prev, [field]: value } as typeof formData;
-        const { financialInputs, financialOutputs } = buildFinancialSnapshot(next);
+        const {
+          financialInputs,
+          financialOutputs,
+          descontoAvistaValor,
+          valorAvistaLiquido,
+          investimentoBaseMetricas,
+        } = buildFinancialSnapshot(next);
         return {
           ...next,
+          descontoAvistaValor,
+          valorAvistaLiquido,
+          investimentoBaseMetricas,
           economiaAnual: Math.max(0, Number(financialOutputs.annualRevenueYear1) || 0),
           paybackMeses: Math.max(0, Number(financialOutputs.paybackMonths) || 0),
           financialInputs,
@@ -968,11 +981,10 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         ? prev.paymentConditions.filter((value) => value !== id)
         : [...prev.paymentConditions, id];
       const financingStillSelected = next.includes('financiamento_bancario');
-      return {
-        ...prev,
+      return patchAndRecalculate(prev, {
         paymentConditions: next,
         showFinancingSimulation: financingStillSelected ? prev.showFinancingSimulation : false,
-      };
+      });
     });
   };
 
@@ -1038,7 +1050,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-  // ── Fetch context (shared between AI and generation) ──
+  // â”€â”€ Fetch context (shared between AI and generation) â”€â”€
   const fetchContext = async (): Promise<Record<string, unknown> | null> => {
     if (!contact) return null;
     try {
@@ -1050,10 +1062,12 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     return null;
   };
 
-  // ── Build heuristic content ──
+  // â”€â”€ Build heuristic content â”€â”€
   const buildHeuristic = (contextData: Record<string, unknown> | null): PremiumProposalContent => {
     const metrics: ProposalMetrics = {
-      consumoMensal: formData.consumoMensal, potenciaSistema: formData.potenciaSistema,
+      consumoMensal: formData.consumoMensal,
+      contaLuzMensal: formData.contaLuzMensal,
+      potenciaSistema: formData.potenciaSistema,
       quantidadePaineis: formData.quantidadePaineis, valorTotal: formData.valorTotal,
       economiaAnual: formData.economiaAnual, paybackMeses: formData.paybackMeses, garantiaAnos: formData.garantiaAnos,
     };
@@ -1068,7 +1082,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     });
   };
 
-  // ══════════ AI PERSONALIZATION ══════════
+  // â•â•â•â•â•â•â•â•â•â• AI PERSONALIZATION â•â•â•â•â•â•â•â•â•â•
   const handleAiPersonalize = async () => {
     if (!contact) return;
     setAiLoading(true);
@@ -1085,7 +1099,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           city: formData.cidade || contact.city || undefined,
           observacoes: formData.observacoes || undefined,
           metrics: {
-            consumoMensal: formData.consumoMensal, potenciaSistema: formData.potenciaSistema,
+            consumoMensal: formData.consumoMensal,
+            contaLuzMensal: formData.contaLuzMensal,
+            potenciaSistema: formData.potenciaSistema,
             quantidadePaineis: formData.quantidadePaineis, valorTotal: formData.valorTotal,
             economiaAnual: formData.economiaAnual, paybackMeses: formData.paybackMeses,
             garantiaAnos: formData.garantiaAnos,
@@ -1101,7 +1117,22 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorDetails = await resolveSupabaseFunctionErrorDetails(
+          error,
+          'Falha ao personalizar proposta com IA',
+        );
+
+        if (isProposalComposerBillingError(errorDetails)) {
+          if (isUnlimitedBillingBypass(billing)) {
+            throw new Error(errorDetails.message);
+          }
+          openBillingBlocker(buildLimitBlockerForKey('max_proposals_month', billing, 'proposal_ai'));
+          return;
+        }
+
+        throw new Error(errorDetails.message);
+      }
       if (!data?.variants?.length) throw new Error('No variants returned');
 
       // Use recommended variant
@@ -1132,26 +1163,26 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
       setAiContent(content);
       setAiHeadline(content.headline);
-      toast({ title: '✨ IA aplicada', description: 'Proposta personalizada com base no contexto do cliente.' });
+      toast({ title: 'âœ¨ IA aplicada', description: 'Proposta personalizada com base no contexto do cliente.' });
     } catch (err) {
-      console.error('AI personalização falhou, usando heurística:', err);
+      console.error('AI personalizaÃ§Ã£o falhou, usando heurÃ­stica:', err);
       // Fallback to heuristic
       const contextData = await fetchContext();
       const heuristic = buildHeuristic(contextData);
       setAiContent(heuristic);
       setAiHeadline(heuristic.headline);
-      toast({ title: 'Personalização aplicada', description: 'Heurística local utilizada (IA indisponível).' });
+      toast({ title: 'PersonalizaÃ§Ã£o aplicada', description: 'HeurÃ­stica local utilizada (IA indisponÃ­vel).' });
     } finally {
       setAiLoading(false);
     }
   };
 
-  // ══════════ SINGLE GENERATION FLOW ══════════
+  // â•â•â•â•â•â•â•â•â•â• SINGLE GENERATION FLOW â•â•â•â•â•â•â•â•â•â•
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contact) return;
 
-    if (formData.irradianceSource !== 'pvgis' || !Number.isFinite(Number(formData.latitude)) || !Number.isFinite(Number(formData.longitude))) {
+    if (!isStrictPvgisSource(formData.irradianceSource) || !Number.isFinite(Number(formData.latitude)) || !Number.isFinite(Number(formData.longitude))) {
       toast({
         title: 'Irradiancia obrigatoria via PVGIS',
         description: 'Calcule o local exato ate obter fonte PVGIS antes de gerar a proposta.',
@@ -1162,12 +1193,12 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     // Sprint 10: block generation when critical numeric values are zero/negative
     if (formData.consumoMensal <= 0 || formData.potenciaSistema <= 0 || formData.quantidadePaineis <= 0 || formData.valorTotal <= 0) {
-      toast({ title: 'Dados incompletos', description: formData.tipo_cliente === 'usina' ? 'Geração estimada, potência, módulos e investimento total devem ser maiores que zero.' : 'Consumo, potência, painéis e valor total devem ser maiores que zero.', variant: 'destructive' });
+      toast({ title: 'Dados incompletos', description: formData.tipo_cliente === 'usina' ? 'GeraÃ§Ã£o estimada, potÃªncia, mÃ³dulos e investimento total devem ser maiores que zero.' : 'Consumo, potÃªncia, painÃ©is e valor total devem ser maiores que zero.', variant: 'destructive' });
       return;
     }
 
     if (!Array.isArray(formData.paymentConditions) || formData.paymentConditions.length === 0) {
-      toast({ title: 'Condições de pagamento', description: 'Selecione pelo menos uma condição de pagamento.', variant: 'destructive' });
+      toast({ title: 'CondiÃ§Ãµes de pagamento', description: 'Selecione pelo menos uma condiÃ§Ã£o de pagamento.', variant: 'destructive' });
       return;
     }
 
@@ -1188,8 +1219,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const showFinancingSimulation = hasFinancingSelected && Boolean(formData.showFinancingSimulation);
     if (showFinancingSimulation && normalizedFinancingConditions.length === 0) {
       toast({
-        title: 'Condições de financiamento',
-        description: 'Para financiar, adicione ao menos 1 instituição com taxa e parcelas.',
+        title: 'CondiÃ§Ãµes de financiamento',
+        description: 'Para financiar, adicione ao menos 1 instituiÃ§Ã£o com taxa e parcelas.',
         variant: 'destructive',
       });
       return;
@@ -1210,10 +1241,17 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const legacyParcela60 = showFinancingSimulation && primaryCondition?.installments.includes(60)
       ? Math.round(calcPMT(legacyRate, 60, formData.valorTotal) * 100) / 100
       : 0;
-    const { financialInputs, financialOutputs } = buildFinancialSnapshot(formData);
+    const {
+      financialInputs,
+      financialOutputs,
+      descontoAvistaValor,
+      valorAvistaLiquido,
+      investimentoBaseMetricas,
+    } = buildFinancialSnapshot(formData);
     const effectiveEconomiaAnual = Math.max(0, Number(financialOutputs.annualRevenueYear1) || 0);
     const effectivePaybackMeses = Math.max(0, Number(financialOutputs.paybackMonths) || 0);
     const effectiveRentabilityRate = financialInputs.rentabilityRatePerKwh ?? financialInputs.tarifaKwh;
+    const effectiveTariffKwh = financialInputs.tarifaKwh;
     const shadowComparison = isFinancialShadowModeEnabled()
       ? (() => {
         const legacyOutputs = calculateProposalFinancials(financialInputs, {
@@ -1265,8 +1303,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       || await prefetchCoverImage(formData.tipo_cliente || 'residencial');
     if (logoUrl && !resolvedLogoDataUrl) {
       toast({
-        title: 'Logo indisponível',
-        description: 'Não foi possível carregar a logo da empresa para o PDF. Reenvie a logo e tente novamente.',
+        title: 'Logo indisponÃ­vel',
+        description: 'NÃ£o foi possÃ­vel carregar a logo da empresa para o PDF. Reenvie a logo e tente novamente.',
         variant: 'destructive',
       });
       return;
@@ -1302,7 +1340,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           uf: formData.estado,
           concessionaria: formData.concessionaria,
           tipo_ligacao: formData.tipoLigacao,
-          tarifa_kwh: effectiveRentabilityRate,
+          conta_luz_mensal: formData.contaLuzMensal,
+          tarifa_kwh: effectiveTariffKwh,
           custo_disponibilidade_kwh: formData.custoDisponibilidadeKwh,
           performance_ratio: formData.performanceRatio,
           preco_por_kwp: formData.precoPorKwp,
@@ -1329,6 +1368,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       const pdfBlob = generateProposalPDF({
         contact: contactForPdf,
         ...formData,
+        descontoAvistaValor,
+        valorAvistaLiquido,
+        investimentoBaseMetricas,
         economiaAnual: effectiveEconomiaAnual,
         paybackMeses: effectivePaybackMeses,
         rentabilityRatePerKwh: effectiveRentabilityRate,
@@ -1393,7 +1435,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           concessionaria: formData.concessionaria,
           tipoLigacao: formData.tipoLigacao,
           rentabilityRatePerKwh: effectiveRentabilityRate,
-          tarifaKwh: effectiveRentabilityRate,
+          tarifaKwh: effectiveTariffKwh,
           teRatePerKwh: formData.teRatePerKwh,
           tusdRatePerKwh: formData.tusdRatePerKwh,
           tusdCompensationPct: formData.tusdCompensationPct,
@@ -1406,6 +1448,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           latitude: formData.latitude,
           longitude: formData.longitude,
           irradianceRefAt: formData.irradianceRefAt,
+          irradianceRequestId: formData.irradianceRequestId,
           moduloNome: formData.moduloNome,
           moduloMarca: formData.moduloMarca,
           moduloTipo: formData.moduloTipo,
@@ -1418,6 +1461,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           inversorGarantia: formData.inversorGarantia,
           inversorQtd: formData.inversorQtd,
           estruturaTipo: formData.estruturaTipo,
+          posicaoTelhado: formData.posicaoTelhado,
+          sombreamentoPct: formData.sombreamentoPct,
           garantiaServicos: formData.garantiaAnos,
         },
         signature: {
@@ -1431,6 +1476,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         validadeDias: formData.validadeDias,
         parcela36x: legacyParcela36,
         parcela60x: legacyParcela60,
+        descontoAvistaValor,
+        valorAvistaLiquido,
+        investimentoBaseMetricas,
         paymentConditions: formData.paymentConditions,
         paymentConditionLabels: formData.paymentConditions.map((id) => PAYMENT_CONDITION_LABEL_BY_ID[id]),
         financingConditions: effectiveFinancingConditions,
@@ -1451,6 +1499,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         latitude: formData.latitude,
         longitude: formData.longitude,
         irradianceRefAt: formData.irradianceRefAt,
+        irradianceRequestId: formData.irradianceRequestId,
         rentabilityRatePerKwh: effectiveRentabilityRate,
         secondaryColorHex: secondaryColorHex || null,
         branding: brandingSnapshot,
@@ -1462,6 +1511,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       const saveResult = await onGenerate({
         contactId: contact.id,
         ...formData,
+        descontoAvistaValor,
+        valorAvistaLiquido,
+        investimentoBaseMetricas,
         economiaAnual: effectiveEconomiaAnual,
         paybackMeses: effectivePaybackMeses,
         rentabilityRatePerKwh: effectiveRentabilityRate,
@@ -1488,6 +1540,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         latitude: formData.latitude,
         longitude: formData.longitude,
         irradianceRefAt: formData.irradianceRefAt,
+        irradianceRequestId: formData.irradianceRequestId,
         secondaryColorHex: secondaryColorHex || null,
         proposalThemeId: themeId,
         premiumPayload,
@@ -1504,18 +1557,24 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       // 7) Share link + tracking (best-effort, background)
       const versionId = (saveResult as any)?.proposalVersionId;
       const propostaId = (saveResult as any)?.proposal?.id;
-      if (versionId && storageResult) {
+      if (versionId && storageResult && orgId) {
         const share = await generateShareLink(versionId);
         if (share) {
           try {
-            const { data: ver } = await supabase.from('proposal_versions').select('premium_payload').eq('id', versionId).maybeSingle();
-            await supabase.from('proposal_versions').update({ premium_payload: { ...((ver?.premium_payload as Record<string, unknown>) || {}), share } }).eq('id', versionId);
+            const { data: ver } = await scopeProposalVersionByIdQuery(
+              (supabase.from('proposal_versions').select('premium_payload')) as any,
+              { proposalVersionId: String(versionId), orgId },
+            ).maybeSingle();
+            await scopeProposalVersionByIdQuery(
+              (supabase.from('proposal_versions').update({ premium_payload: { ...((ver?.premium_payload as Record<string, unknown>) || {}), share } })) as any,
+              { proposalVersionId: String(versionId), orgId },
+            );
           } catch { /* non-blocking */ }
         }
       }
       if (versionId && propostaId) await trackDownloadEvent(versionId, propostaId, Number(contact.id), 'client_proposal');
 
-      toast({ title: "Proposta gerada!", description: "PDF baixado. Baixe o Roteiro do Vendedor na próxima tela." });
+      toast({ title: "Proposta gerada!", description: "PDF baixado. Baixe o Roteiro do Vendedor na prÃ³xima tela." });
       onClose();
     } catch (error: any) {
       console.error('Error generating proposal:', error);
@@ -1526,108 +1585,108 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     }
   };
 
-  // ── Computed financing preview ──
-  // ── Reset on open ──
+  // â”€â”€ Computed financing preview â”€â”€
+  // â”€â”€ Reset on open â”€â”€
   React.useEffect(() => {
-    if (contact && isOpen) {
-      setIsLoading(false);
-      setLocationLoading(false);
-      setAiLoading(false);
-      setAiContent(null);
-      setAiHeadline('');
-      setRentabilityManuallyEdited(false);
-      const explicitUf = normalizeUf(contact.state);
-      const inferredUf = inferUfFromCep(contact.zip);
-      const uf = explicitUf || inferredUf || '';
-      const distributorInference = inferDistributor({
-        distributor: contact.energyDistributor || null,
-        uf,
-        city: contact.city || null,
-        cep: contact.zip || null,
-      });
-      const inferredDistributor = distributorInference?.distributor || '';
-      const defaultTariffFromDistributor = getDefaultTariffByDistributor(inferredDistributor);
-      const initialRentability = contact.energyTariffKwh ?? defaultTariffFromDistributor ?? DEFAULT_TARIFF_FALLBACK;
-      const tipoLigacao = (contact.connectionType || 'bifasico') as TipoLigacao;
-      const preserveInitialValor = (Number(contact.projectValue) || 0) > 0;
-      const defaultFinancingCondition = createDefaultFinancingCondition();
-      setFormData(prev => recalculateSizing(
-        {
-          ...prev,
-          consumoMensal: contact.consumption || 500,
-          contaLuzMensal: Math.max(0, (contact.consumption || 500) * initialRentability),
-          valorTotal: contact.projectValue || 0,
-          tipo_cliente: (contact.clientType || 'residencial') as ClientType,
-          observacoes: '',
-          endereco: contact.address || '',
-          cidade: contact.city || '',
-          cep: contact.zip || '',
-          signatureCompanyName: '',
-          signatureCompanyCnpj: '',
-          signatureContractorName: contact.name || '',
-          signatureContractorCnpj: '',
-          garantiaAnos: 25,
-          taxaFinanciamento: 1.5,
-          parcela36x: 0,
-          parcela60x: 0,
-          paymentConditions: [...DEFAULT_PAYMENT_CONDITIONS],
-          financingConditions: [defaultFinancingCondition],
-          financingPrimaryInstitutionId: defaultFinancingCondition.id,
-          showFinancingSimulation: false,
-          validadeDias: 15,
-          annualEnergyIncreasePct: DEFAULT_ANNUAL_INCREASE_PCT,
-          moduleDegradationPct: DEFAULT_MODULE_DEGRADATION_PCT,
-          annualOmCostPct: 1,
-          annualOmCostFixed: 0,
-          teRatePerKwh: initialRentability,
-          tusdRatePerKwh: 0,
-          tusdCompensationPct: 0,
-          estado: uf,
-          irradiancia: uf ? getIrradianceByUF(uf) : 4.5,
-          monthlyGenerationFactors: undefined,
-          irradianceSource: contact.irradianceSource === 'pvgis' ? 'pvgis' : undefined,
-          latitude: contact.latitude,
-          longitude: contact.longitude,
-          irradianceRefAt: contact.irradianceRefAt || undefined,
-          concessionaria: inferredDistributor,
-          tipoLigacao,
-          rentabilityRatePerKwh: initialRentability,
-          tarifaKwh: initialRentability,
-          custoDisponibilidadeKwh: contact.availabilityCostKwh ?? CUSTO_DISPONIBILIDADE_POR_LIGACAO[tipoLigacao],
-          performanceRatio: contact.performanceRatio ?? 0.8,
-          precoPorKwp: contact.pricePerKwp ?? 4500,
-          abaterCustoDisponibilidadeNoDimensionamento: contact.subtractAvailabilityInSizing ?? false,
-          moduloGarantia: 25,
-          inversorGarantia: 10,
-        },
-        { preserveValorTotal: preserveInitialValor },
-      ));
+    const currentContact = contactRef.current;
+    if (!currentContact || !isOpen) return;
 
-      void (async () => {
-        const solarResource = await resolveSolarResource({
-          city: contact.city || null,
-          uf,
-          addressLine: contact.address || null,
-          zip: contact.zip || null,
-          lat: contact.latitude,
-          lon: contact.longitude,
-        });
-        if (!solarResource) return;
-        setFormData(prev => recalculateSizing(
-          {
-            ...prev,
-            irradiancia: solarResource.annualIrradianceKwhM2Day,
-            monthlyGenerationFactors: solarResource.monthlyGenerationFactors,
-            irradianceSource: solarResource.source,
-            latitude: solarResource.lat ?? undefined,
-            longitude: solarResource.lon ?? undefined,
-            irradianceRefAt: new Date().toISOString(),
-          },
-          { preserveValorTotal: preserveInitialValor },
-        ));
-      })();
-    }
-  }, [contact, isOpen, recalculateSizing, resolveSolarResource]);
+    setIsLoading(false);
+    setAiLoading(false);
+    setAiContent(null);
+    setAiHeadline('');
+    rentabilityManuallyEditedRef.current = false;
+    tariffManuallyEditedRef.current = false;
+    setRentabilityManuallyEdited(false);
+    setTariffManuallyEdited(false);
+    const explicitUf = normalizeUf(currentContact.state);
+    const inferredUf = inferUfFromCep(currentContact.zip);
+    const uf = explicitUf || inferredUf || '';
+    const distributorInference = inferDistributor({
+      distributor: currentContact.energyDistributor || null,
+      uf,
+      city: currentContact.city || null,
+      cep: currentContact.zip || null,
+    });
+    const inferredDistributor = distributorInference?.distributor || '';
+    const defaultTariffFromDistributor = getDefaultTariffByDistributor(inferredDistributor);
+    const leadTariffKwh = Number(currentContact.energyTariffKwh);
+    const hasLeadTariff = Number.isFinite(leadTariffKwh) && leadTariffKwh > 0;
+    const initialTariff = hasLeadTariff ? leadTariffKwh : (defaultTariffFromDistributor ?? DEFAULT_TARIFF_FALLBACK);
+    const initialRentability = hasLeadTariff ? leadTariffKwh : DEFAULT_RENTABILITY_RATE;
+    const initialTariffRates = deriveTariffComponents(initialTariff);
+    const tipoLigacao = (currentContact.connectionType || 'bifasico') as TipoLigacao;
+    const preserveInitialValor = (Number(currentContact.projectValue) || 0) > 0;
+    const defaultFinancingCondition = createDefaultFinancingCondition();
+    setFormData(prev => recalculateSizing(
+      {
+        ...prev,
+        consumoMensal: currentContact.consumption || 500,
+        contaLuzMensal: (Number(currentContact.averageMonthlyBill) || 0) > 0
+          ? Math.max(0, Number(currentContact.averageMonthlyBill) || 0)
+          : undefined,
+        valorTotal: currentContact.projectValue || 0,
+        descontoAvistaValor: 0,
+        valorAvistaLiquido: Math.max(0, Number(currentContact.projectValue) || 0),
+        investimentoBaseMetricas: Math.max(0, Number(currentContact.projectValue) || 0),
+        tipo_cliente: (currentContact.clientType || 'residencial') as ClientType,
+        observacoes: '',
+        endereco: currentContact.address || '',
+        cidade: currentContact.city || '',
+        cep: currentContact.zip || '',
+        signatureCompanyName: '',
+        signatureCompanyCnpj: '',
+        signatureContractorName: currentContact.name || '',
+        signatureContractorCnpj: '',
+        garantiaAnos: 25,
+        taxaFinanciamento: 1.5,
+        parcela36x: 0,
+        parcela60x: 0,
+        paymentConditions: [...DEFAULT_PAYMENT_CONDITIONS],
+        financingConditions: [defaultFinancingCondition],
+        financingPrimaryInstitutionId: defaultFinancingCondition.id,
+        showFinancingSimulation: false,
+        validadeDias: 15,
+        annualEnergyIncreasePct: DEFAULT_ANNUAL_INCREASE_PCT,
+        moduleDegradationPct: DEFAULT_MODULE_DEGRADATION_PCT,
+        annualOmCostPct: 1,
+        annualOmCostFixed: 0,
+        teRatePerKwh: initialTariffRates.teRatePerKwh,
+        tusdRatePerKwh: initialTariffRates.tusdRatePerKwh,
+        tusdCompensationPct: 100,
+        estado: uf,
+        irradiancia: uf ? getIrradianceByUF(uf) : 4.5,
+        posicaoTelhado: 'nao_definido',
+        sombreamentoPct: ROOF_POSITION_LOSS_MAP.nao_definido,
+        monthlyGenerationFactors: undefined,
+        irradianceSource: isStrictPvgisSource(currentContact.irradianceSource) ? currentContact.irradianceSource : undefined,
+        latitude: currentContact.latitude,
+        longitude: currentContact.longitude,
+        irradianceRefAt: currentContact.irradianceRefAt || undefined,
+        irradianceRequestId: undefined,
+        concessionaria: inferredDistributor,
+        tipoLigacao,
+        rentabilityRatePerKwh: initialRentability,
+        tarifaKwh: initialTariff,
+        custoDisponibilidadeKwh: currentContact.availabilityCostKwh ?? CUSTO_DISPONIBILIDADE_POR_LIGACAO[tipoLigacao],
+        performanceRatio: currentContact.performanceRatio ?? 0.8,
+        precoPorKwp: currentContact.pricePerKwp ?? 4500,
+        abaterCustoDisponibilidadeNoDimensionamento: currentContact.subtractAvailabilityInSizing ?? false,
+        moduloGarantia: 25,
+        inversorGarantia: 25,
+      },
+      { preserveValorTotal: preserveInitialValor },
+    ));
+
+    void resolvePreciseLocation({
+      estado: uf || undefined,
+      cidade: currentContact.city || undefined,
+      endereco: currentContact.address || undefined,
+      cep: currentContact.zip || undefined,
+      latitude: toFiniteOrUndefined(currentContact.latitude),
+      longitude: toFiniteOrUndefined(currentContact.longitude),
+    });
+  }, [contact?.id, isOpen, recalculateSizing, resolvePreciseLocation]);
 
   const isUsina = formData.tipo_cliente === 'usina';
   const hasFinancingSelected = formData.paymentConditions.includes('financiamento_bancario');
@@ -1648,7 +1707,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     formData,
     setFormData,
     isLoading,
-    locationLoading,
+    locationLoading: solarResource.loading,
+    solarResourceStatus: solarResource.status,
     aiLoading,
     aiContent,
     aiHeadline,
@@ -1684,6 +1744,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       COMMON_FINANCING_INSTITUTIONS,
       INSTALLMENT_OPTIONS,
       MODULE_TYPE_OPTIONS,
+      ROOF_POSITION_OPTIONS,
     },
   };
 }

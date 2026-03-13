@@ -1,18 +1,38 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
-if (!ALLOWED_ORIGIN) {
-  throw new Error('Missing ALLOWED_ORIGIN env')
-}
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { resolveRequestCors } from '../_shared/cors.ts'
 
 Deno.serve(async (req) => {
+  const cors = resolveRequestCors(req)
+  const corsHeaders = cors.corsHeaders
+
   if (req.method === 'OPTIONS') {
+    if (cors.missingAllowedOriginConfig) {
+      return new Response(JSON.stringify({ error: 'missing_allowed_origin' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (!cors.originAllowed) {
+      return new Response(JSON.stringify({ error: 'origin_not_allowed' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
     return new Response(null, { headers: corsHeaders })
+  }
+
+  if (cors.missingAllowedOriginConfig) {
+    return new Response(JSON.stringify({ error: 'missing_allowed_origin' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (!cors.originAllowed) {
+    return new Response(JSON.stringify({ error: 'origin_not_allowed' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 
   try {

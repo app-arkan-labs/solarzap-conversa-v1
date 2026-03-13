@@ -6,6 +6,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Contact, Channel, PipelineStage, ClientType } from '@/types/solarzap';
 import type { LeadStageData } from '@/types/ai';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
+import { normalizeLeadStage } from '@/lib/leadStageNormalization';
+import { normalizeChannelValue } from '@/lib/channelNormalization';
+import {
+    buildImportLeadsSummary,
+    type ImportLeadsSummary,
+    type ImportLeadRpcRow,
+} from '@/lib/importLeadsSummary';
 
 // Module-level cache for DB schema capabilities (to avoid repeated failed requests)
 let dbSupportsExtendedColumns: boolean | null = null;
@@ -20,6 +27,7 @@ interface ExtendedLeadFields {
     uf?: string;
     concessionaria?: string;
     tipo_ligacao?: 'monofasico' | 'bifasico' | 'trifasico';
+    conta_luz_mensal?: number;
     tarifa_kwh?: number;
     custo_disponibilidade_kwh?: number;
     performance_ratio?: number;
@@ -88,59 +96,11 @@ const packLeadMeta = (currentObs: string | null | undefined, data: ExtendedLeadF
 
 // Helper to map DB lead to Contact (Domain entity)
 export const mapChannel = (canal: string): Channel => {
-    const channelMap: Record<string, Channel> = {
-        'whatsapp': 'whatsapp',
-        'messenger': 'messenger',
-        'instagram': 'instagram',
-        'email': 'email',
-        'google_ads': 'google_ads',
-        'facebook_ads': 'facebook_ads',
-        'tiktok_ads': 'tiktok_ads',
-        'indication': 'indication',
-        'event': 'event',
-        'cold_list': 'cold_list',
-        'other': 'other'
-    };
-    // Normalize logic
-    const normalized = canal?.toLowerCase().replace(/\s+/g, '_') || 'whatsapp';
-    return channelMap[normalized] || 'whatsapp';
+    return normalizeChannelValue(canal);
 };
 
 export const mapPipelineStage = (status: string): PipelineStage => {
-    if (!status) return 'novo_lead';
-
-    const normalized = status
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, '_')
-        .trim();
-
-    const stageMap: Record<string, PipelineStage> = {
-        'novo_lead': 'novo_lead',
-        'respondeu': 'respondeu',
-        'chamada_agendada': 'chamada_agendada',
-        'chamada_realizada': 'chamada_realizada',
-        'nao_compareceu': 'nao_compareceu',
-        'aguardando_proposta': 'aguardando_proposta',
-        'proposta_pronta': 'proposta_pronta',
-        'visita_agendada': 'visita_agendada',
-        'visita_realizada': 'visita_realizada',
-        'proposta_negociacao': 'proposta_negociacao',
-        'financiamento': 'financiamento',
-        'aprovou_projeto': 'aprovou_projeto',
-        'contrato_assinado': 'contrato_assinado',
-        'projeto_pago': 'projeto_pago',
-        'aguardando_instalacao': 'aguardando_instalacao',
-        'projeto_instalado': 'projeto_instalado',
-        'coletar_avaliacao': 'coletar_avaliacao',
-        'contato_futuro': 'contato_futuro',
-        'perdido': 'perdido',
-        'novo': 'novo_lead',
-        'lead': 'novo_lead',
-    };
-
-    return stageMap[normalized] || 'novo_lead';
+    return normalizeLeadStage(status);
 };
 
 export const leadToContact = (lead: any): Contact => {
@@ -171,6 +131,7 @@ export const leadToContact = (lead: any): Contact => {
         zip: lead.cep || meta.cep, // Maps to 'cep' in UI usually
         energyDistributor: lead.concessionaria || meta.concessionaria,
         connectionType: (lead.tipo_ligacao || meta.tipo_ligacao) as Contact['connectionType'] | undefined,
+        averageMonthlyBill: toOptionalNumber(lead.conta_luz_mensal ?? meta.conta_luz_mensal),
         energyTariffKwh: toOptionalNumber(lead.tarifa_kwh ?? meta.tarifa_kwh),
         availabilityCostKwh: toOptionalNumber(lead.custo_disponibilidade_kwh ?? meta.custo_disponibilidade_kwh),
         performanceRatio: toOptionalNumber(lead.performance_ratio ?? meta.performance_ratio),
@@ -199,6 +160,10 @@ export const leadToContact = (lead: any): Contact => {
         aiEnabled: lead.ai_enabled ?? true,
         aiPausedReason: lead.ai_paused_reason,
         aiPausedAt: lead.ai_paused_at ? new Date(lead.ai_paused_at) : null,
+        followUpStep: Number.isFinite(Number(lead.follow_up_step)) ? Number(lead.follow_up_step) : 0,
+        followUpEnabled: lead.follow_up_enabled !== false,
+        followUpExhaustedSeen: lead.follow_up_exhausted_seen !== false,
+        lostReason: lead.lost_reason ?? null,
     };
 };
 
@@ -214,6 +179,7 @@ export interface LeadPatch {
     uf?: string;
     concessionaria?: string;
     tipo_ligacao?: 'monofasico' | 'bifasico' | 'trifasico';
+    conta_luz_mensal?: number;
     tarifa_kwh?: number;
     custo_disponibilidade_kwh?: number;
     performance_ratio?: number;
@@ -229,6 +195,10 @@ export interface LeadPatch {
     status_pipeline?: PipelineStage;
     canal?: Channel;
     assigned_to_user_id?: string | null;
+    follow_up_enabled?: boolean;
+    follow_up_step?: number;
+    follow_up_exhausted_seen?: boolean;
+    lost_reason?: string | null;
 }
 
 export type LeadScopeFilter = 'mine' | 'org_all' | `user:${string}`;
@@ -413,9 +383,9 @@ export function useLeads() {
                             if (!oldData) return [];
                             return oldData.filter(c => c.id !== deletedId);
                         });
-                        toast.info('Contato excluído');
+                        toast.info('Contato excluido');
                     } else {
-                        // UPDATE — optimistic merge to reflect AI toggle and other changes instantly
+                        // UPDATE - optimistic merge to reflect AI toggle and other changes instantly
                         const updated = payload.new;
                         if (updated) {
                             const updatedContact = leadToContact(updated);
@@ -578,10 +548,34 @@ export function useLeads() {
         return { data, error };
     };
 
+    const markLeadChannelAsManual = useCallback(
+        async (leadId: number, canal: string) => {
+            if (!orgId || !leadId || !canal) return;
+            try {
+                await supabase
+                    .from('lead_attribution')
+                    .upsert(
+                        {
+                            org_id: orgId,
+                            lead_id: leadId,
+                            inferred_channel: canal,
+                            attribution_method: 'manual',
+                            channel_is_inferred: false,
+                            last_touch_at: new Date().toISOString(),
+                        },
+                        { onConflict: 'lead_id' },
+                    );
+            } catch (error) {
+                console.warn('Failed to persist manual lead channel attribution marker:', error);
+            }
+        },
+        [orgId],
+    );
+
     const createLeadMutation = useMutation({
         mutationFn: async (data: LeadPatch) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
 
             const basePayload = {
                 org_id: orgId,
@@ -594,7 +588,7 @@ export function useLeads() {
                 canal: data.canal || 'whatsapp',
                 consumo_kwh: normalizeConsumokwhForDb(data.consumo_kwh) || 0,
                 valor_estimado: data.valor_estimado || 0,
-                status_pipeline: data.status_pipeline || 'novo_lead',
+                status_pipeline: normalizeLeadStage(data.status_pipeline || 'novo_lead'),
                 observacoes: data.observacoes || '',
             };
 
@@ -606,6 +600,7 @@ export function useLeads() {
                 uf: data.uf,
                 concessionaria: data.concessionaria,
                 tipo_ligacao: data.tipo_ligacao,
+                conta_luz_mensal: data.conta_luz_mensal,
                 tarifa_kwh: data.tarifa_kwh,
                 custo_disponibilidade_kwh: data.custo_disponibilidade_kwh,
                 performance_ratio: data.performance_ratio,
@@ -630,7 +625,7 @@ export function useLeads() {
     const updateLeadMutation = useMutation({
         mutationFn: async ({ contactId, data }: { contactId: string; data: LeadPatch }) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
 
             const basePayload: any = {};
             if (data.nome !== undefined) {
@@ -644,12 +639,16 @@ export function useLeads() {
             if (data.consumo_kwh !== undefined) basePayload.consumo_kwh = normalizeConsumokwhForDb(data.consumo_kwh);
             if (data.valor_estimado !== undefined) basePayload.valor_estimado = data.valor_estimado;
             if (data.status_pipeline !== undefined) {
-                basePayload.status_pipeline = data.status_pipeline;
+                basePayload.status_pipeline = normalizeLeadStage(data.status_pipeline);
                 basePayload.stage_changed_at = new Date().toISOString();
             }
             if (data.canal !== undefined) basePayload.canal = data.canal;
             if (data.observacoes !== undefined) basePayload.observacoes = data.observacoes;
             if (data.assigned_to_user_id !== undefined) basePayload.assigned_to_user_id = data.assigned_to_user_id;
+            if (data.follow_up_enabled !== undefined) basePayload.follow_up_enabled = data.follow_up_enabled;
+            if (data.follow_up_step !== undefined) basePayload.follow_up_step = data.follow_up_step;
+            if (data.follow_up_exhausted_seen !== undefined) basePayload.follow_up_exhausted_seen = data.follow_up_exhausted_seen;
+            if (data.lost_reason !== undefined) basePayload.lost_reason = data.lost_reason;
 
             const extendedPayload: ExtendedLeadFields = {};
             if (data.tipo_cliente !== undefined) extendedPayload.tipo_cliente = data.tipo_cliente;
@@ -659,6 +658,7 @@ export function useLeads() {
             if (data.uf !== undefined) extendedPayload.uf = data.uf;
             if (data.concessionaria !== undefined) extendedPayload.concessionaria = data.concessionaria;
             if (data.tipo_ligacao !== undefined) extendedPayload.tipo_ligacao = data.tipo_ligacao;
+            if (data.conta_luz_mensal !== undefined) extendedPayload.conta_luz_mensal = data.conta_luz_mensal;
             if (data.tarifa_kwh !== undefined) extendedPayload.tarifa_kwh = data.tarifa_kwh;
             if (data.custo_disponibilidade_kwh !== undefined) extendedPayload.custo_disponibilidade_kwh = data.custo_disponibilidade_kwh;
             if (data.performance_ratio !== undefined) extendedPayload.performance_ratio = data.performance_ratio;
@@ -674,6 +674,9 @@ export function useLeads() {
             const { error } = await safeSupabaseWrite('UPDATE', 'leads', basePayload, extendedPayload, Number(contactId));
 
             if (error) throw error;
+            if (data.canal !== undefined) {
+                await markLeadChannelAsManual(Number(contactId), data.canal);
+            }
             return { contactId, ...data };
         },
         onSuccess: () => {
@@ -682,59 +685,100 @@ export function useLeads() {
     });
 
     const importContactsMutation = useMutation({
-        mutationFn: async (contacts: any[]) => {
+        mutationFn: async (contacts: any[]): Promise<ImportLeadsSummary> => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organização não vinculada ao usuário');
-            // Simplified import handling (batch imports handled individually for safety or via simple batch if columns trusted)
-            // For now, retaining existing batch logic but adding type_cliente if it exists in DB
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
 
-            // NOTE: Importing huge lists with the "try/catch" logic row-by-row is slow.
-            // As a compromise for this increment, we will perform ONE check for columns using a dummy or first row,
-            // then process the rest. OR just fall back to simple logic for import.
-            // Given the requirement "No migration", we'll just try to insert extended fields and if it fails, the user will see error.
-            // But to be consistent, let's keep the existing logic but pass 'tipo_cliente' which we know is crucial.
+            const payload = contacts.map((contact) => ({
+                ...contact,
+                status_pipeline: normalizeLeadStage(contact?.status_pipeline || 'novo_lead'),
+            }));
 
-            const chunkSize = 50;
-            for (let i = 0; i < contacts.length; i += chunkSize) {
-                const chunk = contacts.slice(i, i + chunkSize);
-                // We try to include tipo_cliente
-                const { error } = await supabase.from('leads').insert(
-                    chunk.map(c => ({
-                        org_id: orgId,
-                        user_id: user.id,
-                        assigned_to_user_id: user.id,
-                        nome: c.nome,
-                        telefone: c.telefone,
-                        email: c.email || null,
-                        empresa: c.empresa || null,
-                        canal: c.canal || 'whatsapp',
-                        consumo_kwh: normalizeConsumokwhForDb(c.consumo_kwh as number | undefined) || 0,
-                        valor_estimado: c.valor_estimado || 0,
-                        status_pipeline: c.status_pipeline || 'novo_lead',
-                        observacoes: c.observacoes || '',
-                        // Try sending type. If it fails, batch import fails.
-                        // Ideally we'd use the safeSupabaseWrite logic but it doesn't support batch nicely yet.
-                        // Assuming types match existing DB for batch import usage (legacy).
-                        tipo_cliente: c.tipo_cliente || 'residencial',
-                    }))
-                );
-                if (error) {
-                    // Fallback: Try without tipo_cliente if that was the issue?
-                    // For now, throw to alert user.
-                    throw error;
-                }
+            const { data, error } = await supabase.rpc('import_leads_batch', {
+                p_org_id: orgId,
+                p_rows: payload,
+            });
+
+            if (error) {
+                throw new Error(error.message || 'Falha ao importar leads.');
             }
-            return Promise.resolve();
+
+            return buildImportLeadsSummary(data as ImportLeadRpcRow[] | null | undefined);
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
+        onSuccess: (summary) => {
+            if ((summary.inserted_count + summary.updated_count) > 0) {
+                queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
+            }
         }
+    });
+
+    const bulkAssignLeadsMutation = useMutation({
+        mutationFn: async ({
+            leadIds,
+            assignedToUserId,
+        }: {
+            leadIds: string[];
+            assignedToUserId: string | null;
+        }): Promise<{ updatedCount: number; failedIds: string[] }> => {
+            if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+
+            const numericLeadIds = Array.from(new Set(
+                (leadIds || [])
+                    .map((id) => Number(id))
+                    .filter((id) => Number.isFinite(id) && id > 0)
+            ));
+
+            if (numericLeadIds.length === 0) {
+                return { updatedCount: 0, failedIds: [] };
+            }
+
+            const { data, error } = await supabase
+                .from('leads')
+                .update({ assigned_to_user_id: assignedToUserId })
+                .eq('org_id', orgId)
+                .in('id', numericLeadIds)
+                .select('id');
+
+            if (error) throw error;
+
+            const updatedIdSet = new Set((data || []).map((row: any) => String(row.id)));
+            const failedIds = leadIds.filter((id) => !updatedIdSet.has(String(id)));
+
+            return {
+                updatedCount: (data || []).length,
+                failedIds,
+            };
+        },
+        onMutate: async ({ leadIds, assignedToUserId }) => {
+            const snapshot = queryClient.getQueriesData({ queryKey: ['leads', orgId] });
+
+            queryClient.setQueriesData({ queryKey: ['leads', orgId] }, (oldData: unknown) => {
+                if (!Array.isArray(oldData)) return oldData;
+                const idSet = new Set((leadIds || []).map((id) => String(id)));
+                return oldData.map((item: any) => (
+                    idSet.has(String(item?.id))
+                        ? { ...item, assignedToUserId: assignedToUserId, assigned_to_user_id: assignedToUserId }
+                        : item
+                ));
+            });
+
+            return { snapshot };
+        },
+        onError: (_error, _vars, context) => {
+            context?.snapshot?.forEach(([key, data]) => {
+                queryClient.setQueryData(key, data);
+            });
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
+        },
     });
 
     const deleteLeadMutation = useMutation({
         mutationFn: async (leadId: string) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
             const { data: lead } = await supabase.from('leads').select('phone_e164, instance_name').eq('id', Number(leadId)).eq('org_id', orgId).single();
 
             if (lead?.phone_e164) {
@@ -754,7 +798,7 @@ export function useLeads() {
             return leadId;
         },
         onSuccess: (deletedId) => {
-            toast.success('Contato excluído permanentemente');
+            toast.success('Contato excluido permanentemente');
             queryClient.setQueriesData({ queryKey: ['leads', orgId] }, (old: Contact[] | undefined) =>
                 Array.isArray(old) ? old.filter(c => c.id !== deletedId) : old
             );
@@ -769,7 +813,7 @@ export function useLeads() {
     const toggleLeadAiMutation = useMutation({
         mutationFn: async ({ leadId, enabled, reason }: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
             const updatePayload: any = {
                 ai_enabled: enabled,
                 ai_paused_reason: enabled ? null : (reason || 'manual'),
@@ -778,7 +822,7 @@ export function useLeads() {
             const { data, error } = await supabase.from('leads').update(updatePayload).eq('id', Number(leadId)).eq('org_id', orgId).select('id');
             if (error) throw error;
             if (!data?.length) {
-                throw new Error('Nenhum lead atualizado. Verifique permissões.');
+                throw new Error('Nenhum lead atualizado. Verifique permissoes.');
             }
             return { leadId, enabled };
         },
@@ -803,6 +847,75 @@ export function useLeads() {
         }
     });
 
+    const toggleLeadFollowUpMutation = useMutation({
+        mutationFn: async ({ leadId, enabled }: { leadId: string; enabled: boolean }) => {
+            if (!user) throw new Error('User not authenticated');
+            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+
+            const leadIdNum = Number(leadId);
+            const basePatch: Record<string, unknown> = {
+                follow_up_enabled: enabled,
+            };
+
+            if (!enabled) {
+                basePatch.follow_up_step = 0;
+            }
+
+            const { data, error } = await supabase
+                .from('leads')
+                .update(basePatch)
+                .eq('id', leadIdNum)
+                .eq('org_id', orgId)
+                .select('id');
+
+            if (error) throw error;
+            if (!data?.length) {
+                throw new Error('Nenhum lead atualizado. Verifique permissoes.');
+            }
+
+            if (!enabled) {
+                const nowIso = new Date().toISOString();
+                const { error: cancelErr } = await supabase
+                    .from('scheduled_agent_jobs')
+                    .update({
+                        status: 'cancelled',
+                        cancelled_reason: 'lead_fu_disabled',
+                        executed_at: nowIso,
+                    })
+                    .eq('org_id', orgId)
+                    .eq('lead_id', leadIdNum)
+                    .eq('agent_type', 'follow_up')
+                    .eq('status', 'pending');
+
+                if (cancelErr) throw cancelErr;
+            }
+
+            return { leadId, enabled };
+        },
+        onSuccess: ({ leadId, enabled }) => {
+            queryClient.setQueriesData(
+                { queryKey: ['leads', orgId] },
+                (oldData: Contact[] | undefined) => {
+                    if (!Array.isArray(oldData)) return oldData;
+                    return oldData.map((contact) =>
+                        contact.id === leadId
+                            ? {
+                                ...contact,
+                                followUpEnabled: enabled,
+                                followUpStep: enabled ? (contact.followUpStep ?? 0) : 0,
+                            }
+                            : contact
+                    );
+                }
+            );
+            queryClient.invalidateQueries({ queryKey: ['leads', orgId] });
+        },
+        onError: (error) => {
+            console.error('Error toggling lead follow-up:', error);
+            toast.error(error instanceof Error ? error.message : 'Erro ao alterar status do follow-up');
+        },
+    });
+
     return {
         contacts: leadsQuery.data || [],
         isLoading: leadsQuery.isLoading && !!user,
@@ -818,7 +931,9 @@ export function useLeads() {
         updateLead: updateLeadMutation.mutateAsync,
         deleteLead: deleteLeadMutation.mutateAsync,
         importContacts: importContactsMutation.mutateAsync,
+        bulkAssignLeads: bulkAssignLeadsMutation.mutateAsync,
         toggleLeadAi: toggleLeadAiMutation.mutateAsync,
+        toggleLeadFollowUp: toggleLeadFollowUpMutation.mutateAsync,
     };
 }
 

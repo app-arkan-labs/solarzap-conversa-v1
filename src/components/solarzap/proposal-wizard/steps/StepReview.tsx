@@ -22,10 +22,18 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="rounded-lg border bg-green-50 p-3 dark:bg-green-950/40">
-          <p className="text-xs text-muted-foreground">{form.isUsina ? 'Investimento total' : 'Valor total'}</p>
+          <p className="text-xs text-muted-foreground">{form.isUsina ? 'Investimento base' : 'Investimento base'}</p>
           <p className="text-lg font-semibold text-green-700 dark:text-green-400">
-            {form.formatCurrency(form.formData.valorTotal || 0)}
+            {form.formatCurrency(form.formData.investimentoBaseMetricas || 0)}
           </p>
+          <p className="text-[11px] text-muted-foreground">
+            Bruto: {form.formatCurrency(form.formData.valorTotal || 0)}
+          </p>
+          {(form.formData.descontoAvistaValor || 0) > 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              Desconto a vista: {form.formatCurrency(form.formData.descontoAvistaValor || 0)}
+            </p>
+          )}
         </div>
         <div className="rounded-lg border bg-blue-50 p-3 dark:bg-blue-950/40">
           <p className="text-xs text-muted-foreground">{form.isUsina ? 'Receita anual' : 'Economia anual'}</p>
@@ -65,14 +73,22 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
           </div>
           <div>
             <p className="text-xs text-muted-foreground">
-              {form.isUsina ? 'Geracao estimada' : 'Conta de luz mensal'}
+              {form.isUsina ? 'Geracao estimada' : 'Consumo medio mensal'}
             </p>
             <p className="font-medium">
-              {form.isUsina
-                ? `${form.formData.consumoMensal || 0} kWh/mes`
-                : form.formatCurrency(form.formData.contaLuzMensal || 0)}
+              {`${form.formData.consumoMensal || 0} kWh/mes`}
             </p>
           </div>
+          {!form.isUsina && (
+            <div>
+              <p className="text-xs text-muted-foreground">Conta media mensal (referencia)</p>
+              <p className="font-medium">
+                {(form.formData.contaLuzMensal || 0) > 0
+                  ? form.formatCurrency(form.formData.contaLuzMensal || 0)
+                  : 'Nao informada'}
+              </p>
+            </div>
+          )}
           <div>
             <p className="text-xs text-muted-foreground">Potencia e paineis</p>
             <p className="font-medium">
@@ -82,6 +98,10 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
           <div>
             <p className="text-xs text-muted-foreground">Pagamento</p>
             <p className="font-medium">{paymentLabels.join(', ') || '-'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Desconto a vista</p>
+            <p className="font-medium">{form.formatCurrency(form.formData.descontoAvistaValor || 0)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Modulo</p>
@@ -99,6 +119,10 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
                 : '-'}
               {' '}({sourceLabel})
             </p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Request ID irradiancia</p>
+            <p className="font-medium">{form.formData.irradianceRequestId || '-'}</p>
           </div>
         </div>
       </div>

@@ -24,7 +24,7 @@ export function StepPayment({ form }: StepPaymentProps) {
     <div className="space-y-4">
       <h3 className="text-base font-semibold">Como sera o pagamento?</h3>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="space-y-1.5">
           <Label>Valor total da proposta (R$)</Label>
           <Input
@@ -37,6 +37,19 @@ export function StepPayment({ form }: StepPaymentProps) {
             Use este valor para ajustar o investimento final negociado com o cliente.
           </p>
         </div>
+        <div className="space-y-1.5">
+          <Label>Desconto a vista (R$)</Label>
+          <Input
+            type="number"
+            min={0}
+            max={Math.max(0, Number(form.formData.valorTotal) || 0)}
+            value={form.formData.descontoAvistaValor || ''}
+            onChange={(e) => form.handleChange('descontoAvistaValor', Math.max(0, parseFloat(e.target.value) || 0))}
+          />
+          <p className="text-xs text-muted-foreground">
+            Impacta payback e ROI quando houver condicao de pagamento a vista.
+          </p>
+        </div>
         <div className="rounded-lg border bg-muted/30 p-3 text-sm">
           <p className="font-medium">Resumo rapido</p>
           <p className="text-muted-foreground">
@@ -47,6 +60,12 @@ export function StepPayment({ form }: StepPaymentProps) {
           </p>
           <p className="text-muted-foreground">
             Investimento: {form.formatCurrency(form.formData.valorTotal || 0)}
+          </p>
+          <p className="text-muted-foreground">
+            A vista liquido: {form.formatCurrency(form.formData.valorAvistaLiquido || 0)}
+          </p>
+          <p className="text-muted-foreground">
+            Base metricas: {form.formatCurrency(form.formData.investimentoBaseMetricas || 0)}
           </p>
         </div>
       </div>

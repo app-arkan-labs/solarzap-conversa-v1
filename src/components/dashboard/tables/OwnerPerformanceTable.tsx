@@ -11,28 +11,33 @@ export function OwnerPerformanceTable({ data, isLoading }: OwnerPerformanceProps
     if (!data || data.length === 0) return <div>Sem dados.</div>;
 
     const formatCurrency = (value: number) =>
-        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+
+    const formatMargin = (revenue: number, profit: number) =>
+        revenue > 0 ? `${((profit / revenue) * 100).toFixed(1)}%` : "—";
 
     return (
         <div className="rounded-md border">
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>Responsável</TableHead>
-                        <TableHead>Leads</TableHead>
+                        <TableHead>Responsavel</TableHead>
                         <TableHead>Fechados (Won)</TableHead>
-                        <TableHead>Conversão</TableHead>
                         <TableHead className="text-right">Faturamento</TableHead>
+                        <TableHead className="text-right">Lucro realizado</TableHead>
+                        <TableHead className="text-right">Margem</TableHead>
+                        <TableHead className="text-right">Ticket medio</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {data.map((row, idx) => (
                         <TableRow key={idx}>
                             <TableCell className="font-medium">{row.name}</TableCell>
-                            <TableCell>{row.leads}</TableCell>
                             <TableCell>{row.won}</TableCell>
-                            <TableCell>{row.conversion.toFixed(1)}%</TableCell>
                             <TableCell className="text-right">{formatCurrency(row.revenue)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(row.profit)}</TableCell>
+                            <TableCell className="text-right">{formatMargin(row.revenue, row.profit)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(row.ticket_avg)}</TableCell>
                         </TableRow>
                     ))}
                 </TableBody>

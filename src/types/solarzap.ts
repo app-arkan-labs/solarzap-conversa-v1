@@ -2,7 +2,7 @@
 import type { LeadStageData } from './ai';
 
 
-export type ActiveTab = 'conversas' | 'pipelines' | 'calendario' | 'contatos' | 'propostas' | 'dashboard' | 'integracoes' | 'automacoes' | 'banco_ia' | 'ia_agentes' | 'admin_members' | 'minha_conta';
+export type ActiveTab = 'conversas' | 'pipelines' | 'calendario' | 'contatos' | 'propostas' | 'dashboard' | 'integracoes' | 'tracking' | 'automacoes' | 'banco_ia' | 'ia_agentes' | 'admin_members' | 'minha_conta' | 'meu_plano' | 'disparos';
 
 
 
@@ -49,6 +49,7 @@ export interface Contact {
   zip?: string;
   energyDistributor?: string;
   connectionType?: 'monofasico' | 'bifasico' | 'trifasico';
+  averageMonthlyBill?: number;
   energyTariffKwh?: number;
   availabilityCostKwh?: number;
   performanceRatio?: number;
@@ -71,6 +72,10 @@ export interface Contact {
   aiEnabled?: boolean;
   aiPausedReason?: string | null;
   aiPausedAt?: Date | null;
+  followUpStep?: number;
+  followUpEnabled?: boolean;
+  followUpExhaustedSeen?: boolean;
+  lostReason?: string | null;
 }
 
 export interface Message {

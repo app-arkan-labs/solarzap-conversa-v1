@@ -10,7 +10,12 @@ import type { Contact } from '@/types/solarzap';
 import { generateProposalPDF, type ProposalPDFData } from '@/utils/generateProposalPDF';
 import { calculateProposalFinancials } from '@/utils/proposalFinancialModel';
 import { calculateSolarSizing } from '@/utils/solarSizing';
-import { EXPECTED_PROPOSAL_PDF_HASHES, EXPECTED_PROPOSAL_PDF_HASHES_ADVANCED_FLAGS } from './expectedHashes';
+import { resolveCashDiscountSnapshot } from '@/utils/proposalCashDiscount';
+import {
+  EXPECTED_PROPOSAL_PDF_HASHES,
+  EXPECTED_PROPOSAL_PDF_HASHES_ADVANCED_FLAGS,
+  EXPECTED_PROPOSAL_PDF_HASHES_CHART_FIXED_PROFILE,
+} from './expectedHashes';
 
 interface ProposalFixture {
   contact: {
@@ -37,6 +42,8 @@ interface ProposalFixture {
   showFinancingSimulation?: boolean;
   financingConditions?: Array<Record<string, unknown>>;
   abaterCustoDisponibilidadeNoDimensionamento?: boolean;
+  monthlyGenerationFactors?: number[];
+  descontoAvistaValor?: number;
 }
 
 const FIXED_NOW = new Date('2026-01-01T00:00:00Z');
@@ -61,6 +68,7 @@ const ALL_FLAGS_OFF: Record<string, string> = {
   VITE_USE_DEGRADATION_ALL_CLIENTS: 'false',
   VITE_USE_TUSD_TE_SIMPLIFIED: 'false',
   VITE_USE_FINANCIAL_SHADOW_MODE: 'false',
+  VITE_USE_CHART_FIXED_SEASONAL_PROFILE: 'false',
 };
 
 function loadFixture(fileName: string): ProposalFixture {
@@ -95,10 +103,15 @@ function buildProposalData(fixture: ProposalFixture): ProposalPDFData {
     custoDisponibilidadeKwh: fixture.custoDisponibilidadeKwh,
     aplicarCustoDisponibilidadeNoDimensionamento: Boolean(fixture.abaterCustoDisponibilidadeNoDimensionamento),
   });
+  const cashDiscountSnapshot = resolveCashDiscountSnapshot({
+    valorTotal: sizing.valorTotal,
+    descontoAvistaValor: fixture.descontoAvistaValor,
+    paymentConditions: (fixture.paymentConditions || []) as any,
+  });
 
   const financialInputs = {
     tipoCliente: fixture.tipo_cliente,
-    investimentoTotal: sizing.valorTotal,
+    investimentoTotal: cashDiscountSnapshot.investimentoBaseMetricas,
     consumoMensalKwh: fixture.consumoMensal,
     potenciaSistemaKwp: sizing.potenciaSistemaKwp,
     rentabilityRatePerKwh: fixture.rentabilityRatePerKwh,
@@ -108,6 +121,7 @@ function buildProposalData(fixture: ProposalFixture): ProposalPDFData {
     annualEnergyIncreasePct: fixture.annualEnergyIncreasePct ?? DEFAULT_ANNUAL_INCREASE_PCT,
     moduleDegradationPct: fixture.moduleDegradationPct ?? DEFAULT_MODULE_DEGRADATION_PCT,
     analysisYears: DEFAULT_ANALYSIS_YEARS,
+    monthlyGenerationFactors: fixture.monthlyGenerationFactors,
   };
   const financialOutputs = calculateProposalFinancials(financialInputs);
 
@@ -117,6 +131,9 @@ function buildProposalData(fixture: ProposalFixture): ProposalPDFData {
     potenciaSistema: sizing.potenciaSistemaKwp,
     quantidadePaineis: sizing.quantidadePaineis,
     valorTotal: sizing.valorTotal,
+    descontoAvistaValor: cashDiscountSnapshot.descontoAvistaValor,
+    valorAvistaLiquido: cashDiscountSnapshot.valorAvistaLiquido,
+    investimentoBaseMetricas: cashDiscountSnapshot.investimentoBaseMetricas,
     economiaAnual: financialOutputs.annualRevenueYear1,
     paybackMeses: financialOutputs.paybackMonths,
     garantiaAnos: fixture.garantiaAnos,
@@ -134,6 +151,7 @@ function buildProposalData(fixture: ProposalFixture): ProposalPDFData {
     financialInputs,
     financialOutputs,
     financialModelVersion: FINANCIAL_MODEL_VERSION,
+    monthlyGenerationFactors: fixture.monthlyGenerationFactors,
     moduloPotencia: fixture.moduloPotencia,
     moduloGarantia: 25,
     inversorGarantia: 10,
@@ -187,6 +205,14 @@ describe('proposal PDF golden master', () => {
     expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES.usinaB);
   });
 
+  it('residencial cash discount fixture keeps stable hash', async () => {
+    const hash = await pdfHashFromFixture('proposal_residencial_discount_cash.json', {
+      unifiedGeneration: false,
+      featureFlags: ALL_FLAGS_OFF,
+    });
+    expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES.residencialCashDiscount);
+  });
+
   it('keeps identical hash with unified generation OFF and ON for current fixtures', async () => {
     const fixtureFiles = ['proposal_residencial_A.json', 'proposal_usina_B.json'];
     for (const fileName of fixtureFiles) {
@@ -210,5 +236,27 @@ describe('proposal PDF golden master', () => {
       featureFlags: ADVANCED_FLAGS_ON,
     });
     expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES_ADVANCED_FLAGS.usinaB);
+  });
+
+  it('flat seasonal fixture keeps expected hash with fixed chart profile OFF', async () => {
+    const hash = await pdfHashFromFixture('proposal_residencial_flat_profile.json', {
+      unifiedGeneration: true,
+      featureFlags: {
+        ...ALL_FLAGS_OFF,
+        VITE_USE_CHART_FIXED_SEASONAL_PROFILE: 'false',
+      },
+    });
+    expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES_CHART_FIXED_PROFILE.flatProfileOff);
+  });
+
+  it('flat seasonal fixture keeps expected hash with fixed chart profile ON', async () => {
+    const hash = await pdfHashFromFixture('proposal_residencial_flat_profile.json', {
+      unifiedGeneration: true,
+      featureFlags: {
+        ...ALL_FLAGS_OFF,
+        VITE_USE_CHART_FIXED_SEASONAL_PROFILE: 'true',
+      },
+    });
+    expect(hash).toBe(EXPECTED_PROPOSAL_PDF_HASHES_CHART_FIXED_PROFILE.flatProfileOn);
   });
 });

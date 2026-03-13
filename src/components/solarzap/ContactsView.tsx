@@ -23,10 +23,12 @@ import { useToast } from '@/hooks/use-toast';
 import { UpdateLeadData } from './EditLeadModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
 import { AssignMemberSelect } from './AssignMemberSelect';
+import { FollowUpIndicator } from './FollowUpIndicator';
 import { PageHeader } from './PageHeader'; // New Import
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { scopeProposalByIdsQuery } from '@/lib/multiOrgLeadScoping';
 import { resolveProposalLinks } from '@/utils/proposalLinks';
 import { LeadScopeSelect, type LeadScopeValue } from './LeadScopeSelect';
 import type { MemberDto } from '@/lib/orgAdminClient';
@@ -48,6 +50,7 @@ interface ContactsViewProps {
   onImportContacts?: (contacts: ImportedContact[]) => Promise<unknown>;
   onDeleteLead?: (contactId: string) => Promise<void>;
   onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
+  onOpenFollowUpExhausted?: (leadId: string) => void;
   canViewTeam?: boolean;
   leadScope?: LeadScopeValue;
   onLeadScopeChange?: (scope: LeadScopeValue) => void;
@@ -145,6 +148,7 @@ export function ContactsView({
   onImportContacts,
   onDeleteLead,
   onToggleLeadAi,
+  onOpenFollowUpExhausted,
   canViewTeam = false,
   leadScope = 'mine',
   onLeadScopeChange,
@@ -267,10 +271,12 @@ export function ContactsView({
 
         let valorProjetoMap = new Map<number, number | null>();
         if (proposalIds.length > 0) {
-          const { data: propostas, error: propostasError } = await supabase
-            .from('propostas')
-            .select('id, valor_projeto')
-            .in('id', proposalIds);
+          const { data: propostas, error: propostasError } = await scopeProposalByIdsQuery(
+            (supabase
+              .from('propostas')
+              .select('id, valor_projeto')) as any,
+            { proposalIds, orgId },
+          );
 
           if (propostasError) throw propostasError;
 
@@ -391,6 +397,22 @@ export function ContactsView({
       c.email?.toLowerCase().includes(q) ||
       c.city?.toLowerCase().includes(q);
   });
+
+  const triggerFollowUpExhaustedIfNeeded = React.useCallback((contact: Contact | null) => {
+    if (!contact || !onOpenFollowUpExhausted) return;
+    if ((contact.followUpStep ?? 0) < 5) return;
+    if (contact.followUpExhaustedSeen !== false) return;
+    onOpenFollowUpExhausted(contact.id);
+  }, [onOpenFollowUpExhausted]);
+
+  useEffect(() => {
+    triggerFollowUpExhaustedIfNeeded(selectedContact);
+  }, [
+    selectedContact?.id,
+    selectedContact?.followUpStep,
+    selectedContact?.followUpExhaustedSeen,
+    triggerFollowUpExhaustedIfNeeded,
+  ]);
 
   const visibleContactIds = filteredContacts.map((contact) => contact.id);
   const selectedVisibleCount = visibleContactIds.filter((contactId) => selectedContactIds.has(contactId)).length;
@@ -598,6 +620,7 @@ export function ContactsView({
                     toggleContactSelection(contact.id);
                     return;
                   }
+                  triggerFollowUpExhaustedIfNeeded(contact);
                   setSelectedContact(contact);
                 }}
                 className={`
@@ -627,6 +650,13 @@ export function ContactsView({
                   <div className="text-sm text-muted-foreground truncate flex items-center gap-1">
                     <Phone className="w-3 h-3" />
                     {formatPhoneForDisplay(contact.phone)}
+                  </div>
+                  <div className="mt-1">
+                    <FollowUpIndicator
+                      step={contact.followUpStep ?? 0}
+                      enabled={contact.followUpEnabled !== false}
+                      compact
+                    />
                   </div>
                 </div>
                 {/* Buttons on hover */}

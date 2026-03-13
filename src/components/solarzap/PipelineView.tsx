@@ -1,20 +1,23 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
-import { Contact, PIPELINE_STAGES, PipelineStage, CalendarEvent } from '@/types/solarzap';
+import { Contact, PIPELINE_STAGES, PipelineStage, CalendarEvent, CHANNEL_INFO, ChannelFilter } from '@/types/solarzap';
 import { Badge } from '@/components/ui/badge';
-import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog, MapPin, MessageSquareQuote, Kanban } from 'lucide-react';
+import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog, MapPin, MessageSquareQuote, Kanban, Filter, CircleX, TrendingDown } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useAutomationSettings } from '@/hooks/useAutomationSettings';
 import { EditLeadModal, UpdateLeadData } from './EditLeadModal';
 import { StageBadges } from './StageBadges';
+import { FollowUpIndicator } from './FollowUpIndicator';
 import { LeadScopeSelect, type LeadScopeValue } from './LeadScopeSelect';
 import type { MemberDto } from '@/lib/orgAdminClient';
 
 import { ProposalModal, ProposalData } from './ProposalModal';
 import { ProposalReadyModal } from './ProposalReadyModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
+import { MarkAsLostModal } from './MarkAsLostModal';
+import { LossAnalyticsModal } from './LossAnalyticsModal';
 import { AssignMemberSelect } from './AssignMemberSelect';
 import { PageHeader } from './PageHeader';
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
@@ -25,7 +28,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,6 +65,7 @@ interface PipelineViewProps {
   onDeleteLead?: (contactId: string) => Promise<void>;
   onSchedule?: (contact: Contact, type: 'reuniao' | 'visita') => void;
   onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
+  onOpenFollowUpExhausted?: (leadId: string) => void;
   canViewTeam?: boolean;
   leadScope?: LeadScopeValue;
   onLeadScopeChange?: (scope: LeadScopeValue) => void;
@@ -93,6 +109,7 @@ export function PipelineView({
   onDeleteLead,
   onSchedule,
   onToggleLeadAi,
+  onOpenFollowUpExhausted,
   canViewTeam = false,
   leadScope = 'mine',
   onLeadScopeChange,
@@ -101,6 +118,7 @@ export function PipelineView({
   currentUserId = null,
 }: PipelineViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>('todos');
   const [draggedContact, setDraggedContact] = useState<Contact | null>(null);
   const [dragOverStage, setDragOverStage] = useState<PipelineStage | null>(null);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -121,12 +139,23 @@ export function PipelineView({
   // Comments modal state
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
   const [commentsContact, setCommentsContact] = useState<Contact | null>(null);
+  const [lostModalOpen, setLostModalOpen] = useState(false);
+  const [lostContact, setLostContact] = useState<Contact | null>(null);
+  const [lossAnalyticsOpen, setLossAnalyticsOpen] = useState(false);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
 
   const { toast } = useToast();
   const { isDragDropEnabled, getMessage } = useAutomationSettings();
+  const resolvedOwnerUserId = useMemo(() => {
+    if (!currentUserId) return null;
+    if (!canViewTeam) return currentUserId;
+    if (leadScope === 'org_all') return null;
+    if (leadScope === 'mine') return currentUserId;
+    const scopedUserId = leadScope.slice(5).trim();
+    return scopedUserId || currentUserId;
+  }, [canViewTeam, currentUserId, leadScope]);
 
   // Drag-to-scroll state
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -178,6 +207,11 @@ export function PipelineView({
     if (draggedContact) return;
     if ((e.target as HTMLElement).closest('[draggable]') && e.type !== 'click') return;
 
+    if ((contact.followUpStep ?? 0) >= 5 && contact.followUpExhaustedSeen === false && onOpenFollowUpExhausted) {
+      onOpenFollowUpExhausted(contact.id);
+      return;
+    }
+
     setEditingContact(contact);
     setIsEditModalOpen(true);
   };
@@ -220,6 +254,10 @@ export function PipelineView({
       case 'comments':
         setCommentsContact(contact);
         setCommentsModalOpen(true);
+        break;
+      case 'mark_lost':
+        setLostContact(contact);
+        setLostModalOpen(true);
         break;
       case 'delete':
         setContactToDelete(contact);
@@ -282,9 +320,28 @@ export function PipelineView({
   };
 
   const stages = Object.entries(PIPELINE_STAGES) as [PipelineStage, typeof PIPELINE_STAGES[PipelineStage]][];
+  const channelFilters = (
+    [{ id: 'todos' as ChannelFilter, label: 'Todas as origens' }]
+      .concat(
+        (Object.entries(CHANNEL_INFO) as Array<[Exclude<ChannelFilter, 'todos'>, { label: string }]>)
+          .map(([id, info]) => ({ id, label: info.label }))
+      )
+  );
+  const hasChannelFilter = channelFilter !== 'todos';
+  const selectedChannelLabel = channelFilter === 'todos'
+    ? 'Todas as origens'
+    : CHANNEL_INFO[channelFilter]?.label || 'Origem selecionada';
+  const getChannelCount = useCallback((filter: ChannelFilter) => {
+    if (filter === 'todos') return contacts.length;
+    return contacts.filter((contact) => contact.channel === filter).length;
+  }, [contacts]);
 
   const getContactsForStage = (stage: PipelineStage) => {
     let stageContacts = contacts.filter(c => c.pipelineStage === stage);
+
+    if (channelFilter !== 'todos') {
+      stageContacts = stageContacts.filter((contact) => contact.channel === channelFilter);
+    }
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -621,6 +678,50 @@ export function PipelineView({
               />
             ) : null}
 
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  title={hasChannelFilter ? `Origem: ${selectedChannelLabel}` : 'Filtrar por origem'}
+                  className={`border-border/50 shadow-sm glass ${hasChannelFilter ? 'bg-primary/10 text-primary border-primary/40' : ''}`}
+                >
+                  <Filter className="w-4 h-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-3 bg-popover border border-border shadow-xl">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-foreground">Origem do lead</h3>
+                  {hasChannelFilter ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setChannelFilter('todos')}
+                    >
+                      Limpar
+                    </Button>
+                  ) : null}
+                </div>
+
+                <Select
+                  value={channelFilter}
+                  onValueChange={(value) => setChannelFilter(value as ChannelFilter)}
+                >
+                  <SelectTrigger className="h-9 bg-background">
+                    <SelectValue placeholder="Selecione a origem" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {channelFilters.map((filter) => (
+                      <SelectItem key={`pipeline-origin-${filter.id}`} value={filter.id}>
+                        {`${filter.label} (${getChannelCount(filter.id)})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </PopoverContent>
+            </Popover>
+
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -630,6 +731,15 @@ export function PipelineView({
                 className="pl-10 bg-background border-border/50 shadow-sm glass"
               />
             </div>
+
+            <Button
+              variant="outline"
+              className="border-border/50 shadow-sm glass"
+              onClick={() => setLossAnalyticsOpen(true)}
+            >
+              <TrendingDown className="mr-2 h-4 w-4 text-rose-500" />
+              Analise de Perdas
+            </Button>
 
             {/* Import/Export Dropdown */}
             <DropdownMenu>
@@ -826,6 +936,15 @@ export function PipelineView({
                                     <MapPin className="w-4 h-4 text-orange-500" />
                                     <span>Agendar Visita</span>
                                   </DropdownMenuItem>
+                                  {contact.pipelineStage !== 'perdido' ? (
+                                    <DropdownMenuItem
+                                      onClick={(e) => handleQuickAction('mark_lost', contact, e as unknown as React.MouseEvent)}
+                                      className="gap-2 cursor-pointer text-rose-600 focus:text-rose-600"
+                                    >
+                                      <CircleX className="w-4 h-4" />
+                                      <span>Marcar como Perdido</span>
+                                    </DropdownMenuItem>
+                                  ) : null}
                                   {onDeleteLead && (
                                     <>
                                       <div className="h-px bg-muted my-1" />
@@ -872,6 +991,13 @@ export function PipelineView({
                           </div>
 
                           <StageBadges contact={contact} className="mb-3" />
+
+                          <div className="mb-3">
+                            <FollowUpIndicator
+                              step={contact.followUpStep ?? 0}
+                              enabled={contact.followUpEnabled !== false}
+                            />
+                          </div>
 
                           {/* Value */}
                           <div className="flex items-center gap-1 text-sm font-bold text-green-600 mb-1">
@@ -956,6 +1082,26 @@ export function PipelineView({
         }}
         leadId={commentsContact?.id || ''}
         leadName={commentsContact?.name || ''}
+      />
+
+      <MarkAsLostModal
+        open={lostModalOpen}
+        onOpenChange={(open) => {
+          setLostModalOpen(open);
+          if (!open) setLostContact(null);
+        }}
+        lead={lostContact}
+        onMoveToPipeline={onMoveToPipeline}
+        onUpdateLead={async (contactId, data) => {
+          if (!onUpdateLead) return;
+          await onUpdateLead(contactId, data);
+        }}
+      />
+
+      <LossAnalyticsModal
+        open={lossAnalyticsOpen}
+        onOpenChange={setLossAnalyticsOpen}
+        ownerUserId={resolvedOwnerUserId}
       />
 
       {/* Import Contacts Modal */}

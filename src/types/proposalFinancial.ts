@@ -4,6 +4,7 @@ export interface FinancialInputs {
   tipoCliente?: string;
   investimentoTotal: number;
   consumoMensalKwh: number;
+  contaLuzMensalReferencia?: number;
   potenciaSistemaKwp: number;
   rentabilityRatePerKwh?: number;
   tarifaKwh: number;
@@ -16,12 +17,15 @@ export interface FinancialInputs {
   analysisYears?: number;
   monthlyGenerationFactors?: number[];
   uf?: string;
+  avgDailyIrradiance?: number;
+  performanceRatio?: number;
+  daysInMonth?: number;
   annualOmCostPct?: number;
   annualOmCostFixed?: number;
   teRatePerKwh?: number;
   tusdRatePerKwh?: number;
   tusdCompensationPct?: number;
-  irradianceSource?: 'uf_fallback' | 'pvgis' | 'open_meteo' | 'cache';
+  irradianceSource?: 'uf_fallback' | 'pvgis' | 'pvgis_cache_degraded' | 'open_meteo' | 'cache';
   latitude?: number;
   longitude?: number;
 }

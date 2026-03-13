@@ -1,15 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { systemAccountCreatedEmail, systemInviteEmail } from '../_shared/emailTemplates.ts';
-
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
-if (!ALLOWED_ORIGIN) {
-  throw new Error('Missing ALLOWED_ORIGIN env')
-}
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { resolveRequestCors } from '../_shared/cors.ts';
 
 type OrgRole = 'owner' | 'admin' | 'user' | 'consultant';
 
@@ -29,7 +20,7 @@ type UserOrganizationRow = {
   created_at: string | null;
 };
 
-function jsonResponse(status: number, body: Record<string, unknown>) {
+function jsonResponse(corsHeaders: Record<string, string>, status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -54,6 +45,12 @@ function nonEmptyString(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseBooleanEnv(name: string, fallback = false): boolean {
+  const raw = String(Deno.env.get(name) || '').trim().toLowerCase();
+  if (!raw) return fallback;
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 }
 
 function metadataDisplayName(metadata: unknown): string | null {
@@ -343,6 +340,8 @@ async function bootstrapSelf(
   adminClient: ReturnType<typeof createClient>,
   user: { id: string; email?: string | null },
 ) {
+  const autoStartTrial = parseBooleanEnv('ORG_BOOTSTRAP_AUTO_TRIAL', false);
+
   const existingMembership = await resolvePrimaryMembership(adminClient, user.id);
   if (existingMembership) {
     return {
@@ -404,6 +403,41 @@ async function bootstrapSelf(
     throw membershipUpsertError;
   }
 
+  const nowIso = new Date().toISOString();
+  const trialEndsAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const billingUpdate = autoStartTrial
+    ? {
+      subscription_status: 'trialing',
+      trial_started_at: nowIso,
+      trial_ends_at: trialEndsAtIso,
+      onboarding_state: 'pending_checkout',
+      trial_days: 7,
+    }
+    : {
+      subscription_status: 'pending_checkout',
+      onboarding_state: 'pending_checkout',
+      trial_started_at: null,
+      trial_ends_at: null,
+      trial_days: 7,
+    };
+
+  await adminClient
+    .from('organizations')
+    .update(billingUpdate)
+    .eq('id', orgId);
+
+  await adminClient.from('org_billing_timeline').insert({
+    org_id: orgId,
+    event_type: autoStartTrial ? 'trial_started' : 'checkout_required',
+    actor: 'org_admin',
+    payload: {
+      source: 'bootstrap_self',
+      auto_start_trial: autoStartTrial,
+      ...(autoStartTrial ? { days: 7, trial_ends_at: trialEndsAtIso } : {}),
+    },
+  });
+
   return {
     ok: true,
     action: 'bootstrap_self',
@@ -411,6 +445,93 @@ async function bootstrapSelf(
     org_id: orgId,
     role: 'owner',
   };
+}
+
+async function getBillingInfo(
+  adminClient: ReturnType<typeof createClient>,
+  callerMembership: CallerMembership,
+) {
+  const { data, error } = await adminClient.rpc('get_org_billing_info', {
+    p_org_id: callerMembership.org_id,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+
+  const { data: timeline } = await adminClient
+    .from('org_billing_timeline')
+    .select('id, event_type, actor, payload, created_at')
+    .eq('org_id', callerMembership.org_id)
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  return {
+    ok: true,
+    action: 'get_billing_info',
+    billing: row ?? null,
+    timeline: timeline ?? [],
+  };
+}
+
+async function billingAdminAction(
+  adminClient: ReturnType<typeof createClient>,
+  callerMembership: CallerMembership,
+  payload: Record<string, unknown>,
+  corsHeaders: Record<string, string>,
+) {
+  const operation = typeof payload.operation === 'string' ? payload.operation : '';
+
+  if (operation === 'migrate_legacy_to_trial') {
+    const trialDaysRaw = Number(payload.trial_days ?? 7);
+    const trialDays = Number.isFinite(trialDaysRaw) ? Math.max(1, Math.min(30, Math.round(trialDaysRaw))) : 7;
+
+    const { data, error } = await adminClient.rpc('migrate_legacy_org_to_trial', {
+      p_org_id: callerMembership.org_id,
+      p_days: trialDays,
+    });
+
+    if (error) {
+      return jsonResponse(corsHeaders, 400, {
+        ok: false,
+        code: 'migration_failed',
+        error: error.message,
+      });
+    }
+
+    return jsonResponse(corsHeaders, 200, {
+      ok: true,
+      action: 'billing_admin_action',
+      operation,
+      result: Array.isArray(data) ? data[0] : data,
+    });
+  }
+
+  if (operation === 'refresh_access_state') {
+    const { data, error } = await adminClient.rpc('sync_org_access_state');
+    if (error) {
+      return jsonResponse(corsHeaders, 400, {
+        ok: false,
+        code: 'refresh_failed',
+        error: error.message,
+      });
+    }
+
+    return jsonResponse(corsHeaders, 200, {
+      ok: true,
+      action: 'billing_admin_action',
+      operation,
+      affected: Number(data || 0),
+    });
+  }
+
+  return jsonResponse(corsHeaders, 400, {
+    ok: false,
+    code: 'invalid_operation',
+    error: `operation invalida: ${operation}`,
+  });
 }
 
 async function listMembers(
@@ -465,7 +586,32 @@ async function inviteMember(
   adminClient: ReturnType<typeof createClient>,
   callerMembership: CallerMembership,
   payload: Record<string, unknown>,
+  corsHeaders: Record<string, string>,
 ) {
+  const { data: limitData, error: limitError } = await adminClient.rpc('check_plan_limit', {
+    p_org_id: callerMembership.org_id,
+    p_limit_key: 'max_members',
+    p_quantity: 1,
+  });
+
+  if (limitError) {
+    return jsonResponse(corsHeaders, 400, {
+      ok: false,
+      code: 'billing_limit_check_failed',
+      error: limitError.message,
+    });
+  }
+
+  const limitRow = Array.isArray(limitData) ? limitData[0] : limitData;
+  if (!limitRow?.allowed || limitRow?.access_state === 'blocked' || limitRow?.access_state === 'read_only') {
+    return jsonResponse(corsHeaders, 402, {
+      ok: false,
+      code: 'plan_limit_reached',
+      error: 'Limite de membros do plano atingido.',
+      billing: limitRow,
+    });
+  }
+
   const rawEmail = typeof payload.email === 'string' ? payload.email : '';
   const email = normalizeEmail(rawEmail);
   const rawRole = typeof payload.role === 'string' ? payload.role : '';
@@ -474,11 +620,11 @@ async function inviteMember(
   const mode: 'create' | 'invite' = payload.mode === 'create' ? 'create' : 'invite';
 
   if (!isValidEmail(email)) {
-    return jsonResponse(400, { ok: false, code: 'invalid_email', error: 'Email invalido para convite.' });
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_email', error: 'Email invalido para convite.' });
   }
 
   if (!isValidRole(role)) {
-    return jsonResponse(400, { ok: false, code: 'invalid_role', error: 'Role invalida para convite.' });
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_role', error: 'Role invalida para convite.' });
   }
 
   const { data: orgData, error: orgError } = await adminClient
@@ -587,7 +733,7 @@ async function inviteMember(
   }
 
   if (!user?.id) {
-    return jsonResponse(500, {
+    return jsonResponse(corsHeaders, 500, {
       ok: false,
       code: 'invite_user_not_resolved',
       error: 'Nao foi possivel resolver o usuario convidado.',
@@ -652,7 +798,7 @@ async function inviteMember(
   const recipientEmail = user.email || email;
 
   if (mode === 'invite' && !inviteLink && !resetLink) {
-    return jsonResponse(502, {
+    return jsonResponse(corsHeaders, 502, {
       ok: false,
       code: 'system_email_send_failed',
       error:
@@ -685,7 +831,7 @@ async function inviteMember(
     await sendEmailViaResend(recipientEmail, content, senderName, replyTo ?? null);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return jsonResponse(502, {
+    return jsonResponse(corsHeaders, 502, {
       ok: false,
       code: 'system_email_send_failed',
       error: 'Falha ao enviar e-mail de acesso. O membro foi vinculado, mas o e-mail nao foi entregue.',
@@ -693,7 +839,7 @@ async function inviteMember(
     });
   }
 
-  return jsonResponse(200, {
+  return jsonResponse(corsHeaders, 200, {
     ok: true,
     action: 'invite_member',
     user_id: user.id,
@@ -713,17 +859,18 @@ async function updateMember(
   adminClient: ReturnType<typeof createClient>,
   callerMembership: CallerMembership,
   payload: Record<string, unknown>,
+  corsHeaders: Record<string, string>,
 ) {
   const userId = typeof payload.user_id === 'string' ? payload.user_id.trim() : '';
   const rawRole = typeof payload.role === 'string' ? payload.role.trim() : '';
   const canViewTeamLeads = payload.can_view_team_leads === true;
 
   if (!userId) {
-    return jsonResponse(400, { ok: false, code: 'invalid_user_id', error: 'user_id obrigatorio.' });
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_user_id', error: 'user_id obrigatorio.' });
   }
 
   if (!isValidRole(rawRole)) {
-    return jsonResponse(400, { ok: false, code: 'invalid_role', error: 'Role invalida para update.' });
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_role', error: 'Role invalida para update.' });
   }
 
   const { data: targetMembership, error: targetMembershipError } = await adminClient
@@ -738,13 +885,13 @@ async function updateMember(
   }
 
   if (!targetMembership) {
-    return jsonResponse(404, { ok: false, code: 'member_not_found', error: 'Membro nao encontrado na org.' });
+    return jsonResponse(corsHeaders, 404, { ok: false, code: 'member_not_found', error: 'Membro nao encontrado na org.' });
   }
 
   if (targetMembership.role === 'owner' && rawRole !== 'owner') {
     const ownersCount = await countOwners(adminClient, callerMembership.org_id);
     if (ownersCount <= 1) {
-      return jsonResponse(409, {
+      return jsonResponse(corsHeaders, 409, {
         ok: false,
         code: 'last_owner_guard',
         error: 'Nao e permitido remover o ultimo owner da organizacao.',
@@ -765,7 +912,7 @@ async function updateMember(
     throw updateError;
   }
 
-  return jsonResponse(200, {
+  return jsonResponse(corsHeaders, 200, {
     ok: true,
     action: 'update_member',
     user_id: userId,
@@ -778,10 +925,11 @@ async function removeMember(
   adminClient: ReturnType<typeof createClient>,
   callerMembership: CallerMembership,
   payload: Record<string, unknown>,
+  corsHeaders: Record<string, string>,
 ) {
   const userId = typeof payload.user_id === 'string' ? payload.user_id.trim() : '';
   if (!userId) {
-    return jsonResponse(400, { ok: false, code: 'invalid_user_id', error: 'user_id obrigatorio.' });
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_user_id', error: 'user_id obrigatorio.' });
   }
 
   const { data: targetMembership, error: targetMembershipError } = await adminClient
@@ -796,13 +944,13 @@ async function removeMember(
   }
 
   if (!targetMembership) {
-    return jsonResponse(404, { ok: false, code: 'member_not_found', error: 'Membro nao encontrado na org.' });
+    return jsonResponse(corsHeaders, 404, { ok: false, code: 'member_not_found', error: 'Membro nao encontrado na org.' });
   }
 
   if (targetMembership.role === 'owner') {
     const ownersCount = await countOwners(adminClient, callerMembership.org_id);
     if (ownersCount <= 1) {
-      return jsonResponse(409, {
+      return jsonResponse(corsHeaders, 409, {
         ok: false,
         code: 'last_owner_guard',
         error: 'Nao e permitido remover o ultimo owner da organizacao.',
@@ -820,12 +968,45 @@ async function removeMember(
     throw deleteError;
   }
 
-  return jsonResponse(200, { ok: true, action: 'remove_member', user_id: userId });
+  return jsonResponse(corsHeaders, 200, { ok: true, action: 'remove_member', user_id: userId });
 }
 
 Deno.serve(async (req) => {
+  const cors = resolveRequestCors(req);
+  const corsHeaders = cors.corsHeaders;
+
   if (req.method === 'OPTIONS') {
+    if (cors.missingAllowedOriginConfig) {
+      return jsonResponse(corsHeaders, 500, {
+        ok: false,
+        code: 'missing_allowed_origin',
+        error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados.',
+      });
+    }
+    if (!cors.originAllowed) {
+      return jsonResponse(corsHeaders, 403, {
+        ok: false,
+        code: 'origin_not_allowed',
+        error: 'Origin nao permitida para esta funcao.',
+      });
+    }
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (cors.missingAllowedOriginConfig) {
+    return jsonResponse(corsHeaders, 500, {
+      ok: false,
+      code: 'missing_allowed_origin',
+      error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados.',
+    });
+  }
+
+  if (!cors.originAllowed) {
+    return jsonResponse(corsHeaders, 403, {
+      ok: false,
+      code: 'origin_not_allowed',
+      error: 'Origin nao permitida para esta funcao.',
+    });
   }
 
   try {
@@ -834,7 +1015,7 @@ Deno.serve(async (req) => {
     const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
     if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
-      return jsonResponse(500, {
+      return jsonResponse(corsHeaders, 500, {
         ok: false,
         code: 'missing_env',
         error: 'SUPABASE_URL/SUPABASE_ANON_KEY/SUPABASE_SERVICE_ROLE_KEY nao configurados.',
@@ -843,7 +1024,7 @@ Deno.serve(async (req) => {
 
     const authorization = req.headers.get('Authorization') || '';
     if (!authorization.toLowerCase().startsWith('bearer ')) {
-      return jsonResponse(401, {
+      return jsonResponse(corsHeaders, 401, {
         ok: false,
         code: 'missing_auth',
         error: 'Authorization header Bearer obrigatorio.',
@@ -860,7 +1041,7 @@ Deno.serve(async (req) => {
     } = await authClient.auth.getUser();
 
     if (userError || !user) {
-      return jsonResponse(401, {
+      return jsonResponse(corsHeaders, 401, {
         ok: false,
         code: 'unauthorized',
         error: 'Usuario nao autenticado.',
@@ -873,17 +1054,17 @@ Deno.serve(async (req) => {
     const action = typeof payload.action === 'string' ? payload.action : '';
 
     if (!action) {
-      return jsonResponse(400, { ok: false, code: 'missing_action', error: 'action obrigatoria.' });
+      return jsonResponse(corsHeaders, 400, { ok: false, code: 'missing_action', error: 'action obrigatoria.' });
     }
 
     if (action === 'bootstrap_self') {
       const result = await bootstrapSelf(adminClient, user);
-      return jsonResponse(200, result);
+      return jsonResponse(corsHeaders, 200, result);
     }
 
     if (action === 'list_user_orgs') {
       const result = await listUserOrganizations(adminClient, user.id);
-      return jsonResponse(200, result);
+      return jsonResponse(corsHeaders, 200, result);
     }
 
     const requestedOrgId = typeof payload.org_id === 'string' ? payload.org_id.trim() : '';
@@ -893,14 +1074,14 @@ Deno.serve(async (req) => {
 
     if (!callerMembership) {
       if (requestedOrgId) {
-        return jsonResponse(403, {
+        return jsonResponse(corsHeaders, 403, {
           ok: false,
           code: 'forbidden_org_context',
           error: 'Usuario nao possui membership na organizacao informada.',
         });
       }
 
-      return jsonResponse(403, {
+      return jsonResponse(corsHeaders, 403, {
         ok: false,
         code: 'no_membership',
         error: 'Usuario nao possui membership na organizacao.',
@@ -909,11 +1090,16 @@ Deno.serve(async (req) => {
 
     if (action === 'list_members') {
       const result = await listMembers(adminClient, callerMembership);
-      return jsonResponse(200, result);
+      return jsonResponse(corsHeaders, 200, result);
+    }
+
+    if (action === 'get_billing_info') {
+      const result = await getBillingInfo(adminClient, callerMembership);
+      return jsonResponse(corsHeaders, 200, result);
     }
 
     if (!(callerMembership.role === 'owner' || callerMembership.role === 'admin')) {
-      return jsonResponse(403, {
+      return jsonResponse(corsHeaders, 403, {
         ok: false,
         code: 'forbidden_role',
         error: 'Apenas owner/admin podem executar esta acao.',
@@ -921,21 +1107,25 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'invite_member') {
-      return await inviteMember(adminClient, callerMembership, payload);
+      return await inviteMember(adminClient, callerMembership, payload, corsHeaders);
     }
 
     if (action === 'update_member') {
-      return await updateMember(adminClient, callerMembership, payload);
+      return await updateMember(adminClient, callerMembership, payload, corsHeaders);
     }
 
     if (action === 'remove_member') {
-      return await removeMember(adminClient, callerMembership, payload);
+      return await removeMember(adminClient, callerMembership, payload, corsHeaders);
     }
 
-    return jsonResponse(400, { ok: false, code: 'invalid_action', error: `action invalida: ${action}` });
+    if (action === 'billing_admin_action') {
+      return await billingAdminAction(adminClient, callerMembership, payload, corsHeaders);
+    }
+
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_action', error: `action invalida: ${action}` });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro interno desconhecido';
     console.error('org-admin error:', error);
-    return jsonResponse(500, { ok: false, code: 'internal_error', error: message });
+    return jsonResponse(corsHeaders, 500, { ok: false, code: 'internal_error', error: message });
   }
 });

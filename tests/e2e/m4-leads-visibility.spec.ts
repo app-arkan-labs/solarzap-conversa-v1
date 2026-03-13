@@ -157,18 +157,32 @@ test('salesperson sees only own assigned leads', async ({ page }) => {
   await expect(page.getByTestId('contacts-owner-scope-trigger')).toHaveCount(0);
 });
 
-test('owner sees toggle and can switch from own to org leads', async ({ page }) => {
+test('owner sees dropdown and can switch own/team/specific member leads', async ({ page }) => {
   await login(page, state.ownerEmail, state.ownerPassword);
 
   await page.getByPlaceholder('Pesquisar ou começar nova conversa').fill(state.leadPrefix);
   const rows = page.locator('[data-testid="conversation-row"]').filter({ hasText: state.leadPrefix });
   await expect(rows).toHaveCount(2, { timeout: 30_000 });
 
-  const toggle = page.getByTestId('toggle-team-leads');
-  await expect(toggle).toBeVisible({ timeout: 30_000 });
-  await toggle.click();
+  const scopeTrigger = page.getByTestId('toggle-team-leads');
+  await expect(scopeTrigger).toBeVisible({ timeout: 30_000 });
+
+  await scopeTrigger.click();
+  await page.getByTestId('toggle-team-leads-option-org-all').click();
 
   await expect(rows).toHaveCount(4, { timeout: 30_000 });
+
+  await scopeTrigger.click();
+  await page.getByTestId(`toggle-team-leads-option-user-${state.salesUserId}`).click();
+  await expect(rows).toHaveCount(2, { timeout: 30_000 });
+  await expect(page.locator('[data-testid="conversation-row"]').filter({ hasText: `${state.leadPrefix}-Sales-1` })).toHaveCount(1);
+  await expect(page.locator('[data-testid="conversation-row"]').filter({ hasText: `${state.leadPrefix}-Owner-1` })).toHaveCount(0);
+
+  await scopeTrigger.click();
+  await page.getByTestId('toggle-team-leads-option-mine').click();
+  await expect(rows).toHaveCount(2, { timeout: 30_000 });
+  await expect(page.locator('[data-testid="conversation-row"]').filter({ hasText: `${state.leadPrefix}-Owner-1` })).toHaveCount(1);
+  await expect(page.locator('[data-testid="conversation-row"]').filter({ hasText: `${state.leadPrefix}-Sales-1` })).toHaveCount(0);
 
   await page.locator('button[title="Dashboard"]').click();
   await expect(page.getByTestId('dashboard-owner-scope-trigger')).toBeVisible({ timeout: 30_000 });

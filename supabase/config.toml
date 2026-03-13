@@ -16,6 +16,9 @@ verify_jwt = false
 [functions.google-callback]
 verify_jwt = false
 
+[functions.google-ads-callback]
+verify_jwt = false
+
 [functions.meta-oauth]
 verify_jwt = false
 
@@ -55,6 +58,9 @@ verify_jwt = false
 [functions.whatsapp-webhook]
 verify_jwt = false
 
+[functions.media-resolver]
+verify_jwt = false
+
 [functions.ai-pipeline-agent]
 verify_jwt = false
 
@@ -69,3 +75,27 @@ verify_jwt = true
 
 [functions.ai-reporter]
 verify_jwt = true
+
+[functions.attribution-webhook]
+verify_jwt = false
+
+[functions.conversion-dispatcher]
+verify_jwt = false
+
+[functions.tracking-credentials]
+verify_jwt = false
+
+[functions.admin-api]
+verify_jwt = false
+
+[functions.stripe-checkout]
+verify_jwt = false
+
+[functions.stripe-pack-checkout]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.stripe-portal]
+verify_jwt = false

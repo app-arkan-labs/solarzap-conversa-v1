@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { format } from 'https://esm.sh/date-fns@2'
 import { ptBR } from 'https://esm.sh/date-fns@2/locale'
+import { checkLimit, recordUsage } from '../_shared/billing.ts'
 
 // --- Evolution API Helper (Duplicated for self-containment) ---
 const getEvolutionConfig = () => {
@@ -64,8 +65,25 @@ Deno.serve(async (req) => {
             let status = 'failed'
             let response = null
             let errorMsg = null
+            let orgId: string | null = null
 
             try {
+                const { data: membership } = await supabase
+                    .from('organization_members')
+                    .select('org_id')
+                    .eq('user_id', r.user_id)
+                    .order('created_at', { ascending: true })
+                    .limit(1)
+                    .maybeSingle()
+
+                orgId = membership?.org_id || null
+                if (orgId) {
+                    const limit = await checkLimit(supabase, orgId, 'max_automations_month', 1)
+                    if (!limit.allowed || limit.access_state === 'blocked' || limit.access_state === 'read_only') {
+                        throw new Error('billing_limit_reached_for_reminder')
+                    }
+                }
+
                 // 2. Get active instance for user
                 const { data: instances, error: instError } = await supabase
                     .from('whatsapp_instances')
@@ -105,6 +123,24 @@ Deno.serve(async (req) => {
                 }
 
                 status = 'sent'
+
+                if (orgId) {
+                    try {
+                        await recordUsage(supabase, {
+                            orgId,
+                            userId: r.user_id,
+                            eventType: 'automation_execution',
+                            quantity: 1,
+                            source: 'process-reminders',
+                            metadata: {
+                                reminder_id: r.reminder_id,
+                                appointment_id: r.appointment_id,
+                            },
+                        })
+                    } catch (usageErr) {
+                        console.warn('Failed to record reminder usage', usageErr)
+                    }
+                }
 
             } catch (err: any) {
                 console.error(`Failed reminder ${r.reminder_id}:`, err)

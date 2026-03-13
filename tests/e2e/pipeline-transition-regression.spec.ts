@@ -166,7 +166,7 @@ test('stage transition failure does not show success toast or open next-step mod
   await admin.from('leads').delete().eq('id', state.failLeadId);
   await page.getByRole('button', { name: /Salvar e continuar/i }).click();
 
-  await expect(page.getByText(/Falha ao mover lead/i)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Falha ao mover lead', { exact: true }).first()).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/Chamada registrada!/i)).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Sim, Mover/i })).toHaveCount(0);
 });

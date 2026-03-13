@@ -1,12 +1,10 @@
-import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText, Bot, CheckSquare, Loader2, Users, User } from 'lucide-react';
+import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText, Bot, CheckSquare, Loader2, Users, User, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Conversation, CHANNEL_INFO, PIPELINE_STAGES, PipelineStage, Contact, ChannelFilter } from '@/types/solarzap';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { formatDistanceToNow } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +20,7 @@ import { AudioDeviceModal } from './AudioDeviceModal';
 import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
 import { ExportContactsModal } from './ExportContactsModal';
 import { AssignMemberSelect } from './AssignMemberSelect';
+import { FollowUpIndicator } from './FollowUpIndicator';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,9 +32,18 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { getMemberDisplayName } from '@/lib/memberDisplayName';
+import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
+import type { LeadScopeValue } from './LeadScopeSelect';
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -50,18 +58,14 @@ interface ConversationListProps {
   onStageFilterChange: (stage: PipelineStage | 'todos') => void;
   onImportContacts?: (contacts: ImportedContact[]) => Promise<unknown>;
   onDeleteLead?: (contactId: string) => Promise<void>;
+  onBulkAssignLeads?: (leadIds: string[], assignedToUserId: string | null) => Promise<{ updatedCount: number; failedIds: string[] }>;
   canViewTeam?: boolean;
-  showTeamLeads?: boolean;
-  onToggleTeamLeads?: (show: boolean) => void;
+  leadScope?: LeadScopeValue;
+  onLeadScopeChange?: (scope: LeadScopeValue) => void;
+  leadScopeMembers?: MemberDto[];
+  leadScopeLoading?: boolean;
+  currentUserId?: string | null;
 }
-
-const channelFilters: { id: ChannelFilter; label: string }[] = [
-  { id: 'todos', label: 'Todos' },
-  { id: 'whatsapp', label: 'WhatsApp' },
-  { id: 'messenger', label: 'Messenger' },
-  { id: 'instagram', label: 'Instagram' },
-  { id: 'email', label: 'E-mail' },
-];
 
 // Get stage options for filter
 const stageOptions: { id: PipelineStage | 'todos'; label: string; icon: string }[] = [
@@ -87,9 +91,13 @@ export function ConversationList({
 
   onImportContacts,
   onDeleteLead,
+  onBulkAssignLeads,
   canViewTeam = false,
-  showTeamLeads = false,
-  onToggleTeamLeads,
+  leadScope = 'mine',
+  onLeadScopeChange,
+  leadScopeMembers = [],
+  leadScopeLoading = false,
+  currentUserId = null,
 }: ConversationListProps) {
   const { toast } = useToast();
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
@@ -104,8 +112,14 @@ export function ConversationList({
   const [showExportModal, setShowExportModal] = useState(false);
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+  const [bulkAssignUserId, setBulkAssignUserId] = useState<string>('unassigned');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [fallbackLeadScopeMembers, setFallbackLeadScopeMembers] = useState<MemberDto[]>([]);
+  const [isRefreshingLeadScopeMembers, setIsRefreshingLeadScopeMembers] = useState(false);
+  const [bulkAssignMembers, setBulkAssignMembers] = useState<MemberDto[]>([]);
+  const [isLoadingBulkAssignMembers, setIsLoadingBulkAssignMembers] = useState(false);
 
   const formatTime = (date: Date) => {
     const now = new Date();
@@ -143,12 +157,99 @@ export function ConversationList({
     setContactToDelete(null);
   };
 
+  const channelFilters = useMemo(() => (
+    [{ id: 'todos' as ChannelFilter, label: 'Todos' }]
+      .concat(
+        (Object.entries(CHANNEL_INFO) as Array<[Exclude<ChannelFilter, 'todos'>, { label: string }]>)
+          .map(([id, info]) => ({ id, label: info.label }))
+      )
+  ), []);
+
+  const canBulkAssign = Boolean(onBulkAssignLeads);
+  const canUseSelectionMode = Boolean(onDeleteLead) || canBulkAssign;
   const visibleLeadIds = useMemo(() => conversations.map((conversation) => conversation.contact.id), [conversations]);
 
   const selectedVisibleCount = useMemo(
     () => visibleLeadIds.filter((leadId) => selectedLeadIds.has(leadId)).length,
     [visibleLeadIds, selectedLeadIds],
   );
+  const effectiveLeadScopeMembers = useMemo(() => {
+    const merged = [...leadScopeMembers, ...fallbackLeadScopeMembers];
+    const seen = new Set<string>();
+    return merged.filter((member) => {
+      if (!member.user_id) return false;
+      if (seen.has(member.user_id)) return false;
+      seen.add(member.user_id);
+      return true;
+    });
+  }, [fallbackLeadScopeMembers, leadScopeMembers]);
+  const availableTeamMembers = useMemo(() => {
+    const seen = new Set<string>();
+    return effectiveLeadScopeMembers.filter((member) => {
+      if (!member.user_id || member.user_id === currentUserId) return false;
+      if (seen.has(member.user_id)) return false;
+      seen.add(member.user_id);
+      return true;
+    });
+  }, [currentUserId, effectiveLeadScopeMembers]);
+  const leadScopeLabel = useMemo(() => {
+    if (leadScope === 'org_all') return 'Toda a equipe';
+    if (leadScope === 'mine') return 'Meus leads';
+
+    if (leadScope.startsWith('user:')) {
+      const scopedUserId = leadScope.slice(5).trim();
+      if (!scopedUserId) return 'Membro selecionado';
+      const scopedMember = effectiveLeadScopeMembers.find((member) => member.user_id === scopedUserId);
+      return scopedMember ? getMemberDisplayName(scopedMember) : 'Membro selecionado';
+    }
+
+    return 'Meus leads';
+  }, [effectiveLeadScopeMembers, leadScope]);
+  const isLeadScopeMembersLoading = leadScopeLoading || isRefreshingLeadScopeMembers;
+  const refreshLeadScopeMembers = useCallback(async () => {
+    if (!canViewTeam && !canBulkAssign) return;
+    if (effectiveLeadScopeMembers.length > 0) return;
+    if (isRefreshingLeadScopeMembers) return;
+
+    setIsRefreshingLeadScopeMembers(true);
+    try {
+      const response = await listMembers(undefined, { forceRefresh: true });
+      setFallbackLeadScopeMembers(response.members || []);
+    } catch (error) {
+      console.warn('Failed to refresh members for conversations lead scope:', error);
+    } finally {
+      setIsRefreshingLeadScopeMembers(false);
+    }
+  }, [canBulkAssign, canViewTeam, effectiveLeadScopeMembers.length, isRefreshingLeadScopeMembers]);
+
+  const loadBulkAssignMembers = useCallback(async () => {
+    if (!canBulkAssign) return;
+    if (isLoadingBulkAssignMembers) return;
+    if (bulkAssignMembers.length > 0) return;
+
+    setIsLoadingBulkAssignMembers(true);
+    try {
+      const response = await listMembers(undefined, { forceRefresh: true });
+      const members = response.members || [];
+      setBulkAssignMembers(members);
+
+      if (members.length > 0) {
+        const preferredMember = members.find((member) => member.user_id === currentUserId);
+        setBulkAssignUserId(preferredMember?.user_id || members[0].user_id || 'unassigned');
+      }
+    } catch (error) {
+      console.warn('Failed to load members for bulk assignment:', error);
+    } finally {
+      setIsLoadingBulkAssignMembers(false);
+    }
+  }, [bulkAssignMembers.length, canBulkAssign, currentUserId, isLoadingBulkAssignMembers]);
+
+  const bulkAssignableMembers = useMemo(() => {
+    if (bulkAssignMembers.length > 0) {
+      return bulkAssignMembers;
+    }
+    return effectiveLeadScopeMembers;
+  }, [bulkAssignMembers, effectiveLeadScopeMembers]);
 
   const allVisibleSelected = visibleLeadIds.length > 0 && selectedVisibleCount === visibleLeadIds.length;
   const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
@@ -162,6 +263,17 @@ export function ConversationList({
       return next.size === prev.size ? prev : next;
     });
   }, [visibleLeadIds, selectedLeadIds.size]);
+
+  useEffect(() => {
+    if (leadScopeMembers.length > 0 && fallbackLeadScopeMembers.length > 0) {
+      setFallbackLeadScopeMembers([]);
+    }
+  }, [fallbackLeadScopeMembers.length, leadScopeMembers.length]);
+
+  useEffect(() => {
+    if (!isSelectionMode || !canBulkAssign) return;
+    void loadBulkAssignMembers();
+  }, [canBulkAssign, isSelectionMode, loadBulkAssignMembers]);
 
   const toggleSelectionMode = () => {
     if (isSelectionMode) {
@@ -218,19 +330,61 @@ export function ConversationList({
 
     if (failedIds.length === 0) {
       toast({
-        title: `${deletedCount} lead(s) excluído(s)`,
+        title: `${deletedCount} lead(s) excluido(s)`,
       });
       return;
     }
 
     toast({
-      title: `${deletedCount} lead(s) excluído(s), ${failedIds.length} falharam`,
+      title: `${deletedCount} lead(s) excluido(s), ${failedIds.length} falharam`,
       description: 'Tente novamente para os itens que falharam.',
       variant: 'destructive',
     });
   };
 
+  const handleBulkAssign = async () => {
+    if (!onBulkAssignLeads || selectedLeadIds.size === 0) return;
+    setIsBulkAssigning(true);
+
+    const selectedIds = Array.from(selectedLeadIds);
+    const targetUserId = bulkAssignUserId === 'unassigned' ? null : bulkAssignUserId;
+
+    try {
+      const result = await onBulkAssignLeads(selectedIds, targetUserId);
+      const failedIds = result?.failedIds || [];
+      const updatedCount = result?.updatedCount || 0;
+
+      setSelectedLeadIds(new Set(failedIds));
+
+      if (failedIds.length === 0) {
+        toast({
+          title: `${updatedCount} lead(s) atribuido(s)`,
+        });
+        return;
+      }
+
+      toast({
+        title: `${updatedCount} lead(s) atribuido(s), ${failedIds.length} falharam`,
+        description: 'Tente novamente para os itens com falha.',
+        variant: 'destructive',
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro ao atribuir leads',
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBulkAssigning(false);
+    }
+  };
+
   const selectedStage = stageOptions.find(s => s.id === stageFilter) || stageOptions[0];
+  const selectedChannel = channelFilters.find((filter) => filter.id === channelFilter) || channelFilters[0];
+  const hasStageFilter = stageFilter !== 'todos';
+  const hasChannelFilter = channelFilter !== 'todos';
+  const hasActiveFilters = hasStageFilter || hasChannelFilter;
+  const activeFilterCount = Number(hasStageFilter) + Number(hasChannelFilter);
   const activeStageCount = stageFilter !== 'todos'
     ? conversations.filter(c => c.contact.pipelineStage === stageFilter).length
     : conversations.length;
@@ -247,8 +401,8 @@ export function ConversationList({
             <h1 className="text-xl font-bold text-foreground">SolarZap</h1>
           </div>
           <div className="flex items-center gap-1">
-            {/* Selection mode toggle — shown only when delete is available */}
-            {onDeleteLead && (
+            {/* Selection mode toggle - shown when delete or bulk assign is available */}
+            {canUseSelectionMode && (
               <button
                 onClick={toggleSelectionMode}
                 className={cn(
@@ -262,21 +416,21 @@ export function ConversationList({
                 <CheckSquare className="w-5 h-5" />
               </button>
             )}
-            {/* Stage Filter Button */}
+            {/* Filter Button */}
             <Popover open={stageFilterOpen} onOpenChange={setStageFilterOpen}>
               <PopoverTrigger asChild>
                 <button
                   className={cn(
                     "p-2 rounded-md transition-colors flex items-center gap-1",
-                    stageFilter !== 'todos'
+                    hasActiveFilters
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   )}
                 >
                   <Filter className="w-5 h-5" />
-                  {stageFilter !== 'todos' && (
+                  {hasActiveFilters && (
                     <span className="text-xs font-medium bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
-                      {activeStageCount}
+                      {activeFilterCount}
                     </span>
                   )}
                 </button>
@@ -288,68 +442,78 @@ export function ConversationList({
               >
                 <div className="p-3 border-b border-border">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-sm text-foreground">Filtrar por Etapa</h3>
-                    {stageFilter !== 'todos' && (
+                    <h3 className="font-semibold text-sm text-foreground">Filtros da Conversa</h3>
+                    {hasActiveFilters && (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
                           onStageFilterChange('todos');
-                          setStageFilterOpen(false);
+                          onChannelFilterChange('todos');
                         }}
                         className="h-7 text-xs text-muted-foreground hover:text-foreground"
                       >
                         <X className="w-3 h-3 mr-1" />
-                        Limpar
+                        Limpar tudo
                       </Button>
                     )}
                   </div>
                 </div>
-                <ScrollArea className="h-[320px]">
-                  <div className="p-2 space-y-0.5">
-                    {stageOptions.map((stage) => {
-                      const count = stage.id === 'todos'
-                        ? conversations.length
-                        : conversations.filter(c => c.contact.pipelineStage === stage.id).length;
-                      const isSelected = stageFilter === stage.id;
+                <div className="p-3 space-y-3">
+                  <div className="space-y-1.5">
+                    <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Etapa do funil
+                    </p>
+                    <Select
+                      value={stageFilter}
+                      onValueChange={(value) => onStageFilterChange(value as PipelineStage | 'todos')}
+                    >
+                      <SelectTrigger className="h-9 bg-background">
+                        <SelectValue placeholder="Selecione a etapa" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {stageOptions.map((stage) => {
+                          const count = stage.id === 'todos'
+                            ? conversations.length
+                            : conversations.filter((conversation) => conversation.contact.pipelineStage === stage.id).length;
 
-                      return (
-                        <button
-                          key={stage.id}
-                          onClick={() => {
-                            onStageFilterChange(stage.id);
-                            setStageFilterOpen(false);
-                          }}
-                          className={cn(
-                            "w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors text-left",
-                            isSelected
-                              ? "bg-primary/10 text-primary"
-                              : "hover:bg-muted text-foreground"
-                          )}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-base flex-shrink-0">{stage.icon}</span>
-                            <span className={cn(
-                              "text-sm truncate",
-                              isSelected && "font-medium"
-                            )}>
-                              {stage.label}
-                            </span>
-                          </div>
-                          <Badge
-                            variant={isSelected ? "default" : "secondary"}
-                            className={cn(
-                              "text-xs flex-shrink-0 ml-2",
-                              isSelected && "bg-primary text-primary-foreground"
-                            )}
-                          >
-                            {count}
-                          </Badge>
-                        </button>
-                      );
-                    })}
+                          return (
+                            <SelectItem key={`stage-${stage.id}`} value={stage.id}>
+                              {`${stage.icon} ${stage.label} (${count})`}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
                   </div>
-                </ScrollArea>
+
+                  <div className="space-y-1.5">
+                    <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Origem do lead
+                    </p>
+                    <Select
+                      value={channelFilter}
+                      onValueChange={(value) => onChannelFilterChange(value as ChannelFilter)}
+                    >
+                      <SelectTrigger className="h-9 bg-background">
+                        <SelectValue placeholder="Selecione a origem" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {channelFilters.map((filter) => {
+                          const count = filter.id === 'todos'
+                            ? conversations.length
+                            : conversations.filter((conversation) => conversation.contact.channel === filter.id).length;
+
+                          return (
+                            <SelectItem key={`channel-${filter.id}`} value={filter.id}>
+                              {`${filter.label} (${count})`}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </PopoverContent>
             </Popover>
 
@@ -398,55 +562,113 @@ export function ConversationList({
         </div>
       </div>
 
-      {/* Active Stage Filter Indicator */}
-      {stageFilter !== 'todos' && (
+      {/* Active Filters Indicator */}
+      {hasActiveFilters && (
         <div className="px-3 py-2 bg-primary/5 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm">
-            <span>{selectedStage.icon}</span>
-            <span className="font-medium text-foreground">{selectedStage.label}</span>
-            <Badge variant="secondary" className="text-xs">{activeStageCount}</Badge>
+          <div className="flex items-center gap-2 text-sm flex-wrap">
+            {hasStageFilter && (
+              <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                <span>{selectedStage.icon}</span>
+                <span>{selectedStage.label}</span>
+                <span className="opacity-70">({activeStageCount})</span>
+              </Badge>
+            )}
+            {hasChannelFilter && (
+              <Badge variant="secondary" className="text-xs">
+                Origem: {selectedChannel.label}
+              </Badge>
+            )}
           </div>
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onStageFilterChange('todos')}
+            onClick={() => {
+              onStageFilterChange('todos');
+              onChannelFilterChange('todos');
+            }}
             className="h-6 w-6 p-0 hover:bg-muted"
+            title="Limpar filtros"
           >
             <X className="w-4 h-4 text-muted-foreground" />
           </Button>
         </div>
       )}
 
-      {canViewTeam && onToggleTeamLeads && (
+      {canViewTeam && onLeadScopeChange ? (
         <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-          <button
-            onClick={() => onToggleTeamLeads(false)}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap',
-              !showTeamLeads
-                ? 'bg-secondary text-secondary-foreground shadow-sm'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            )}
-            data-testid="toggle-team-leads-mine"
+          <DropdownMenu
+            onOpenChange={(open) => {
+              if (open) {
+                void refreshLeadScopeMembers();
+              }
+            }}
           >
-            <User className="w-3 h-3" />
-            Meus leads
-          </button>
-          <button
-            onClick={() => onToggleTeamLeads(true)}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap',
-              showTeamLeads
-                ? 'bg-secondary text-secondary-foreground shadow-sm'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            )}
-            data-testid="toggle-team-leads"
-          >
-            <Users className="w-3 h-3" />
-            Toda a equipe
-          </button>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="w-full h-9 flex items-center justify-between gap-2 px-3 rounded-md text-sm font-medium bg-background border border-border/60 text-foreground hover:bg-muted transition-colors"
+                data-testid="toggle-team-leads"
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <Users className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+                  <span className="truncate">{leadScopeLabel}</span>
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56 bg-popover border border-border z-50">
+              <DropdownMenuItem
+                onClick={() => onLeadScopeChange('org_all')}
+                data-testid="toggle-team-leads-option-org-all"
+                className={cn('gap-2', leadScope === 'org_all' && 'bg-muted font-medium')}
+              >
+                <Users className="w-3.5 h-3.5" />
+                Toda a equipe
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onLeadScopeChange('mine')}
+                data-testid="toggle-team-leads-option-mine"
+                className={cn('gap-2', leadScope === 'mine' && 'bg-muted font-medium')}
+              >
+                <User className="w-3.5 h-3.5" />
+                Meus leads
+              </DropdownMenuItem>
+              {availableTeamMembers.map((member) => {
+                const scopeValue = `user:${member.user_id}` as LeadScopeValue;
+                return (
+                  <DropdownMenuItem
+                    key={member.user_id}
+                    onClick={() => onLeadScopeChange(scopeValue)}
+                    data-testid={`toggle-team-leads-option-user-${member.user_id}`}
+                    className={cn('gap-2', leadScope === scopeValue && 'bg-muted font-medium')}
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    {getMemberDisplayName(member)}
+                  </DropdownMenuItem>
+                );
+              })}
+              {isLeadScopeMembersLoading && availableTeamMembers.length === 0 ? (
+                <DropdownMenuItem
+                  disabled
+                  data-testid="toggle-team-leads-option-loading"
+                  className="gap-2 text-muted-foreground"
+                >
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Carregando membros...
+                </DropdownMenuItem>
+              ) : null}
+              {!isLeadScopeMembersLoading && availableTeamMembers.length === 0 ? (
+                <DropdownMenuItem
+                  disabled
+                  data-testid="toggle-team-leads-option-empty"
+                  className="gap-2 text-muted-foreground"
+                >
+                  Nenhum outro membro encontrado
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-      )}
+      ) : null}
 
       {/* Channel Filters */}
       <div className="px-3 py-2 flex gap-2 overflow-x-auto border-b border-border">
@@ -466,23 +688,107 @@ export function ConversationList({
         ))}
       </div>
 
-      {isSelectionMode && onDeleteLead && (
-        <div className="px-3 py-2 border-b border-border bg-primary/5 flex items-center gap-2">
-          <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
-            <Checkbox checked={selectAllState} onCheckedChange={handleToggleSelectAllVisible} />
-            <span>{allVisibleSelected ? 'Todos selecionados' : someVisibleSelected ? `${selectedVisibleCount} selecionado(s)` : 'Selecionar todos'}</span>
-          </label>
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            className="h-7 ml-auto gap-1.5 text-xs"
-            disabled={selectedLeadIds.size === 0}
-            onClick={() => setBulkDeleteDialogOpen(true)}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Excluir ({selectedLeadIds.size})
-          </Button>
+      {isSelectionMode && canUseSelectionMode && (
+        <div className="px-3 py-3 border-b border-border bg-gradient-to-r from-primary/10 via-primary/5 to-transparent space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-md bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
+                <CheckSquare className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground leading-none">Seleção em massa</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {selectedLeadIds.size > 0
+                    ? `${selectedLeadIds.size} lead(s) selecionado(s)`
+                    : 'Selecione os leads para atribuir ou excluir'}
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2"
+              onClick={toggleSelectionMode}
+            >
+              <X className="w-3.5 h-3.5 sm:mr-1" />
+              <span className="hidden sm:inline text-xs">Fechar</span>
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-2 md:flex-row md:items-center">
+            <button
+              type="button"
+              onClick={handleToggleSelectAllVisible}
+              className="h-9 w-full md:max-w-[260px] px-2 rounded-md border border-border/70 bg-background/80 flex items-center gap-2 text-xs font-medium text-foreground text-left"
+            >
+              <Checkbox
+                checked={selectAllState}
+                onCheckedChange={handleToggleSelectAllVisible}
+                onClick={(event) => event.stopPropagation()}
+              />
+              <span className="truncate">
+                {allVisibleSelected
+                  ? 'Todos os visíveis selecionados'
+                  : someVisibleSelected
+                    ? `${selectedVisibleCount} visível(is) selecionado(s)`
+                    : 'Selecionar todos os visíveis'}
+              </span>
+            </button>
+
+            {canBulkAssign && (
+              <div className="flex flex-col gap-2 sm:flex-row md:flex-1">
+                <Select
+                  value={bulkAssignUserId}
+                  onValueChange={setBulkAssignUserId}
+                  onOpenChange={(open) => {
+                    if (open) {
+                      void loadBulkAssignMembers();
+                    }
+                  }}
+                  disabled={isBulkAssigning || isLoadingBulkAssignMembers}
+                >
+                  <SelectTrigger className="h-9 w-full text-sm bg-background">
+                    <SelectValue placeholder={isLoadingBulkAssignMembers ? 'Carregando membros...' : 'Selecionar responsável'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Não atribuído</SelectItem>
+                    {bulkAssignableMembers.map((member) => (
+                      <SelectItem key={member.user_id} value={member.user_id}>
+                        {getMemberDisplayName(member)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  className="h-9 gap-1.5 text-xs sm:px-4"
+                  disabled={selectedLeadIds.size === 0 || isBulkAssigning}
+                  onClick={handleBulkAssign}
+                >
+                  {isBulkAssigning && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Atribuir
+                </Button>
+              </div>
+            )}
+
+            {onDeleteLead && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="h-9 gap-1.5 text-xs sm:px-4"
+                disabled={selectedLeadIds.size === 0}
+                onClick={() => setBulkDeleteDialogOpen(true)}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Excluir
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
@@ -632,19 +938,28 @@ export function ConversationList({
                     </div>
                   </div>
 
-                  <div className="mt-1 flex items-center gap-2 flex-wrap">
-                    {!isSelectionMode && (
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <AssignMemberSelect
-                          contactId={conversation.contact.id}
-                          currentAssigneeId={conversation.contact.assignedToUserId}
-                          triggerClassName="w-[130px]"
-                        />
-                      </div>
-                    )}
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                      {stage.icon} {stage.title}
-                    </Badge>
+                  <div className="mt-1 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      {!isSelectionMode && (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <AssignMemberSelect
+                            contactId={conversation.contact.id}
+                            currentAssigneeId={conversation.contact.assignedToUserId}
+                            triggerClassName="w-[130px]"
+                          />
+                        </div>
+                      )}
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {stage.icon} {stage.title}
+                      </Badge>
+                    </div>
+                    <div className="w-full overflow-hidden">
+                      <FollowUpIndicator
+                        step={conversation.contact.followUpStep ?? 0}
+                        enabled={conversation.contact.followUpEnabled !== false}
+                        compact
+                      />
+                    </div>
                   </div>
                 </div>
               </button>

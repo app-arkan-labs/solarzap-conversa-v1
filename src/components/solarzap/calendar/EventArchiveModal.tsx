@@ -5,22 +5,23 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { Appointment } from '@/types/solarzap';
-import { useAppointments } from '@/hooks/useAppointments';
+import { Appointment, Contact } from '@/types/solarzap';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { format, parseISO, isSameDay } from 'date-fns';
-import { Archive, CalendarIcon, MapPin, Search } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { Archive, CalendarIcon } from 'lucide-react';
 import { CalendarFilters, CalendarFilterState } from './CalendarFilters';
 import { Badge } from '@/components/ui/badge';
 
 interface EventArchiveModalProps {
     isOpen: boolean;
     onClose: () => void;
+    appointments: Appointment[];
+    contacts: Contact[];
 }
 
-export function EventArchiveModal({ isOpen, onClose }: EventArchiveModalProps) {
-    const { appointments } = useAppointments();
+export function EventArchiveModal({ isOpen, onClose, appointments, contacts }: EventArchiveModalProps) {
     const [filters, setFilters] = useState<CalendarFilterState>({});
+    const contactById = new Map(contacts.map((contact) => [String(contact.id), contact]));
 
     // Filter appointments: Check for 'completed' status AND apply local filters
     const archivedAppointments = appointments.filter(appt => {
@@ -33,6 +34,12 @@ export function EventArchiveModal({ isOpen, onClose }: EventArchiveModalProps) {
         // 3. Filter by Client (accessing joined lead data if available or manual filtering)
         // Note: For now assuming client filtering happens on available data.
         if (filters.clientId && String(appt.lead_id) !== filters.clientId) return false;
+
+        // 3.1. Filter by Lead Source
+        if (filters.channel) {
+            const contact = contactById.get(String(appt.lead_id));
+            if (!contact || contact.channel !== filters.channel) return false;
+        }
 
         // 4. Date Range
         const apptDate = parseISO(appt.start_at);
@@ -61,7 +68,11 @@ export function EventArchiveModal({ isOpen, onClose }: EventArchiveModalProps) {
                 </DialogHeader>
 
                 <div className="py-2">
-                    <CalendarFilters filters={filters} onChange={setFilters} />
+                    <CalendarFilters
+                        filters={filters}
+                        onChange={setFilters}
+                        contacts={contacts}
+                    />
                 </div>
 
                 <div className="flex-1 overflow-hidden border rounded-md bg-muted/20">

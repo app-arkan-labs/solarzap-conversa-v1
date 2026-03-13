@@ -26,6 +26,7 @@ export interface NotificationSettings {
   evt_chamada_agendada: boolean;
   evt_chamada_realizada: boolean;
   evt_financiamento_update: boolean;
+  evt_installment_due_check: boolean;
   updated_by: string | null;
 }
 
@@ -51,6 +52,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS = {
   evt_chamada_agendada: true,
   evt_chamada_realizada: true,
   evt_financiamento_update: true,
+  evt_installment_due_check: true,
 };
 
 export function useNotificationSettings() {

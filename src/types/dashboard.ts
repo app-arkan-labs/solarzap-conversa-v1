@@ -2,7 +2,8 @@ export interface DashboardPayload {
     kpis: {
         leads: { value: number; delta_pct: number };
         conversion: { value_pct: number; won: number; leads: number };
-        revenue: { value: number; delta_pct: number };
+        revenue: { value: number; prev_value: number; delta_pct: number | null };
+        profit: { value: number; prev_value: number; delta_pct: number | null };
         avg_close_days: { value: number };
         ticket_avg: { value: number };
         forecast: { value: number; count: number };
@@ -10,7 +11,7 @@ export interface DashboardPayload {
     charts: {
         leads_by_source: Array<{ source: string; count: number; pct: number }>;
         sales_by_source: Array<{ source: string; count: number; pct: number }>;
-        monthly: Array<{ month: string; leads: number; sales: number; revenue: number; conversion_rate: number }>;
+        monthly: Array<{ month: string; leads: number; sales: number; revenue: number; profit: number; conversion_rate: number }>;
     };
     tables: {
         stale_leads: Array<{
@@ -21,10 +22,12 @@ export interface DashboardPayload {
             last_interaction?: string;
         }>;
         owner_performance: Array<{
+            owner_id?: string;
             name: string;
             leads: number;
             won: number;
             revenue: number;
+            profit: number;
             conversion: number;
             ticket_avg: number;
         }>;
@@ -43,3 +46,4 @@ export interface DashboardPayload {
         }>;
     };
 }
+

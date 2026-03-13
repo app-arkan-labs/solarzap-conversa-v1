@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { evolutionApi } from '@/lib/evolutionApi';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
+import { buildLimitBlockerForKey, buildSubscriptionIssueBlocker, isUnlimitedBillingBypass } from '@/lib/billingBlocker';
 
 export interface UserWhatsAppInstance {
   org_id?: string | null;
@@ -77,6 +79,7 @@ function toInstanceStatus(state: string | null | undefined): InstanceConnectionS
 
 export function useUserWhatsAppInstances() {
   const { user, orgId, role } = useAuth();
+  const { billing, openBillingBlocker } = useBillingBlocker();
   const [instances, setInstances] = useState<UserWhatsAppInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -243,7 +246,7 @@ export function useUserWhatsAppInstances() {
   }, [isOrgManager, orgId, user]);
 
   // Create new instance
-  const createInstance = useCallback(async (displayName?: string): Promise<{ qrCode?: string; instance?: UserWhatsAppInstance } | null> => {
+  const createInstance = useCallback(async (displayName?: string): Promise<{ qrCode?: string; instance?: UserWhatsAppInstance; blocked?: boolean } | null> => {
     if (!user) {
       toast.error('Voce precisa estar logado');
       return null;
@@ -251,10 +254,38 @@ export function useUserWhatsAppInstances() {
     if (!orgId) {
       toast.error('Organizacao nao vinculada ao usuario');
       return null;
-    }
+    }
+
 
     try {
       setCreating(true);
+
+      const { data: limitData, error: limitError } = await supabase.rpc('check_plan_limit', {
+        p_org_id: orgId,
+        p_limit_key: 'max_whatsapp_instances',
+        p_quantity: 1,
+      });
+
+      if (limitError) {
+        throw new Error(`Falha ao validar limite do plano: ${limitError.message}`);
+      }
+
+      const accessState = String(billing?.access_state || '').trim().toLowerCase();
+      if (accessState === 'blocked' || accessState === 'read_only') {
+        openBillingBlocker(buildSubscriptionIssueBlocker({
+          billing,
+          source: 'whatsapp_instances',
+          kindOverride: accessState === 'read_only' ? 'read_only' : 'subscription_blocked',
+        }));
+        return { blocked: true };
+      }
+
+      const limitRow = Array.isArray(limitData) ? limitData[0] : limitData;
+      if (!limitRow?.allowed && !isUnlimitedBillingBypass(billing)) {
+        openBillingBlocker(buildLimitBlockerForKey('max_whatsapp_instances', billing, 'whatsapp_instances'));
+        return { blocked: true };
+      }
+
       const normalizedDisplayName = displayName?.trim() || 'WhatsApp';
       const sanitizedName = normalizedDisplayName.toLowerCase().replace(/[^a-z0-9]/g, '');
       const timestamp = Date.now().toString().slice(-6); // last 6 digits for brevity but uniqueness
@@ -315,7 +346,7 @@ export function useUserWhatsAppInstances() {
     } finally {
       setCreating(false);
     }
-  }, [user, orgId]);
+  }, [billing, openBillingBlocker, orgId, user]);
 
   // Refresh QR Code
   const refreshQrCode = useCallback(async (instanceName: string): Promise<string | null> => {
@@ -816,8 +847,8 @@ export function useUserWhatsAppInstances() {
           inst.instance_name === instanceName ? { ...inst, ai_enabled: true } : inst
         ));
 
-        // 2. Batch update leads
-        const { data, error } = await supabase
+        // 2) Batch update leads directly linked to the instance
+        const { data: directData, error: directError } = await supabase
           .from('leads')
           .update({
             ai_enabled: true,
@@ -828,9 +859,50 @@ export function useUserWhatsAppInstances() {
           .eq('org_id', orgId)
           .select('id');
 
-        if (error) throw error;
+        if (directError) throw directError;
 
-        return data?.length || 0;
+        // 3) Also activate leads that interacted through this instance
+        // even when legacy rows still point to a different canonical instance_name.
+        const { data: interactions, error: interactionsError } = await supabase
+          .from('interacoes')
+          .select('lead_id')
+          .eq('org_id', orgId)
+          .eq('instance_name', instanceName)
+          .not('lead_id', 'is', null);
+
+        if (interactionsError) throw interactionsError;
+
+        const mappedLeadIds = Array.from(
+          new Set(
+            (interactions ?? [])
+              .map((row) => Number(row.lead_id))
+              .filter((leadId) => Number.isFinite(leadId) && leadId > 0),
+          ),
+        );
+
+        let mappedData: Array<{ id: number }> = [];
+        if (mappedLeadIds.length > 0) {
+          const { data, error } = await supabase
+            .from('leads')
+            .update({
+              ai_enabled: true,
+              ai_paused_reason: null,
+              ai_paused_at: null,
+            })
+            .eq('org_id', orgId)
+            .in('id', mappedLeadIds)
+            .select('id');
+
+          if (error) throw error;
+          mappedData = data ?? [];
+        }
+
+        const affectedLeadIds = new Set<number>([
+          ...(directData ?? []).map((row) => Number(row.id)),
+          ...mappedData.map((row) => Number(row.id)),
+        ]);
+
+        return affectedLeadIds.size;
       } catch (error) {
         console.error('Error activating all leads:', error);
         throw error;
@@ -840,6 +912,7 @@ export function useUserWhatsAppInstances() {
     }
   };
 }
+
 
 
 

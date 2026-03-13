@@ -1,0 +1,28 @@
+{
+  "contact": { "name": "Cliente Desconto", "phone": "11999990003", "city": "Campinas/SP", "consumption": 620 },
+  "consumoMensal": 620,
+  "irradiancia": 4.8,
+  "moduloPotencia": 550,
+  "performanceRatio": 0.8,
+  "precoPorKwp": 4300,
+  "tipo_cliente": "residencial",
+  "tipoLigacao": "bifasico",
+  "custoDisponibilidadeKwh": 50,
+  "rentabilityRatePerKwh": 0.92,
+  "tarifaKwh": 0.92,
+  "garantiaAnos": 25,
+  "validadeDias": 20,
+  "paymentConditions": ["pix_avista", "financiamento_bancario"],
+  "showFinancingSimulation": true,
+  "descontoAvistaValor": 2500,
+  "financingConditions": [
+    {
+      "id": "discount-mixed-1",
+      "institutionName": "Santander",
+      "interestRateMonthly": 1.69,
+      "installments": [36, 60],
+      "gracePeriodValue": 30,
+      "gracePeriodUnit": "dias"
+    }
+  ]
+}

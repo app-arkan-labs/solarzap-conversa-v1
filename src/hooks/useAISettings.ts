@@ -1,8 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { AISettings, AIStageConfig, DEFAULT_AI_SETTINGS } from '@/types/ai';
+import {
+  AISettings,
+  AIStageConfig,
+  DEFAULT_AI_SETTINGS,
+  DEFAULT_APPOINTMENT_WINDOW_CONFIG,
+  DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
+  DEFAULT_FOLLOW_UP_WINDOW_CONFIG,
+  type AppointmentWindowConfig,
+  type AppointmentWindowType,
+  type AppointmentDayKey,
+  type FollowUpSequenceConfig,
+  type FollowUpStepKey,
+  type FollowUpWindowConfig,
+} from '@/types/ai';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { getDefaultStageGoal, getDefaultStagePrompt } from '@/constants/aiPipelinePdfPrompts';
 
 const STAGE_COL = 'pipeline_stage';
 const LEGACY_COL = 'status_pipeline';
@@ -50,6 +64,128 @@ const normalizeStageConfig = (row: any): AIStageConfig => ({
 const getStageKey = (row: Partial<AIStageConfig> | undefined): string =>
   row?.status_pipeline ?? ((row as any)?.[LEGACY_COL] as string) ?? 'novo_lead';
 
+const APPOINTMENT_WINDOW_TYPES: AppointmentWindowType[] = ['call', 'visit', 'meeting', 'installation'];
+const APPOINTMENT_DAY_KEYS: AppointmentDayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const FOLLOW_UP_STEP_KEYS: FollowUpStepKey[] = [1, 2, 3, 4, 5];
+const FOLLOW_UP_DELAY_MIN_MINUTES = 5;
+const FOLLOW_UP_DELAY_MAX_MINUTES = 365 * 24 * 60;
+const AUTO_SCHEDULE_MIN_DAYS_MIN = 0;
+const AUTO_SCHEDULE_MIN_DAYS_MAX = 60;
+
+const normalizeTimeHHMM = (raw: unknown, fallback: string): string => {
+  const text = String(raw ?? '').trim();
+  const match = /^(\d{1,2}):(\d{2})$/.exec(text);
+  if (!match) return fallback;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return fallback;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+
+const normalizeDayKey = (raw: unknown): AppointmentDayKey | null => {
+  const value = String(raw ?? '').trim().toLowerCase();
+  return APPOINTMENT_DAY_KEYS.includes(value as AppointmentDayKey) ? (value as AppointmentDayKey) : null;
+};
+
+const normalizeAppointmentWindowConfig = (raw: unknown): AppointmentWindowConfig => {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {};
+  const normalized: AppointmentWindowConfig = {
+    call: { ...DEFAULT_APPOINTMENT_WINDOW_CONFIG.call, days: [...DEFAULT_APPOINTMENT_WINDOW_CONFIG.call.days] },
+    visit: { ...DEFAULT_APPOINTMENT_WINDOW_CONFIG.visit, days: [...DEFAULT_APPOINTMENT_WINDOW_CONFIG.visit.days] },
+    meeting: { ...DEFAULT_APPOINTMENT_WINDOW_CONFIG.meeting, days: [...DEFAULT_APPOINTMENT_WINDOW_CONFIG.meeting.days] },
+    installation: { ...DEFAULT_APPOINTMENT_WINDOW_CONFIG.installation, days: [...DEFAULT_APPOINTMENT_WINDOW_CONFIG.installation.days] },
+  };
+
+  for (const typeKey of APPOINTMENT_WINDOW_TYPES) {
+    const incoming = source[typeKey];
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) continue;
+    const defaultRule = DEFAULT_APPOINTMENT_WINDOW_CONFIG[typeKey];
+    const start = normalizeTimeHHMM(incoming.start, defaultRule.start);
+    const end = normalizeTimeHHMM(incoming.end, defaultRule.end);
+    const days = Array.isArray(incoming.days)
+      ? Array.from(new Set(incoming.days.map((day: unknown) => normalizeDayKey(day)).filter(Boolean))) as AppointmentDayKey[]
+      : [];
+    normalized[typeKey] = {
+      start,
+      end,
+      days: days.length > 0 ? days : [...defaultRule.days],
+    };
+  }
+
+  return normalized;
+};
+
+const normalizeFollowUpSequenceConfig = (raw: unknown): FollowUpSequenceConfig => {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {};
+  const incomingSteps = Array.isArray(source.steps) ? source.steps : [];
+  const fallbackMap = new Map(
+    DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG.steps.map((step) => [step.step, step] as const),
+  );
+
+  const steps = FOLLOW_UP_STEP_KEYS.map((stepKey) => {
+    const fallback = fallbackMap.get(stepKey)!;
+    const incoming = incomingSteps.find((entry) => Number((entry as any)?.step) === stepKey) || {};
+    const enabled =
+      typeof (incoming as any)?.enabled === 'boolean'
+        ? Boolean((incoming as any).enabled)
+        : fallback.enabled;
+    const delayRaw = Number((incoming as any)?.delay_minutes);
+    const delayMinutes = Number.isFinite(delayRaw)
+      ? Math.max(
+        FOLLOW_UP_DELAY_MIN_MINUTES,
+        Math.min(FOLLOW_UP_DELAY_MAX_MINUTES, Math.round(delayRaw)),
+      )
+      : fallback.delay_minutes;
+
+    return {
+      step: stepKey,
+      enabled,
+      delay_minutes: delayMinutes,
+    };
+  });
+
+  return { steps };
+};
+
+const normalizeFollowUpWindowConfig = (raw: unknown): FollowUpWindowConfig => {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {};
+  const start = normalizeTimeHHMM(source.start, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.start);
+  const end = normalizeTimeHHMM(source.end, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.end);
+  const days = Array.isArray(source.days)
+    ? Array.from(new Set(source.days.map((day: unknown) => normalizeDayKey(day)).filter(Boolean))) as AppointmentDayKey[]
+    : [];
+  const preferredTime = (() => {
+    const rawValue = String(source.preferred_time ?? '').trim();
+    if (!rawValue) return null;
+    return normalizeTimeHHMM(rawValue, '');
+  })();
+
+  return {
+    start,
+    end,
+    days: days.length > 0 ? days : [...DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days],
+    preferred_time: preferredTime || null,
+  };
+};
+
+const normalizeBooleanSetting = (raw: unknown, fallback: boolean): boolean =>
+  typeof raw === 'boolean' ? raw : fallback;
+
+const normalizeMinDaysSetting = (raw: unknown, fallback: number): number => {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(
+    AUTO_SCHEDULE_MIN_DAYS_MIN,
+    Math.min(AUTO_SCHEDULE_MIN_DAYS_MAX, Math.round(parsed)),
+  );
+};
+
+const normalizeTimezone = (raw: unknown, fallback: string): string => {
+  const value = String(raw ?? '').trim();
+  return value || fallback;
+};
+
 const toStageTitle = (stage: string): string =>
   stage
     .split('_')
@@ -61,10 +197,8 @@ const getStageSeedDefaults = (stage: string): Pick<AIStageConfig, 'is_active' | 
   const stageTitle = toStageTitle(stage);
   return {
     is_active: true,
-    agent_goal: `Conduzir o lead com clareza na etapa ${stageTitle}.`,
-    default_prompt:
-      `Voce e um consultor solar experiente. Atue na etapa ${stageTitle}, ` +
-      'mantenha linguagem objetiva e avance o lead para o proximo passo.',
+    agent_goal: getDefaultStageGoal(stage),
+    default_prompt: getDefaultStagePrompt(stage, stageTitle),
   };
 };
 
@@ -135,7 +269,34 @@ export function useAISettings() {
       } else if (!settingsData) {
         setSettings(null);
       } else {
-        setSettings(settingsData);
+        const timezone = normalizeTimezone(
+          (settingsData as any)?.timezone,
+          DEFAULT_AI_SETTINGS.timezone || 'America/Sao_Paulo',
+        );
+        const normalizedSettings: AISettings = {
+          ...settingsData,
+          timezone,
+          auto_schedule_call_enabled: normalizeBooleanSetting(
+            (settingsData as any)?.auto_schedule_call_enabled,
+            DEFAULT_AI_SETTINGS.auto_schedule_call_enabled ?? true,
+          ),
+          auto_schedule_visit_enabled: normalizeBooleanSetting(
+            (settingsData as any)?.auto_schedule_visit_enabled,
+            DEFAULT_AI_SETTINGS.auto_schedule_visit_enabled ?? true,
+          ),
+          auto_schedule_call_min_days: normalizeMinDaysSetting(
+            (settingsData as any)?.auto_schedule_call_min_days,
+            DEFAULT_AI_SETTINGS.auto_schedule_call_min_days ?? 0,
+          ),
+          auto_schedule_visit_min_days: normalizeMinDaysSetting(
+            (settingsData as any)?.auto_schedule_visit_min_days,
+            DEFAULT_AI_SETTINGS.auto_schedule_visit_min_days ?? 0,
+          ),
+          appointment_window_config: normalizeAppointmentWindowConfig((settingsData as any)?.appointment_window_config),
+          follow_up_sequence_config: normalizeFollowUpSequenceConfig((settingsData as any)?.follow_up_sequence_config),
+          follow_up_window_config: normalizeFollowUpWindowConfig((settingsData as any)?.follow_up_window_config),
+        };
+        setSettings(normalizedSettings);
 
         if (!settingsData.org_id && !didInitOrgId.current) {
           didInitOrgId.current = true;
@@ -145,7 +306,7 @@ export function useAISettings() {
             .eq('id', settingsData.id);
 
           if (!updateErr) {
-            setSettings({ ...settingsData, org_id: orgId });
+            setSettings({ ...normalizedSettings, org_id: orgId });
           }
         }
       }
@@ -199,11 +360,97 @@ export function useAISettings() {
   const updateGlobalSettings = async (updates: Partial<AISettings>) => {
     try {
       if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+      const normalizedUpdates: Partial<AISettings> = {
+        ...updates,
+      };
+
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'timezone')) {
+        normalizedUpdates.timezone = normalizeTimezone(
+          (normalizedUpdates as any).timezone,
+          settings?.timezone || DEFAULT_AI_SETTINGS.timezone || 'America/Sao_Paulo',
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'auto_schedule_call_enabled')) {
+        normalizedUpdates.auto_schedule_call_enabled = normalizeBooleanSetting(
+          (normalizedUpdates as any).auto_schedule_call_enabled,
+          settings?.auto_schedule_call_enabled ?? DEFAULT_AI_SETTINGS.auto_schedule_call_enabled ?? true,
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'auto_schedule_visit_enabled')) {
+        normalizedUpdates.auto_schedule_visit_enabled = normalizeBooleanSetting(
+          (normalizedUpdates as any).auto_schedule_visit_enabled,
+          settings?.auto_schedule_visit_enabled ?? DEFAULT_AI_SETTINGS.auto_schedule_visit_enabled ?? true,
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'auto_schedule_call_min_days')) {
+        normalizedUpdates.auto_schedule_call_min_days = normalizeMinDaysSetting(
+          (normalizedUpdates as any).auto_schedule_call_min_days,
+          settings?.auto_schedule_call_min_days ?? DEFAULT_AI_SETTINGS.auto_schedule_call_min_days ?? 0,
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'auto_schedule_visit_min_days')) {
+        normalizedUpdates.auto_schedule_visit_min_days = normalizeMinDaysSetting(
+          (normalizedUpdates as any).auto_schedule_visit_min_days,
+          settings?.auto_schedule_visit_min_days ?? DEFAULT_AI_SETTINGS.auto_schedule_visit_min_days ?? 0,
+        );
+      }
+
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'appointment_window_config')) {
+        normalizedUpdates.appointment_window_config = normalizeAppointmentWindowConfig(
+          (normalizedUpdates as any).appointment_window_config
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'follow_up_sequence_config')) {
+        normalizedUpdates.follow_up_sequence_config = normalizeFollowUpSequenceConfig(
+          (normalizedUpdates as any).follow_up_sequence_config
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'follow_up_window_config')) {
+        normalizedUpdates.follow_up_window_config = normalizeFollowUpWindowConfig(
+          (normalizedUpdates as any).follow_up_window_config
+        );
+      }
 
       if (!settings?.id) {
+        const initialConfig = normalizeAppointmentWindowConfig(
+          (normalizedUpdates as any).appointment_window_config || DEFAULT_APPOINTMENT_WINDOW_CONFIG
+        );
+        const initialFollowUpSequence = normalizeFollowUpSequenceConfig(
+          (normalizedUpdates as any).follow_up_sequence_config || DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG
+        );
+        const initialFollowUpWindow = normalizeFollowUpWindowConfig(
+          (normalizedUpdates as any).follow_up_window_config || DEFAULT_FOLLOW_UP_WINDOW_CONFIG
+        );
         const { error } = await supabase
           .from('ai_settings')
-          .insert([{ ...DEFAULT_AI_SETTINGS, ...updates, org_id: orgId }])
+          .insert([{
+            ...DEFAULT_AI_SETTINGS,
+            ...normalizedUpdates,
+            timezone: normalizeTimezone(
+              (normalizedUpdates as any).timezone,
+              DEFAULT_AI_SETTINGS.timezone || 'America/Sao_Paulo',
+            ),
+            auto_schedule_call_enabled: normalizeBooleanSetting(
+              (normalizedUpdates as any).auto_schedule_call_enabled,
+              DEFAULT_AI_SETTINGS.auto_schedule_call_enabled ?? true,
+            ),
+            auto_schedule_visit_enabled: normalizeBooleanSetting(
+              (normalizedUpdates as any).auto_schedule_visit_enabled,
+              DEFAULT_AI_SETTINGS.auto_schedule_visit_enabled ?? true,
+            ),
+            auto_schedule_call_min_days: normalizeMinDaysSetting(
+              (normalizedUpdates as any).auto_schedule_call_min_days,
+              DEFAULT_AI_SETTINGS.auto_schedule_call_min_days ?? 0,
+            ),
+            auto_schedule_visit_min_days: normalizeMinDaysSetting(
+              (normalizedUpdates as any).auto_schedule_visit_min_days,
+              DEFAULT_AI_SETTINGS.auto_schedule_visit_min_days ?? 0,
+            ),
+            appointment_window_config: initialConfig,
+            follow_up_sequence_config: initialFollowUpSequence,
+            follow_up_window_config: initialFollowUpWindow,
+            org_id: orgId
+          }])
           .select()
           .single();
 
@@ -211,7 +458,7 @@ export function useAISettings() {
       } else {
         const { error } = await supabase
           .from('ai_settings')
-          .update(updates)
+          .update(normalizedUpdates)
           .eq('id', settings.id)
           .eq('org_id', orgId);
 

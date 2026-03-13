@@ -1,0 +1,19 @@
+{
+  "contact": { "name": "Maria Flat", "phone": "11999990003", "city": "Sao Paulo/SP", "consumption": 350 },
+  "consumoMensal": 350,
+  "irradiancia": 4.52,
+  "moduloPotencia": 550,
+  "performanceRatio": 0.8,
+  "precoPorKwp": 4500,
+  "tipo_cliente": "residencial",
+  "tipoLigacao": "bifasico",
+  "custoDisponibilidadeKwh": 50,
+  "rentabilityRatePerKwh": 0.85,
+  "tarifaKwh": 0.85,
+  "garantiaAnos": 25,
+  "validadeDias": 15,
+  "paymentConditions": ["pix_avista"],
+  "showFinancingSimulation": false,
+  "abaterCustoDisponibilidadeNoDimensionamento": false,
+  "monthlyGenerationFactors": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+}

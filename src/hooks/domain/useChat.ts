@@ -2,6 +2,11 @@ import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '@/hooks/use-toast';
 import { supabase, InteracaoDB } from '@/lib/supabase';
+import {
+    scopeUserOrgQuery,
+    scopeWhatsappInstanceQuery,
+} from '@/lib/multiOrgLeadScoping';
+import { upsertOwnReaction } from '@/lib/reactions';
 import { useAuth } from '@/contexts/AuthContext';
 import { Contact, Conversation, Message } from '@/types/solarzap';
 
@@ -47,6 +52,8 @@ type SendMessageMutationContext = {
 const INTERACOES_SELECT_COLUMNS =
     'id,lead_id,user_id,mensagem,tipo,created_at,read_at,instance_name,phone_e164,remote_jid,wa_message_id,reply_to_interacao_id,reply_preview,reply_type,reactions,attachment_url,attachment_type,attachment_ready,attachment_mimetype,attachment_name';
 const MAX_SCOPED_LEAD_IDS = 400;
+const PENDING_MEDIA_RECONCILE_WINDOW_MS = 15 * 60 * 1000;
+const PENDING_MEDIA_RECONCILE_LIMIT = 50;
 
 const toPerfNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
@@ -235,6 +242,8 @@ export function useChat(contacts: Contact[] = []) {
         }
 
         const t0 = toPerfNow();
+        let pendingCheckedCount = 0;
+        let pendingUpdatedCount = 0;
         let query = supabase
             .from('interacoes')
             .select(INTERACOES_SELECT_COLUMNS)
@@ -259,10 +268,58 @@ export function useChat(contacts: Contact[] = []) {
             appendMessagesToCache(incoming);
         }
 
+        if (reason === 'light_reconcile') {
+            const cachedMessages = queryClient.getQueryData<Message[]>(interactionsQueryKey) || [];
+            const pendingCutoffMs = now - PENDING_MEDIA_RECONCILE_WINDOW_MS;
+            const pendingIds = Array.from(new Set(
+                cachedMessages
+                    .filter((message) =>
+                        Boolean(message.attachment_type)
+                        && message.attachment_ready === false
+                        && message.timestamp.getTime() >= pendingCutoffMs
+                    )
+                    .sort((a, b) => parseMessageNumericId(b.id) - parseMessageNumericId(a.id))
+                    .slice(0, PENDING_MEDIA_RECONCILE_LIMIT)
+                    .map((message) => parseMessageNumericId(message.id))
+                    .filter((id) => id > 0)
+            ));
+
+            pendingCheckedCount = pendingIds.length;
+
+            if (pendingIds.length > 0) {
+                let pendingQuery = supabase
+                    .from('interacoes')
+                    .select(INTERACOES_SELECT_COLUMNS)
+                    .eq('org_id', orgId)
+                    .in('id', pendingIds);
+
+                if (canScopeInteractionsByLead) {
+                    pendingQuery = pendingQuery.in('lead_id', scopedLeadIdNumbers);
+                }
+
+                const { data: pendingData, error: pendingError } = await pendingQuery;
+                if (pendingError) {
+                    console.warn('[CHAT_LATENCY] pending_media_reconcile_error', {
+                        reason,
+                        error: pendingError.message,
+                        pendingCheckedCount,
+                    });
+                } else {
+                    const pendingUpdates = (pendingData || []).map(interacaoToMessage);
+                    pendingUpdatedCount = pendingUpdates.length;
+                    if (pendingUpdates.length > 0) {
+                        appendMessagesToCache(pendingUpdates);
+                    }
+                }
+            }
+        }
+
         import.meta.env.DEV && console.log('[CHAT_LATENCY] incremental_sync_done', {
             reason,
             maxSeenIdBefore: maxSeenId,
             count: incoming.length,
+            pendingCheckedCount,
+            pendingUpdatedCount,
             elapsed_ms: Math.round(toPerfNow() - t0),
             maxSeenIdAfter: maxSeenInteractionIdRef.current,
         });
@@ -630,11 +687,12 @@ export function useChat(contacts: Contact[] = []) {
             } else {
                 // Default fallback
                 const instanceLookupStart = toPerfNow();
-                const { data: defaultInstance, error: instanceError } = await supabase
-                    .from('whatsapp_instances')
-                    .select('instance_name')
-                    .eq('user_id', user.id)
-                    .eq('status', 'connected')
+                const { data: defaultInstance, error: instanceError } = await scopeWhatsappInstanceQuery(
+                    (supabase
+                        .from('whatsapp_instances')
+                        .select('instance_name')) as any,
+                    { userId: user.id, orgId }
+                )
                     .limit(1)
                     .maybeSingle();
                 perf.instanceLookup = Math.round(toPerfNow() - instanceLookupStart);
@@ -856,13 +914,12 @@ export function useChat(contacts: Contact[] = []) {
 
             let instance: { instance_name: string } | null = null;
             if (instanceName) {
-                const { data: specificInstance, error: specificErr } = await supabase
-                    .from('whatsapp_instances')
-                    .select('instance_name')
-                    .eq('user_id', user.id)
-                    .eq('instance_name', instanceName)
-                    .eq('status', 'connected')
-                    .eq('is_active', true)
+                const { data: specificInstance, error: specificErr } = await scopeWhatsappInstanceQuery(
+                    (supabase
+                        .from('whatsapp_instances')
+                        .select('instance_name')) as any,
+                    { userId: user.id, orgId, instanceName, requireActive: true }
+                )
                     .single();
 
                 if (specificErr || !specificInstance) {
@@ -870,12 +927,12 @@ export function useChat(contacts: Contact[] = []) {
                 }
                 instance = specificInstance;
             } else {
-                const { data: defaultInstance, error: instanceError } = await supabase
-                    .from('whatsapp_instances')
-                    .select('instance_name')
-                    .eq('user_id', user.id)
-                    .eq('status', 'connected')
-                    .eq('is_active', true)
+                const { data: defaultInstance, error: instanceError } = await scopeWhatsappInstanceQuery(
+                    (supabase
+                        .from('whatsapp_instances')
+                        .select('instance_name')) as any,
+                    { userId: user.id, orgId, requireActive: true }
+                )
                     .order('updated_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
@@ -1172,12 +1229,12 @@ export function useChat(contacts: Contact[] = []) {
             // 2. Get Connected Instance
             let instance: { instance_name: string } | null = null;
             if (instanceName) {
-                const { data: specificInstance, error: specificErr } = await supabase
-                    .from('whatsapp_instances')
-                    .select('instance_name')
-                    .eq('user_id', user.id)
-                    .eq('instance_name', instanceName)
-                    .eq('status', 'connected')
+                const { data: specificInstance, error: specificErr } = await scopeWhatsappInstanceQuery(
+                    (supabase
+                        .from('whatsapp_instances')
+                        .select('instance_name')) as any,
+                    { userId: user.id, orgId, instanceName }
+                )
                     .single();
 
                 if (specificErr || !specificInstance) {
@@ -1185,11 +1242,12 @@ export function useChat(contacts: Contact[] = []) {
                 }
                 instance = specificInstance;
             } else {
-                const { data: defaultInstance, error: instanceError } = await supabase
-                    .from('whatsapp_instances')
-                    .select('instance_name')
-                    .eq('user_id', user.id)
-                    .eq('status', 'connected')
+                const { data: defaultInstance, error: instanceError } = await scopeWhatsappInstanceQuery(
+                    (supabase
+                        .from('whatsapp_instances')
+                        .select('instance_name')) as any,
+                    { userId: user.id, orgId }
+                )
                     .limit(1)
                     .maybeSingle();
 
@@ -1269,11 +1327,13 @@ export function useChat(contacts: Contact[] = []) {
                     response.error.includes('does not exist')
                 )) {
                     console.warn(`Instance ${instance.instance_name} not found on server. Deleting from DB.`);
-                    await supabase
-                        .from('whatsapp_instances')
-                        .delete()
-                        .eq('instance_name', instance.instance_name)
-                        .eq('user_id', user.id);
+                    await scopeUserOrgQuery(
+                        (supabase
+                            .from('whatsapp_instances')
+                            .delete()) as any,
+                        { userId: user.id, orgId }
+                    )
+                        .eq('instance_name', instance.instance_name);
 
                     throw new Error('Instância do WhatsApp inválida ou desconectada. Por favor, atualize a página e conecte novamente.');
                 }
@@ -1436,12 +1496,13 @@ export function useChat(contacts: Contact[] = []) {
 
     // --- SEND REACTION MUTATION ---
     const sendReactionMutation = useMutation({
-        mutationFn: async ({ messageId, waMessageId, remoteJid, emoji, instanceName }: {
+        mutationFn: async ({ messageId, waMessageId, remoteJid, emoji, instanceName, fromMe }: {
             messageId: string;
             waMessageId: string;
             remoteJid: string;
             emoji: string;
             instanceName: string;
+            fromMe: boolean;
         }) => {
             if (!user) throw new Error('User not authenticated');
             if (!orgId) throw new Error('Organização não vinculada ao usuário');
@@ -1456,7 +1517,7 @@ export function useChat(contacts: Contact[] = []) {
                     instanceName,
                     key: {
                         remoteJid,
-                        fromMe: false, // Reacting to client message
+                        fromMe,
                         id: waMessageId
                     },
                     reaction: emoji
@@ -1477,22 +1538,7 @@ export function useChat(contacts: Contact[] = []) {
                 .eq('id', messageId)
                 .single();
 
-            const existingReactions: any[] = Array.isArray(currentMsg?.reactions) ? currentMsg.reactions : [];
-
-            // CRITICAL FIX: Remove previous reaction from "ME" before adding new one
-            const filtered = existingReactions.filter((r: any) => !(r.fromMe === true || r.reactorId === 'ME'));
-
-            if (emoji) {
-                // Add new reaction
-                filtered.push({
-                    emoji,
-                    fromMe: true,
-                    reactorId: 'ME',
-                    timestamp: new Date().toISOString()
-                });
-            }
-
-            const newReactions = filtered;
+            const newReactions = upsertOwnReaction(currentMsg?.reactions, emoji);
 
             const { error: updateError } = await supabase
                 .from('interacoes')

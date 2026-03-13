@@ -54,7 +54,14 @@ interface ChatAreaProps {
   ) => Promise<void>;
   onSendAttachment?: (conversationId: string, file: File, fileType: string, caption?: string, instanceName?: string) => Promise<void>;
   onSendAudio?: (conversationId: string, audioBlob: Blob, durationSeconds: number, instanceName?: string) => Promise<void>;
-  onSendReaction?: (messageId: string, waMessageId: string, remoteJid: string, emoji: string, instanceName: string) => Promise<void>;
+  onSendReaction?: (
+    messageId: string,
+    waMessageId: string,
+    remoteJid: string,
+    emoji: string,
+    instanceName: string,
+    fromMe: boolean
+  ) => Promise<void>;
   onOpenDetails?: () => void;
   onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
   onCallAction?: (contact: Conversation['contact']) => void;
@@ -64,6 +71,7 @@ interface ChatAreaProps {
   onInitialMessageUsed?: () => void;
   onClientMessage?: (conversationId: string) => void;
   isDetailsOpen?: boolean;
+  onBack?: () => void;
 }
 
 // Traduções em português para o emoji picker
@@ -94,7 +102,8 @@ export function ChatArea({
   onClientMessage,
   onToggleLeadAi,
   onVideoCallAction,
-  isDetailsOpen
+  isDetailsOpen,
+  onBack,
 }: ChatAreaProps) {
   const { orgId, role } = useAuth();
   const isOrgManager = role === 'owner' || role === 'admin';
@@ -949,6 +958,16 @@ export function ChatArea({
       )}
       {/* Chat Header */}
       <div className="h-16 px-4 flex items-center justify-between border-b border-border bg-card">
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mr-2 inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
+            title="Voltar para conversas"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        ) : null}
         <button
           onClick={onOpenDetails}
           data-testid="chat-open-details"
@@ -1205,12 +1224,17 @@ export function ChatArea({
                               return;
                             }
 
-                            // Get remoteJid from contact phone
+                            // Prefer original message remoteJid (supports @lid and other non-phone JIDs)
                             const phone = conversation.contact.phoneE164 || conversation.contact.phone;
                             const cleanPhone = phone?.replace(/\D/g, '') || '';
-                            const remoteJid = cleanPhone + '@s.whatsapp.net';
+                            const fallbackRemoteJid = cleanPhone ? `${cleanPhone}@s.whatsapp.net` : '';
+                            const remoteJid = msg.remoteJid || fallbackRemoteJid;
+                            if (!remoteJid) {
+                              toast({ title: "Erro", description: "Não foi possível resolver o destino da reação", variant: "destructive" });
+                              return;
+                            }
 
-                            onSendReaction?.(msg.id, msg.waMessageId, remoteJid, emoji, instanceToUse);
+                            onSendReaction?.(msg.id, msg.waMessageId, remoteJid, emoji, instanceToUse, !msg.isFromClient);
                           }}
                         />
                       </div>

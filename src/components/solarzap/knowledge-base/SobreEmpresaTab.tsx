@@ -5,6 +5,7 @@ import { Building2, Save, Loader2, CheckCircle2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface CompanyProfile {
     company_name: string;
@@ -13,6 +14,19 @@ interface CompanyProfile {
     installation_process: string;
     warranty_info: string;
     payment_options: string;
+    headquarters_city: string;
+    headquarters_state: string;
+    headquarters_address: string;
+    headquarters_zip: string;
+    service_area_summary: string;
+    business_hours_text: string;
+    public_phone: string;
+    public_whatsapp: string;
+    technical_visit_is_free: boolean | null;
+    technical_visit_fee_notes: string;
+    supports_financing: boolean | null;
+    supports_card_installments: boolean | null;
+    payment_policy_summary: string;
 }
 
 const DEFAULT_PROFILE: CompanyProfile = {
@@ -21,7 +35,48 @@ const DEFAULT_PROFILE: CompanyProfile = {
     differentials: '',
     installation_process: '',
     warranty_info: '',
-    payment_options: ''
+    payment_options: '',
+    headquarters_city: '',
+    headquarters_state: '',
+    headquarters_address: '',
+    headquarters_zip: '',
+    service_area_summary: '',
+    business_hours_text: '',
+    public_phone: '',
+    public_whatsapp: '',
+    technical_visit_is_free: null,
+    technical_visit_fee_notes: '',
+    supports_financing: null,
+    supports_card_installments: null,
+    payment_policy_summary: '',
+};
+
+const PROFILE_PROGRESS_KEYS: Array<keyof CompanyProfile> = [
+    'company_name',
+    'elevator_pitch',
+    'differentials',
+    'installation_process',
+    'warranty_info',
+    'payment_options',
+    'headquarters_city',
+    'headquarters_state',
+    'headquarters_address',
+    'headquarters_zip',
+    'service_area_summary',
+    'business_hours_text',
+    'public_phone',
+    'public_whatsapp',
+    'technical_visit_is_free',
+    'technical_visit_fee_notes',
+    'supports_financing',
+    'supports_card_installments',
+    'payment_policy_summary',
+];
+
+const isProfileFieldFilled = (value: CompanyProfile[keyof CompanyProfile]): boolean => {
+    if (typeof value === 'boolean') return true;
+    if (value === null || value === undefined) return false;
+    return String(value).trim().length > 0;
 };
 
 export function SobreEmpresaTab() {
@@ -62,13 +117,32 @@ export function SobreEmpresaTab() {
                     differentials: data.differentials || '',
                     installation_process: data.installation_process || '',
                     warranty_info: data.warranty_info || '',
-                    payment_options: data.payment_options || ''
+                    payment_options: data.payment_options || '',
+                    headquarters_city: data.headquarters_city || '',
+                    headquarters_state: data.headquarters_state || '',
+                    headquarters_address: data.headquarters_address || '',
+                    headquarters_zip: data.headquarters_zip || '',
+                    service_area_summary: data.service_area_summary || '',
+                    business_hours_text: data.business_hours_text || '',
+                    public_phone: data.public_phone || '',
+                    public_whatsapp: data.public_whatsapp || '',
+                    technical_visit_is_free: typeof data.technical_visit_is_free === 'boolean'
+                        ? data.technical_visit_is_free
+                        : null,
+                    technical_visit_fee_notes: data.technical_visit_fee_notes || '',
+                    supports_financing: typeof data.supports_financing === 'boolean'
+                        ? data.supports_financing
+                        : null,
+                    supports_card_installments: typeof data.supports_card_installments === 'boolean'
+                        ? data.supports_card_installments
+                        : null,
+                    payment_policy_summary: data.payment_policy_summary || '',
                 });
                 // Mark all non-empty fields as saved
                 const saved = new Set<keyof CompanyProfile>();
-                Object.entries(data).forEach(([key, val]) => {
-                    if (val && typeof val === 'string' && val.trim()) {
-                        saved.add(key as keyof CompanyProfile);
+                PROFILE_PROGRESS_KEYS.forEach((key) => {
+                    if (isProfileFieldFilled((data as any)?.[key])) {
+                        saved.add(key);
                     }
                 });
                 setSavedFields(saved);
@@ -82,6 +156,15 @@ export function SobreEmpresaTab() {
 
     const handleChange = (field: keyof CompanyProfile, value: string) => {
         setProfile(prev => ({ ...prev, [field]: value }));
+        setHasChanges(true);
+    };
+
+    const handleBooleanChange = (
+        field: 'technical_visit_is_free' | 'supports_financing' | 'supports_card_installments',
+        rawValue: string,
+    ) => {
+        const value = rawValue === 'sim' ? true : rawValue === 'nao' ? false : null;
+        setProfile((prev) => ({ ...prev, [field]: value }));
         setHasChanges(true);
     };
 
@@ -102,9 +185,9 @@ export function SobreEmpresaTab() {
 
             // Update saved fields
             const saved = new Set<keyof CompanyProfile>();
-            Object.entries(profile).forEach(([key, val]) => {
-                if (val && val.trim()) {
-                    saved.add(key as keyof CompanyProfile);
+            PROFILE_PROGRESS_KEYS.forEach((key) => {
+                if (isProfileFieldFilled(profile[key])) {
+                    saved.add(key);
                 }
             });
             setSavedFields(saved);
@@ -127,8 +210,8 @@ export function SobreEmpresaTab() {
     };
 
     // Calculate progress
-    const totalFields = 6;
-    const filledFields = Object.values(profile).filter(v => v && v.trim()).length;
+    const totalFields = PROFILE_PROGRESS_KEYS.length;
+    const filledFields = PROFILE_PROGRESS_KEYS.filter((key) => isProfileFieldFilled(profile[key])).length;
     const progressPercent = Math.round((filledFields / totalFields) * 100);
 
     if (isLoading) {
@@ -258,6 +341,191 @@ export function SobreEmpresaTab() {
                     rows={3}
                     maxLength={400}
                     isSaved={savedFields.has('payment_options')}
+                />
+                <QuestionCard
+                    question="Cidade da sede da empresa"
+                    hint="Ajuda a IA a responder corretamente onde a empresa fica"
+                    placeholder="Ex: Maringa"
+                    value={profile.headquarters_city}
+                    onChange={(v) => handleChange('headquarters_city', v)}
+                    maxLength={120}
+                    isSaved={savedFields.has('headquarters_city')}
+                />
+
+                <QuestionCard
+                    question="Estado (UF) da sede"
+                    hint="Informe a UF principal da empresa"
+                    placeholder="Ex: PR"
+                    value={profile.headquarters_state}
+                    onChange={(v) => handleChange('headquarters_state', v)}
+                    maxLength={10}
+                    isSaved={savedFields.has('headquarters_state')}
+                />
+
+                <QuestionCard
+                    question="Endereco principal da empresa"
+                    hint="Endereco usado quando o lead pergunta localizacao"
+                    placeholder="Ex: Av. Brasil, 1234 - Centro"
+                    value={profile.headquarters_address}
+                    onChange={(v) => handleChange('headquarters_address', v)}
+                    multiline
+                    rows={2}
+                    maxLength={220}
+                    isSaved={savedFields.has('headquarters_address')}
+                />
+
+                <QuestionCard
+                    question="CEP da sede (opcional)"
+                    hint="Pode ser usado em respostas objetivas de localizacao"
+                    placeholder="Ex: 87010-000"
+                    value={profile.headquarters_zip}
+                    onChange={(v) => handleChange('headquarters_zip', v)}
+                    maxLength={20}
+                    isSaved={savedFields.has('headquarters_zip')}
+                />
+
+                <QuestionCard
+                    question="Resumo da area de atendimento"
+                    hint="Exemplo: atendemos todo o Noroeste do PR e regioes proximas"
+                    placeholder="Ex: Atendemos Mandaguacu, Maringa e regiao metropolitana"
+                    value={profile.service_area_summary}
+                    onChange={(v) => handleChange('service_area_summary', v)}
+                    multiline
+                    rows={2}
+                    maxLength={300}
+                    isSaved={savedFields.has('service_area_summary')}
+                />
+
+                <QuestionCard
+                    question="Horario comercial"
+                    hint="Usado para orientar respostas e expectativa de retorno"
+                    placeholder="Ex: Seg a Sex 08:00-18:00, Sab 08:00-12:00"
+                    value={profile.business_hours_text}
+                    onChange={(v) => handleChange('business_hours_text', v)}
+                    maxLength={160}
+                    isSaved={savedFields.has('business_hours_text')}
+                />
+
+                <QuestionCard
+                    question="Telefone publico"
+                    hint="Telefone da empresa para contato geral"
+                    placeholder="Ex: (44) 99999-9999"
+                    value={profile.public_phone}
+                    onChange={(v) => handleChange('public_phone', v)}
+                    maxLength={40}
+                    isSaved={savedFields.has('public_phone')}
+                />
+
+                <QuestionCard
+                    question="WhatsApp publico"
+                    hint="Canal principal de contato da empresa"
+                    placeholder="Ex: (44) 98888-8888"
+                    value={profile.public_whatsapp}
+                    onChange={(v) => handleChange('public_whatsapp', v)}
+                    maxLength={40}
+                    isSaved={savedFields.has('public_whatsapp')}
+                />
+
+                <div className="rounded-xl border bg-card p-4">
+                    <p className="text-sm font-medium">A visita tecnica e gratuita?</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                        Essa resposta evita informacoes contraditorias no atendimento.
+                    </p>
+                    <div className="mt-3">
+                        <Select
+                            value={
+                                profile.technical_visit_is_free === true
+                                    ? 'sim'
+                                    : profile.technical_visit_is_free === false
+                                        ? 'nao'
+                                        : 'nao_informado'
+                            }
+                            onValueChange={(value) => handleBooleanChange('technical_visit_is_free', value)}
+                        >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Selecione" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="sim">Sim</SelectItem>
+                                <SelectItem value="nao">Nao</SelectItem>
+                                <SelectItem value="nao_informado">Nao informado</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <QuestionCard
+                    question="Observacoes sobre custo de visita"
+                    hint="Exemplo: gratuita em raio de 30km, fora disso consultar taxa"
+                    placeholder="Ex: Visita tecnica gratuita para cidades atendidas"
+                    value={profile.technical_visit_fee_notes}
+                    onChange={(v) => handleChange('technical_visit_fee_notes', v)}
+                    multiline
+                    rows={2}
+                    maxLength={260}
+                    isSaved={savedFields.has('technical_visit_fee_notes')}
+                />
+
+                <div className="rounded-xl border bg-card p-4">
+                    <p className="text-sm font-medium">Aceita financiamento?</p>
+                    <div className="mt-3">
+                        <Select
+                            value={
+                                profile.supports_financing === true
+                                    ? 'sim'
+                                    : profile.supports_financing === false
+                                        ? 'nao'
+                                        : 'nao_informado'
+                            }
+                            onValueChange={(value) => handleBooleanChange('supports_financing', value)}
+                        >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Selecione" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="sim">Sim</SelectItem>
+                                <SelectItem value="nao">Nao</SelectItem>
+                                <SelectItem value="nao_informado">Nao informado</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <div className="rounded-xl border bg-card p-4">
+                    <p className="text-sm font-medium">Aceita parcelamento no cartao?</p>
+                    <div className="mt-3">
+                        <Select
+                            value={
+                                profile.supports_card_installments === true
+                                    ? 'sim'
+                                    : profile.supports_card_installments === false
+                                        ? 'nao'
+                                        : 'nao_informado'
+                            }
+                            onValueChange={(value) => handleBooleanChange('supports_card_installments', value)}
+                        >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Selecione" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="sim">Sim</SelectItem>
+                                <SelectItem value="nao">Nao</SelectItem>
+                                <SelectItem value="nao_informado">Nao informado</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <QuestionCard
+                    question="Resumo da politica comercial de pagamento"
+                    hint="Use este campo para consolidar regras de parcelamento/financiamento"
+                    placeholder="Ex: Parcelamento em ate 12x no cartao e financiamento bancario em ate 84x sujeito a analise"
+                    value={profile.payment_policy_summary}
+                    onChange={(v) => handleChange('payment_policy_summary', v)}
+                    multiline
+                    rows={3}
+                    maxLength={320}
+                    isSaved={savedFields.has('payment_policy_summary')}
                 />
             </div>
         </div>

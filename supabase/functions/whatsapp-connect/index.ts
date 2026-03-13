@@ -1,15 +1,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
-if (!ALLOWED_ORIGIN) {
-    throw new Error('Missing ALLOWED_ORIGIN env')
-}
-
-const corsHeaders = {
-    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { resolveRequestCors } from '../_shared/cors.ts'
+import { checkLimit } from '../_shared/billing.ts'
 
 // 1. Configuration
 const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL')
@@ -26,9 +18,38 @@ const getEvolutionConfig = () => {
 }
 
 Deno.serve(async (req) => {
+    const cors = resolveRequestCors(req)
+    const corsHeaders = cors.corsHeaders
+
     // CORS Preflight
     if (req.method === 'OPTIONS') {
+        if (cors.missingAllowedOriginConfig) {
+            return new Response(JSON.stringify({ error: 'missing_allowed_origin' }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
+        }
+        if (!cors.originAllowed) {
+            return new Response(JSON.stringify({ error: 'origin_not_allowed' }), {
+                status: 403,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
+        }
         return new Response('ok', { headers: corsHeaders })
+    }
+
+    if (cors.missingAllowedOriginConfig) {
+        return new Response(JSON.stringify({ error: 'missing_allowed_origin' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+    }
+
+    if (!cors.originAllowed) {
+        return new Response(JSON.stringify({ error: 'origin_not_allowed' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
     }
 
     try {
@@ -143,6 +164,22 @@ Deno.serve(async (req) => {
            ACTION: CREATE
            ========================== */
         if (action === 'create') {
+            const instanceLimit = await checkLimit(supabaseClient, orgId, 'max_whatsapp_instances', 1)
+            if (!instanceLimit.allowed || instanceLimit.access_state === 'blocked' || instanceLimit.access_state === 'read_only') {
+                return new Response(
+                    JSON.stringify({
+                        ok: false,
+                        code: 'billing_limit_reached',
+                        error: 'Limite do plano atingido para novas instancias de WhatsApp',
+                        billing: instanceLimit,
+                    }),
+                    {
+                        status: 402,
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    }
+                )
+            }
+
             const instanceName = `instance_${Date.now()}_${crypto.randomUUID()}`
             console.log(`Creating instance: ${instanceName}`)
 
@@ -440,9 +477,10 @@ Deno.serve(async (req) => {
         throw new Error(`Unknown action: ${action}`)
 
     } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         console.error('Error in whatsapp-connect:', error)
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: errorMessage }),
             {
                 status: 400,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }

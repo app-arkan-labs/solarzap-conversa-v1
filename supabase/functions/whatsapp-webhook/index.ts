@@ -5,15 +5,31 @@ import {
     resolveInboundMessageNodeAndType,
     shouldSkipLidMessageWithoutPhone,
 } from '../_shared/whatsappWebhookMessageParsing.ts'
+import {
+    applyLeadAttribution,
+    extractCtwaFromWhatsAppMessage,
+} from '../_shared/trackingAttribution.ts'
+import { resolveLeadCanonicalId } from '../_shared/leadCanonical.ts'
+import { checkLimit, recordUsage } from '../_shared/billing.ts'
+import {
+    buildInvokeFailureEnvelope,
+    normalizeAgentInvokeResult,
+} from '../_shared/aiPipelineOutcome.ts'
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN')
 if (!ALLOWED_ORIGIN) {
     throw new Error('Missing ALLOWED_ORIGIN env')
 }
+const EDGE_INTERNAL_API_KEY = String(Deno.env.get('EDGE_INTERNAL_API_KEY') || '').trim()
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-arkan-webhook-secret',
+}
+
+function buildInternalInvokeHeaders(): Record<string, string> {
+    if (!EDGE_INTERNAL_API_KEY) return {}
+    return { 'x-internal-api-key': EDGE_INTERNAL_API_KEY }
 }
 
 function onlyDigits(str: string | null | undefined): string {
@@ -178,6 +194,372 @@ function resolveFromMe(msg: any, data: any, body: any): boolean {
 function normalizeProtocolVersion(raw: any): 'legacy' | 'pipeline_pdf_v1' {
     const value = String(raw || '').trim().toLowerCase()
     return value === 'pipeline_pdf_v1' ? 'pipeline_pdf_v1' : 'legacy'
+}
+
+const TERMINAL_STAGES = new Set(['perdido', 'contato_futuro', 'projeto_instalado', 'coletar_avaliacao'])
+type FollowUpStepRule = {
+    step: 1 | 2 | 3 | 4 | 5
+    enabled: boolean
+    delay_minutes: number
+}
+
+const FOLLOW_UP_STEP_KEYS: Array<FollowUpStepRule['step']> = [1, 2, 3, 4, 5]
+const FOLLOW_UP_MIN_DELAY_MINUTES = 5
+const FOLLOW_UP_MAX_DELAY_MINUTES = 365 * 24 * 60
+const DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG: { steps: FollowUpStepRule[] } = {
+    steps: [
+        { step: 1, enabled: true, delay_minutes: 180 },
+        { step: 2, enabled: true, delay_minutes: 1440 },
+        { step: 3, enabled: true, delay_minutes: 2880 },
+        { step: 4, enabled: true, delay_minutes: 4320 },
+        { step: 5, enabled: true, delay_minutes: 10080 },
+    ],
+}
+type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat'
+type FollowUpWindowConfig = {
+    start: string
+    end: string
+    days: DayKey[]
+    preferred_time: string | null
+}
+const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+const DEFAULT_FOLLOW_UP_WINDOW_CONFIG: FollowUpWindowConfig = {
+    start: '09:00',
+    end: '18:00',
+    days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    preferred_time: null,
+}
+
+function normalizeDayKey(raw: unknown): DayKey | null {
+    const value = String(raw ?? '').trim().toLowerCase()
+    return DAY_KEYS.includes(value as DayKey) ? (value as DayKey) : null
+}
+
+function normalizeHHMM(raw: unknown, fallback: string): string {
+    const text = String(raw ?? '').trim()
+    const match = /^(\d{1,2}):(\d{2})$/.exec(text)
+    if (!match) return fallback
+    const hour = Number(match[1])
+    const minute = Number(match[2])
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return fallback
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function parseHHMMToMinutes(value: string): number {
+    const match = /^(\d{2}):(\d{2})$/.exec(String(value || '').trim())
+    if (!match) return -1
+    return (Number(match[1]) * 60) + Number(match[2])
+}
+
+function normalizeFollowUpWindowConfig(raw: unknown): FollowUpWindowConfig {
+    const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {}
+    const incomingDays = Array.isArray(source.days) ? source.days : []
+    const normalizedDays = Array.from(
+        new Set(
+            incomingDays
+                .map((day: unknown) => normalizeDayKey(day))
+                .filter((day): day is DayKey => !!day)
+        ),
+    )
+    const preferredRaw = String(source.preferred_time ?? '').trim()
+    const preferred = preferredRaw ? normalizeHHMM(preferredRaw, '') : ''
+    return {
+        start: normalizeHHMM(source.start, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.start),
+        end: normalizeHHMM(source.end, DEFAULT_FOLLOW_UP_WINDOW_CONFIG.end),
+        days: normalizedDays.length > 0 ? normalizedDays : [...DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days],
+        preferred_time: preferred || null,
+    }
+}
+
+function getZonedDateParts(
+    date: Date,
+    timeZone: string,
+): { year: number; month: number; day: number; hour: number; minute: number; second: number; weekday: DayKey } {
+    const datePartFormatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    })
+    const weekdayFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        weekday: 'short',
+    })
+
+    const parts = datePartFormatter.formatToParts(date)
+    const year = Number(parts.find((p) => p.type === 'year')?.value || '0')
+    const month = Number(parts.find((p) => p.type === 'month')?.value || '0')
+    const day = Number(parts.find((p) => p.type === 'day')?.value || '0')
+    const hour = Number(parts.find((p) => p.type === 'hour')?.value || '0')
+    const minute = Number(parts.find((p) => p.type === 'minute')?.value || '0')
+    const second = Number(parts.find((p) => p.type === 'second')?.value || '0')
+    const weekdayRaw = String(weekdayFormatter.format(date) || '').toLowerCase().slice(0, 3)
+    const weekday = (DAY_KEYS.includes(weekdayRaw as DayKey) ? weekdayRaw : 'mon') as DayKey
+    return { year, month, day, hour, minute, second, weekday }
+}
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
+    const parts = getZonedDateParts(date, timeZone)
+    const localAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second)
+    return localAsUtc - date.getTime()
+}
+
+function zonedDateTimeToUtc(
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number,
+    second: number,
+    timeZone: string
+): Date {
+    const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second))
+    const offset = getTimeZoneOffsetMs(utcGuess, timeZone)
+    return new Date(utcGuess.getTime() - offset)
+}
+
+function resolveFollowUpScheduledAt(params: {
+    baseDate: Date
+    timeZone: string
+    windowConfig: FollowUpWindowConfig
+}): Date {
+    const { baseDate, timeZone, windowConfig } = params
+    const base = new Date(baseDate.getTime())
+    if (isNaN(base.getTime())) return new Date(Date.now() + (3 * 60 * 60 * 1000))
+
+    const startMinutes = parseHHMMToMinutes(windowConfig.start)
+    const endMinutes = parseHHMMToMinutes(windowConfig.end)
+    if (startMinutes < 0 || endMinutes <= startMinutes) return base
+
+    const preferredRaw = windowConfig.preferred_time ? parseHHMMToMinutes(windowConfig.preferred_time) : -1
+    const preferredMinutes = preferredRaw >= startMinutes && preferredRaw < endMinutes ? preferredRaw : -1
+    const allowedDays = windowConfig.days.length > 0 ? windowConfig.days : DEFAULT_FOLLOW_UP_WINDOW_CONFIG.days
+
+    const baseParts = getZonedDateParts(base, timeZone)
+    const baseLocalNoon = zonedDateTimeToUtc(baseParts.year, baseParts.month, baseParts.day, 12, 0, 0, timeZone)
+    const baseMinutesOfDay = (baseParts.hour * 60) + baseParts.minute + (baseParts.second > 0 ? 1 : 0)
+
+    for (let dayOffset = 0; dayOffset <= 30; dayOffset++) {
+        const dayProbe = new Date(baseLocalNoon.getTime() + (dayOffset * 24 * 60 * 60 * 1000))
+        const dayParts = getZonedDateParts(dayProbe, timeZone)
+        if (!allowedDays.includes(dayParts.weekday)) continue
+
+        let candidateMinutes = preferredMinutes >= 0 ? preferredMinutes : startMinutes
+        if (dayOffset === 0) {
+            if (preferredMinutes >= 0 && preferredMinutes < baseMinutesOfDay) continue
+            if (preferredMinutes < 0) candidateMinutes = Math.max(startMinutes, baseMinutesOfDay)
+        }
+        if (candidateMinutes >= endMinutes) continue
+
+        const candidateUtc = zonedDateTimeToUtc(
+            dayParts.year,
+            dayParts.month,
+            dayParts.day,
+            Math.floor(candidateMinutes / 60),
+            candidateMinutes % 60,
+            0,
+            timeZone
+        )
+        if (candidateUtc.getTime() < base.getTime()) continue
+        return candidateUtc
+    }
+
+    return base
+}
+
+async function isOrgFollowUpAgentActive(supabase: any, orgId: string): Promise<boolean> {
+    const { data, error } = await supabase
+        .from('ai_stage_config')
+        .select('is_active')
+        .eq('org_id', orgId)
+        .eq('pipeline_stage', 'follow_up')
+        .maybeSingle()
+
+    if (error) {
+        console.warn('Failed to load follow_up stage config in webhook:', error.message)
+        return false
+    }
+
+    return data?.is_active === true
+}
+
+function normalizeFollowUpSequenceConfig(raw: any): { steps: FollowUpStepRule[] } {
+    const source = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw as Record<string, any> : {}
+    const incomingSteps = Array.isArray(source.steps) ? source.steps : []
+    const fallbackMap = new Map(
+        DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG.steps.map((step) => [step.step, step] as const),
+    )
+
+    const steps: FollowUpStepRule[] = FOLLOW_UP_STEP_KEYS.map((stepKey) => {
+        const fallback = fallbackMap.get(stepKey)!
+        const incoming = incomingSteps.find((entry: any) => Number(entry?.step) === stepKey) || {}
+        const enabled = typeof incoming?.enabled === 'boolean' ? Boolean(incoming.enabled) : fallback.enabled
+        const delayRaw = Number(incoming?.delay_minutes)
+        const delayMinutes = Number.isFinite(delayRaw)
+            ? Math.max(
+                FOLLOW_UP_MIN_DELAY_MINUTES,
+                Math.min(FOLLOW_UP_MAX_DELAY_MINUTES, Math.round(delayRaw)),
+            )
+            : fallback.delay_minutes
+
+        return {
+            step: stepKey,
+            enabled,
+            delay_minutes: delayMinutes,
+        }
+    })
+
+    return { steps }
+}
+
+async function loadFollowUpRuntimeSettings(
+    supabase: any,
+    orgId: string
+): Promise<{ sequenceConfig: { steps: FollowUpStepRule[] }; windowConfig: FollowUpWindowConfig; timeZone: string }> {
+    const { data, error } = await supabase
+        .from('ai_settings')
+        .select('follow_up_sequence_config, follow_up_window_config, timezone')
+        .eq('org_id', orgId)
+        .maybeSingle()
+
+    if (error) {
+        console.warn('Failed to load follow_up runtime settings in webhook, using defaults:', error.message)
+        return {
+            sequenceConfig: DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
+            windowConfig: DEFAULT_FOLLOW_UP_WINDOW_CONFIG,
+            timeZone: 'America/Sao_Paulo',
+        }
+    }
+
+    return {
+        sequenceConfig: normalizeFollowUpSequenceConfig((data as any)?.follow_up_sequence_config),
+        windowConfig: normalizeFollowUpWindowConfig((data as any)?.follow_up_window_config),
+        timeZone: String((data as any)?.timezone || 'America/Sao_Paulo').trim() || 'America/Sao_Paulo',
+    }
+}
+
+function getFirstEnabledFollowUpStep(config: { steps: FollowUpStepRule[] }): FollowUpStepRule | null {
+    const ordered = config.steps
+        .filter((step) => step.enabled)
+        .sort((a, b) => a.step - b.step)
+    return ordered[0] || null
+}
+
+async function cancelPendingFollowUpJobs(
+    supabase: any,
+    leadId: number,
+    cancelledReason: string,
+): Promise<void> {
+    const { error } = await supabase
+        .from('scheduled_agent_jobs')
+        .update({
+            status: 'cancelled',
+            cancelled_reason: cancelledReason,
+            executed_at: new Date().toISOString(),
+        })
+        .eq('lead_id', leadId)
+        .eq('agent_type', 'follow_up')
+        .eq('status', 'pending')
+
+    if (error) throw error
+}
+
+async function resetLeadFollowUpStep(
+    supabase: any,
+    leadId: number,
+    orgId: string,
+): Promise<void> {
+    const { error } = await supabase
+        .from('leads')
+        .update({ follow_up_step: 0 })
+        .eq('id', leadId)
+        .eq('org_id', orgId)
+
+    if (error) throw error
+}
+
+async function scheduleFollowUpStep1FromOutbound(params: {
+    supabase: any
+    orgId: string
+    leadId: number
+    leadStage: string | null
+    instanceName: string
+}): Promise<{ scheduled: boolean; reason?: string; step?: number }> {
+    const { supabase, orgId, leadId, leadStage, instanceName } = params
+    const normalizedStage = String(leadStage || '').trim().toLowerCase()
+
+    if (TERMINAL_STAGES.has(normalizedStage)) {
+        return { scheduled: false, reason: 'terminal_stage' }
+    }
+
+    const { data: leadRow, error: leadRowError } = await supabase
+        .from('leads')
+        .select('follow_up_enabled')
+        .eq('id', leadId)
+        .eq('org_id', orgId)
+        .maybeSingle()
+    if (leadRowError) throw leadRowError
+    if (!leadRow || leadRow.follow_up_enabled === false) {
+        return { scheduled: false, reason: 'lead_fu_disabled' }
+    }
+
+    const orgFollowUpActive = await isOrgFollowUpAgentActive(supabase, orgId)
+    if (!orgFollowUpActive) {
+        return { scheduled: false, reason: 'org_agent_disabled' }
+    }
+
+    const followUpRuntime = await loadFollowUpRuntimeSettings(supabase, orgId)
+    const firstEnabledStep = getFirstEnabledFollowUpStep(followUpRuntime.sequenceConfig)
+    if (!firstEnabledStep) {
+        return { scheduled: false, reason: 'fu_sequence_empty' }
+    }
+
+    const nowIso = new Date().toISOString()
+    const scheduledAt = resolveFollowUpScheduledAt({
+        baseDate: new Date(Date.now() + (firstEnabledStep.delay_minutes * 60_000)),
+        timeZone: followUpRuntime.timeZone,
+        windowConfig: followUpRuntime.windowConfig,
+    }).toISOString()
+    const payload = {
+        fu_step: firstEnabledStep.step,
+        last_outbound_at: nowIso,
+        original_stage: normalizedStage || null,
+        instance_name: instanceName || null,
+        follow_up_schedule_timezone: followUpRuntime.timeZone,
+    }
+
+    await cancelPendingFollowUpJobs(supabase, leadId, 'new_outbound_superseded')
+
+    const tryInsert = async () => {
+        const { error } = await supabase
+            .from('scheduled_agent_jobs')
+            .insert({
+                org_id: orgId,
+                lead_id: leadId,
+                agent_type: 'follow_up',
+                scheduled_at: scheduledAt,
+                status: 'pending',
+                guard_stage: normalizedStage || null,
+                payload,
+            })
+        return error
+    }
+
+    let insertErr = await tryInsert()
+    if (insertErr && insertErr.code === '23505') {
+        await cancelPendingFollowUpJobs(supabase, leadId, 'new_outbound_superseded')
+        insertErr = await tryInsert()
+    }
+    if (insertErr) throw insertErr
+
+    await resetLeadFollowUpStep(supabase, leadId, orgId)
+
+    return { scheduled: true, step: firstEnabledStep.step }
 }
 
 async function uploadMedia(
@@ -604,35 +986,95 @@ Deno.serve(async (req: Request) => {
                 }
                 const leadTelefone = explicitPhoneCandidate || rawRemoteJid
 
-                let leadId = null
-                const upsertLeadStartedAt = perfNowMs()
-                const { data: leadData, error: upsertLeadError } = await supabase.rpc('upsert_lead_canonical', {
-                    p_user_id: userId,
-                    p_instance_name: instanceName,
-                    p_phone_e164: phoneE164,
-                    p_telefone: leadTelefone,
-                    p_name: pushName,
-                    p_push_name: pushName,
-                    p_source: 'whatsapp'
-                }).single()
-                if (upsertLeadError) {
-                    console.error('❌ upsert_lead_canonical failed in whatsapp-webhook', {
-                        userId,
+                const leadLimit = await checkLimit(supabase, orgId, 'max_leads', 1)
+                if (!leadLimit.allowed || leadLimit.access_state === 'blocked' || leadLimit.access_state === 'read_only') {
+                    console.warn('lead_limit_reached: skipping lead resolution', {
+                        orgId,
                         instanceName,
-                        phoneE164,
-                        rawRemoteJid,
-                        leadTelefone,
-                        error: upsertLeadError.message
+                        waMessageId,
+                        billing: leadLimit,
                     })
-                } else if (leadData) {
-                    leadId = leadData.id
+                    break
+                }
+
+                let leadId: number | null = null
+                const upsertLeadStartedAt = perfNowMs()
+                const leadResolution = await resolveLeadCanonicalId({
+                    supabase,
+                    userId,
+                    orgId,
+                    instanceName,
+                    phoneE164,
+                    telefone: leadTelefone,
+                    name: pushName,
+                    pushName,
+                    source: 'whatsapp',
+                    channel: 'whatsapp',
+                })
+                if (leadResolution.leadId) {
+                    leadId = Number(leadResolution.leadId)
                 }
                 console.log('[WHATSAPP_WEBHOOK_LATENCY] upsert_lead_canonical_ms', {
                     event,
                     instanceName,
                     waMessageId,
+                    method: leadResolution.method,
+                    leadId,
+                    error: leadResolution.error,
                     ms: Math.round(perfNowMs() - upsertLeadStartedAt)
                 })
+                if (!leadId) {
+                    console.error('[ERROR] Unable to resolve lead for whatsapp message, skipping interaction insert', {
+                        orgId,
+                        userId,
+                        instanceName,
+                        phoneE164,
+                        rawRemoteJid,
+                        leadTelefone,
+                        waMessageId,
+                        resolutionMethod: leadResolution.method,
+                        resolutionError: leadResolution.error,
+                    })
+                    break
+                }
+
+                try {
+                    await recordUsage(supabase, {
+                        orgId,
+                        userId,
+                        leadId,
+                        eventType: 'lead_created',
+                        quantity: 1,
+                        source: 'whatsapp-webhook.lead-resolution',
+                        metadata: {
+                            instance_name: instanceName,
+                            wa_message_id: waMessageId,
+                            resolution_method: leadResolution.method,
+                        },
+                    })
+                } catch (usageError) {
+                    console.warn('Failed to record lead_created usage', usageError)
+                }
+
+                if (leadId) {
+                    try {
+                        const ctwa = extractCtwaFromWhatsAppMessage(msg, msgType || null)
+                        await applyLeadAttribution(supabase, {
+                            orgId,
+                            leadId: Number(leadId),
+                            messageText: text,
+                            ctwa,
+                            user_phone: phoneE164,
+                            user_agent: req.headers.get('user-agent'),
+                        })
+                    } catch (attributionError) {
+                        console.warn('⚠️ Failed to apply lead attribution in whatsapp-webhook', {
+                            orgId,
+                            leadId,
+                            error: attributionError instanceof Error ? attributionError.message : String(attributionError)
+                        })
+                    }
+                }
 
                 // Fast-path media placeholder (actual download/upload/transcription is resolved asynchronously)
                 const isMediaMessage = ['audioMessage', 'imageMessage', 'videoMessage', 'documentMessage', 'stickerMessage'].includes(msgType)
@@ -676,7 +1118,7 @@ Deno.serve(async (req: Request) => {
                 const interactionPayload = {
                     org_id: orgId,
                     user_id: userId,
-                    lead_id: leadId,
+                    lead_id: Number(leadId),
                     mensagem: text,
                     tipo: isFromMe ? 'mensagem_vendedor' : 'mensagem_cliente',
                     instance_name: instanceName,
@@ -695,17 +1137,28 @@ Deno.serve(async (req: Request) => {
                 if (waMessageId) {
                     const { data: existingInteraction } = await supabase
                         .from('interacoes')
-                        .select('id, attachment_ready')
+                        .select('id, attachment_ready, lead_id')
                         .eq('instance_name', instanceName)
                         .eq('wa_message_id', waMessageId)
                         .maybeSingle()
 
                     if (existingInteraction?.id) {
-                        // Avoid clobbering resolver-populated attachment fields on duplicate media webhooks.
-                        if (!isMediaMessage || existingInteraction.attachment_ready !== true) {
+                        if (existingInteraction.lead_id == null) {
                             await supabase
                                 .from('interacoes')
-                                .update(interactionPayload)
+                                .update({ lead_id: Number(leadId) })
+                                .eq('id', existingInteraction.id)
+                                .is('lead_id', null)
+                        }
+
+                        // Avoid clobbering resolver-populated attachment fields on duplicate media webhooks.
+                        if (!isMediaMessage || existingInteraction.attachment_ready !== true) {
+                            const updatePayload = existingInteraction.lead_id == null
+                                ? interactionPayload
+                                : { ...interactionPayload, lead_id: existingInteraction.lead_id }
+                            await supabase
+                                .from('interacoes')
+                                .update(updatePayload)
                                 .eq('id', existingInteraction.id)
                         }
                         inserted = { id: Number(existingInteraction.id) }
@@ -715,6 +1168,28 @@ Deno.serve(async (req: Request) => {
                 if (!inserted) {
                     const { data: insertedRow } = await supabase.from('interacoes').insert(interactionPayload).select('id').single()
                     inserted = insertedRow
+                }
+
+                if (isFromMe) {
+                    try {
+                        await recordUsage(supabase, {
+                            orgId,
+                            userId,
+                            leadId: leadId ? Number(leadId) : null,
+                            eventType: 'whatsapp_message_sent',
+                            quantity: 1,
+                            source: 'whatsapp-webhook',
+                            metadata: {
+                                instance_name: instanceName,
+                                wa_message_id: waMessageId,
+                                message_type: msgType || null,
+                                direction: 'outbound',
+                                interaction_id: inserted?.id || null,
+                            },
+                        })
+                    } catch (usageError) {
+                        console.warn('Failed to record message usage', usageError)
+                    }
                 }
 
                 console.log('[WHATSAPP_WEBHOOK_LATENCY] insert_before_webhook_ms', {
@@ -732,58 +1207,113 @@ Deno.serve(async (req: Request) => {
                         Deno.env.get('MEDIA_RESOLVER_INTERNAL_SECRET')
                         || Deno.env.get('ARKAN_WEBHOOK_SECRET')
                         || ''
-                    supabase.functions
-                        .invoke('media-resolver', {
+                    const dispatchTimeoutRaw = Number(Deno.env.get('MEDIA_RESOLVER_INVOKE_TIMEOUT_MS') || '1500')
+                    const dispatchTimeoutMs = Number.isFinite(dispatchTimeoutRaw)
+                        ? Math.max(300, Math.min(dispatchTimeoutRaw, 10_000))
+                        : 1500
+                    const invokeStartedAt = perfNowMs()
+                    const mediaResolverPayload = {
+                        orgId,
+                        interactionId: inserted.id,
+                        instanceName,
+                        waMessageId,
+                        remoteJid,
+                        mediaType: msgType,
+                        mimeType: mediaMimeType,
+                        fileName: mediaFileName,
+                        leadId,
+                        userId,
+                        action: 'resolveOne',
+                    }
+
+                    const markDispatchFailure = async (rawMessage: string) => {
+                        const dispatchMessage = rawMessage.trim().slice(0, 180) || 'unknown_dispatch_failure'
+                        const { error: markDispatchError } = await supabase
+                            .from('interacoes')
+                            .update({
+                                // Fail-safe: avoid indefinite "loading media" when resolver dispatch never started.
+                                attachment_ready: true,
+                                attachment_error: true,
+                                attachment_error_message: `RESOLVER_DISPATCH_FAILED:${dispatchMessage}`,
+                            })
+                            .eq('id', inserted.id)
+                            .eq('attachment_ready', false)
+
+                        if (markDispatchError) {
+                            console.error('❌ Failed to persist media resolver dispatch failure', {
+                                orgId,
+                                instanceName,
+                                waMessageId,
+                                interactionId: inserted.id,
+                                error: markDispatchError.message,
+                            })
+                        }
+                    }
+
+                    try {
+                        const invokePromise = supabase.functions.invoke('media-resolver', {
                             ...(mediaResolverSecret
                                 ? { headers: { 'x-internal-secret': mediaResolverSecret } }
                                 : {}),
-                            body: {
-                                orgId,
-                                interactionId: inserted.id,
-                                instanceName,
-                                waMessageId,
-                                remoteJid,
-                                mediaType: msgType,
-                                mimeType: mediaMimeType,
-                                fileName: mediaFileName,
-                                leadId,
-                                userId,
-                            }
+                            body: mediaResolverPayload
                         })
-                        .then(({ error: mediaResolverError }) => {
-                            if (!mediaResolverError) return
+                        const timeoutPromise = new Promise<{ data: null; error: { message: string } }>((resolve) => {
+                            setTimeout(() => resolve({
+                                data: null,
+                                error: { message: `dispatch_timeout_${dispatchTimeoutMs}ms` }
+                            }), dispatchTimeoutMs)
+                        })
+                        const { error: mediaResolverError } = await Promise.race([invokePromise, timeoutPromise])
+
+                        if (mediaResolverError) {
+                            const dispatchErrorMessage = mediaResolverError.message || 'invoke_failed'
                             console.error('❌ Failed to invoke media-resolver from whatsapp-webhook', {
                                 orgId,
                                 instanceName,
                                 waMessageId,
-                                interactionId: inserted?.id,
-                                error: mediaResolverError.message,
+                                interactionId: inserted.id,
+                                error: dispatchErrorMessage,
                             })
-                        })
-                        .catch((mediaResolverErr) => {
-                            console.error('❌ Exception invoking media-resolver from whatsapp-webhook', {
-                                orgId,
+                            await markDispatchFailure(dispatchErrorMessage)
+                        } else {
+                            console.log('[WHATSAPP_WEBHOOK_LATENCY] media_resolver_dispatch_ms', {
+                                event,
                                 instanceName,
                                 waMessageId,
-                                interactionId: inserted?.id,
-                                error: mediaResolverErr instanceof Error ? mediaResolverErr.message : String(mediaResolverErr),
+                                interactionId: inserted.id,
+                                ms: Math.round(perfNowMs() - invokeStartedAt),
                             })
+                        }
+                    } catch (mediaResolverErr) {
+                        const dispatchErrorMessage = mediaResolverErr instanceof Error ? mediaResolverErr.message : String(mediaResolverErr)
+                        console.error('❌ Exception invoking media-resolver from whatsapp-webhook', {
+                            orgId,
+                            instanceName,
+                            waMessageId,
+                            interactionId: inserted.id,
+                            error: dispatchErrorMessage,
                         })
+                        await markDispatchFailure(dispatchErrorMessage)
+                    }
                 }
 
                 if (isFromMe && leadId) {
                     const takeoverEnabled = supportAiAutoDisableOnSellerMessage === true
+                    const leadIdNum = Number(leadId)
                     let leadStage: string | null = null
                     let leadWasAlreadyPaused = false
+                    let leadFollowUpEnabled = true
                     let sellerMessageAutoDisabledAI = false
+                    let likelyAiEchoDetected = false
                     let takeoverError: string | null = null
                     let takeoverSuppressedReason: string | null = null
+                    let followUpScheduleStatus: string | null = null
 
                     try {
                         const { data: leadBefore, error: leadBeforeErr } = await supabase
                             .from('leads')
-                            .select('id, status_pipeline, ai_enabled')
-                            .eq('id', Number(leadId))
+                            .select('id, status_pipeline, ai_enabled, follow_up_enabled')
+                            .eq('id', leadIdNum)
                             .maybeSingle()
 
                         if (leadBeforeErr) {
@@ -791,6 +1321,7 @@ Deno.serve(async (req: Request) => {
                         } else {
                             leadStage = (leadBefore as any)?.status_pipeline || null
                             leadWasAlreadyPaused = (leadBefore as any)?.ai_enabled === false
+                            leadFollowUpEnabled = (leadBefore as any)?.follow_up_enabled !== false
 
                             const shouldEvaluatePause = takeoverEnabled && !leadWasAlreadyPaused
                             let likelyAiEcho = false
@@ -803,8 +1334,8 @@ Deno.serve(async (req: Request) => {
                                     const trimmedText = (text || '').trim()
                                     const { data: duplicateOutbound } = await supabase
                                         .from('interacoes')
-                                        .select('id, created_at')
-                                        .eq('lead_id', Number(leadId))
+                                        .select('id, created_at, mensagem')
+                                        .eq('lead_id', leadIdNum)
                                         .eq('instance_name', instanceName)
                                         .eq('wa_from_me', true)
                                         .in('tipo', ['mensagem_vendedor', 'audio_vendedor', 'video_vendedor', 'anexo_vendedor'])
@@ -820,6 +1351,7 @@ Deno.serve(async (req: Request) => {
                                             return rowText === trimmedText
                                         })
                                     )
+                                    likelyAiEchoDetected = likelyAiEcho
                                 } catch (dupErr: any) {
                                     console.warn('Failed to check duplicate outbound before takeover pause:', dupErr?.message || dupErr)
                                 }
@@ -853,10 +1385,32 @@ Deno.serve(async (req: Request) => {
                         takeoverError = pauseErr?.message || String(pauseErr)
                     }
 
+                    if (!likelyAiEchoDetected && leadFollowUpEnabled) {
+                        try {
+                            const scheduleResult = await scheduleFollowUpStep1FromOutbound({
+                                supabase,
+                                orgId,
+                                leadId: leadIdNum,
+                                leadStage,
+                                instanceName,
+                            })
+                            followUpScheduleStatus = scheduleResult.scheduled
+                                ? `scheduled_step_${scheduleResult.step || 1}`
+                                : `skipped:${scheduleResult.reason || 'unknown'}`
+                        } catch (followUpScheduleErr: any) {
+                            followUpScheduleStatus = `error:${String(followUpScheduleErr?.message || followUpScheduleErr || 'unknown').slice(0, 120)}`
+                            console.warn('Failed to schedule follow-up after seller outbound:', followUpScheduleErr)
+                        }
+                    } else if (likelyAiEchoDetected) {
+                        followUpScheduleStatus = 'skipped_likely_ai_echo'
+                    } else if (!leadFollowUpEnabled) {
+                        followUpScheduleStatus = 'skipped:lead_fu_disabled'
+                    }
+
                     try {
                         await supabase.from('ai_action_logs').insert({
                             org_id: orgId,
-                            lead_id: Number(leadId),
+                            lead_id: leadIdNum,
                             action_type: 'seller_message_takeover',
                             details: JSON.stringify({
                                 protocol_version: protocolVersion,
@@ -874,6 +1428,9 @@ Deno.serve(async (req: Request) => {
                                 blocked_prompt_override_reason: null,
                                 support_ai_auto_disable_on_seller_message: supportAiAutoDisableOnSellerMessage,
                                 lead_was_already_paused: leadWasAlreadyPaused,
+                                lead_follow_up_enabled: leadFollowUpEnabled,
+                                likely_ai_echo_detected: likelyAiEchoDetected,
+                                follow_up_schedule_status: followUpScheduleStatus,
                                 takeover_enabled: takeoverEnabled,
                                 takeover_suppressed_reason: takeoverSuppressedReason,
                                 instance_name: instanceName,
@@ -890,42 +1447,132 @@ Deno.serve(async (req: Request) => {
 
                 // AI Trigger
                 if (!isFromMe && leadId && inserted?.id) {
+                    try {
+                        const leadIdNum = Number(leadId)
+                        await cancelPendingFollowUpJobs(supabase, leadIdNum, 'lead_replied')
+                        await resetLeadFollowUpStep(supabase, leadIdNum, orgId)
+                    } catch (followUpCancelErr) {
+                        console.warn('Failed to cancel/reset follow-up after inbound message:', followUpCancelErr)
+                    }
+
+                    const aiLimit = await checkLimit(supabase, orgId, 'included_ai_requests_month', 1)
+                    if (!aiLimit.allowed || aiLimit.access_state === 'blocked' || aiLimit.access_state === 'read_only') {
+                        console.warn('ai_quota_exhausted: skipping ai pipeline invoke', {
+                            orgId,
+                            leadId,
+                            interactionId: inserted.id,
+                            billing: aiLimit,
+                        })
+                        break
+                    }
+
                     supabase.functions
                         .invoke('ai-pipeline-agent', {
+                            headers: buildInternalInvokeHeaders(),
                             body: { leadId, triggerType: 'incoming_message', interactionId: inserted.id, instanceName }
                         })
-                        .then(async ({ error: invokeError }) => {
-                            if (!invokeError) return
-                            console.error('❌ Failed to invoke ai-pipeline-agent from whatsapp-webhook', {
-                                leadId,
-                                interactionId: inserted.id,
-                                instanceName,
-                                error: invokeError.message
-                            })
+                        .then(async ({ data: invokeData, error: invokeError }: { data?: unknown; error: { message: string } | null }) => {
+                            const agentResult = invokeError
+                                ? buildInvokeFailureEnvelope({
+                                    reasonCode: 'invoke_failed',
+                                    errorMessage: invokeError.message,
+                                    triggerType: 'incoming_message',
+                                })
+                                : normalizeAgentInvokeResult(invokeData)
+
+                            if (invokeError) {
+                                console.error('❌ Failed to invoke ai-pipeline-agent from whatsapp-webhook', {
+                                    leadId,
+                                    interactionId: inserted.id,
+                                    instanceName,
+                                    error: invokeError.message
+                                })
+                                try {
+                                    await supabase.from('ai_action_logs').insert({
+                                        org_id: orgId,
+                                        lead_id: Number(leadId),
+                                        action_type: 'agent_invoke_failed',
+                                        details: JSON.stringify({
+                                            source: 'whatsapp-webhook',
+                                            triggerType: 'incoming_message',
+                                            interactionId: inserted.id,
+                                            instanceName,
+                                            error: invokeError.message
+                                        }),
+                                        success: false
+                                    })
+                                } catch (logErr) {
+                                    console.warn('Failed to log agent_invoke_failed (whatsapp-webhook):', logErr)
+                                }
+                            }
+
                             try {
                                 await supabase.from('ai_action_logs').insert({
                                     org_id: orgId,
                                     lead_id: Number(leadId),
-                                    action_type: 'agent_invoke_failed',
+                                    action_type: 'agent_invoke_outcome',
                                     details: JSON.stringify({
                                         source: 'whatsapp-webhook',
                                         triggerType: 'incoming_message',
                                         interactionId: inserted.id,
                                         instanceName,
-                                        error: invokeError.message
+                                        outcome: agentResult.outcome,
+                                        reason_code: agentResult.reason_code,
+                                        should_retry: agentResult.should_retry,
+                                        next_retry_seconds: agentResult.next_retry_seconds,
+                                        message_sent: agentResult.message_sent,
+                                        run_id: agentResult.run_id || null
                                     }),
-                                    success: false
+                                    success: agentResult.outcome === 'sent' || agentResult.outcome === 'terminal_skip'
                                 })
                             } catch (logErr) {
-                                console.warn('Failed to log agent_invoke_failed (whatsapp-webhook):', logErr)
+                                console.warn('Failed to log agent_invoke_outcome (whatsapp-webhook):', logErr)
                             }
+
+                            if (agentResult.outcome === 'sent') {
+                                try {
+                                    await recordUsage(supabase, {
+                                        orgId,
+                                        userId,
+                                        leadId: Number(leadId),
+                                        eventType: 'ai_request',
+                                        quantity: 1,
+                                        source: 'whatsapp-webhook.ai-pipeline-agent',
+                                        metadata: {
+                                            instance_name: instanceName,
+                                            interaction_id: inserted.id,
+                                            agent_outcome: agentResult.outcome,
+                                            reason_code: agentResult.reason_code,
+                                        },
+                                    })
+                                } catch (usageError) {
+                                    console.warn('Failed to record ai_request usage', usageError)
+                                }
+                                return
+                            }
+
+                            console.warn('AI pipeline returned without outbound send', {
+                                leadId,
+                                interactionId: inserted.id,
+                                instanceName,
+                                outcome: agentResult.outcome,
+                                reasonCode: agentResult.reason_code,
+                                shouldRetry: agentResult.should_retry,
+                                nextRetrySeconds: agentResult.next_retry_seconds,
+                            })
                         })
-                        .catch(async (invokeErr) => {
+                        .catch(async (invokeErr: unknown) => {
+                            const invokeErrorMessage = invokeErr instanceof Error ? invokeErr.message : String(invokeErr)
+                            const agentResult = buildInvokeFailureEnvelope({
+                                reasonCode: 'invoke_failed',
+                                errorMessage: invokeErrorMessage,
+                                triggerType: 'incoming_message',
+                            })
                             console.error('❌ Exception invoking ai-pipeline-agent from whatsapp-webhook', {
                                 leadId,
                                 interactionId: inserted.id,
                                 instanceName,
-                                error: invokeErr?.message || String(invokeErr)
+                                error: invokeErrorMessage
                             })
                             try {
                                 await supabase.from('ai_action_logs').insert({
@@ -937,12 +1584,34 @@ Deno.serve(async (req: Request) => {
                                         triggerType: 'incoming_message',
                                         interactionId: inserted.id,
                                         instanceName,
-                                        error: invokeErr?.message || String(invokeErr)
+                                        error: invokeErrorMessage
                                     }),
                                     success: false
                                 })
                             } catch (logErr) {
                                 console.warn('Failed to log agent_invoke_failed exception (whatsapp-webhook):', logErr)
+                            }
+                            try {
+                                await supabase.from('ai_action_logs').insert({
+                                    org_id: orgId,
+                                    lead_id: Number(leadId),
+                                    action_type: 'agent_invoke_outcome',
+                                    details: JSON.stringify({
+                                        source: 'whatsapp-webhook',
+                                        triggerType: 'incoming_message',
+                                        interactionId: inserted.id,
+                                        instanceName,
+                                        outcome: agentResult.outcome,
+                                        reason_code: agentResult.reason_code,
+                                        should_retry: agentResult.should_retry,
+                                        next_retry_seconds: agentResult.next_retry_seconds,
+                                        message_sent: agentResult.message_sent,
+                                        run_id: agentResult.run_id || null,
+                                    }),
+                                    success: false,
+                                })
+                            } catch (logErr) {
+                                console.warn('Failed to log synthetic agent_invoke_outcome exception (whatsapp-webhook):', logErr)
                             }
                         })
                 }
@@ -961,4 +1630,3 @@ Deno.serve(async (req: Request) => {
         })
     }
 })
-

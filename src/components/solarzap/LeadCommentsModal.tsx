@@ -305,8 +305,20 @@ export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCom
           {/* Comments list */}
           <ScrollArea className="flex-1 min-h-0" data-testid="lead-comments-scroll">
             {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              <div className="space-y-3 pr-4 pb-1">
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <div
+                    key={`comment-loading-${index}`}
+                    className="rounded-lg border border-border/60 bg-muted/50 p-3 animate-pulse"
+                  >
+                    <div className="h-3 w-24 rounded bg-muted-foreground/20 mb-2" />
+                    <div className="h-3 w-full rounded bg-muted-foreground/20 mb-1" />
+                    <div className="h-3 w-5/6 rounded bg-muted-foreground/20" />
+                  </div>
+                ))}
+                <div className="flex items-center justify-center py-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
               </div>
             ) : filteredComments.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">

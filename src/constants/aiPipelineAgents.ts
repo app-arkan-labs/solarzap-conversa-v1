@@ -46,13 +46,13 @@ export const ACTIVE_PIPELINE_AGENTS: PipelineAgentDef[] = [
 **Etapa seguinte:** Respondeu
 
 ### Comportamento
-Você é o assistente comercial da {{EMPRESA}}. Seu ÚNICO objetivo nesta etapa é conseguir que o lead RESPONDA à sua primeira mensagem.
+Você é o {{ASSISTANT_NAME}} (nome configurado na aba de IA) e representa a {{EMPRESA}}. Seu ÚNICO objetivo nesta etapa é conseguir que o lead RESPONDA à sua primeira mensagem.
 
 ### Sequência de Contato
 
 **Mensagem 1 — Abertura (imediata)**
 Apresente-se de forma simpática, mencione a empresa e pergunte o nome do lead:
-"Oi! Aqui é a assistente da {{EMPRESA}} 😊 Vi que você demonstrou interesse em energia solar. Como posso te chamar?"
+"Oi! Aqui é a {{ASSISTANT_NAME}}, da equipe da {{EMPRESA}} 😊 Vi que você demonstrou interesse em energia solar. Como posso te chamar?"
 
 **Mensagem 2 — Follow-up (se não respondeu em 4-6h)**
 Mensagem curta e leve, sem pressão:
@@ -167,8 +167,15 @@ Agendar: "Perfeito ✅ Vamos marcar sua visita técnica gratuita. Melhor {{DIA1}
   },
 
   // ═══════════════════════════════════════════
-  // 4. NEGOCIAÇÃO (proposta_negociacao)
-  // ═══════════════════════════════════════════
+  {
+    stage: 'chamada_realizada',
+    label: 'Chamada Realizada',
+    objective: 'Enviar mensagem pos-ligacao conduzindo ao proximo passo',
+    nextStages: 'Aguardando Proposta, Visita Agendada',
+    defaultPrompt: AI_PIPELINE_STAGE_PROMPTS_PDF.chamada_realizada,
+  },
+  // 4. NEGOCIACAO (proposta_negociacao)
+  // ================================
   {
     stage: 'proposta_negociacao',
     label: 'Negociação',
@@ -365,7 +372,6 @@ Mensagem de transição:
 
 export const INACTIVE_STAGES_REASONS: Record<string, string> = {
   chamada_agendada: 'Disparo de lembretes automáticos funciona melhor',
-  chamada_realizada: 'Operação manual do vendedor',
   aguardando_proposta: 'Operação manual do vendedor',
   proposta_pronta: 'Operação manual do vendedor',
   visita_agendada: 'Disparo de lembretes automáticos funciona melhor',
@@ -397,6 +403,13 @@ export const DEFAULT_PROMPTS_BY_STAGE: Record<string, string> = {
   novo_lead: AI_PIPELINE_STAGE_PROMPTS_PDF.novo_lead,
   respondeu: AI_PIPELINE_STAGE_PROMPTS_PDF.respondeu,
   nao_compareceu: AI_PIPELINE_STAGE_PROMPTS_PDF.nao_compareceu,
+  chamada_realizada: AI_PIPELINE_STAGE_PROMPTS_PDF.chamada_realizada,
   proposta_negociacao: AI_PIPELINE_STAGE_PROMPTS_PDF.proposta_negociacao,
   financiamento: AI_PIPELINE_STAGE_PROMPTS_PDF.financiamento,
+  follow_up: AI_PIPELINE_STAGE_PROMPTS_PDF.follow_up,
+  agente_disparos: AI_PIPELINE_STAGE_PROMPTS_PDF.agente_disparos,
+  assistente_geral: AI_PIPELINE_STAGE_PROMPTS_PDF.assistente_geral,
 };
+
+
+

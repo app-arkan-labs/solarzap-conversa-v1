@@ -21,13 +21,16 @@ export function StepLocation({ form }: StepLocationProps) {
   const cepAutofillRef = useRef<string>('');
   const hasCoordinates = Number.isFinite(Number(form.formData.latitude))
     && Number.isFinite(Number(form.formData.longitude));
+  const cepValue = form.formData.cep;
+  const autofillAddressByCep = form.autofillAddressByCep;
+  const resolvePreciseLocation = form.resolvePreciseLocation;
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
     : 'nao resolvida';
 
   const ufDistributorOptions = useMemo(() => {
     return form.options.getEnergyDistributorOptionsByUf(form.formData.estado || null);
-  }, [form.formData.concessionaria, form.formData.estado, form.options]);
+  }, [form.formData.estado, form.options]);
 
   const selectedDistributor = useMemo(() => {
     const current = String(form.formData.concessionaria || '').trim();
@@ -36,22 +39,20 @@ export function StepLocation({ form }: StepLocationProps) {
   }, [form.formData.concessionaria, ufDistributorOptions]);
 
   useEffect(() => {
-    const cepDigits = String(form.formData.cep || '').replace(/\D/g, '');
+    const cepDigits = String(cepValue || '').replace(/\D/g, '');
     if (cepDigits.length !== 8) return;
     if (cepAutofillRef.current === cepDigits) return;
 
     const timer = window.setTimeout(() => {
       cepAutofillRef.current = cepDigits;
       void (async () => {
-        const cepData = await form.autofillAddressByCep(cepDigits);
-        if (cepData) {
-          await form.resolvePreciseLocation(cepData);
-        }
+        const cepData = await autofillAddressByCep(cepDigits);
+        await resolvePreciseLocation(cepData ?? { cep: cepDigits });
       })();
     }, 350);
 
     return () => window.clearTimeout(timer);
-  }, [form, form.formData.cep]);
+  }, [autofillAddressByCep, cepValue, resolvePreciseLocation]);
 
   return (
     <div className="space-y-4">
@@ -94,16 +95,29 @@ export function StepLocation({ form }: StepLocationProps) {
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>{isUsina ? 'Geracao estimada (kWh/mes)' : 'Conta de luz mensal (R$)'}</Label>
+          <Label>{isUsina ? 'Geracao estimada (kWh/mes)' : 'Consumo medio mensal (kWh/mes)'}</Label>
           <Input
             type="number"
             min={0}
             step="0.01"
-            value={isUsina ? (form.formData.consumoMensal || '') : (form.formData.contaLuzMensal || '')}
+            value={form.formData.consumoMensal || ''}
             onChange={(e) => form.handleChange('consumoMensal', parseFloat(e.target.value) || 0)}
           />
         </div>
       </div>
+
+      {!isUsina && (
+        <div className="space-y-1.5">
+          <Label>Conta media mensal (R$)</Label>
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            value={form.formData.contaLuzMensal || ''}
+            onChange={(e) => form.handleChange('contaLuzMensal', parseFloat(e.target.value) || 0)}
+          />
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <Label>Concessionaria de energia</Label>
@@ -151,7 +165,7 @@ export function StepLocation({ form }: StepLocationProps) {
           Sistema estimado: {Number(form.formData.potenciaSistema || 0).toFixed(2)} kWp
         </p>
         <p className="text-muted-foreground">
-          {form.formData.quantidadePaineis || 0} paineis | Irradiancia {Number(form.formData.irradiancia || 0).toFixed(2)} kWh/m2/dia
+          {form.formData.quantidadePaineis || 0} paineis | Irradiancia {Number(form.formData.irradiancia || 0).toFixed(3)} kWh/m2/dia
         </p>
         <p className="text-xs text-muted-foreground">
           {hasCoordinates
@@ -159,6 +173,7 @@ export function StepLocation({ form }: StepLocationProps) {
             : 'Coordenadas: nao resolvidas'}
           {' | '}Fonte: {sourceLabel}
           {' | '}Ref: {form.formData.irradianceRefAt ? new Date(form.formData.irradianceRefAt).toLocaleString('pt-BR') : '-'}
+          {' | '}Req: {form.formData.irradianceRequestId || '-'}
         </p>
       </div>
     </div>

@@ -1,10 +1,17 @@
 import { useEffect, useRef } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { type OrgRole } from '@/lib/orgAdminClient';
 import { Button } from '@/components/ui/button';
+import OrgSuspendedScreen from '@/components/admin/OrgSuspendedScreen';
+import { useOrgBillingInfo } from '@/hooks/useOrgBilling';
+import BillingSetupWizard from '@/components/billing/BillingSetupWizard';
+import { BillingBlockerProvider } from '@/contexts/BillingBlockerContext';
+import { useOnboardingProgress } from '@/hooks/useOnboardingProgress';
+import SubscriptionRequiredScreen from '@/components/billing/SubscriptionRequiredScreen';
+import { isUnlimitedBillingBypass } from '@/lib/billingBlocker';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -30,8 +37,11 @@ const ORG_ERROR_DESCRIPTION_BY_KIND = {
 } as const;
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRoles }) => {
-  const { user, loading, role, orgId, signOut, orgResolutionStatus, orgResolutionError } = useAuth();
+  const { user, loading, role, orgId, orgStatus, suspensionReason, signOut, orgResolutionStatus, orgResolutionError, organizations } = useAuth();
   const { toast } = useToast();
+  const location = useLocation();
+  const billingQuery = useOrgBillingInfo(Boolean(user && orgId));
+  const onboardingQuery = useOnboardingProgress(Boolean(user && orgId));
   const hasShownAccessToastRef = useRef(false);
 
   const missingRequiredRole =
@@ -75,23 +85,14 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   }
 
   if (orgResolutionStatus === 'selection_required') {
-    return <Navigate to="/select-organization" replace />;
+    if (organizations.length > 1) {
+      return <Navigate to="/select-organization" replace />;
+    }
+    return <BillingSetupWizard />;
   }
 
   if (!orgId) {
-    if (orgResolutionStatus !== 'error') {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-green-50">
-          <div className="flex flex-col items-center gap-4 text-center px-6">
-            <Loader2 className="w-8 h-8 animate-spin text-green-600" />
-            <p className="text-green-700">Carregando organizacao...</p>
-            <p className="text-sm text-green-900/70 max-w-md">
-              A sessao foi validada, mas o vinculo da organizacao ainda esta sendo recuperado.
-            </p>
-          </div>
-        </div>
-      );
-    }
+    if (orgResolutionStatus !== 'error') return <BillingSetupWizard />;
 
     const errorKind = orgResolutionError?.kind ?? 'transient';
     const errorTitle = ORG_ERROR_TITLE_BY_KIND[errorKind];
@@ -146,9 +147,36 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
     );
   }
 
+  if (orgStatus === 'suspended') {
+    return <OrgSuspendedScreen reason={suspensionReason} />;
+  }
+
+  const accessState = billingQuery.data?.access_state;
+  const subscriptionStatus = String(billingQuery.data?.subscription_status || '').toLowerCase();
+  const isUnlimited = isUnlimitedBillingBypass(billingQuery.data);
+  const isBillingRoute = location.pathname === '/pricing' || location.pathname === '/billing';
+  const isOnboardingRoute = location.pathname === '/onboarding';
+  if (!billingQuery.isLoading && !isUnlimited && subscriptionStatus === 'pending_checkout' && !isBillingRoute) {
+    return <BillingSetupWizard />;
+  }
+
+  if (!billingQuery.isLoading && !isUnlimited && accessState === 'blocked' && !isBillingRoute) {
+    return <SubscriptionRequiredScreen />;
+  }
+
+  const hasBillingAccess =
+    !billingQuery.isLoading &&
+    (isUnlimited || (subscriptionStatus !== 'pending_checkout' && accessState !== 'blocked'));
+
+  if (hasBillingAccess && !isOnboardingRoute && !onboardingQuery.isLoading) {
+    if (onboardingQuery.data && onboardingQuery.data.is_complete !== true) {
+      return <Navigate to="/onboarding" replace />;
+    }
+  }
+
   if (missingRequiredRole) {
     return <Navigate to="/" replace />;
   }
 
-  return <>{children}</>;
+  return <BillingBlockerProvider billing={billingQuery.data}>{children}</BillingBlockerProvider>;
 };

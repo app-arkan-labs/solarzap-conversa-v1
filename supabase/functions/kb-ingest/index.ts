@@ -1,14 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN");
-if (!ALLOWED_ORIGIN) {
-  throw new Error("Missing ALLOWED_ORIGIN env");
-}
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { resolveRequestCors } from "../_shared/cors.ts";
 
 const META_TAG = "[[LEAD_META_JSON]]";
 const DEFAULT_BUCKET = "knowledge-base";
@@ -42,14 +33,13 @@ const extractTagValue = (text: string, tag: string): string | null => {
 };
 
 const normalizeExtractedText = (raw: string): string => {
-  const cleaned = raw
+  return raw
     .replaceAll("\u0000", "")
     .replaceAll("\r\n", "\n")
     .replaceAll("\r", "\n")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  return cleaned;
 };
 
 const chunkText = (text: string, chunkSize = 1500, overlap = 180, maxChunks = 80): string[] => {
@@ -84,7 +74,6 @@ const chunkText = (text: string, chunkSize = 1500, overlap = 180, maxChunks = 80
       continue;
     }
 
-    // Very large paragraph: fall back to sliding window.
     const stride = Math.max(200, chunkSize - overlap);
     for (let i = 0; i < p.length && chunks.length < maxChunks; i += stride) {
       const slice = p.slice(i, i + chunkSize).trim();
@@ -93,7 +82,6 @@ const chunkText = (text: string, chunkSize = 1500, overlap = 180, maxChunks = 80
   }
 
   if (current) pushCurrent();
-
   return chunks.slice(0, maxChunks);
 };
 
@@ -104,8 +92,14 @@ const extFromPath = (path: string): string => {
   return lowered.slice(idx + 1);
 };
 
+const isSchemaMismatchError = (error: { code?: string; message?: string } | null | undefined): boolean => {
+  if (!error) return false;
+  const code = String(error.code || "");
+  if (code === "42703" || code === "PGRST204") return true;
+  return /column|schema cache/i.test(String(error.message || ""));
+};
+
 async function extractTextFromPdf(buf: ArrayBuffer): Promise<string> {
-  // Polyfills needed for pdfjs-dist in Deno/Supabase Edge runtime.
   try {
     if (!(globalThis as any).DOMMatrix) {
       const domMatrixMod = await import("npm:@thednp/dommatrix@2.0.12");
@@ -114,15 +108,20 @@ async function extractTextFromPdf(buf: ArrayBuffer): Promise<string> {
   } catch (err) {
     throw new Error(`pdf_polyfill_dommatrix_failed:${asString((err as any)?.message || err, 220)}`);
   }
+
   try {
-    // Some pdfjs builds try to detect node via process; in Deno this can be misleading.
     (globalThis as any).process = undefined;
-  } catch { /* intentionally empty */ }
+  } catch {
+    // no-op
+  }
+
   try {
     if (typeof navigator !== "undefined") {
       Object.defineProperty(navigator, "platform", { value: "Linux" });
     }
-  } catch { /* intentionally empty */ }
+  } catch {
+    // no-op
+  }
 
   const pdfjsLib = await import("npm:pdfjs-dist@5.4.149/legacy/build/pdf.mjs").catch((err) => {
     throw new Error(`pdf_module_load_failed:${asString(err?.message || err, 220)}`);
@@ -135,12 +134,14 @@ async function extractTextFromPdf(buf: ArrayBuffer): Promise<string> {
         (pdfjsLib as any).GlobalWorkerOptions.workerSrc || (import.meta as any).resolve?.(workerPath) || workerPath;
     }
   } catch {
-    // best-effort; some builds still parse fine with disableWorker
+    // no-op
   }
+
   const task = (pdfjsLib as any).getDocument({ data: new Uint8Array(buf), disableWorker: true });
   const pdf = await task.promise;
   const pageCount = pdf.numPages || 0;
   const out: string[] = [];
+
   for (let i = 1; i <= pageCount; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
@@ -149,11 +150,13 @@ async function extractTextFromPdf(buf: ArrayBuffer): Promise<string> {
       .filter(Boolean);
     out.push(strings.join(" "));
   }
+
   try {
     await (pdf as any).cleanup?.();
   } catch {
-    // best-effort
+    // no-op
   }
+
   return out.join("\n\n");
 }
 
@@ -189,9 +192,7 @@ async function extractTextFromDocx(buf: ArrayBuffer): Promise<string> {
     if (t) texts.push(t);
   }
 
-  // Also capture some basic line-break semantics.
-  const joined = texts.join(" ");
-  return joined;
+  return texts.join(" ");
 }
 
 async function extractTextFromTxt(buf: ArrayBuffer): Promise<string> {
@@ -199,9 +200,64 @@ async function extractTextFromTxt(buf: ArrayBuffer): Promise<string> {
   return decoder.decode(new Uint8Array(buf));
 }
 
+async function updateIngestionState(
+  serviceClient: ReturnType<typeof createClient>,
+  kbItemId: string,
+  patch: Record<string, unknown>,
+) {
+  const updateResult = await serviceClient
+    .from("kb_items")
+    .update(patch)
+    .eq("id", kbItemId);
+
+  if (!updateResult.error) return;
+  if (!isSchemaMismatchError(updateResult.error)) {
+    throw updateResult.error;
+  }
+
+  const legacyPatch = {
+    ...(typeof patch.ingestion_error === "string" ? { ingestion_error: patch.ingestion_error } : {}),
+    ...(patch.ingested_at ? { ingested_at: patch.ingested_at } : {}),
+  };
+
+  const legacyResult = await serviceClient
+    .from("kb_items")
+    .update(legacyPatch)
+    .eq("id", kbItemId);
+
+  if (legacyResult.error) {
+    throw legacyResult.error;
+  }
+}
+
 Deno.serve(async (req) => {
+  const cors = resolveRequestCors(req);
+  const corsHeaders = cors.corsHeaders;
+
   if (req.method === "OPTIONS") {
+    if (cors.missingAllowedOriginConfig) {
+      return jsonResponse(
+        { error: "missing_allowed_origin", message: "ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados." },
+        corsHeaders,
+        500,
+      );
+    }
+    if (!cors.originAllowed) {
+      return jsonResponse({ error: "origin_not_allowed" }, corsHeaders, 403);
+    }
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  if (cors.missingAllowedOriginConfig) {
+    return jsonResponse(
+      { error: "missing_allowed_origin", message: "ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados." },
+      corsHeaders,
+      500,
+    );
+  }
+
+  if (!cors.originAllowed) {
+    return jsonResponse({ error: "origin_not_allowed" }, corsHeaders, 403);
   }
 
   try {
@@ -209,10 +265,7 @@ Deno.serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
     const supabaseServiceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRole) {
-      return new Response(JSON.stringify({ error: "missing_supabase_env" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "missing_supabase_env" }, corsHeaders, 500);
     }
 
     const authHeader = req.headers.get("Authorization") || "";
@@ -221,10 +274,7 @@ Deno.serve(async (req) => {
     });
     const { data: authData, error: authError } = await authClient.auth.getUser();
     if (authError || !authData?.user) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "unauthorized" }, corsHeaders, 401);
     }
     const user = authData.user;
 
@@ -238,10 +288,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (membershipError || !membership?.org_id) {
-      return new Response(JSON.stringify({ error: "organization_membership_not_found" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "organization_membership_not_found" }, corsHeaders, 403);
     }
     const orgId = String(membership.org_id);
 
@@ -252,7 +299,9 @@ Deno.serve(async (req) => {
 
     const itemsQuery = serviceClient
       .from("kb_items")
-      .select("id, org_id, title, body, status, storage_bucket, storage_path, mime_type, ingested_at, ingestion_error")
+      .select(
+        "id, org_id, title, body, status, storage_bucket, storage_path, mime_type, ingested_at, ingestion_error, ingestion_status",
+      )
       .eq("org_id", orgId)
       .eq("status", "approved");
 
@@ -260,45 +309,55 @@ Deno.serve(async (req) => {
       ? await itemsQuery.eq("id", kbItemId).limit(1)
       : force
         ? await itemsQuery.order("created_at", { ascending: false }).limit(limit)
-        : await itemsQuery.is("ingested_at", null).order("created_at", { ascending: false }).limit(limit);
+        : await itemsQuery
+          .in("ingestion_status", ["pending", "error"])
+          .order("created_at", { ascending: false })
+          .limit(limit);
 
     if (itemsErr) {
-      return new Response(JSON.stringify({ error: itemsErr.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: itemsErr.message }, corsHeaders, 400);
     }
 
     const items = Array.isArray(itemsRaw) ? itemsRaw : [];
     if (items.length === 0) {
-      return new Response(JSON.stringify({ ingested: [], skipped: [], failed: [], message: "no_items" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ ingested: [], skipped: [], failed: [], message: "no_items" }, corsHeaders, 200);
     }
 
     const results = { ingested: [] as any[], skipped: [] as any[], failed: [] as any[] };
 
     for (const item of items) {
-      const existingIngested = item?.ingested_at && !force;
-      if (existingIngested) {
-        results.skipped.push({ id: item.id, reason: "already_ingested" });
+      const itemId = String(item.id || "");
+      if (!itemId) continue;
+
+      const currentIngestionStatus = asString(item.ingestion_status, 40).toLowerCase();
+      const alreadyReady = currentIngestionStatus === "ready" && !force;
+      if (alreadyReady) {
+        results.skipped.push({ id: itemId, reason: "already_ingested" });
         continue;
       }
 
+      await updateIngestionState(serviceClient, itemId, {
+        ingestion_status: "processing",
+        ingestion_started_at: new Date().toISOString(),
+        ingestion_error: null,
+      });
+
       const bodyText = asString(item?.body, 20000);
-      const bucket = asString(item?.storage_bucket, 120) || DEFAULT_BUCKET;
+      const meta = parseLeadMeta(bodyText);
+      const bucket = asString(item?.storage_bucket, 120) || asString((meta as any)?.storage_bucket, 120) || DEFAULT_BUCKET;
       const pathFromColumn = asString(item?.storage_path, 400);
+      const pathFromMeta = asString((meta as any)?.storage_path, 400);
       const pathFromBody = extractTagValue(bodyText, "storage_path") || "";
-      const storagePath = pathFromColumn || pathFromBody;
+      const storagePath = pathFromColumn || pathFromMeta || pathFromBody;
 
       if (!storagePath) {
         const reason = "missing_storage_path";
-        results.failed.push({ id: item.id, error: reason });
-        await serviceClient
-          .from("kb_items")
-          .update({ ingestion_error: reason })
-          .eq("id", item.id);
+        results.failed.push({ id: itemId, error: reason });
+        await updateIngestionState(serviceClient, itemId, {
+          ingestion_status: "error",
+          ingestion_error: reason,
+          ingestion_finished_at: new Date().toISOString(),
+        });
         continue;
       }
 
@@ -306,11 +365,12 @@ Deno.serve(async (req) => {
       const legacyPrefix = `${orgId}/`;
       if (!storagePath.startsWith(expectedPrefix) && !storagePath.startsWith(legacyPrefix)) {
         const reason = "storage_path_out_of_org_scope";
-        results.failed.push({ id: item.id, error: reason });
-        await serviceClient
-          .from("kb_items")
-          .update({ ingestion_error: reason })
-          .eq("id", item.id);
+        results.failed.push({ id: itemId, error: reason });
+        await updateIngestionState(serviceClient, itemId, {
+          ingestion_status: "error",
+          ingestion_error: reason,
+          ingestion_finished_at: new Date().toISOString(),
+        });
         continue;
       }
 
@@ -345,50 +405,50 @@ Deno.serve(async (req) => {
         const chunks = chunkText(cleaned, 1500, 180, 80);
         if (chunks.length === 0) throw new Error("empty_chunks");
 
-        // Replace chunks for idempotency.
-        await serviceClient.from("kb_item_chunks").delete().eq("kb_item_id", item.id);
+        await serviceClient.from("kb_item_chunks").delete().eq("kb_item_id", itemId);
 
         const rows = chunks.map((chunkText, idx) => ({
           org_id: orgId,
-          kb_item_id: item.id,
+          kb_item_id: itemId,
           chunk_index: idx,
           chunk_text: chunkText,
         }));
         const { error: insErr } = await serviceClient.from("kb_item_chunks").insert(rows);
         if (insErr) throw new Error(`insert_chunks_failed:${insErr.message}`);
 
-        const { error: updErr } = await serviceClient
-          .from("kb_items")
-          .update({
-            storage_bucket: bucket,
-            storage_path: storagePath,
-            mime_type: mimeType || null,
-            ingested_at: new Date().toISOString(),
-            ingestion_error: null,
-          })
-          .eq("id", item.id);
-        if (updErr) throw new Error(`update_kb_items_failed:${updErr.message}`);
+        const nowIso = new Date().toISOString();
+        await updateIngestionState(serviceClient, itemId, {
+          storage_bucket: bucket,
+          storage_path: storagePath,
+          mime_type: mimeType || null,
+          ingested_at: nowIso,
+          ingestion_status: "ready",
+          ingestion_error: null,
+          ingestion_finished_at: nowIso,
+        });
 
-        results.ingested.push({ id: item.id, chunks: chunks.length, storagePath, bucket });
+        results.ingested.push({ id: itemId, chunks: chunks.length, storagePath, bucket });
       } catch (err: any) {
         const message = asString(err?.message || err, 500) || "ingest_failed";
-        results.failed.push({ id: item.id, error: message });
-        await serviceClient
-          .from("kb_items")
-          .update({ ingestion_error: message })
-          .eq("id", item.id);
+        results.failed.push({ id: itemId, error: message });
+        await updateIngestionState(serviceClient, itemId, {
+          ingestion_status: "error",
+          ingestion_error: message,
+          ingestion_finished_at: new Date().toISOString(),
+        });
       }
     }
 
-    return new Response(JSON.stringify({ ...results, generatedAt: new Date().toISOString() }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ ...results, generatedAt: new Date().toISOString() }, corsHeaders, 200);
   } catch (error: any) {
     console.error("kb-ingest error:", error);
-    return new Response(JSON.stringify({ error: error?.message || "unexpected_error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "ingestion_failed" }, corsHeaders, 500);
   }
 });
+
+function jsonResponse(payload: Record<string, unknown>, corsHeaders: Record<string, string>, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}

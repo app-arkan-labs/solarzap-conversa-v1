@@ -1,16 +1,7 @@
 import OpenAI from "npm:openai";
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN");
-if (!ALLOWED_ORIGIN) {
-  throw new Error("Missing ALLOWED_ORIGIN env");
-}
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { resolveRequestCors } from "../_shared/cors.ts";
+import { checkLimit, recordUsage } from "../_shared/billing.ts";
 
 type VariantId = "a" | "b";
 type SectionSource = "manual" | "ai" | "hybrid";
@@ -200,8 +191,37 @@ const normalizeVariant = (raw: any, id: VariantId) => {
 };
 
 Deno.serve(async (req) => {
+  const cors = resolveRequestCors(req);
+  const corsHeaders = cors.corsHeaders;
+
   if (req.method === "OPTIONS") {
+    if (cors.missingAllowedOriginConfig) {
+      return new Response(JSON.stringify({ error: "missing_allowed_origin" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!cors.originAllowed) {
+      return new Response(JSON.stringify({ error: "origin_not_allowed" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  if (cors.missingAllowedOriginConfig) {
+    return new Response(JSON.stringify({ error: "missing_allowed_origin" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (!cors.originAllowed) {
+    return new Response(JSON.stringify({ error: "origin_not_allowed" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -242,7 +262,7 @@ Deno.serve(async (req) => {
 
     const { data: leadRow, error: leadErr } = await serviceClient
       .from("leads")
-      .select("id, nome, user_id, observacoes")
+      .select("id, nome, user_id, org_id, observacoes")
       .eq("id", leadId)
       .maybeSingle();
     if (leadErr || !leadRow || leadRow.user_id !== user.id) {
@@ -252,12 +272,26 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: aiSettings } = await serviceClient
-      .from("ai_settings")
-      .select("openai_api_key")
-      .maybeSingle();
+    const orgId = String((leadRow as any).org_id || "").trim();
+    if (!orgId) {
+      return new Response(JSON.stringify({ error: "lead_org_not_found" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const apiKey = aiSettings?.openai_api_key || Deno.env.get("OPENAI_API_KEY");
+    const proposalLimit = await checkLimit(serviceClient, orgId, "max_proposals_month", 1);
+    if (!proposalLimit.allowed || proposalLimit.access_state === 'blocked' || proposalLimit.access_state === 'read_only') {
+      return new Response(JSON.stringify({
+        error: "billing_limit_reached",
+        billing: proposalLimit,
+      }), {
+        status: 402,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const apiKey = Deno.env.get("OPENAI_API_KEY");
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "missing_openai_key" }), {
         status: 400,
@@ -401,6 +435,23 @@ Retorne SOMENTE JSON válido com esta estrutura:
     const recommendedVariant: VariantId =
       String(parsed?.recommended_variant || "a").toLowerCase() === "b" ? "b" : "a";
     const rationale = asString(parsed?.rationale, 280);
+
+    try {
+      await recordUsage(serviceClient, {
+        orgId,
+        userId: user.id,
+        leadId,
+        eventType: 'proposal_generated',
+        quantity: 1,
+        source: 'proposal-composer',
+        metadata: {
+          model,
+          recommendedVariant,
+        },
+      });
+    } catch (usageError) {
+      console.warn('Failed to record proposal usage', usageError);
+    }
 
     return new Response(
       JSON.stringify({

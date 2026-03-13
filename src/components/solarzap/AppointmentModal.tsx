@@ -28,6 +28,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 import { ptBR } from 'date-fns/locale';
+import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
+import { buildTabBlocker } from '@/lib/billingBlocker';
 
 interface AppointmentModalProps {
     isOpen: boolean;
@@ -37,6 +39,7 @@ interface AppointmentModalProps {
     defaultDate?: Date | string; // If clicking on calendar
     preselectedLeadId?: string; // string because Contact.id is string
     preselectedContact?: Contact; // Full contact object to avoid lookup issues
+    contacts?: Contact[]; // Optional injected contact list to avoid scope divergence
     onSuccess?: (appointment: Appointment) => void;
 }
 
@@ -79,10 +82,13 @@ export function AppointmentModal({
     defaultDate,
     preselectedLeadId,
     preselectedContact,
+    contacts: providedContacts,
     onSuccess
 }: AppointmentModalProps) {
     const { createAppointment, updateAppointment, deleteAppointment } = useAppointments();
-    const { contacts } = useLeads();
+    const { billing, openBillingBlocker } = useBillingBlocker();
+    const { contacts: hookContacts } = useLeads();
+    const contacts = providedContacts ?? hookContacts;
     const { toast } = useToast();
     const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
     const contactsSignature = useMemo(
@@ -258,6 +264,12 @@ export function AppointmentModal({
 
 
     const onSubmit = async (data: FormData) => {
+        const blocker = buildTabBlocker('calendario', billing);
+        if (blocker) {
+            openBillingBlocker(blocker);
+            return;
+        }
+
         try {
             const [hours, minutes] = data.time.split(':').map(Number);
             const leadId = Number(data.lead_id);
@@ -533,6 +545,11 @@ export function AppointmentModal({
                     <Button variant="outline" onClick={() => setConfirmDeleteOpen(false)}>Cancelar</Button>
                     <Button variant="destructive" onClick={async () => {
                         if (initialData?.id) {
+                            const blocker = buildTabBlocker('calendario', billing);
+                            if (blocker) {
+                                openBillingBlocker(blocker);
+                                return;
+                            }
                             await deleteAppointment(initialData.id);
                             onClose();
                         }

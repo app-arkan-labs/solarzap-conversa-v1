@@ -35,6 +35,11 @@ Controlar rollout gradual das mudancas de calculo e renderizacao de PDF sem queb
 - Default: `false`
 - Efeito: calcula legado e novo em paralelo; persiste deltas em `premiumPayload.shadowComparison`.
 
+8. `VITE_USE_CHART_FIXED_SEASONAL_PROFILE`
+- Default: `false`
+- Efeito: altera apenas a serie mensal do grafico "Geracao Mensal Estimada" para perfil sazonal fixo Brasil legado.
+- Observacao: nao altera payback/economia/ROI nem demais calculos financeiros.
+
 ## Ordem sugerida de rollout
 
 1. Ativar `VITE_USE_UNIFIED_GENERATION`.
@@ -43,6 +48,7 @@ Controlar rollout gradual das mudancas de calculo e renderizacao de PDF sem queb
 4. Ativar `VITE_USE_TUSD_TE_SIMPLIFIED` com monitoramento comercial.
 5. Ativar `VITE_USE_FINANCIAL_SHADOW_MODE` durante validacao.
 6. Ativar `VITE_USE_PDF_RENDERER_V2` apos estabilizacao de golden e smoke funcional.
+7. Ativar `VITE_USE_CHART_FIXED_SEASONAL_PROFILE` em canario e expandir apos validacao visual.
 
 ## Operacao e troubleshooting
 

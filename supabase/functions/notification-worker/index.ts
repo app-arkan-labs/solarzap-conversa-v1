@@ -1,6 +1,14 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
 import { buildEmailContent, type TemplateContext } from '../_shared/emailTemplates.ts'
 import { resolveNotificationRouting } from '../_shared/notificationRecipients.ts'
+import {
+  buildDispatchSuccessLookup,
+  countDeliveredRecipients,
+  markRecipientDelivered,
+  wasRecipientDelivered,
+  type DispatchChannel,
+  type DispatchLogLike,
+} from '../_shared/notificationDispatchState.ts'
 
 const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim()
 const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true'
@@ -38,6 +46,7 @@ const NOTIFICATION_SETTINGS_FULL_SELECT = [
   'evt_chamada_agendada',
   'evt_chamada_realizada',
   'evt_financiamento_update',
+  'evt_installment_due_check',
 ].join(', ')
 
 type NotificationEventRow = {
@@ -69,6 +78,7 @@ type NotificationSettingsRow = {
   evt_chamada_agendada: boolean
   evt_chamada_realizada: boolean
   evt_financiamento_update: boolean
+  evt_installment_due_check: boolean
 }
 
 type InvocationAuthResult =
@@ -232,6 +242,7 @@ function normalizeNotificationSettingsRow(row: Record<string, unknown>): Notific
     evt_chamada_agendada: toBoolean(row.evt_chamada_agendada, true),
     evt_chamada_realizada: toBoolean(row.evt_chamada_realizada, true),
     evt_financiamento_update: toBoolean(row.evt_financiamento_update, true),
+    evt_installment_due_check: toBoolean(row.evt_installment_due_check, true),
   }
 }
 
@@ -278,6 +289,15 @@ function formatDateTime(value: unknown): string {
   })
 }
 
+function formatCurrencyBR(value: unknown): string {
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return ''
+  return amount.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  })
+}
+
 function buildMessage(event: NotificationEventRow, lead: { nome?: string | null; telefone?: string | null } | null) {
   const payload = event.payload || {}
   const leadName = String(payload.nome || lead?.nome || 'Lead').trim()
@@ -286,6 +306,9 @@ function buildMessage(event: NotificationEventRow, lead: { nome?: string | null;
   const startAt = formatDateTime(payload.start_at)
   const fromStage = String(payload.from_stage || '').trim()
   const toStage = String(payload.to_stage || '').trim()
+  const dueOn = String(payload.due_on || '').trim()
+  const amount = formatCurrencyBR(payload.amount)
+  const installmentNo = Number(payload.installment_no || 0)
 
   // Build context for both plain-text (WhatsApp) and HTML (email) templates
   const ctx: TemplateContext = {
@@ -295,6 +318,9 @@ function buildMessage(event: NotificationEventRow, lead: { nome?: string | null;
     startAt: payload.start_at ? String(payload.start_at) : undefined,
     fromStage: fromStage || undefined,
     toStage: toStage || undefined,
+    dueOn: dueOn || undefined,
+    amount: amount || undefined,
+    installmentNo: Number.isFinite(installmentNo) && installmentNo > 0 ? installmentNo : undefined,
   }
 
   // Plain-text for WhatsApp
@@ -328,6 +354,10 @@ function buildMessage(event: NotificationEventRow, lead: { nome?: string | null;
     case 'stage_changed':
       subject = 'Mudança de etapa no pipeline'
       text = `Lead ${leadName} mudou etapa de ${fromStage || 'origem'} para ${toStage || 'destino'}.`
+      break
+    case 'installment_due_check':
+      subject = 'Parcela pendente de confirmação'
+      text = `Parcela${installmentNo > 0 ? ` #${installmentNo}` : ''} de ${leadName}${amount ? ` no valor de ${amount}` : ''} venceu${dueOn ? ` em ${dueOn}` : ''}. Confirme se foi paga.`
       break
     default:
       subject = 'Notificação CRM'
@@ -472,6 +502,24 @@ async function logDispatch(
   })
 }
 
+async function fetchSuccessfulDispatches(
+  supabase: ReturnType<typeof createClient>,
+  event: NotificationEventRow,
+) {
+  const { data, error } = await supabase
+    .from('notification_dispatch_logs')
+    .select('channel, destination, status')
+    .eq('notification_event_id', event.id)
+    .eq('org_id', event.org_id)
+    .eq('status', 'success')
+
+  if (error) {
+    throw new Error(`dispatch_logs_error:${error.message}`)
+  }
+
+  return buildDispatchSuccessLookup((data || []) as DispatchLogLike[])
+}
+
 async function resolveLead(
   supabase: ReturnType<typeof createClient>,
   orgId: string,
@@ -548,6 +596,7 @@ async function processEvent(
     chamada_agendada: settings.evt_chamada_agendada !== false,
     chamada_realizada: settings.evt_chamada_realizada !== false,
     financiamento_update: settings.evt_financiamento_update !== false,
+    installment_due_check: settings.evt_installment_due_check !== false,
   }
   if (eventToggleMap[event.event_type] === false) {
     await supabase
@@ -570,17 +619,23 @@ async function processEvent(
   const emailContent = buildEmailContent(event.event_type, emailCtx)
 
   const failures: string[] = []
-  const skippedChannels: string[] = []
-  let sentCount = 0
+  const skippedChannels: DispatchChannel[] = []
+  const successfulDispatches = await fetchSuccessfulDispatches(supabase, event)
+  const targetWhatsappRecipients = routing.whatsappEnabled ? routing.whatsappRecipients : []
+  const targetEmailRecipients = routing.emailEnabled ? routing.emailRecipients : []
+  const totalTargets = targetWhatsappRecipients.length + targetEmailRecipients.length
 
   if (routing.whatsappEnabled) {
     if (!settings.whatsapp_instance_name) {
       failures.push('whatsapp_missing_instance')
       await logDispatch(supabase, event, 'whatsapp', '', 'failed', null, 'whatsapp_missing_instance')
-    } else if (routing.whatsappRecipients.length === 0) {
+    } else if (targetWhatsappRecipients.length === 0) {
       skippedChannels.push('whatsapp')
     } else {
-      for (const targetNumber of routing.whatsappRecipients) {
+      for (const targetNumber of targetWhatsappRecipients) {
+        if (wasRecipientDelivered('whatsapp', targetNumber, successfulDispatches)) {
+          continue
+        }
         try {
           const responsePayload = await sendWhatsAppViaProxy(
             supabaseUrl,
@@ -591,7 +646,7 @@ async function processEvent(
             targetNumber,
             text,
           )
-          sentCount += 1
+          markRecipientDelivered('whatsapp', targetNumber, successfulDispatches)
           await logDispatch(supabase, event, 'whatsapp', targetNumber, 'success', responsePayload, null)
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
@@ -603,10 +658,13 @@ async function processEvent(
   }
 
   if (routing.emailEnabled) {
-    if (routing.emailRecipients.length === 0) {
+    if (targetEmailRecipients.length === 0) {
       skippedChannels.push('email')
     }
-    for (const recipient of routing.emailRecipients) {
+    for (const recipient of targetEmailRecipients) {
+      if (wasRecipientDelivered('email', recipient, successfulDispatches)) {
+        continue
+      }
       try {
         const responsePayload = await sendEmailViaResend(
           recipient,
@@ -616,7 +674,7 @@ async function processEvent(
           settings.email_reply_to,
           emailContent.html,
         )
-        sentCount += 1
+        markRecipientDelivered('email', recipient, successfulDispatches)
         await logDispatch(supabase, event, 'email', recipient, 'success', responsePayload, null)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -626,7 +684,11 @@ async function processEvent(
     }
   }
 
-  if (sentCount === 0 && failures.length === 0) {
+  const deliveredWhatsappCount = countDeliveredRecipients('whatsapp', targetWhatsappRecipients, successfulDispatches)
+  const deliveredEmailCount = countDeliveredRecipients('email', targetEmailRecipients, successfulDispatches)
+  const deliveredTargets = deliveredWhatsappCount + deliveredEmailCount
+
+  if (totalTargets === 0 && failures.length === 0) {
     const canceledReason = skippedChannels.length > 0
       ? `no_channel_recipients:${skippedChannels.join(',')}`
       : 'no_dispatch_target'
@@ -643,7 +705,7 @@ async function processEvent(
     return
   }
 
-  if (sentCount > 0 && failures.length === 0) {
+  if (deliveredTargets === totalTargets && totalTargets > 0 && failures.length === 0) {
     await supabase
       .from('notification_events')
       .update({

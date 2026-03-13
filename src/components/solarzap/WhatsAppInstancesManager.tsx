@@ -113,6 +113,9 @@ export function WhatsAppInstancesManager() {
   // Handle creating new instance
   const handleCreate = async () => {
     const result = await createInstance(newInstanceName || undefined);
+    if (result?.blocked) {
+      return;
+    }
     if (result?.qrCode && result?.instance) {
       setCreateModalOpen(false);
       setNewInstanceName('');
@@ -126,7 +129,7 @@ export function WhatsAppInstancesManager() {
     }
 
     if (result?.instance && !result.qrCode) {
-      toast.error('InstÃ¢ncia criada, mas QR Code nÃ£o foi retornado. Tente reconectar para gerar um novo QR.');
+      toast.error('Instância criada, mas QR Code não foi retornado. Tente reconectar para gerar um novo QR.');
     }
   };
 

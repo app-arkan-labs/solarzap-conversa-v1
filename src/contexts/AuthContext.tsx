@@ -2,8 +2,6 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import {
-  bootstrapSelf,
-  isOrgAdminInvokeError,
   listUserOrgs,
   type OrgRole,
   type UserOrganizationOption,
@@ -34,6 +32,8 @@ interface AuthContextType {
   user: User | null;
   orgId: string | null;
   role: string | null;
+  orgStatus: string | null;
+  suspensionReason: string | null;
   canViewTeamLeads: boolean;
   organizations: UserOrganizationOption[];
   hasMultipleOrganizations: boolean;
@@ -43,6 +43,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthError | null>;
   signUp: (email: string, password: string) => Promise<AuthError | null>;
+  resendSignUpConfirmation: (email: string) => Promise<AuthError | null>;
   signOut: () => Promise<void>;
   selectOrganization: (orgId: string, opts?: SelectOrganizationOptions) => Promise<void>;
   clearOrganizationSelection: () => void;
@@ -59,6 +60,11 @@ type MembershipQueryRow = {
   role: OrgRole;
   can_view_team_leads: boolean;
   created_at: string | null;
+};
+
+type OrgStatusRpcRow = {
+  status: string | null;
+  suspension_reason: string | null;
 };
 
 type MembershipResolution =
@@ -142,26 +148,6 @@ const toMembershipQueryOrgError = (error: unknown): OrgResolutionErrorInfo => {
     message: getErrorMessage(error, 'Falha ao ler organization_members.'),
     ...(typeof status === 'number' ? { status } : {}),
     ...(code ? { code } : {}),
-  };
-};
-
-const toBootstrapOrgError = (error: unknown): OrgResolutionErrorInfo => {
-  const message = getErrorMessage(error, 'Falha ao executar bootstrap_self.');
-  if (isOrgAdminInvokeError(error)) {
-    return {
-      kind: 'bootstrap_failed',
-      message,
-      ...(typeof error.status === 'number' ? { status: error.status } : {}),
-      ...(error.code ? { code: error.code } : {}),
-      requestId: error.requestId,
-    };
-  }
-
-  return {
-    kind: 'bootstrap_failed',
-    message,
-    ...(typeof getErrorStatus(error) === 'number' ? { status: getErrorStatus(error) } : {}),
-    ...(getErrorCode(error) ? { code: getErrorCode(error) } : {}),
   };
 };
 
@@ -252,6 +238,17 @@ const getOrgHintFromLocation = (): string | null => {
   return null;
 };
 
+const isUpdatePasswordPath = (pathname: string): boolean => {
+  const normalized = pathname.replace(/\/+$/, '') || '/';
+  return normalized === '/update-password' || normalized.endsWith('/update-password');
+};
+
+const hasPasswordRecoveryMarker = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const searchMarker = new URLSearchParams(window.location.search).get('password_recovery');
+  return searchMarker === '1' || searchMarker === 'true';
+};
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
@@ -266,6 +263,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [role, setRole] = useState<OrgRole | null>(null);
+  const [orgStatus, setOrgStatus] = useState<string | null>(null);
+  const [suspensionReason, setSuspensionReason] = useState<string | null>(null);
   const [canViewTeamLeads, setCanViewTeamLeads] = useState(false);
   const [organizations, setOrganizations] = useState<UserOrganizationOption[]>([]);
   const [orgResolutionStatus, setOrgResolutionStatus] = useState<OrgResolutionStatus>('idle');
@@ -282,6 +281,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setOrgId(membership.orgId);
     setRole(membership.role);
     setCanViewTeamLeads(membership.canViewTeamLeads);
+    setOrgStatus(null);
+    setSuspensionReason(null);
   };
 
   const markOrgResolving = () => {
@@ -549,87 +550,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const cachedMembership = getLastGoodMembership(nextUser.id);
 
-      const applyBootstrapMembership = async (bootstrapSource: string, queryError?: OrgResolutionErrorInfo) => {
-        let bootstrapResult: Awaited<ReturnType<typeof bootstrapSelf>>;
-        try {
-          bootstrapResult = await bootstrapSelf();
-        } catch (bootstrapError) {
-          if (!isCurrent()) return;
-          markOrgError(queryError?.kind === 'forbidden_rls' ? queryError : toBootstrapOrgError(bootstrapError));
-          return;
-        }
-
-        if (!isCurrent()) return;
-
-        const bootstrapRole = isValidOrgRole(bootstrapResult.role) ? bootstrapResult.role : null;
-        const bootstrapMembership: MembershipState = {
-          orgId: bootstrapResult.org_id,
-          role: bootstrapRole,
-          canViewTeamLeads: canRoleViewTeamLeads(bootstrapRole),
-        };
-
-        if (bootstrapMembership.orgId) {
-          setActiveOrgId(bootstrapMembership.orgId);
-        }
-        rememberLastGoodMembership(nextUser.id, bootstrapMembership);
-        setMembershipState(bootstrapMembership);
-        setOrganizations(sortOrgOptions([
-          {
-            org_id: bootstrapMembership.orgId || bootstrapResult.org_id,
-            role: bootstrapRole || 'owner',
-            can_view_team_leads: bootstrapMembership.canViewTeamLeads,
-            joined_at: new Date().toISOString(),
-            company_name: null,
-            organization_name: null,
-            display_name: `Organizacao ${bootstrapResult.org_id.slice(0, 8)}`,
-          },
-        ]));
-        markOrgReady();
-
-        void (async () => {
-          const postBootstrap = await resolveMembershipsWithRetry(nextUser.id, `${bootstrapSource}:post_bootstrap`);
-          if (!isCurrent()) return;
-
-          if (postBootstrap.status === 'memberships_encontradas') {
-            const hydratedOrganizations = await hydrateOrganizations(postBootstrap.memberships);
-            if (!isCurrent()) return;
-            setOrganizations(hydratedOrganizations);
-
-            const selected = resolveSelectedMembership(postBootstrap.memberships, 'init', orgHint);
-            if (selected?.orgId) {
-              setActiveOrgId(selected.orgId);
-              rememberLastGoodMembership(nextUser.id, selected);
-              setMembershipState(selected);
-              markOrgReady();
-              return;
-            }
-
-            clearActiveOrgId();
-            setMembershipState(EMPTY_MEMBERSHIP);
-            markOrgSelectionRequired();
-            return;
-          }
-
-          if (postBootstrap.status === 'erro_transitorio/query') {
-            console.warn(`[AuthContext] [${bootstrapSource}] post-bootstrap membership query failed; keeping bootstrap state`, {
-              userId: nextUser.id,
-              kind: postBootstrap.orgResolutionError.kind,
-              status: postBootstrap.orgResolutionError.status,
-              code: postBootstrap.orgResolutionError.code,
-            });
-            return;
-          }
-
-          setMembershipState(EMPTY_MEMBERSHIP);
-          setOrganizations([]);
-          clearActiveOrgId();
-          markOrgError({
-            kind: 'missing_after_bootstrap',
-            message: 'Membership ainda ausente apos bootstrap_self.',
-          });
-        })();
-      };
-
       const resolution = await resolveMembershipsWithRetry(nextUser.id, source);
       if (!isCurrent()) return;
 
@@ -689,7 +609,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (resolution.status === 'membership_ausente_confirmada') {
-        await applyBootstrapMembership(source);
+        setMembershipState(EMPTY_MEMBERSHIP);
+        setOrganizations([]);
+        clearActiveOrgId();
+        markOrgSelectionRequired();
         return;
       }
 
@@ -723,6 +646,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (
+        typeof window !== 'undefined' &&
+        !isUpdatePasswordPath(window.location.pathname) &&
+        (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && hasPasswordRecoveryMarker()))
+      ) {
+        const recoveryUrl = new URL('/update-password', window.location.origin);
+        recoveryUrl.search = window.location.search;
+        recoveryUrl.hash = window.location.hash;
+        window.location.replace(recoveryUrl.toString());
+        return;
+      }
+
       void (async () => {
         await applySessionState(newSession, event);
         if (mounted) {
@@ -738,6 +673,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadOrgStatus = async () => {
+      if (!user?.id || !orgId) {
+        if (mounted) {
+          setOrgStatus(null);
+          setSuspensionReason(null);
+        }
+        return;
+      }
+
+      try {
+        const { data: rawData, error } = await supabase
+          .rpc('get_org_status', { p_org_id: orgId })
+          .maybeSingle();
+        const data = (rawData ?? null) as OrgStatusRpcRow | null;
+
+        if (!mounted) return;
+        if (error || !data) {
+          setOrgStatus(null);
+          setSuspensionReason(null);
+          return;
+        }
+
+        setOrgStatus(typeof data.status === 'string' ? data.status : null);
+        setSuspensionReason(
+          typeof data.suspension_reason === 'string' ? data.suspension_reason : null,
+        );
+      } catch {
+        if (!mounted) return;
+        setOrgStatus(null);
+        setSuspensionReason(null);
+      }
+    };
+
+    void loadOrgStatus();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id, orgId]);
 
   const selectOrganization = async (nextOrgId: string, opts?: SelectOrganizationOptions) => {
     const option = organizations.find((item) => item.org_id === nextOrgId);
@@ -782,8 +760,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Explicit login must not inherit organization from a previous user/session.
       clearActiveOrgId();
+      const normalizedEmail = email.trim().toLowerCase();
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
       return error;
@@ -796,17 +775,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp = async (email: string, password: string): Promise<AuthError | null> => {
     try {
       const redirectUrl = window.location.origin;
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: redirectUrl,
         },
       });
-      return error;
+      if (error) return error;
+
+      // Supabase can return a synthetic user with empty identities for already-registered emails.
+      const identities = data?.user?.identities;
+      if (Array.isArray(identities) && identities.length === 0) {
+        return {
+          name: 'AuthError',
+          message: 'Este email ja possui cadastro.',
+          status: 409,
+          code: 'user_already_registered',
+        } as AuthError;
+      }
+
+      return null;
     } catch (error) {
       console.error('Sign up error:', error);
       return { message: 'Erro ao criar conta', name: 'AuthError', status: 500 } as AuthError;
+    }
+  };
+
+  const resendSignUpConfirmation = async (email: string): Promise<AuthError | null> => {
+    try {
+      const redirectUrl = window.location.origin;
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: redirectUrl,
+        },
+      });
+      return error;
+    } catch (error) {
+      console.error('Resend sign up confirmation error:', error);
+      return { message: 'Erro ao reenviar confirmacao de conta', name: 'AuthError', status: 500 } as AuthError;
     }
   };
 
@@ -829,6 +838,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
     orgId,
     role,
+    orgStatus,
+    suspensionReason,
     canViewTeamLeads,
     organizations,
     hasMultipleOrganizations,
@@ -838,6 +849,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loading,
     signIn,
     signUp,
+    resendSignUpConfirmation,
     signOut,
     selectOrganization,
     clearOrganizationSelection,
