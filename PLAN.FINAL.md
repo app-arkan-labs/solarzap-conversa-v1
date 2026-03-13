@@ -1,69 +1,147 @@
-# Plano de Execução One-Shot (Ancorado no `plan.md`, Stripe-first)
+﻿# Plano Final de Execucao - Estado Atual ate Producao (Ancorado na realidade de 2026-03-13)
 
 ## Resumo
-Executar integralmente o blueprint do `plan.md` em ondas com gate de qualidade por fase, sem avançar com pendência.  
-Fluxo obrigatório por etapa: implementar -> testar alvo da etapa -> rodar regressão -> corrigir falhas -> retestar até ficar 100% verde -> só então avançar.  
-Escopo fixo: Stripe apenas, AbacatePay fora.
+Este plano nao parte do zero. Ele assume o estado real atual do SolarZap:
+- staging validado;
+- billing Stripe operacional em staging;
+- broadcast worker, automations persistence, health scan, backup drill e smoke principal ja entregues;
+- lote novo de UX/CRM ja implementado em boa parte.
 
-## Implementação por Fase (espelho do blueprint do `plan.md`)
-1. **Fase 0 — Modelo comercial + Stripe operacional**
-- Fixar modelo comercial único: sem free tier, trial com cartão obrigatório, bootstrap em `pending_checkout`.
-- Consolidar fluxo de billing ponta a ponta: `signup -> checkout -> trialing -> active -> past_due -> read_only -> blocked -> recovery`.
-- Validar catálogo e mapeamento de `price_id` por plano, webhook idempotente, portal e timeline de eventos.
-- Gate da fase: todos os cenários de billing em staging + 1 piloto live controlado concluído com evidência.
+Objetivo desta versao:
+- parar de reexecutar trabalho ja feito;
+- fechar os ajustes restantes do lote atual;
+- levar o software de `staging valido` para `producao liberavel`, sem regressao.
 
-2. **Fase 1 — Bloqueios arquiteturais**
-- Migrar disparos do client para worker backend com fila/claim/idempotência/retry/retomada.
-- Transformar automações de `localStorage` em persistência por organização no backend (multiusuário consistente).
-- Fechar KB documental fim a fim: upload -> `pending` -> ingestão -> `processing/ready/error` -> reprocessamento.
-- Gate da fase: disparo continua com navegador fechado; automações sincronizam entre usuários; KB atualiza status corretamente em todo ciclo.
+Referencia tecnica obrigatoria:
+- `docs/FINAL_REALITY_AUDIT_2026-03-13.md`
 
-3. **Fase 2 — Segurança e hardening**
-- Validar MFA sem exposição de segredo em claro (reveal explícito e cópia segura).
-- Endurecer segredo de IA: remover dependência operacional de `openai_api_key` em tabela e padronizar segredo seguro por ambiente/Vault.
-- Garantir fail-closed nas funções críticas: allowlist CORS, env obrigatória no startup, respostas sem vazamento excessivo.
-- Gate da fase: testes de segurança/hardening verdes + revisão manual de rotas críticas.
+## O que ja esta entregue e deve ser preservado
+- reacoes em mensagens corrigidas e integradas frontend/backend;
+- calendario com overflow visual controlado por `+N mais`;
+- billing blocker por popup para acoes governadas, soft walls e limites;
+- Agente de Apoio Global com prompt editavel e fallback de runtime;
+- signup + onboarding expandidos para semear org, membership e configuracoes operacionais principais;
+- tour guiado basico com replay manual pelo logo lateral;
+- barra lateral compacta com badge de plano e menu consolidado;
+- broadcast worker backend;
+- persistencia de automacoes por org;
+- pipeline de status de KB;
+- health/runtime extension, runbooks e backup drill;
+- code-splitting real em rotas/views.
 
-4. **Fase 3 — Operação e confiabilidade**
-- Implantar alertas mínimos: falha Stripe webhook, worker de disparos, WhatsApp desconectado, erro de IA anômalo.
-- Consolidar runbooks operacionais (cobrança, webhook, disparo, IA sem chave, restore).
-- Fechar política de backup/restore/retenção com teste real de restore.
-- Gate da fase: alertas testados por injeção controlada de falha + restore validado.
+## Ordem fixa de execucao
 
-5. **Fase 4 — UX comercial e performance**
-- Responsividade mínima obrigatória: navegação, conversas, pipeline, calendário, propostas/modais críticos.
-- Onboarding focado no primeiro valor (conectar WhatsApp, importar leads, configurar empresa, gerar 1ª proposta, ativar IA/automação).
-- Performance: code splitting nas áreas pesadas e redução do custo de carregamento inicial.
-- Gate da fase: smoke mobile aprovado + meta de performance acordada atingida em staging.
+### Fase P0 - Fechar o lote atual sem reabrir escopo
+1. Corrigir a persistencia do guided tour automatico.
+- `SolarZapLayout` nao pode iniciar o fluxo automatico como `manual`.
+- `skip`, `close` e `complete` do autoplay precisam gravar `dismissed/completed` no banco.
 
-6. **Fase 5 — Qualidade e validação final**
-- Adicionar/ajustar E2E faltantes de billing e worker de disparos.
-- Executar matriz final completa em staging (unit, integração, E2E, smoke operacional).
-- Executar piloto live controlado e validar monitoramento pós-liberação.
-- Gate da fase: suíte final 100% verde e checklist final sem pendências abertas.
+2. Fechar o contrato dos passos do tour.
+- ou implementar `fallbackSelector` e `waitForMs` no renderer;
+- ou remover esses campos do contrato para nao manter API falsa.
 
-## Mudanças importantes em interfaces/APIs/tipos
-- Fluxo de disparos deixa de ser executor no frontend e passa a ser orquestrado por backend worker; frontend vira controle/monitoramento.
-- Configuração de automações passa a ser contrato persistido por organização (não mais estado local volátil).
-- Pipeline KB passa a expor estados operacionais claros (`pending`, `processing`, `ready`, `error`) e ação de reprocessamento.
-- Contrato de billing fica estritamente dirigido por Stripe e estados de acesso (`full`, `read_only`, `blocked`) sem ambiguidade de bootstrap.
-- Fluxo de IA elimina dependência funcional de segredo em tabela operacional.
+3. Adicionar cobertura de regressao do lote novo.
+- E2E do guided tour: primeiro autoplay, replay manual, skip/complete, multi-org.
+- teste alvo de reacoes: envio, substituicao e persistencia.
+- teste alvo de calendario denso: dia com mais de 4 eventos.
 
-## Plano de testes (etapa por etapa, com loop de correção)
-- Gate técnico padrão em **toda** fase: `typecheck`, `build`, suíte de testes, regressão alvo da fase.
-- Se qualquer teste falhar: corrigir imediatamente dentro da fase, rerodar a mesma bateria, repetir até verde.
-- Cenários obrigatórios: billing completo (incluindo `past_due/read_only/blocked`), disparos resilientes, automações multiusuário, KB ingestão completa, segurança de segredos, smoke mobile, smoke operacional.
-- Staging obrigatório em todas as fases; fechamento final exige staging completo + piloto live controlado.
+4. Corrigir a narrativa documental do billing.
+- documentar que popup vale para bloqueios por acao/limite/feature/read_only;
+- manter explicitamente `pending_checkout` e `blocked/unpaid` como gates de tela inteira.
 
-## Critério de aceite final (100% satisfatório)
-- Todas as fases 0–5 concluídas com gates aprovados.
-- Nenhuma regressão aberta em funcionalidades críticas.
-- Monitoramento, alertas e runbooks operacionais ativos e testados.
-- Piloto live Stripe concluído com sucesso e evidências registradas.
-- Entrega final inclui relatório executivo de validação com evidências de testes e correções aplicadas.
+Gate da fase:
+- guided tour sem reabrir sozinho em nova sessao apos `skip/complete`;
+- regressao automatizada do lote novo verde;
+- docs alinhadas ao comportamento real.
 
-## Assunções e defaults travados
-- Fonte única do plano: `plan.md` ativo (sem usar outro blueprint).
-- Billing provider: Stripe somente.
-- Estratégia de validação final: staging completo + piloto live controlado.
-- AbacatePay totalmente fora de escopo.
+### Fase P1 - Hardening de producao nas edge functions criticas
+1. Adicionar auth/secret de invocacao em `process-agent-jobs`.
+2. Adicionar auth/secret de invocacao em `ai-pipeline-agent`.
+3. Revisar o helper de CORS para requests sem `Origin` em funcoes sensiveis.
+4. Sanitizar respostas de erro e manter startup fail-closed para env obrigatoria.
+
+Gate da fase:
+- nenhuma funcao critica sobe `service_role` sem gate de invocacao;
+- cron e callers legitimos continuam operando;
+- requests indevidos falham de forma deterministica.
+
+### Fase P2 - Fechar semantica operacional que ainda esta parcial
+1. Definir e implementar a regra final do onboarding.
+- assumir oficialmente que o onboarding preenche campos essenciais, nao "todos os campos";
+- se o produto exigir mais cobertura inicial, expandir o onboarding de forma deliberada.
+
+2. Fechar KB para producao.
+- se a promessa continuar sendo ingestao em background, criar retry/worker real para `pending/error`;
+- se nao, ajustar a UX e a documentacao para o comportamento real atual.
+
+3. Garantir que o smoke operacional nao dependa de premissas antigas do tour/onboarding.
+
+Gate da fase:
+- onboarding com escopo formalizado;
+- KB sem ambiguidade operacional;
+- smoke coerente com a UX real.
+
+### Fase P3 - Performance final
+1. Reduzir os chunks ainda grandes do build atual.
+- alvo minimo: atacar `Index-C6ktJ4e5.js` (~1.83 MB) e `index-CklYD0yE.js` (~612 kB).
+
+2. Revisar imports pesados e fronteiras de chunk.
+- vendor splitting;
+- lazy real nas dependencias pesadas ainda residuais;
+- `manualChunks` se necessario.
+
+3. Rodar smoke desktop/mobile depois de cada corte.
+
+Gate da fase:
+- build continua verde;
+- chunk principal reduzido de forma comprovavel;
+- sem tela branca e sem regressao de navegacao.
+
+### Fase P4 - Validacao final pre-producao
+1. Rodar gates locais completos.
+- `npm run typecheck`
+- `npm run build`
+- `npm test -- --run`
+- `npm run lint`
+
+2. Rodar E2E alvo.
+- billing/gating;
+- guided tour;
+- lote novo de reacoes/calendario;
+- smoke mobile critico.
+
+3. Rodar validacao operacional.
+- health queries;
+- cron jobs;
+- backlog de notificacoes/disparos/jobs;
+- KB pipeline;
+- backup/restore check.
+
+Gate da fase:
+- 100% verde no escopo de release;
+- nenhum bloqueio P0/P1 aberto.
+
+### Fase P5 - Liberacao controlada para producao
+1. Configurar secrets/live webhooks no ambiente final.
+2. Fazer deploy controlado.
+3. Executar piloto live pequeno.
+4. Monitorar billing, jobs, IA, WhatsApp e alertas nas primeiras horas.
+
+Gate da fase:
+- piloto live sem incidente critico;
+- monitoramento limpo;
+- rollback documentado e nao acionado.
+
+## Criterios de aceite finais
+- nenhuma funcao critica exposta sem auth/secret de invocacao;
+- guided tour estabilizado e testado;
+- billing docs e comportamento alinhados;
+- onboarding com escopo real documentado;
+- KB com comportamento real fechado;
+- performance com evidencia de melhora;
+- matriz final de build/test/smoke/ops totalmente verde.
+
+## Fora de escopo desta rodada
+- redesenho comercial do produto fora do Stripe;
+- reescrever areas maduras sem bug comprovado;
+- reabrir fases ja validadas em staging sem evidencia tecnica.
