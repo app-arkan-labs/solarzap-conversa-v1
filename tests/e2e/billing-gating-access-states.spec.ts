@@ -32,7 +32,7 @@ const plusDays = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1
 
 async function dismissGuidedTourInterference(page: Page) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const skipButton = page.getByRole('button', { name: /Pular tour/i });
+    const skipButton = page.getByRole('button', { name: /Pular( tour| por enquanto)?/i });
     if (await skipButton.isVisible().catch(() => false)) {
       await skipButton.click({ force: true });
       continue;
@@ -41,6 +41,12 @@ async function dismissGuidedTourInterference(page: Page) {
     const endButton = page.getByRole('button', { name: /Encerrar/i });
     if (await endButton.isVisible().catch(() => false)) {
       await endButton.click({ force: true });
+      continue;
+    }
+
+    const closeButton = page.getByRole('button', { name: /Fechar tour/i });
+    if (await closeButton.isVisible().catch(() => false)) {
+      await closeButton.click({ force: true });
       continue;
     }
 
@@ -152,6 +158,10 @@ test.describe('billing gating access states', () => {
       skipped_steps: [],
       tour_completed_tabs: ['conversas', 'pipelines', 'calendario', 'disparos'],
       is_complete: true,
+      guided_tour_version: 'v2-global-01',
+      guided_tour_status: 'completed',
+      guided_tour_seen_at: new Date().toISOString(),
+      guided_tour_completed_at: new Date().toISOString(),
     });
     if (onboardingErr) {
       throw new Error(`Failed to seed onboarding progress: ${onboardingErr.message}`);

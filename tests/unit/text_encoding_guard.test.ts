@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest'
 const ROOT = path.resolve(__dirname, '..', '..')
 
 const SCAN_TARGETS = [
+  'scripts/smoke_test_final.ps1',
+  'src/components/onboarding/GuidedTour.tsx',
   'supabase/functions/_shared/emailTemplates.ts',
   'src/components/solarzap/IntegrationsView.tsx',
   'src/components/solarzap/WhatsAppInstancesManager.tsx',
