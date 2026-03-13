@@ -6,10 +6,6 @@ import { useChat } from '@/hooks/domain/useChat';
 import { useAutomationSettings } from '@/hooks/useAutomationSettings';
 import { usePipeline } from '@/hooks/domain/usePipeline';
 import { SolarZapNav } from './SolarZapNav';
-import { ConversationList } from './ConversationList';
-import { ChatArea } from './ChatArea';
-import { ActionsPanel } from './ActionsPanel';
-import { NotificationsPanel } from './NotificationsPanel';
 import { CreateLeadModal, CreateLeadData } from './CreateLeadModal';
 import { AppointmentModal } from './AppointmentModal';
 import { VisitOutcomeAfterModal, VisitOutcomeItem } from './VisitOutcomeAfterModal';
@@ -43,7 +39,6 @@ import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { buildTabBlocker } from '@/lib/billingBlocker';
 import { useGuidedTour } from '@/hooks/useGuidedTour';
 import GuidedTour from '@/components/onboarding/GuidedTour';
-import { TAB_WELCOME_COPY } from '@/components/onboarding/tourSteps';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -117,6 +112,10 @@ const BroadcastView = lazy(() => import('./BroadcastView').then((module) => ({ d
 const ConfiguracoesContaView = lazy(() => import('./ConfiguracoesContaView').then((module) => ({ default: module.ConfiguracoesContaView })));
 const MeuPlanoView = lazy(() => import('./MeuPlanoView').then((module) => ({ default: module.MeuPlanoView })));
 const AdminMembersPage = lazy(() => import('@/pages/AdminMembersPage'));
+const ConversationList = lazy(() => import('./ConversationList').then((module) => ({ default: module.ConversationList })));
+const ChatArea = lazy(() => import('./ChatArea').then((module) => ({ default: module.ChatArea })));
+const ActionsPanel = lazy(() => import('./ActionsPanel').then((module) => ({ default: module.ActionsPanel })));
+const NotificationsPanel = lazy(() => import('./NotificationsPanel').then((module) => ({ default: module.NotificationsPanel })));
 
 function TabLoadingFallback({ label }: { label: string }) {
   return (
@@ -1335,11 +1334,7 @@ export function SolarZapLayout() {
 
   const showConversationList = !isMobileViewport || !activeConversation;
   const showConversationChat = !isMobileViewport || Boolean(activeConversation);
-  const guidedTour = useGuidedTour(activeTab, Boolean(user));
-  const welcomeCopy = TAB_WELCOME_COPY[activeTab] || {
-    title: 'Boas-vindas',
-    description: 'Conheca os principais pontos desta aba.',
-  };
+  const guidedTour = useGuidedTour(activeTab, handleTabChange, Boolean(user));
 
   if (isInitialLoading) {
     return (
@@ -1376,6 +1371,7 @@ export function SolarZapLayout() {
           meu_plano: canAccessAdmin,
         }}
         currentPlanKey={billing?.plan_key ?? null}
+        onHelpClick={() => guidedTour.startTour('manual')}
       />
 
       <Dialog
@@ -1422,25 +1418,27 @@ export function SolarZapLayout() {
         </DialogContent>
       </Dialog>
 
-      <NotificationsPanel
-        notifications={notifications}
-        isOpen={isNotificationsPanelOpen}
-        onClose={() => setIsNotificationsPanelOpen(false)}
-        onMarkAsRead={markNotificationAsRead}
-        onMarkAllAsRead={markAllNotificationsAsRead}
-        onDelete={deleteNotification}
-        onClearAll={clearAllNotifications}
-        onConfirmInstallmentPaid={confirmInstallmentPaid}
-        onRescheduleInstallment={rescheduleInstallment}
-        onGoToContact={(contactId) => {
-          const conv = conversations.find(c => c.id === contactId);
-          if (conv) {
-            handleTabChange('conversas');
-            setSelectedConversation(conv);
-            markAsRead(conv.id);
-          }
-        }}
-      />
+      <Suspense fallback={null}>
+        <NotificationsPanel
+          notifications={notifications}
+          isOpen={isNotificationsPanelOpen}
+          onClose={() => setIsNotificationsPanelOpen(false)}
+          onMarkAsRead={markNotificationAsRead}
+          onMarkAllAsRead={markAllNotificationsAsRead}
+          onDelete={deleteNotification}
+          onClearAll={clearAllNotifications}
+          onConfirmInstallmentPaid={confirmInstallmentPaid}
+          onRescheduleInstallment={rescheduleInstallment}
+          onGoToContact={(contactId) => {
+            const conv = conversations.find(c => c.id === contactId);
+            if (conv) {
+              handleTabChange('conversas');
+              setSelectedConversation(conv);
+              markAsRead(conv.id);
+            }
+          }}
+        />
+      </Suspense>
 
       <div className="absolute top-0 left-[60px] right-0 z-20 px-4 py-2 space-y-2 pointer-events-none">
         <div className="pointer-events-auto">
@@ -1459,14 +1457,14 @@ export function SolarZapLayout() {
         running={guidedTour.running}
         steps={guidedTour.steps}
         stepIndex={guidedTour.stepIndex}
-        welcomeTitle={welcomeCopy.title}
-        welcomeDescription={welcomeCopy.description}
-        onStart={guidedTour.startTour}
+        welcomeTitle="Bem-vindo ao novo SolarZap"
+        welcomeDescription="Preparamos um tour rapido para apresentar os principais atalhos e fluxos."
+        onStart={() => guidedTour.startTour('auto')}
         onSkip={() => {
-          void guidedTour.closeTour(true);
+          void guidedTour.closeTour('skip');
         }}
         onClose={() => {
-          void guidedTour.closeTour(true);
+          void guidedTour.closeTour('close');
         }}
         onNext={() => {
           void guidedTour.nextStep();
@@ -1482,26 +1480,28 @@ export function SolarZapLayout() {
               className={`relative ${isMobileViewport ? 'flex-1 min-w-0' : 'flex-shrink-0'}`}
               style={isMobileViewport ? undefined : { width: conversationsSidebarWidth }}
             >
-            <ConversationList
-              conversations={filteredConversations}
-              contacts={contacts}
-              canViewTeam={canViewTeam}
-              leadScope={leadScope}
-              onLeadScopeChange={setLeadScope}
-              leadScopeMembers={leadScopeMembers}
-              leadScopeLoading={isLoadingLeadScopeMembers}
-              currentUserId={user?.id ?? null}
-              selectedId={selectedConversation?.id || null}
-              channelFilter={channelFilter}
-              searchQuery={searchQuery}
-              stageFilter={stageFilter}
-              onSelect={handleSelectConversation}
-              onChannelFilterChange={setChannelFilter}
-              onSearchChange={setSearchQuery}
-              onStageFilterChange={setStageFilter}
-              onImportContacts={importContacts}
-              onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
-            />
+            <Suspense fallback={<TabLoadingFallback label="Carregando conversas..." />}>
+              <ConversationList
+                conversations={filteredConversations}
+                contacts={contacts}
+                canViewTeam={canViewTeam}
+                leadScope={leadScope}
+                onLeadScopeChange={setLeadScope}
+                leadScopeMembers={leadScopeMembers}
+                leadScopeLoading={isLoadingLeadScopeMembers}
+                currentUserId={user?.id ?? null}
+                selectedId={selectedConversation?.id || null}
+                channelFilter={channelFilter}
+                searchQuery={searchQuery}
+                stageFilter={stageFilter}
+                onSelect={handleSelectConversation}
+                onChannelFilterChange={setChannelFilter}
+                onSearchChange={setSearchQuery}
+                onStageFilterChange={setStageFilter}
+                onImportContacts={importContacts}
+                onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
+              />
+            </Suspense>
               {!isMobileViewport && (
                 <div
                   role="separator"
@@ -1523,134 +1523,137 @@ export function SolarZapLayout() {
           )}
 
           {showConversationChat && (
-            <ChatArea
-            conversation={activeConversation}
-            conversations={conversations}
-            onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
-            onSendMessage={async (conversationId, content, instanceName, replyTo, options) => {
-              import.meta.env.DEV && console.log('SolarZapLayout: onSendMessage called', {
-                conversationId,
-                contentLength: content.length,
-                instanceName,
-                replyTo,
-                hasContactPhone: Boolean(options?.contactPhone || options?.contactPhoneE164),
-                hasReplyMeta: Boolean(options?.replyMeta),
-              });
-              try {
-                await sendMessage({
+            <Suspense fallback={<TabLoadingFallback label="Carregando conversa..." />}>
+              <ChatArea
+              conversation={activeConversation}
+              conversations={conversations}
+              onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
+              onSendMessage={async (conversationId, content, instanceName, replyTo, options) => {
+                import.meta.env.DEV && console.log('SolarZapLayout: onSendMessage called', {
                   conversationId,
-                  content,
+                  contentLength: content.length,
                   instanceName,
                   replyTo,
-                  contactPhone: options?.contactPhone,
-                  contactPhoneE164: options?.contactPhoneE164,
-                  replyMeta: options?.replyMeta,
+                  hasContactPhone: Boolean(options?.contactPhone || options?.contactPhoneE164),
+                  hasReplyMeta: Boolean(options?.replyMeta),
                 });
-                onSellerResponse(conversationId);
-              } catch (error) {
-                console.error('Failed to send message:', error);
-                toast({
-                  title: "Erro ao enviar mensagem",
-                  description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
-                  variant: "destructive"
-                });
-              }
-            }}
-            onSendAttachment={async (id, file, type, caption, instanceName) => {
-              try {
-                await sendAttachment({ conversationId: id, file, fileType: type, caption, instanceName });
-                onSellerResponse(id);
-              } catch (error) {
-                console.error('Failed to send attachment:', error);
-                toast({
-                  title: "Erro ao enviar anexo",
-                  description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
-                  variant: "destructive"
-                });
-              }
-            }}
-            onSendAudio={async (id, blob, duration, instanceName) => {
-              try {
-                await sendAudio({ conversationId: id, audioBlob: blob, duration, instanceName });
-                onSellerResponse(id);
-              } catch (error) {
-                console.error('Failed to send audio:', error);
-                toast({
-                  title: "Erro ao enviar áudio",
-                  description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
-                  variant: "destructive"
-                });
-              }
-            }}
-            onOpenDetails={() => setIsDetailsPanelOpen(true)}
-            isDetailsOpen={isDetailsPanelOpen}
-            onCallAction={(contact) => {
-              setPendingCallContact(contact);
-              setCallConfirmOpen(true);
-            }}
-            onImportContacts={importContacts}
-            initialMessage={pendingChatMessage}
-            onInitialMessageUsed={() => setPendingChatMessage('')}
-            onClientMessage={(conversationId) => {
-              if (pendingVisitScheduleContactId && conversationId === pendingVisitScheduleContactId) {
-                const contact = conversations.find(c => c.id === conversationId)?.contact;
-                if (contact) {
-                  setPendingVisitContact(contact);
-                  setVisitScheduleConfirmOpen(true);
+                try {
+                  await sendMessage({
+                    conversationId,
+                    content,
+                    instanceName,
+                    replyTo,
+                    contactPhone: options?.contactPhone,
+                    contactPhoneE164: options?.contactPhoneE164,
+                    replyMeta: options?.replyMeta,
+                  });
+                  onSellerResponse(conversationId);
+                } catch (error) {
+                  console.error('Failed to send message:', error);
+                  toast({
+                    title: "Erro ao enviar mensagem",
+                    description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
+                    variant: "destructive"
+                  });
                 }
-                setPendingVisitScheduleContactId(null);
-              }
-            }}
-            onSendReaction={async (messageId, waMessageId, remoteJid, emoji, instanceName, fromMe) => {
-              try {
-                await sendReaction({ messageId, waMessageId, remoteJid, emoji, instanceName, fromMe });
+              }}
+              onSendAttachment={async (id, file, type, caption, instanceName) => {
+                try {
+                  await sendAttachment({ conversationId: id, file, fileType: type, caption, instanceName });
+                  onSellerResponse(id);
+                } catch (error) {
+                  console.error('Failed to send attachment:', error);
+                  toast({
+                    title: "Erro ao enviar anexo",
+                    description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
+                    variant: "destructive"
+                  });
+                }
+              }}
+              onSendAudio={async (id, blob, duration, instanceName) => {
+                try {
+                  await sendAudio({ conversationId: id, audioBlob: blob, duration, instanceName });
+                  onSellerResponse(id);
+                } catch (error) {
+                  console.error('Failed to send audio:', error);
+                  toast({
+                    title: "Erro ao enviar áudio",
+                    description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido",
+                    variant: "destructive"
+                  });
+                }
+              }}
+              onOpenDetails={() => setIsDetailsPanelOpen(true)}
+              isDetailsOpen={isDetailsPanelOpen}
+              onCallAction={(contact) => {
+                setPendingCallContact(contact);
+                setCallConfirmOpen(true);
+              }}
+              onImportContacts={importContacts}
+              initialMessage={pendingChatMessage}
+              onInitialMessageUsed={() => setPendingChatMessage('')}
+              onClientMessage={(conversationId) => {
+                if (pendingVisitScheduleContactId && conversationId === pendingVisitScheduleContactId) {
+                  const contact = conversations.find(c => c.id === conversationId)?.contact;
+                  if (contact) {
+                    setPendingVisitContact(contact);
+                    setVisitScheduleConfirmOpen(true);
+                  }
+                  setPendingVisitScheduleContactId(null);
+                }
+              }}
+              onSendReaction={async (messageId, waMessageId, remoteJid, emoji, instanceName, fromMe) => {
+                try {
+                  await sendReaction({ messageId, waMessageId, remoteJid, emoji, instanceName, fromMe });
+                  toast({
+                    title: "Reação enviada!",
+                    description: `${emoji}`,
+                  });
+                } catch (error) {
+                  console.error('Failed to send reaction:', error);
+                  toast({
+                    title: "Erro ao enviar reação",
+                    description: error instanceof Error ? error.message : "Ocorreu um erro",
+                    variant: "destructive"
+                  });
+                }
+              }}
+              onVideoCallAction={(contact) => {
+                import.meta.env.DEV && console.log('Video Call Action Triggered', contact);
+                const videoCallMsg = getMessage('videoCallMessage', { nome: contact.name || 'Cliente' });
+                import.meta.env.DEV && console.log('Generated Video Msg:', videoCallMsg);
+
+                if (!videoCallMsg) {
+                  console.warn("Empty video call message config!");
+                }
+
+                setPendingChatMessage(videoCallMsg || "Vamos agendar uma videochamada?");
+
                 toast({
-                  title: "Reação enviada!",
-                  description: `${emoji}`,
+                  title: "Link do Meet aberto",
+                  description: "Revise a mensagem e envie para o cliente quando estiver pronto.",
                 });
-              } catch (error) {
-                console.error('Failed to send reaction:', error);
-                toast({
-                  title: "Erro ao enviar reação",
-                  description: error instanceof Error ? error.message : "Ocorreu um erro",
-                  variant: "destructive"
-                });
-              }
-            }}
-            onVideoCallAction={(contact) => {
-              // Pre-fill message instead of auto-sending - seller reviews and sends
-              import.meta.env.DEV && console.log('Video Call Action Triggered', contact);
-              const videoCallMsg = getMessage('videoCallMessage', { nome: contact.name || 'Cliente' });
-              import.meta.env.DEV && console.log('Generated Video Msg:', videoCallMsg);
-
-              if (!videoCallMsg) {
-                console.warn("Empty video call message config!");
-              }
-
-              setPendingChatMessage(videoCallMsg || "Vamos agendar uma videochamada?"); // Fallback
-
-              toast({
-                title: "Link do Meet aberto",
-                description: "Revise a mensagem e envie para o cliente quando estiver pronto.",
-              });
-            }}
-            onBack={isMobileViewport ? () => {
-              setSelectedConversation(null);
-              setIsDetailsPanelOpen(false);
-            } : undefined}
-          />
+              }}
+              onBack={isMobileViewport ? () => {
+                setSelectedConversation(null);
+                setIsDetailsPanelOpen(false);
+              } : undefined}
+            />
+            </Suspense>
           )}
 
           {isDetailsPanelOpen && (
             <div className={isMobileViewport ? 'absolute inset-0 z-30 bg-background' : ''}>
-              <ActionsPanel
-                conversation={activeConversation}
-                onMoveToPipeline={handlePipelineStageChange}
-                onAction={handleAction}
-                onClose={() => setIsDetailsPanelOpen(false)}
-                onUpdateLead={handleLeadUpdateWithoutStage}
-                onToggleLeadFollowUp={toggleLeadFollowUp}
-              />
+              <Suspense fallback={<TabLoadingFallback label="Carregando detalhes..." />}>
+                <ActionsPanel
+                  conversation={activeConversation}
+                  onMoveToPipeline={handlePipelineStageChange}
+                  onAction={handleAction}
+                  onClose={() => setIsDetailsPanelOpen(false)}
+                  onUpdateLead={handleLeadUpdateWithoutStage}
+                  onToggleLeadFollowUp={toggleLeadFollowUp}
+                />
+              </Suspense>
             </div>
           )}
         </>

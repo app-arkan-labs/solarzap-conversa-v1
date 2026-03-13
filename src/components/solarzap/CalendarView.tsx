@@ -17,6 +17,7 @@ import { LeadScopeSelect, type LeadScopeValue } from './LeadScopeSelect';
 import type { MemberDto } from '@/lib/orgAdminClient';
 import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { buildTabBlocker } from '@/lib/billingBlocker';
+import { partitionDayEvents } from '@/lib/calendarDayEvents';
 
 type CalendarAppointmentErrorBoundaryProps = {
   children: ReactNode;
@@ -368,7 +369,7 @@ export function CalendarView({
                 testId="calendar-owner-scope-trigger"
               />
             ) : null}
-            <Button onClick={handleCreateEvent} className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10 w-full sm:w-auto">
+            <Button data-testid="calendar-create-appointment" onClick={handleCreateEvent} className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10 w-full sm:w-auto">
               <Plus className="w-4 h-4" />
               Novo Agendamento
             </Button>
@@ -445,6 +446,7 @@ export function CalendarView({
                 <div key={weekIndex} className="grid grid-cols-7 border-b border-slate-100 last:border-b-0 h-full">
                   {week.map((day, dayIndex) => {
                     const dayEvents = day ? getEventsForDate(day) : [];
+                    const dayEventPartition = partitionDayEvents(dayEvents, 4);
                     return (
                       <div
                         key={dayIndex}
@@ -467,7 +469,7 @@ export function CalendarView({
                               </span>
                             </div>
                             <div className="space-y-1.5">
-                              {dayEvents.slice(0, 4).map(event => (
+                              {dayEventPartition.visible.map(event => (
                                 <div
                                   key={event.id}
                                   onClick={(e) => handleEventClick(event, e)}
@@ -486,9 +488,9 @@ export function CalendarView({
                                   </span>
                                 </div>
                               ))}
-                              {dayEvents.length > 4 && (
+                              {dayEventPartition.hiddenCount > 0 && (
                                 <div className="text-[10px] text-slate-400 font-medium text-center py-0.5">
-                                  +{dayEvents.length - 4} mais
+                                  +{dayEventPartition.hiddenCount} mais
                                 </div>
                               )}
                             </div>

@@ -6,6 +6,7 @@ import {
     scopeUserOrgQuery,
     scopeWhatsappInstanceQuery,
 } from '@/lib/multiOrgLeadScoping';
+import { upsertOwnReaction } from '@/lib/reactions';
 import { useAuth } from '@/contexts/AuthContext';
 import { Contact, Conversation, Message } from '@/types/solarzap';
 
@@ -1537,22 +1538,7 @@ export function useChat(contacts: Contact[] = []) {
                 .eq('id', messageId)
                 .single();
 
-            const existingReactions: any[] = Array.isArray(currentMsg?.reactions) ? currentMsg.reactions : [];
-
-            // CRITICAL FIX: Remove previous reaction from "ME" before adding new one
-            const filtered = existingReactions.filter((r: any) => !(r.fromMe === true || r.reactorId === 'ME'));
-
-            if (emoji) {
-                // Add new reaction
-                filtered.push({
-                    emoji,
-                    fromMe: true,
-                    reactorId: 'ME',
-                    timestamp: new Date().toISOString()
-                });
-            }
-
-            const newReactions = filtered;
+            const newReactions = upsertOwnReaction(currentMsg?.reactions, emoji);
 
             const { error: updateError } = await supabase
                 .from('interacoes')

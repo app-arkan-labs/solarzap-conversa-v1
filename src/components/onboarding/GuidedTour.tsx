@@ -9,6 +9,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { GuidedTourStep } from '@/components/onboarding/tourSteps';
+import {
+  getGuidedTourStepDelayMs,
+  resolveGuidedTourTargetElement,
+} from '@/lib/guidedTourTargets';
 
 type GuidedTourProps = {
   showWelcome: boolean;
@@ -45,14 +49,19 @@ export default function GuidedTour({
   const [targetBox, setTargetBox] = useState<Box | null>(null);
 
   useEffect(() => {
-    if (!running || !step?.selector) return;
+    if (!running || !step) return;
 
     const update = () => {
-      const element = document.querySelector(step.selector);
+      const element = resolveGuidedTourTargetElement(step);
       if (!element) {
         setTargetBox(null);
         return;
       }
+
+      if (!step.disableScroll) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      }
+
       const rect = element.getBoundingClientRect();
       setTargetBox({
         top: rect.top,
@@ -62,15 +71,16 @@ export default function GuidedTour({
       });
     };
 
-    update();
+    const timeoutId = setTimeout(update, getGuidedTourStepDelayMs(step));
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, true);
 
     return () => {
+      clearTimeout(timeoutId);
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
     };
-  }, [running, step?.selector]);
+  }, [running, step]);
 
   const tooltipStyle = useMemo(() => {
     const maxWidth = 340;
@@ -127,7 +137,7 @@ export default function GuidedTour({
               Tour guiado {stepIndex + 1}/{steps.length}
             </p>
             <h3 className="mt-1 text-base font-semibold text-slate-900">{step.title}</h3>
-            <p className="mt-1 text-sm text-slate-600">{step.description}</p>
+            <p className="mt-1 text-sm text-slate-600">{step.content}</p>
             <div className="mt-4 flex items-center justify-between">
               <Button type="button" variant="ghost" size="sm" onClick={onClose}>Encerrar</Button>
               <div className="flex items-center gap-2">

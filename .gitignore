@@ -26,6 +26,7 @@ test-results
 *.sw?
 
 .env
+.env.deploy
 .env.production
 _deploy_tmp/
 

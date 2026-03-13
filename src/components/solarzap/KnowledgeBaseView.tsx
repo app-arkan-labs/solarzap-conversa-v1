@@ -3,6 +3,7 @@ import { Building2, MessageSquareQuote, ShieldQuestion, FileUp, Loader2, X, File
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +15,13 @@ import { PageHeader } from './PageHeader';
 
 type IngestionState = 'idle' | 'pending' | 'processing' | 'ready' | 'error';
 
+type KBItemStatus = {
+  id: string;
+  title: string;
+  ingestion_status: 'pending' | 'processing' | 'ready' | 'error' | null;
+  updated_at: string | null;
+};
+
 const isSchemaMismatchError = (error: { code?: string; message?: string } | null | undefined) => {
   if (!error) return false;
   const code = String(error.code || '');
@@ -24,14 +32,51 @@ const isSchemaMismatchError = (error: { code?: string; message?: string } | null
 export function KnowledgeBaseView() {
   const { toast } = useToast();
   const { user, orgId, role } = useAuth();
+  const queryClient = useQueryClient();
   const canEdit = role === 'owner' || role === 'admin';
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [ingestionState, setIngestionState] = useState<IngestionState>('idle');
+
+  const kbItemsQuery = useQuery({
+    queryKey: ['kb-items-status', orgId],
+    enabled: Boolean(orgId),
+    queryFn: async (): Promise<KBItemStatus[]> => {
+      if (!orgId) return [];
+      const { data, error } = await supabase
+        .from('kb_items')
+        .select('id, title, ingestion_status, updated_at')
+        .eq('org_id', orgId)
+        .order('updated_at', { ascending: false })
+        .limit(8);
+
+      if (error) throw error;
+
+      return (data || []).map((item) => ({
+        id: String(item.id),
+        title: String(item.title || 'Documento sem titulo'),
+        ingestion_status: (item.ingestion_status as KBItemStatus['ingestion_status']) ?? null,
+        updated_at: item.updated_at ? String(item.updated_at) : null,
+      }));
+    },
+    staleTime: 10_000,
+  });
+
+  const kbItems = kbItemsQuery.data || [];
+  const hasRunningIngestion = kbItems.some((item) => item.ingestion_status === 'pending' || item.ingestion_status === 'processing');
+
+  React.useEffect(() => {
+    if (!orgId || !hasRunningIngestion) return;
+    const intervalId = setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: ['kb-items-status', orgId] });
+    }, 10_000);
+    return () => clearInterval(intervalId);
+  }, [orgId, hasRunningIngestion, queryClient]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -176,10 +221,11 @@ export function KnowledgeBaseView() {
         title: "Documento importado!",
         description: finalState === 'ready'
           ? "Arquivo processado e pronto para uso da IA."
-          : "Arquivo enviado. A ingestão será concluída em background.",
+          : "Arquivo enviado e processamento iniciado.",
       });
 
       setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: ['kb-items-status', orgId] });
         closeImportDialog();
       }, 1800);
     } catch (error) {
@@ -192,6 +238,33 @@ export function KnowledgeBaseView() {
       });
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleRetryIngestion = async (kbItemId: string) => {
+    setRetryingId(kbItemId);
+    try {
+      const finalState = await ingestUploadedItem(kbItemId);
+      if (finalState === 'ready') {
+        toast({
+          title: 'Ingestao concluida',
+          description: 'Documento processado e pronto para uso da IA.',
+        });
+      } else {
+        toast({
+          title: 'Reprocessamento iniciado',
+          description: 'A ingestao continua em processamento.',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Falha ao reprocessar',
+        description: error instanceof Error ? error.message : 'Nao foi possivel reprocessar o documento.',
+        variant: 'destructive',
+      });
+    } finally {
+      setRetryingId(null);
+      void queryClient.invalidateQueries({ queryKey: ['kb-items-status', orgId] });
     }
   };
 
@@ -216,6 +289,52 @@ export function KnowledgeBaseView() {
 
       <div className="flex-1 p-6 overflow-auto bg-slate-50/50">
         <div className="w-full space-y-6">
+          <div className="bg-white border shadow-sm rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-800">Status de ingestao da base</h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void kbItemsQuery.refetch()}
+                disabled={kbItemsQuery.isFetching}
+              >
+                {kbItemsQuery.isFetching ? 'Atualizando...' : 'Atualizar'}
+              </Button>
+            </div>
+
+            {kbItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum documento importado recentemente.</p>
+            ) : (
+              <div className="space-y-2">
+                {kbItems.map((item) => {
+                  const status = item.ingestion_status || 'pending';
+                  return (
+                    <div key={item.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">{item.title}</p>
+                        <p className="text-xs text-muted-foreground">status: {status}</p>
+                      </div>
+                      {status === 'error' ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={retryingId === item.id}
+                          onClick={() => {
+                            void handleRetryIngestion(item.id);
+                          }}
+                        >
+                          {retryingId === item.id ? 'Tentando...' : 'Tentar novamente'}
+                        </Button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <BrandingSettingsCard canEdit={canEdit} />
           <Tabs defaultValue="empresa" className="w-full space-y-6">
             <TabsList className="bg-white border shadow-sm p-1.5 rounded-xl h-auto flex flex-wrap justify-start gap-1">
@@ -290,7 +409,7 @@ export function KnowledgeBaseView() {
                     : ingestionState === 'processing'
                       ? 'Documento em processamento.'
                     : ingestionState === 'pending'
-                      ? 'Documento enfileirado para processamento.'
+                      ? 'Documento em processamento.'
                         : 'Documento salvo com sucesso.'}
                 </p>
               </div>

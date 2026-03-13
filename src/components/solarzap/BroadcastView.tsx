@@ -171,6 +171,7 @@ export function BroadcastView() {
               Comprar créditos
             </Button>
             <Button
+              data-testid="broadcast-create-campaign"
               onClick={() => setIsCampaignModalOpen(true)}
               className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10 w-full sm:w-auto"
             >

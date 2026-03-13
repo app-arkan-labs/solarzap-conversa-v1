@@ -1,69 +1,150 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { ActiveTab } from '@/types/solarzap';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useOnboardingProgress } from '@/hooks/useOnboardingProgress';
-import { TAB_TOUR_STEPS, TOUR_TABS } from '@/components/onboarding/tourSteps';
+import { GLOBAL_TOUR_STEPS, GUIDED_TOUR_VERSION } from '@/components/onboarding/tourSteps';
+import type { ActiveTab } from '@/types/solarzap';
 
-export function useGuidedTour(activeTab: ActiveTab, enabled = true) {
+export type TourOrigin = 'auto' | 'manual';
+export type TourState = 'idle' | 'welcome' | 'running' | 'closed';
+
+export function useGuidedTour(
+  activeTab: ActiveTab, 
+  onTabChange: (tab: ActiveTab) => void,
+  enabled = true
+) {
   const onboarding = useOnboardingProgress(enabled);
-  const [showWelcome, setShowWelcome] = useState(false);
-  const [running, setRunning] = useState(false);
+  const [tourState, setTourState] = useState<TourState>('idle');
   const [stepIndex, setStepIndex] = useState(0);
+  const [origin, setOrigin] = useState<TourOrigin>('auto');
+  const initializedRef = useRef<boolean>(false);
+  const previousProgressIdentityRef = useRef<string | null>(null);
 
-  const isTourTab = useMemo(() => TOUR_TABS.includes(activeTab), [activeTab]);
-  const completedTabs = onboarding.data?.tour_completed_tabs || [];
-  const steps = useMemo(() => TAB_TOUR_STEPS[activeTab] || [], [activeTab]);
-  const tabAlreadyCompleted = completedTabs.includes(activeTab);
+  const progress = onboarding.data;
+  const dbVersion = progress?.guided_tour_version;
+  const dbStatus = progress?.guided_tour_status || 'never_seen';
+  const progressIdentity = progress ? `${progress.user_id}:${progress.org_id ?? 'no-org'}` : null;
+  
+  const isEligibleForAutoPlay = 
+    enabled && 
+    progress && 
+    (dbVersion !== GUIDED_TOUR_VERSION || dbStatus === 'never_seen');
+
+  const localSupressionKey = progress ? `tour_suppressed_${progress.user_id}_${progress.org_id}` : null;
+  const isLocallySuppressed = typeof window !== 'undefined' && localSupressionKey 
+    ? sessionStorage.getItem(localSupressionKey) === GUIDED_TOUR_VERSION 
+    : false;
 
   useEffect(() => {
-    if (!enabled) return;
-    if (!isTourTab) {
-      setShowWelcome(false);
-      setRunning(false);
-      return;
-    }
+    if (!enabled || !progressIdentity) return;
 
-    if (!onboarding.isLoading && !tabAlreadyCompleted) {
-      setShowWelcome(true);
-      setRunning(false);
-      setStepIndex(0);
-    } else {
-      setShowWelcome(false);
-      setRunning(false);
-    }
-  }, [activeTab, enabled, isTourTab, onboarding.isLoading, tabAlreadyCompleted]);
+    if (previousProgressIdentityRef.current === progressIdentity) return;
 
-  const startTour = () => {
-    setShowWelcome(false);
+    previousProgressIdentityRef.current = progressIdentity;
+    initializedRef.current = false;
+    setTourState('idle');
     setStepIndex(0);
-    setRunning(true);
-  };
+    setOrigin('auto');
+  }, [enabled, progressIdentity]);
 
-  const closeTour = async (markCompleted = true) => {
-    setRunning(false);
-    setShowWelcome(false);
-    if (markCompleted && isTourTab && !tabAlreadyCompleted) {
-      await onboarding.markTourTabCompleted(activeTab);
+  useEffect(() => {
+    if (!enabled || onboarding.isLoading || !progress || initializedRef.current) return;
+    
+    if (isEligibleForAutoPlay && !isLocallySuppressed) {
+      setOrigin('auto');
+      setTourState('welcome');
+      initializedRef.current = true;
+    } else {
+      setTourState('closed');
+      initializedRef.current = true;
     }
-  };
+  }, [enabled, onboarding.isLoading, progress, isEligibleForAutoPlay, isLocallySuppressed]);
 
-  const nextStep = async () => {
-    if (stepIndex + 1 < steps.length) {
-      setStepIndex((prev) => prev + 1);
-      return;
+  const startTour = useCallback((overrideOrigin?: TourOrigin) => {
+    const nextOrigin = overrideOrigin ?? origin;
+    setOrigin(nextOrigin);
+    setStepIndex(0);
+    setTourState('running');
+    if (nextOrigin === 'manual' && overrideOrigin === 'manual' && typeof window !== 'undefined') {
+      onboarding.recordGuidedTourManualReplay('start').catch(console.error);
     }
-    await closeTour(true);
-  };
+  }, [onboarding, origin]);
 
-  const previousStep = () => {
-    setStepIndex((prev) => Math.max(0, prev - 1));
-  };
+  const closeTour = useCallback(async (reason: 'skip' | 'close' | 'complete') => {
+    setTourState('closed');
+    if (localSupressionKey && typeof window !== 'undefined') {
+      sessionStorage.setItem(localSupressionKey, GUIDED_TOUR_VERSION);
+    }
+
+    const shouldSyncTerminalState =
+      origin === 'auto' ||
+      dbStatus === 'never_seen' ||
+      dbVersion !== GUIDED_TOUR_VERSION;
+
+    if (shouldSyncTerminalState) {
+      try {
+        if (reason === 'complete') {
+          await onboarding.markGuidedTourCompleted(GUIDED_TOUR_VERSION);
+        } else {
+          await onboarding.markGuidedTourDismissed(GUIDED_TOUR_VERSION);
+        }
+      } catch (err) {
+        console.error('Failed to sync tour state', err);
+      }
+    }
+
+    if (origin === 'manual' && reason === 'complete') {
+      onboarding.recordGuidedTourManualReplay('complete').catch(console.error);
+    }
+  }, [origin, localSupressionKey, onboarding, dbStatus, dbVersion]);
+
+  const nextStep = useCallback(async () => {
+    if (stepIndex + 1 < GLOBAL_TOUR_STEPS.length) {
+      const nextIndex = stepIndex + 1;
+      const targetStep = GLOBAL_TOUR_STEPS[nextIndex];
+      
+      if (targetStep.tab !== activeTab) {
+        onTabChange(targetStep.tab);
+      }
+      setStepIndex(nextIndex);
+    } else {
+      await closeTour('complete');
+    }
+  }, [stepIndex, activeTab, onTabChange, closeTour]);
+
+  const previousStep = useCallback(() => {
+    if (stepIndex > 0) {
+      const prevIndex = stepIndex - 1;
+      const targetStep = GLOBAL_TOUR_STEPS[prevIndex];
+      
+      if (targetStep.tab !== activeTab) {
+        onTabChange(targetStep.tab);
+      }
+      setStepIndex(prevIndex);
+    }
+  }, [stepIndex, activeTab, onTabChange]);
+
+  // Detector Invisivel de Navegação Intuitiva
+  useEffect(() => {
+    if (tourState === 'running') {
+      const currentStep = GLOBAL_TOUR_STEPS[stepIndex];
+      if (currentStep && currentStep.tab !== activeTab) {
+        // Encontra o proximo passo sequencial da aba nova clicada organicamente
+        const indexOfNextTabStep = GLOBAL_TOUR_STEPS.findIndex(
+          (s, i) => i > stepIndex && s.tab === activeTab
+        );
+        if (indexOfNextTabStep !== -1) {
+           setStepIndex(indexOfNextTabStep);
+        }
+      }
+    }
+  }, [activeTab, stepIndex, tourState]);
 
   return {
-    showWelcome,
-    running,
+    showWelcome: tourState === 'welcome',
+    running: tourState === 'running',
     stepIndex,
-    steps,
+    steps: GLOBAL_TOUR_STEPS,
     isLoading: onboarding.isLoading,
+    origin,
     startTour,
     closeTour,
     nextStep,

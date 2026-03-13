@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { ActiveTab } from '@/types/solarzap';
-import { MessageCircle, Kanban, Calendar, Users, Send, FileText, BarChart3, Bell, Settings, Plug, Zap, Brain, Bot, UserCog, User, Building2, Activity, CreditCard } from 'lucide-react';
+import { MessageCircle, Kanban, Calendar, Users, Send, FileText, BarChart3, Bell, Settings, Plug, Zap, Brain, Bot, UserCog, User, Building2, Activity, CreditCard, HelpCircle } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -35,6 +35,7 @@ interface SolarZapNavProps {
     minha_conta: boolean;
     meu_plano: boolean;
   };
+  onHelpClick?: () => void;
 }
 
 const navItems: { id: ActiveTab; icon: typeof MessageCircle; label: string }[] = [
@@ -61,6 +62,7 @@ export function SolarZapNav({
   userDisplayName,
   tabPermissions,
   currentPlanKey,
+  onHelpClick,
 }: SolarZapNavProps) {
   const tp = tabPermissions ?? { ia_agentes: true, automacoes: true, integracoes: true, tracking: true, banco_ia: true, minha_conta: true, meu_plano: true };
   const planBadge = currentPlanKey ? PLAN_BADGE[currentPlanKey] : null;
@@ -76,7 +78,19 @@ export function SolarZapNav({
     <nav className="w-[60px] h-full bg-secondary flex flex-col items-center py-4">
       {/* Logo + Plan badge */}
       <div className="mb-8 flex flex-col items-center gap-1.5 p-2">
-        <img src="/logo.png" alt="SolarZap" className="w-10 h-10 rounded-full object-cover" />
+        <button
+          type="button"
+          data-testid="nav-help-tour"
+          onClick={onHelpClick}
+          className="rounded-full overflow-hidden hover:ring-2 hover:ring-primary/50 transition-all relative group"
+          title="Iniciar Tour Guiado"
+          aria-label="Iniciar Tour Guiado"
+        >
+          <img src="/logo.png" alt="SolarZap" className="w-10 h-10 rounded-full object-cover" />
+          <span className="absolute inset-0 hidden group-hover:flex items-center justify-center bg-black/20">
+            <HelpCircle className="w-4 h-4 text-white" />
+          </span>
+        </button>
         {planBadge ? (
           <span className={cn('rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider', planBadge.color)}>
             {planBadge.label}
