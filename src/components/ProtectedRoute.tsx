@@ -36,6 +36,15 @@ const ORG_ERROR_DESCRIPTION_BY_KIND = {
     'Sua sessao esta ativa, mas nao foi possivel carregar o contexto da organizacao. Isso pode acontecer por uma falha temporaria de conexao.',
 } as const;
 
+const AuthGateLoading = ({ message }: { message: string }) => (
+  <div className="min-h-screen flex items-center justify-center bg-green-50">
+    <div className="flex flex-col items-center gap-4">
+      <Loader2 className="w-8 h-8 animate-spin text-green-600" />
+      <p className="text-green-700">{message}</p>
+    </div>
+  </div>
+);
+
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRoles }) => {
   const { user, loading, role, orgId, orgStatus, suspensionReason, signOut, orgResolutionStatus, orgResolutionError, organizations } = useAuth();
   const { toast } = useToast();
@@ -70,14 +79,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   }, [loading, user, orgId, missingRequiredRole, toast]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-green-50">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-green-600" />
-          <p className="text-green-700">Verificando autenticacao...</p>
-        </div>
-      </div>
-    );
+    return <AuthGateLoading message="Verificando autenticacao..." />;
   }
 
   if (!user) {
@@ -92,6 +94,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   }
 
   if (!orgId) {
+    if (orgResolutionStatus === 'idle' || orgResolutionStatus === 'resolving') {
+      return <AuthGateLoading message="Carregando organizacao..." />;
+    }
+
     if (orgResolutionStatus !== 'error') return <BillingSetupWizard />;
 
     const errorKind = orgResolutionError?.kind ?? 'transient';
