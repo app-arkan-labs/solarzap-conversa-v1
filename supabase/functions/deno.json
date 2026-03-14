@@ -1,0 +1,18 @@
+{
+  "importMap": "./import_map.json",
+  "compilerOptions": {
+    "strict": false,
+    "noImplicitAny": false,
+    "lib": ["deno.window", "dom", "dom.iterable", "esnext"]
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "fmt": {
+    "lineWidth": 100,
+    "semiColons": true,
+    "singleQuote": true
+  }
+}

@@ -1106,7 +1106,7 @@ Deno.serve(async (req: Request) => {
       serviceRoleKey,
       internalApiKey,
     })
-    if (!invocationAuth.ok) {
+    if (invocationAuth.ok === false) {
       return buildResponse(
         invocationAuth.status,
         {

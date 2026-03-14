@@ -698,7 +698,8 @@ async function transcribeAudioWithOpenAI(base64Audio: string, mimeType: string):
 
     try {
         const bytes = base64ToUint8Array(base64Audio)
-        const audioBlob = new Blob([bytes], { type: mimeType || 'audio/ogg' })
+        const normalizedBytes = new Uint8Array(bytes)
+        const audioBlob = new Blob([normalizedBytes], { type: mimeType || 'audio/ogg' })
         const extension = extensionFromMime(mimeType || '')
         const form = new FormData()
         form.append('model', 'whisper-1')
