@@ -22,13 +22,18 @@ export const resolveGuidedTourTargetElement = (
 ): Element | null => {
   if (!step) return null;
 
-  const primarySelector = sanitizeSelector(step.target);
+  const stepWithCompat = step as GuidedTourStep & {
+    target?: string;
+    fallbackSelector?: string;
+  };
+
+  const primarySelector = sanitizeSelector(stepWithCompat.target || step.selector);
   if (primarySelector) {
     const primaryTarget = querySelectorSafe(root, primarySelector);
     if (primaryTarget) return primaryTarget;
   }
 
-  const fallbackSelector = sanitizeSelector(step.fallbackSelector);
+  const fallbackSelector = sanitizeSelector(stepWithCompat.fallbackSelector);
   if (fallbackSelector) {
     return querySelectorSafe(root, fallbackSelector);
   }

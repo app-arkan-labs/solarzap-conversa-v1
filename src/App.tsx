@@ -10,6 +10,7 @@ import { AutomationProvider } from "@/contexts/AutomationContext";
 import { GoogleIntegrationProvider } from "@/contexts/GoogleIntegrationContext";
 import { IntegrationsProvider } from "@/contexts/IntegrationsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { ThemeProvider } from "@/components/ui/theme-provider";
 import { supabase } from "@/lib/supabase";
 import { extractAuthErrorMetadata, shouldAttemptAuthRecovery } from "@/lib/authSessionGuard";
 import { getPasswordRecoveryRedirectTarget } from "@/lib/passwordRecoveryRedirect";
@@ -118,8 +119,8 @@ const queryClient = new QueryClient({
 });
 
 const AppRouteFallback = () => (
-  <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-    <div className="flex items-center gap-2 text-slate-600">
+  <div className="app-shell-bg min-h-screen flex items-center justify-center">
+    <div className="flex items-center gap-2 text-muted-foreground">
       <Loader2 className="h-5 w-5 animate-spin" />
       <span className="text-sm">Carregando...</span>
     </div>
@@ -136,9 +137,10 @@ const App = () => {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AutomationProvider>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AutomationProvider>
           <GoogleIntegrationProvider>
             <IntegrationsProvider>
               <TooltipProvider>
@@ -205,6 +207,7 @@ const App = () => {
         </AutomationProvider>
       </AuthProvider>
     </QueryClientProvider>
+    </ThemeProvider>
   );
 };
 

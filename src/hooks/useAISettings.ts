@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   AISettings,
@@ -17,6 +17,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDefaultStageGoal, getDefaultStagePrompt } from '@/constants/aiPipelinePdfPrompts';
+import { normalizeSupportedTimezone } from '@/lib/timezones';
 
 const STAGE_COL = 'pipeline_stage';
 const LEGACY_COL = 'status_pipeline';
@@ -182,8 +183,7 @@ const normalizeMinDaysSetting = (raw: unknown, fallback: number): number => {
 };
 
 const normalizeTimezone = (raw: unknown, fallback: string): string => {
-  const value = String(raw ?? '').trim();
-  return value || fallback;
+  return normalizeSupportedTimezone(raw, fallback);
 };
 
 const toStageTitle = (stage: string): string =>
@@ -359,7 +359,7 @@ export function useAISettings() {
 
   const updateGlobalSettings = async (updates: Partial<AISettings>) => {
     try {
-      if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+      if (!orgId) throw new Error('Organização não vinculada ao usuário');
       const normalizedUpdates: Partial<AISettings> = {
         ...updates,
       };
@@ -465,7 +465,7 @@ export function useAISettings() {
         if (error) throw error;
       }
 
-      toast({ title: 'Configuracoes atualizadas!' });
+      toast({ title: 'Configurações atualizadas!' });
       await fetchSettings();
     } catch (error) {
       console.error('Error updating settings:', error);
@@ -570,7 +570,7 @@ export function useAISettings() {
 
   const updateStageConfig = async (stage: string | number, updates: Partial<AIStageConfig>) => {
     try {
-      if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+      if (!orgId) throw new Error('Organização não vinculada ao usuário');
       const effectiveUpdates = withPromptVersion(stage, updates);
 
       if (typeof stage === 'number') {
@@ -622,3 +622,4 @@ export function useAISettings() {
     refresh: fetchSettings,
   };
 }
+
