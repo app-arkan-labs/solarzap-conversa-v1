@@ -34,6 +34,7 @@ _deploy_tmp/
 build_err*.txt
 build_error*.txt
 build_output*.txt
+*.tsbuildinfo
 debug_*.cjs
 tsc_errors*.txt
 diff_*.txt

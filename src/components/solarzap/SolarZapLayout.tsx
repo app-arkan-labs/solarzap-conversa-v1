@@ -6,6 +6,8 @@ import { useChat } from '@/hooks/domain/useChat';
 import { useAutomationSettings } from '@/hooks/useAutomationSettings';
 import { usePipeline } from '@/hooks/domain/usePipeline';
 import { SolarZapNav } from './SolarZapNav';
+import { MobileBottomNav } from './MobileBottomNav';
+import { MobileMoreModal } from './MobileMoreModal';
 import { CreateLeadModal, CreateLeadData } from './CreateLeadModal';
 import { AppointmentModal } from './AppointmentModal';
 import { VisitOutcomeAfterModal, VisitOutcomeItem } from './VisitOutcomeAfterModal';
@@ -37,8 +39,10 @@ import FeatureSoftWall from '@/components/billing/FeatureSoftWall';
 import { buildLossReasonSummary, findLossReasonByKey } from '@/hooks/useLossReasons';
 import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { buildTabBlocker } from '@/lib/billingBlocker';
+import { cn } from '@/lib/utils';
 import { useGuidedTour } from '@/hooks/useGuidedTour';
 import GuidedTour from '@/components/onboarding/GuidedTour';
+import { isMobileMoreTabActive, type SolarZapTabPermissions } from './mobileNavConfig';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -434,6 +438,7 @@ export function SolarZapLayout() {
   const [isCreateLeadOpen, setIsCreateLeadOpen] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isProposalOpen, setIsProposalOpen] = useState(false);
+  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
   const [scheduleType, setScheduleType] = useState<'reuniao' | 'visita'>('reuniao');
   const [actionContact, setActionContact] = useState<Contact | null>(null);
@@ -1334,7 +1339,27 @@ export function SolarZapLayout() {
 
   const showConversationList = !isMobileViewport || !activeConversation;
   const showConversationChat = !isMobileViewport || Boolean(activeConversation);
+  const showMobileBottomBar = isMobileViewport && !(activeTab === 'conversas' && activeConversation);
+  const tabPermissions: SolarZapTabPermissions = useMemo(() => ({
+    ia_agentes: sellerPerms.tab_ia_agentes,
+    automacoes: sellerPerms.tab_automacoes,
+    integracoes: sellerPerms.tab_integracoes,
+    tracking: sellerPerms.tab_integracoes,
+    banco_ia: sellerPerms.tab_banco_ia,
+    minha_conta: sellerPerms.tab_minha_conta,
+    meu_plano: canAccessAdmin,
+  }), [canAccessAdmin, sellerPerms]);
   const guidedTour = useGuidedTour(activeTab, handleTabChange, Boolean(user));
+
+  useEffect(() => {
+    if (!showMobileBottomBar) {
+      setIsMobileMoreOpen(false);
+    }
+  }, [showMobileBottomBar]);
+
+  useEffect(() => {
+    setIsMobileMoreOpen(false);
+  }, [activeTab, location.pathname]);
 
   if (isInitialLoading) {
     return (
@@ -1348,31 +1373,25 @@ export function SolarZapLayout() {
   }
 
   return (
-    <div className="app-shell-bg h-screen w-full flex bg-background overflow-hidden">
-      <SolarZapNav
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        unreadNotifications={unreadNotifications}
-        onNotificationsClick={() => setIsNotificationsPanelOpen(true)}
-        isAdminUser={canAccessAdmin}
-        onAdminMembersClick={() => navigate('/settings/members')}
-        hasMultipleOrganizations={hasMultipleOrganizations}
-        onSwitchOrganization={() => setIsOrganizationSwitcherOpen(true)}
-        activeOrganizationName={activeOrganizationName ?? undefined}
-        userAvatarUrl={userAvatarUrl}
-        userDisplayName={userDisplayName}
-        tabPermissions={{
-          ia_agentes: sellerPerms.tab_ia_agentes,
-          automacoes: sellerPerms.tab_automacoes,
-          integracoes: sellerPerms.tab_integracoes,
-          tracking: sellerPerms.tab_integracoes,
-          banco_ia: sellerPerms.tab_banco_ia,
-          minha_conta: sellerPerms.tab_minha_conta,
-          meu_plano: canAccessAdmin,
-        }}
-        currentPlanKey={billing?.plan_key ?? null}
-        onHelpClick={() => guidedTour.startTour('manual')}
-      />
+    <div className="app-shell-bg relative h-screen w-full flex bg-background overflow-hidden">
+      {!isMobileViewport ? (
+        <SolarZapNav
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          unreadNotifications={unreadNotifications}
+          onNotificationsClick={() => setIsNotificationsPanelOpen(true)}
+          isAdminUser={canAccessAdmin}
+          onAdminMembersClick={() => navigate('/settings/members')}
+          hasMultipleOrganizations={hasMultipleOrganizations}
+          onSwitchOrganization={() => setIsOrganizationSwitcherOpen(true)}
+          activeOrganizationName={activeOrganizationName ?? undefined}
+          userAvatarUrl={userAvatarUrl}
+          userDisplayName={userDisplayName}
+          tabPermissions={tabPermissions}
+          currentPlanKey={billing?.plan_key ?? null}
+          onHelpClick={() => guidedTour.startTour('manual')}
+        />
+      ) : null}
 
       <Dialog
         open={isOrganizationSwitcherOpen}
@@ -1440,39 +1459,45 @@ export function SolarZapLayout() {
         />
       </Suspense>
 
-      <div className="absolute top-0 left-[60px] right-0 z-20 px-4 py-2 space-y-2 pointer-events-none">
-        <div className="pointer-events-auto">
-          <BillingBanner billing={billing} />
+      <div
+        className={cn(
+          'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+          showMobileBottomBar && 'pb-[calc(4rem+env(safe-area-inset-bottom))]',
+        )}
+      >
+        <div className="absolute top-0 left-0 right-0 z-20 px-4 py-2 space-y-2 pointer-events-none">
+          <div className="pointer-events-auto">
+            <BillingBanner billing={billing} />
+          </div>
         </div>
-      </div>
 
-      {accessState === 'read_only' ? (
-        <div className="absolute top-14 left-[60px] right-0 z-20 px-4 py-2 bg-amber-50/95 border-b border-amber-200 text-amber-900 text-sm backdrop-blur-sm">
-          Seu acesso está em modo leitura. Algumas ações estão bloqueadas até a regularização da assinatura.
-        </div>
-      ) : null}
+        {accessState === 'read_only' ? (
+          <div className="absolute top-14 left-0 right-0 z-20 px-4 py-2 bg-amber-50/95 border-b border-amber-200 text-amber-900 text-sm backdrop-blur-sm">
+            Seu acesso está em modo leitura. Algumas ações estão bloqueadas até a regularização da assinatura.
+          </div>
+        ) : null}
 
-      <GuidedTour
-        showWelcome={guidedTour.showWelcome}
-        running={guidedTour.running}
-        steps={guidedTour.steps}
-        stepIndex={guidedTour.stepIndex}
-        welcomeTitle="Bem-vindo ao novo SolarZap"
-        welcomeDescription="Preparamos um tour rapido para apresentar os principais atalhos e fluxos."
-        onStart={() => guidedTour.startTour('auto')}
-        onSkip={() => {
-          void guidedTour.closeTour('skip');
-        }}
-        onClose={() => {
-          void guidedTour.closeTour('close');
-        }}
-        onNext={() => {
-          void guidedTour.nextStep();
-        }}
-        onPrev={guidedTour.previousStep}
-      />
+        <GuidedTour
+          showWelcome={guidedTour.showWelcome}
+          running={guidedTour.running}
+          steps={guidedTour.steps}
+          stepIndex={guidedTour.stepIndex}
+          welcomeTitle="Bem-vindo ao novo SolarZap"
+          welcomeDescription="Preparamos um tour rapido para apresentar os principais atalhos e fluxos."
+          onStart={() => guidedTour.startTour('auto')}
+          onSkip={() => {
+            void guidedTour.closeTour('skip');
+          }}
+          onClose={() => {
+            void guidedTour.closeTour('close');
+          }}
+          onNext={() => {
+            void guidedTour.nextStep();
+          }}
+          onPrev={guidedTour.previousStep}
+        />
 
-      {activeTab === 'conversas' && (
+        {activeTab === 'conversas' && (
         <>
           {showConversationList && (
             <div
@@ -1515,7 +1540,7 @@ export function SolarZapLayout() {
               onClick={() => setIsCreateLeadOpen(true)}
               size="icon"
               data-testid="open-create-lead-modal"
-              className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg"
+              className={cn('absolute right-4 rounded-full w-12 h-12 shadow-lg', isMobileViewport ? 'bottom-20' : 'bottom-4')}
             >
               <Plus className="w-6 h-6" />
             </Button>
@@ -1657,9 +1682,9 @@ export function SolarZapLayout() {
             </div>
           )}
         </>
-      )}
+        )}
 
-      {activeTab === 'pipelines' && (
+        {activeTab === 'pipelines' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando pipeline..." />}>
           <div data-tour="tab-pipelines-root" className="flex-1 min-w-0 flex flex-col h-full overflow-hidden relative">
             <PipelineView
@@ -1691,15 +1716,15 @@ export function SolarZapLayout() {
               onClick={() => setIsCreateLeadOpen(true)}
               size="icon"
               data-testid="open-create-lead-modal"
-              className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
+              className={cn('absolute right-4 rounded-full w-12 h-12 shadow-lg z-10', isMobileViewport ? 'bottom-20' : 'bottom-4')}
             >
               <Plus className="w-6 h-6" />
             </Button>
           </div>
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'calendario' && (
+        {activeTab === 'calendario' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando calendário..." />}>
           <div
             data-tour="tab-calendario-root"
@@ -1719,9 +1744,9 @@ export function SolarZapLayout() {
             />
           </div>
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'contatos' && (
+        {activeTab === 'contatos' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando contatos..." />}>
           <div className="flex-1 min-w-0 relative">
             <ContactsView
@@ -1742,15 +1767,15 @@ export function SolarZapLayout() {
               onClick={() => setIsCreateLeadOpen(true)}
               size="icon"
               data-testid="open-create-lead-modal"
-              className="absolute bottom-4 right-4 rounded-full w-12 h-12 shadow-lg z-10"
+              className={cn('absolute right-4 rounded-full w-12 h-12 shadow-lg z-10', isMobileViewport ? 'bottom-20' : 'bottom-4')}
             >
               <Plus className="w-6 h-6" />
             </Button>
           </div>
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'disparos' && (
+        {activeTab === 'disparos' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando disparos..." />}>
           <div
             data-tour="tab-disparos-root"
@@ -1762,9 +1787,9 @@ export function SolarZapLayout() {
             <BroadcastView />
           </div>
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'dashboard' && (
+        {activeTab === 'dashboard' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando dashboard..." />}>
           <DashboardView
             onNavigate={(tab) => handleTabChange(tab as any)}
@@ -1775,9 +1800,9 @@ export function SolarZapLayout() {
             isLoadingLeadScopeMembers={isLoadingLeadScopeMembers}
           />
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'propostas' && (
+        {activeTab === 'propostas' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando propostas..." />}>
           <div
             className="flex-1 min-w-0 flex flex-col h-full overflow-hidden"
@@ -1788,17 +1813,17 @@ export function SolarZapLayout() {
             <ProposalsView />
           </div>
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'admin_members' && (
+        {activeTab === 'admin_members' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando equipe..." />}>
           <div className="flex-1 min-w-0 h-full overflow-hidden">
             <AdminMembersPage embedded />
           </div>
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'integracoes' && (
+        {activeTab === 'integracoes' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando integrações..." />}>
           <div
             className="flex-1 min-w-0 flex flex-col h-full overflow-hidden"
@@ -1809,9 +1834,9 @@ export function SolarZapLayout() {
             <IntegrationsView />
           </div>
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'tracking' && (
+        {activeTab === 'tracking' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando tracking..." />}>
           {trackingFeatureBlocker ? (
             <FeatureSoftWall
@@ -1831,9 +1856,9 @@ export function SolarZapLayout() {
             </div>
           )}
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'automacoes' && (
+        {activeTab === 'automacoes' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando automações..." />}>
           <div
             className="flex-1 min-w-0 h-full overflow-hidden"
@@ -1844,9 +1869,9 @@ export function SolarZapLayout() {
             <AutomationsView />
           </div>
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'ia_agentes' && (
+        {activeTab === 'ia_agentes' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando IA..." />}>
           <div
             className="flex-1 min-w-0 h-full overflow-hidden"
@@ -1857,31 +1882,58 @@ export function SolarZapLayout() {
             <AIAgentsView />
           </div>
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'banco_ia' && (
+        {activeTab === 'banco_ia' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando base de conhecimento..." />}>
           <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
             <KnowledgeBaseView />
           </div>
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'minha_conta' && (
+        {activeTab === 'minha_conta' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando conta..." />}>
           <div className="flex-1 min-w-0 h-full overflow-auto">
             <ConfiguracoesContaView />
           </div>
         </Suspense>
-      )}
+        )}
 
-      {activeTab === 'meu_plano' && canAccessAdmin && (
+        {activeTab === 'meu_plano' && canAccessAdmin && (
         <Suspense fallback={<TabLoadingFallback label="Carregando plano..." />}>
           <div className="flex-1 min-w-0 h-full overflow-auto">
             <MeuPlanoView />
           </div>
         </Suspense>
-      )}
+        )}
+
+        {showMobileBottomBar ? (
+          <>
+            <MobileBottomNav
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              onMorePress={() => setIsMobileMoreOpen(true)}
+              unreadCount={unreadNotifications}
+              isMoreActive={isMobileMoreTabActive(activeTab)}
+            />
+            <MobileMoreModal
+              isOpen={isMobileMoreOpen}
+              onClose={() => setIsMobileMoreOpen(false)}
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              onNotificationsClick={() => setIsNotificationsPanelOpen(true)}
+              unreadNotifications={unreadNotifications}
+              tabPermissions={tabPermissions}
+              isAdminUser={canAccessAdmin}
+              onAdminMembersClick={() => navigate('/settings/members')}
+              hasMultipleOrganizations={hasMultipleOrganizations}
+              onSwitchOrganization={() => setIsOrganizationSwitcherOpen(true)}
+              activeOrganizationName={activeOrganizationName ?? undefined}
+            />
+          </>
+        ) : null}
+      </div>
 
       <CreateLeadModal
         isOpen={isCreateLeadOpen}
