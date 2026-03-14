@@ -1498,7 +1498,7 @@ export function SolarZapLayout() {
         />
 
         {activeTab === 'conversas' && (
-        <>
+        <div className="flex flex-1 min-h-0 min-w-0">
           {showConversationList && (
             <div
               ref={conversationsSidebarRef}
@@ -1681,7 +1681,7 @@ export function SolarZapLayout() {
               </Suspense>
             </div>
           )}
-        </>
+        </div>
         )}
 
         {activeTab === 'pipelines' && (
