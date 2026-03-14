@@ -159,13 +159,13 @@ export function BroadcastView() {
         subtitle="Crie campanhas, acompanhe progresso e controle o envio via WhatsApp."
         icon={SendHorizontal}
         actionContent={(
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             <Button
               variant="outline"
               onClick={() => {
                 void openPackPurchase('disparo', { source: 'broadcasts' });
               }}
-              className="gap-2 font-semibold h-10"
+              className="h-10 w-full gap-2 font-semibold sm:w-auto"
             >
               <Zap className="w-4 h-4" />
               Comprar créditos
@@ -183,7 +183,7 @@ export function BroadcastView() {
       />
 
       <div className="flex-1 overflow-y-auto">
-        <div className="w-full px-6 py-6 space-y-6">
+        <div className="w-full space-y-6 px-4 py-4 sm:px-6 sm:py-6">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -205,10 +205,10 @@ export function BroadcastView() {
                 return (
                   <Card key={campaign.id} className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
                     <CardHeader className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
                           <CardTitle className="text-base">{campaign.name}</CardTitle>
-                          <p className="text-xs text-muted-foreground mt-1">Instancia: {campaign.instance_name}</p>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">Instancia: {campaign.instance_name}</p>
                         </div>
                         <Badge className={campaignStatusClass[campaign.status]}>{campaignStatusLabel[campaign.status]}</Badge>
                       </div>
@@ -225,7 +225,7 @@ export function BroadcastView() {
                     </CardHeader>
 
                     <CardContent className="space-y-3">
-                      <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
                         <div className="rounded border p-2">
                           <p className="text-muted-foreground">Enviadas</p>
                           <p className="font-semibold">{campaign.sent_count}</p>

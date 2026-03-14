@@ -233,7 +233,7 @@ export function MeuPlanoView() {
       />
 
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl px-6 py-8 space-y-6">
+        <div className="mx-auto max-w-5xl space-y-6 px-4 py-4 sm:px-6 sm:py-8">
 
           {/* ─── 1. Plan hero card ─── */}
           <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-background shadow-sm">
@@ -245,9 +245,9 @@ export function MeuPlanoView() {
                   <div className={`flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${meta.gradient} shadow-lg`}>
                     <PlanIcon className="h-7 w-7 text-white" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-3 flex-wrap">
-                      <h2 className="text-2xl font-bold tracking-tight text-foreground">
+                      <h2 className="break-words text-2xl font-bold tracking-tight text-foreground">
                         Plano {meta.label}
                       </h2>
                       <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-0.5 text-xs font-semibold ${statusInfo.color}`}>
@@ -274,14 +274,14 @@ export function MeuPlanoView() {
                 </div>
 
                 {isAdminOrOwner && (
-                  <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
+                  <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-shrink-0 sm:justify-end">
                     {hasActiveSubscription && (
-                      <Button variant="outline" size="sm" onClick={handleOpenBillingPortal} disabled={billingBusy} className="gap-1.5">
+                      <Button variant="outline" size="sm" onClick={handleOpenBillingPortal} disabled={billingBusy} className="w-full gap-1.5 sm:w-auto">
                         <ExternalLink className="h-3.5 w-3.5" />
                         Portal Stripe
                       </Button>
                     )}
-                    <Button size="sm" onClick={() => navigate('/pricing')} className="gap-1.5">
+                    <Button size="sm" onClick={() => navigate('/pricing')} className="w-full gap-1.5 sm:w-auto">
                       <TrendingUp className="h-3.5 w-3.5" />
                       Ver planos
                     </Button>
@@ -320,7 +320,7 @@ export function MeuPlanoView() {
               disabled={billingBusy}
               className="group relative w-full overflow-hidden rounded-2xl border border-border/50 bg-background p-5 text-left shadow-sm transition-all hover:shadow-md hover:border-primary/30"
             >
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                 <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${nextPlan.gradient} shadow`}>
                   <nextPlan.icon className="h-5 w-5 text-white" />
                 </div>
@@ -380,7 +380,7 @@ export function MeuPlanoView() {
             <div className="rounded-2xl border border-border/50 bg-background shadow-sm">
               <div className="px-6 py-5 sm:px-8">
                 {cancelStep === 'idle' && (
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Cancelar assinatura</p>
                       <p className="text-xs text-muted-foreground">Você pode cancelar a qualquer momento sem multa.</p>
@@ -446,15 +446,15 @@ export function MeuPlanoView() {
                         <strong>Motivo informado:</strong> {cancelReason}
                       </p>
                     </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => { setCancelStep('idle'); setCancelReason(''); }}>
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      <Button variant="ghost" size="sm" onClick={() => { setCancelStep('idle'); setCancelReason(''); }} className="w-full sm:w-auto">
                         Manter meu plano
                       </Button>
                       <Button
                         variant="destructive"
                         size="sm"
                         onClick={handleCancelConfirm}
-                        className="gap-1.5"
+                        className="w-full gap-1.5 sm:w-auto"
                       >
                         Confirmar cancelamento
                       </Button>
@@ -487,7 +487,7 @@ export function MeuPlanoView() {
                     variant="outline"
                     onClick={handleOpenBillingPortal}
                     disabled={billingBusy}
-                    className="mt-3 border-red-300 text-red-700 hover:bg-red-100"
+                    className="mt-3 w-full border-red-300 text-red-700 hover:bg-red-100 sm:w-auto"
                   >
                     <CreditCard className="h-3.5 w-3.5 mr-1.5" />
                     Atualizar pagamento

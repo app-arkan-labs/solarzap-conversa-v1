@@ -337,29 +337,31 @@ export function KnowledgeBaseView() {
 
           <BrandingSettingsCard canEdit={canEdit} />
           <Tabs defaultValue="empresa" className="w-full space-y-6">
-            <TabsList className="h-auto flex flex-wrap justify-start gap-1 rounded-xl border border-border bg-card/95 p-1.5 shadow-sm">
-              <TabsTrigger
-                value="empresa"
-                className="gap-2 px-4 py-2.5 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg"
-              >
-                <Building2 className="w-4 h-4" />
-                Sobre a Empresa
-              </TabsTrigger>
-              <TabsTrigger
-                value="depoimentos"
-                className="gap-2 px-4 py-2.5 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg"
-              >
-                <MessageSquareQuote className="w-4 h-4" />
-                Depoimentos
-              </TabsTrigger>
-              <TabsTrigger
-                value="objecoes"
-                className="gap-2 px-4 py-2.5 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg"
-              >
-                <ShieldQuestion className="w-4 h-4" />
-                Objecoes & FAQ
-              </TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto pb-1">
+              <TabsList className="flex h-auto min-w-full flex-nowrap justify-start gap-1 rounded-xl border border-border bg-card/95 p-1.5 shadow-sm sm:flex-wrap">
+                <TabsTrigger
+                  value="empresa"
+                  className="shrink-0 gap-2 rounded-lg px-4 py-2.5 data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
+                >
+                  <Building2 className="w-4 h-4" />
+                  Sobre a Empresa
+                </TabsTrigger>
+                <TabsTrigger
+                  value="depoimentos"
+                  className="shrink-0 gap-2 rounded-lg px-4 py-2.5 data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
+                >
+                  <MessageSquareQuote className="w-4 h-4" />
+                  Depoimentos
+                </TabsTrigger>
+                <TabsTrigger
+                  value="objecoes"
+                  className="shrink-0 gap-2 rounded-lg px-4 py-2.5 data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
+                >
+                  <ShieldQuestion className="w-4 h-4" />
+                  Objecoes & FAQ
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="empresa" className="focus-visible:ring-0 outline-none mt-6">
               <SobreEmpresaTab />

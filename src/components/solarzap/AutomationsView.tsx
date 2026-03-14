@@ -210,7 +210,7 @@ export function AutomationsView() {
                         subtitle="Configure as automações do pipeline de vendas"
                         icon={Zap}
                         actionContent={
-                            <div className="flex items-center gap-4 bg-background/50 glass px-4 py-2 rounded-xl border border-border/50">
+                            <div className="flex w-full flex-wrap items-center gap-4 rounded-xl border border-border/50 bg-background/50 px-4 py-2 glass sm:w-auto sm:justify-end">
                                 <div className="text-right">
                                     <div className="text-xl font-bold text-foreground leading-none">{activeCount}/{dragDropAutomations.length}</div>
                                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 font-semibold">Automações ativas</div>
@@ -219,7 +219,7 @@ export function AutomationsView() {
                                     variant="outline"
                                     size="sm"
                                     onClick={handleReset}
-                                    className="gap-2 border-border/50 shadow-sm"
+                                    className="h-10 w-full gap-2 border-border/50 shadow-sm sm:w-auto"
                                     disabled={!canEdit || isSaving || isHydrating}
                                 >
                                     <RotateCcw className="w-4 h-4" />
@@ -229,7 +229,7 @@ export function AutomationsView() {
                         }
                     />
 
-                    <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
+                    <div className="mx-auto max-w-4xl space-y-6 px-4 py-4 sm:px-6 sm:py-6">
                         {/* Skip Backward Moves Card */}
                         <Card className="border-0 shadow-sm overflow-hidden">
                             <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/5">

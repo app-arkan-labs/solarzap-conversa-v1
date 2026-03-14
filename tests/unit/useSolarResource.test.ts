@@ -19,8 +19,8 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
-import { useSolarResource, isStrictPvgisSource } from '@/hooks/useSolarResource';
-import type { UseSolarResourceReturn } from '@/hooks/useSolarResource';
+import { useSolarResource, isStrictPvgisSource } from '../../src/hooks/useSolarResource';
+import type { UseSolarResourceReturn } from '../../src/hooks/useSolarResource';
 
 // ---- Helpers ----
 

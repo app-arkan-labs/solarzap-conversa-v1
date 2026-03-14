@@ -798,18 +798,18 @@ export function AIAgentsView() {
                 subtitle="Configure os agentes autônomos do seu funil de vendas"
                 icon={Bot}
                 actionContent={
-                    <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto sm:justify-end">
                         <Button
                             variant="outline"
                             onClick={() => {
                                 void openPackPurchase('ai', { source: 'ai_credits', targetPlan: 'pro' });
                             }}
-                            className="h-9 gap-2 border-border/60 bg-background/70 font-semibold"
+                            className="h-9 w-full gap-2 border-border/60 bg-background/70 font-semibold sm:w-auto"
                         >
                             <Brain className="w-4 h-4" />
                             Comprar créditos de IA
                         </Button>
-                        <div className="flex items-center gap-3 rounded-xl border border-border/55 bg-background/65 px-3.5 py-2 backdrop-blur-sm">
+                        <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border border-border/55 bg-background/65 px-3.5 py-2 backdrop-blur-sm sm:w-auto sm:justify-start">
                             <Badge variant={settings?.is_active ? "default" : "secondary"} className="h-6 px-2.5 text-[11px]">
                                 {settings?.is_active ? "SISTEMA ATIVO" : "SISTEMA PAUSADO"}
                             </Badge>
@@ -825,7 +825,7 @@ export function AIAgentsView() {
                 }
             />
 
-            <div className="flex-1 overflow-y-auto w-full px-6 py-6 pb-24">
+            <div className="flex-1 overflow-y-auto w-full px-4 py-4 pb-24 sm:px-6 sm:py-6">
                 <div className="mx-auto w-full max-w-[900px] space-y-6">
 
                     {/* Settings Row */}
@@ -1455,7 +1455,7 @@ export function AIAgentsView() {
                                                                     onValueChange={(value) => handleFollowUpCadenceUnitChange(item.step, value as FollowUpCadenceUnit)}
                                                                     disabled={!canEdit || !item.enabled}
                                                                 >
-                                                                        <SelectTrigger className="h-8 w-[92px] text-xs">
+                                                                        <SelectTrigger className="h-8 w-full min-w-[92px] text-xs sm:w-[92px]">
                                                                         <SelectValue />
                                                                     </SelectTrigger>
                                                                     <SelectContent>
@@ -1514,14 +1514,14 @@ export function AIAgentsView() {
             </div>
 
             {hasUnsavedChanges && (
-                <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-4">
-                    <div className="flex items-center gap-4 rounded-xl border border-border/70 bg-card/96 p-4 shadow-[0_22px_56px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl dark:shadow-[0_22px_56px_-28px_rgba(2,6,23,0.65)]">
+                <div className="fixed bottom-20 left-4 right-4 z-50 animate-in fade-in slide-in-from-bottom-4 sm:bottom-6 sm:left-auto sm:right-6">
+                    <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/70 bg-card/96 p-4 shadow-[0_22px_56px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl dark:shadow-[0_22px_56px_-28px_rgba(2,6,23,0.65)] sm:flex-nowrap">
                         <span className="text-sm font-medium text-muted-foreground">Alterações não salvas</span>
-                        <div className="flex items-center gap-2">
-                            <Button variant="outline" size="sm" onClick={handleCancelNameChange} className="h-9">
+                        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+                            <Button variant="outline" size="sm" onClick={handleCancelNameChange} className="h-9 flex-1 sm:flex-none">
                                 ✕ Cancelar
                             </Button>
-                            <Button size="sm" onClick={handleSaveNameChange} className="bg-primary hover:bg-primary/90 text-white h-9">
+                            <Button size="sm" onClick={handleSaveNameChange} className="h-9 flex-1 bg-primary text-white hover:bg-primary/90 sm:flex-none">
                                 <Save className="w-4 h-4 mr-2" /> Salvar
                             </Button>
                         </div>

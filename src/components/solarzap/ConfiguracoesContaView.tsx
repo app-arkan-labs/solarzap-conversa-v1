@@ -178,8 +178,8 @@ export function ConfiguracoesContaView() {
                     icon={User}
                 />
             </div>
-            <div className="flex-1 p-6 overflow-y-auto w-full">
-                <div className="max-w-4xl max-h-full mx-auto space-y-8">
+            <div className="flex-1 w-full overflow-y-auto p-4 sm:p-6">
+                <div className="mx-auto max-h-full max-w-4xl space-y-6 sm:space-y-8">
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2"><User className="w-5 h-5 text-primary" /> Perfil</CardTitle>
@@ -322,7 +322,7 @@ export function ConfiguracoesContaView() {
                             <CardTitle className="flex items-center gap-2"><Sun className="w-5 h-5 text-primary" /> Aparência</CardTitle>
                             <CardDescription>Personalize o tema da sua interface.</CardDescription>
                         </CardHeader>
-                        <CardContent className="flex items-center gap-4">
+                        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center">
                             <Button
                                 type="button"
                                 variant={theme === 'light' ? 'default' : 'outline'}

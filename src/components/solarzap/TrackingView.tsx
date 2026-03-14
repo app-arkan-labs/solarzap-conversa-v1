@@ -2,6 +2,7 @@
 import {
   AlertCircle,
   Activity,
+  BarChart3,
   CheckCircle2,
   Clock3,
   Copy,
@@ -924,7 +925,7 @@ export function TrackingView() {
           subtitle="Gerencie atribuição, plataformas, gatilhos e monitoramento de entregas."
           icon={Activity}
           actionContent={
-            <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+            <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-end">
               <Badge
                 variant="outline"
                 className={cn(
@@ -952,16 +953,18 @@ export function TrackingView() {
           }
         />
 
-        <div className="w-full space-y-6 px-6 py-6">
+        <div className="w-full space-y-6 px-4 py-4 sm:px-6 sm:py-6">
           <Tabs defaultValue="geral" className="space-y-4">
-            <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-xl border bg-background p-1 shadow-sm">
-              <TabsTrigger value="geral">Geral</TabsTrigger>
-              <TabsTrigger value="webhook">Webhook & Snippet</TabsTrigger>
-              <TabsTrigger value="plataformas">Plataformas</TabsTrigger>
-              <TabsTrigger value="mapeamento">Mapeamento de Etapas</TabsTrigger>
-              <TabsTrigger value="gatilhos">Mensagens Gatilho</TabsTrigger>
-              <TabsTrigger value="entregas">Entregas</TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto pb-1">
+              <TabsList className="flex h-auto min-w-full flex-nowrap justify-start gap-1 rounded-xl border bg-background p-1 shadow-sm sm:flex-wrap">
+                <TabsTrigger value="geral" className="shrink-0">Geral</TabsTrigger>
+                <TabsTrigger value="webhook" className="shrink-0">Webhook & Snippet</TabsTrigger>
+                <TabsTrigger value="plataformas" className="shrink-0">Plataformas</TabsTrigger>
+                <TabsTrigger value="mapeamento" className="shrink-0">Mapeamento de Etapas</TabsTrigger>
+                <TabsTrigger value="gatilhos" className="shrink-0">Mensagens Gatilho</TabsTrigger>
+                <TabsTrigger value="entregas" className="shrink-0">Entregas</TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="geral" className="space-y-4">
               <Card className="border-0 shadow-sm">
@@ -1017,9 +1020,9 @@ export function TrackingView() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <Label htmlFor="webhook-url">URL</Label>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <Input id="webhook-url" value={webhookEndpoint} readOnly className="font-mono text-xs" />
-                      <Button type="button" variant="outline" className="gap-2" onClick={() => void copy(webhookEndpoint, 'Endpoint copiado.') }>
+                      <Button type="button" variant="outline" className="gap-2 sm:self-start" onClick={() => void copy(webhookEndpoint, 'Endpoint copiado.') }>
                         <Copy className="h-4 w-4" />
                         Copiar
                       </Button>
@@ -1308,8 +1311,8 @@ export function TrackingView() {
                   <CardDescription>Defina os eventos enviados para cada plataforma em cada etapa.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="rounded-xl border bg-background">
-                    <Table>
+                  <div className="overflow-x-auto rounded-xl border bg-background">
+                    <Table className="min-w-[760px]">
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-[260px]">Etapa</TableHead>
@@ -1478,9 +1481,9 @@ export function TrackingView() {
                       <CardTitle className="text-base">Fila de entregas</CardTitle>
                       <CardDescription>Histórico de eventos enviados para plataformas de anúncios e analytics.</CardDescription>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
                       <Select value={String(periodDays)} onValueChange={(value) => setPeriodDays(Number(value))}>
-                        <SelectTrigger className="w-[160px]"><SelectValue placeholder="Período" /></SelectTrigger>
+                        <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Período" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="7">Últimos 7 dias</SelectItem>
                           <SelectItem value="30">Últimos 30 dias</SelectItem>
@@ -1503,8 +1506,8 @@ export function TrackingView() {
                       <p className="mt-1 text-sm text-muted-foreground">Assim que os eventos forem processados, eles aparecerão aqui com status e tentativas.</p>
                     </div>
                   ) : (
-                    <div className="rounded-xl border bg-background">
-                      <Table>
+                    <div className="overflow-x-auto rounded-xl border bg-background">
+                      <Table className="min-w-[980px]">
                         <TableHeader>
                           <TableRow>
                             <TableHead>Plataforma</TableHead><TableHead>Status</TableHead><TableHead>Evento</TableHead><TableHead>Etapa</TableHead><TableHead>Tentativas</TableHead><TableHead>Próxima</TableHead><TableHead>Erro</TableHead>

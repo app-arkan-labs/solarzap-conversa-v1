@@ -154,7 +154,7 @@ export function IntegrationsView() {
           subtitle="Conecte canais e serviços usados pela operação comercial"
           icon={Plug}
           actionContent={
-            <div className="flex items-center gap-4 bg-background/50 glass px-4 py-2 rounded-xl border border-border/50">
+            <div className="flex w-full flex-wrap items-center gap-4 rounded-xl border border-border/50 bg-background/50 px-4 py-2 glass sm:w-auto sm:justify-end">
               <div className="text-right">
                 <div className="text-xl font-bold text-foreground leading-none">{whatsappConnectedCount}/{whatsappInstances.length}</div>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 font-semibold">{whatsappConnectedCount === 1 ? 'Instância ativa' : 'Instâncias ativas'}</div>
@@ -166,17 +166,17 @@ export function IntegrationsView() {
           }
         />
 
-        <div className="w-full px-6 py-6 space-y-6">
+        <div className="w-full space-y-6 px-4 py-4 sm:px-6 sm:py-6">
           {/* WhatsApp Section */}
           <Card className="border-0 shadow-sm overflow-hidden">
             <div className="bg-gradient-to-r from-[#25D366]/10 to-[#128C7E]/5">
               <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#25D366] to-[#128C7E] flex items-center justify-center shadow-lg shadow-[#25D366]/20">
                       <MessageCircle className="w-6 h-6 text-white" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <CardTitle className="text-xl">Conexões WhatsApp</CardTitle>
                       <CardDescription className="mt-1">
                         Conecte múltiplos números para sua equipe
@@ -206,7 +206,7 @@ export function IntegrationsView() {
                   </div>
                   <h3 className="font-semibold text-foreground">Nova Instância</h3>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row">
                   <Input
                     value={newInstanceName}
                     onChange={(e) => setNewInstanceName(e.target.value)}
@@ -218,7 +218,7 @@ export function IntegrationsView() {
                   <Button
                     onClick={handleCreateInstance}
                     disabled={!newInstanceName.trim() || creatingInstance}
-                    className="h-11 px-6 gap-2 bg-primary hover:bg-primary/90"
+                    className="h-11 w-full gap-2 bg-primary px-6 hover:bg-primary/90 sm:w-auto"
                   >
                     {creatingInstance ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -232,13 +232,13 @@ export function IntegrationsView() {
 
               {/* QR Code Modal */}
               {currentQR && (
-                <div className="p-6 rounded-2xl bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20">
+                <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 to-primary/10 p-4 sm:p-6">
                   <div className="flex flex-col md:flex-row items-start gap-6">
-                    <div className="p-4 bg-white rounded-2xl shadow-lg mx-auto md:mx-0">
+                    <div className="mx-auto w-full max-w-[280px] rounded-2xl bg-white p-4 shadow-lg md:mx-0 md:w-auto">
                       <img
                         src={currentQR.qrCode.startsWith('data:') ? currentQR.qrCode : `data:image/png;base64,${currentQR.qrCode}`}
                         alt="QR Code WhatsApp"
-                        className="w-48 h-48 object-contain"
+                        className="h-auto w-full object-contain md:h-48 md:w-48"
                       />
                     </div>
                     <div className="flex-1">
@@ -263,7 +263,7 @@ export function IntegrationsView() {
                           Toque em "Conectar aparelho"
                         </li>
                       </ol>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           variant="outline"
                           size="sm"
@@ -293,7 +293,7 @@ export function IntegrationsView() {
 
               {/* Instances List */}
               <div>
-                <div className="flex items-center justify-between mb-4">
+                <div className="mb-4 flex items-center justify-between gap-3">
                   <h3 className="font-semibold text-foreground flex items-center gap-2">
                     <Smartphone className="w-4 h-4" />
                     {isOrgManager ? 'Instâncias da Empresa' : 'Minhas Instâncias'} ({whatsappInstances.length})
@@ -324,14 +324,14 @@ export function IntegrationsView() {
                         <div
                           key={instance.id}
                           className={cn(
-                            "group flex items-center justify-between p-4 rounded-xl border transition-all duration-200",
+                            "group flex flex-col gap-4 rounded-xl border p-4 transition-all duration-200 md:flex-row md:items-center md:justify-between",
                             instance.status === 'connected'
                               ? "bg-primary/5 border-primary/20 hover:bg-primary/10"
                               : "bg-muted/30 border-border/50 hover:bg-muted/50"
                           )}
                           style={{ borderLeftColor: instanceColor, borderLeftWidth: '4px' }}
                         >
-                          <div className="flex items-center gap-4">
+                          <div className="flex min-w-0 items-center gap-4">
                             <div className={cn(
                               "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
                               instance.status === 'connected'
@@ -346,8 +346,8 @@ export function IntegrationsView() {
                                 <WifiOff className="w-5 h-5 text-muted-foreground" />
                               )}
                             </div>
-                            <div>
-                              <h4 className="font-medium text-foreground flex items-center gap-2">
+                            <div className="min-w-0">
+                              <h4 className="flex flex-wrap items-center gap-2 font-medium text-foreground">
                                 {instance.display_name}
                                 {instance.status === 'connected' && (
                                   <Badge className="bg-primary/10 text-primary border-0 text-xs">
@@ -360,15 +360,15 @@ export function IntegrationsView() {
                                   </Badge>
                                 )}
                               </h4>
-                              <p className="text-xs text-muted-foreground mt-0.5">
+                              <p className="mt-0.5 break-all text-xs text-muted-foreground">
                                 {instance.phone_number ? `📱 ${instance.phone_number}` : `ID: ${instance.instance_name}`}
                               </p>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2 md:justify-end">
                             {/* AI Toggle */}
-                            <div className="flex items-center gap-2 mr-2 px-2 py-1"
+                            <div className="flex items-center gap-2 px-2 py-1"
                               title="Ativar/Desativar IA para esta instância"
                             >
                               <span className="font-medium text-muted-foreground">IA</span>
@@ -381,7 +381,7 @@ export function IntegrationsView() {
                             </div>
 
                             {/* Color Picker */}
-                            <div className="flex items-center gap-1 transition-opacity">
+                            <div className="flex flex-wrap items-center gap-1 transition-opacity">
                               {WHATSAPP_COLORS.map(color => (
                                 <button
                                   key={color}
@@ -397,7 +397,7 @@ export function IntegrationsView() {
                               ))}
                             </div>
 
-                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pl-4 border-l ml-4">
+                            <div className="flex w-full flex-wrap items-center gap-2 border-t pt-3 opacity-100 transition-opacity md:ml-4 md:w-auto md:border-l md:border-t-0 md:pl-4 md:pt-0 md:opacity-0 md:group-hover:opacity-100">
                               {instance.status !== 'connected' && (
                                 <Button
                                   variant="outline"
