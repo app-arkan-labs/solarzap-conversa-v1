@@ -1,0 +1,55 @@
+Plan: SolarZap Rebranding — Nova Logo + Tema Claro/Escuro
+TL;DR: Rebranding 100% visual: substituir logo, atualizar paleta de cores para laranja (brand) + azul (complementar) extraídos da nova logo, implementar temas claro/escuro via next-themes (já está no package.json), e adicionar um card "Aparência" na aba Minha Conta para troca de tema.
+
+Fase 1 — Logo (paralela com Fase 2)
+
+Substituir logo.png pela nova imagem enviada
+Substituir solarzap-logo.png (usada para geração de PDFs via useProposalLogo.ts)
+O index.html e todas as páginas (Login.tsx, UpdatePassword.tsx, SolarZapNav.tsx) já referenciam /logo.png — nenhuma mudança de código necessária além da troca do arquivo
+Fase 2 — Paleta de Cores (paralela com Fase 1)
+
+Atualizar index.css — :root (tema claro):
+
+--primary → 33 100% 50% (laranja da logo)
+--secondary → 215 75% 55% (azul da logo)
+--sidebar-background → 215 75% 20% (azul escuro — substituindo verde atual)
+--sidebar-primary → 33 100% 50%
+--ring / --sidebar-ring → laranja
+--accent / --accent-foreground → tons de laranja claro
+Atualizar .dark em index.css:
+
+--primary → 33 100% 55% (laranja ligeiramente mais claro no escuro)
+--sidebar-background → 215 75% 10% (azul muito escuro)
+Fase 3 — ThemeProvider (depende de nada, pode ser paralela)
+
+Criar src/components/ui/theme-provider.tsx — wrapper simples do next-themes
+Envolver App.tsx com <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+Fase 4 — Botão de Tema em Minha Conta (depende de Fase 3)
+
+Adicionar card "Aparência" em ConfiguracoesContaView.tsx:
+useTheme do next-themes
+Botões Claro (Sun) / Escuro (Moon) com ícones do lucide-react
+Preferência persiste automaticamente via localStorage pelo next-themes
+Arquivos relevantes
+
+index.css — CSS vars do design system (:root e .dark)
+App.tsx — adicionar ThemeProvider wrapper
+src/components/ui/theme-provider.tsx — novo arquivo, wrapper do next-themes
+ConfiguracoesContaView.tsx — card de aparência
+logo.png e solarzap-logo.png — substituição de imagem
+Verificação
+
+Login e sidebar mostram nova logo
+Sidebar com fundo azul escuro (em vez do verde atual)
+Botões e ícones primary em laranja
+Aba "Minha Conta" exibe card "Aparência" com toggle claro/escuro
+Alternar tema aplica classe dark ao <html> e muda toda a paleta
+tsc e build sem erros
+Decisões
+
+next-themes já instalado — sem dependências novas
+--whatsapp-green permanece intacto (cor funcional do app,não brand)
+defaultTheme: "light", enableSystem: false — controle explícito pelo usuário
+Cores da logo extraídas visualmente: laranja ≈ #FF8000 (HSL 33 100% 50%), azul ≈ #4A90D9 (HSL 215 75% 55%)
+Escopo estrito: zero alterações em lógica de negócio
+Uma observação importante: a troca da imagem da logo (logo.png e solarzap-logo.png) precisa ser feita salvando o PNG do attachment diretamente nesses caminhos
