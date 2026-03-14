@@ -13,7 +13,7 @@ describe('FollowUpIndicator', () => {
     const { container } = render(React.createElement(FollowUpIndicator, { step: 3, enabled: true }));
     const dots = Array.from(container.querySelectorAll('span'));
     const filled = dots.filter((dot) => dot.className.includes('bg-emerald-500'));
-    const pending = dots.filter((dot) => dot.className.includes('bg-slate-200'));
+    const pending = dots.filter((dot) => dot.className.includes('bg-muted'));
 
     expect(filled).toHaveLength(3);
     expect(pending).toHaveLength(2);
@@ -31,7 +31,7 @@ describe('FollowUpIndicator', () => {
     const { container } = render(React.createElement(FollowUpIndicator, { step: 4, enabled: false }));
     const root = container.firstElementChild as HTMLElement | null;
     const dots = Array.from(container.querySelectorAll('span'));
-    const pending = dots.filter((dot) => dot.className.includes('bg-slate-200'));
+    const pending = dots.filter((dot) => dot.className.includes('bg-muted'));
 
     expect(root?.getAttribute('title')).toBe('Follow-up desabilitado');
     expect(pending).toHaveLength(5);

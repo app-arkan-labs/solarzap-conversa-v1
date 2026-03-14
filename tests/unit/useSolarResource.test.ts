@@ -158,7 +158,7 @@ describe('useSolarResource', () => {
 
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Endereco com baixa confianca',
+        title: 'Endereço com baixa confiança',
         variant: 'destructive',
       }),
     );
@@ -174,7 +174,7 @@ describe('useSolarResource', () => {
     });
 
     expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Sessao invalida' }),
+      expect.objectContaining({ title: 'Sessão invalida' }),
     );
   });
 
