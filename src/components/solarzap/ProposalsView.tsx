@@ -55,6 +55,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { PageHeader } from './PageHeader';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 
 interface ProposalRow {
   proposal_version_id: string;
@@ -108,6 +109,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function ProposalsView() {
+  const isMobileViewport = useMobileViewport();
   const { orgId } = useAuth();
   const { toast } = useToast();
   const { themeId, secondaryColorHex } = useProposalTheme();
@@ -662,7 +664,7 @@ export function ProposalsView() {
       />
 
       <ScrollArea className="flex-1">
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Filtros</CardTitle>
@@ -687,7 +689,7 @@ export function ProposalsView() {
                       <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[360px] p-0" align="start">
+                  <PopoverContent className="w-[min(360px,calc(100vw-2rem))] p-0" align="start">
                     <Command>
                       <CommandInput placeholder="Selecionar lead..." />
                       <CommandList>
@@ -792,7 +794,7 @@ export function ProposalsView() {
               </div>
 
               <div className="md:col-span-3 flex justify-end">
-                <Button onClick={fetchProposals} disabled={loading}>Aplicar filtros</Button>
+                <Button onClick={fetchProposals} disabled={loading} className="w-full sm:w-auto">Aplicar filtros</Button>
               </div>
             </CardContent>
           </Card>
@@ -801,7 +803,96 @@ export function ProposalsView() {
             <CardHeader>
               <CardTitle>Resultados ({rows.length})</CardTitle>
             </CardHeader>
-            <CardContent className="max-h-[560px] overflow-auto">
+            <CardContent className="max-h-[560px] overflow-auto px-4 pb-4 sm:px-6 sm:pb-6">
+              {isMobileViewport ? (
+                <div className="space-y-3">
+                  {rows.map((row) => {
+                    const isDeletingRow = deletingVersionId === row.proposal_version_id;
+
+                    return (
+                      <button
+                        key={row.proposal_version_id}
+                        type="button"
+                        className="w-full rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:bg-muted/30"
+                        onClick={() => setSelectedRow(row)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-foreground truncate">{row.lead_name || `Lead ${row.lead_id}`}</p>
+                            <p className="text-sm text-muted-foreground truncate">{row.lead_phone || '-'}</p>
+                          </div>
+                          <Badge variant="outline" className={STATUS_COLORS[row.status] || 'bg-slate-100 text-slate-700 border-slate-200'}>
+                            {STATUS_TRANSLATIONS[row.status] || row.status}
+                          </Badge>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">Versão</p>
+                            <p className="font-medium">V{row.version_no}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">Valor</p>
+                            <p className="font-medium">
+                              {typeof row.valor_projeto === 'number'
+                                ? row.valor_projeto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                                : '-'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          Criada em {new Date(row.created_at).toLocaleString('pt-BR')}
+                        </p>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10"
+                            disabled={!row.pdf_url && !canGenerateFromRow(row)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadProposal(row);
+                            }}
+                          >
+                            <ExternalLink className="w-4 h-4 mr-1" />
+                            Proposta
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10"
+                            disabled={!canGenerateFromRow(row)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadScript(row);
+                            }}
+                          >
+                            <FileText className="w-4 h-4 mr-1" />
+                            Roteiro
+                          </Button>
+                          {canDeleteProposals && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="h-10"
+                              disabled={isDeletingRow}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestDelete(row);
+                              }}
+                            >
+                              {isDeletingRow ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}
+                              Excluir
+                            </Button>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
@@ -891,6 +982,7 @@ export function ProposalsView() {
                   })}
                 </tbody>
               </table>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -898,7 +990,7 @@ export function ProposalsView() {
 
       {/* Pagination */}
       {(rows.length > 0 || page > 0) && (
-        <div className="flex items-center justify-between px-4 py-2 border-t bg-background">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t bg-background">
           <span className="text-sm text-muted-foreground">
             Mostrando {page * PAGE_SIZE + 1}–{page * PAGE_SIZE + rows.length}
           </span>

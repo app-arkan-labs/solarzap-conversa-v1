@@ -133,7 +133,7 @@ export function DashboardView({
         subtitle="Visão geral do seu negócio"
         icon={BarChart3}
         actionContent={
-          <>
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
             {canViewTeam && onLeadScopeChange ? (
               <LeadScopeSelect
                 value={leadScope}
@@ -147,7 +147,7 @@ export function DashboardView({
 
             <Button
               variant="outline"
-              className="border-border/50 shadow-sm glass"
+              className="border-border/50 shadow-sm glass h-10"
               onClick={() => setLossAnalyticsOpen(true)}
             >
               <TrendingDown className="mr-2 h-4 w-4 text-rose-500" />
@@ -156,7 +156,7 @@ export function DashboardView({
 
             {/* Period Selector */}
             <Select value={periodLabel} onValueChange={handlePeriodChange}>
-              <SelectTrigger className="w-[160px] bg-background border-border/50 shadow-sm glass">
+              <SelectTrigger className="w-full sm:w-[160px] bg-background border-border/50 shadow-sm glass">
                 <SelectValue placeholder="Período" />
               </SelectTrigger>
               <SelectContent>
@@ -172,7 +172,7 @@ export function DashboardView({
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-[220px] justify-start text-left font-normal bg-background border-border/50 shadow-sm glass"
+                  className="w-full sm:w-[220px] justify-start text-left font-normal bg-background border-border/50 shadow-sm glass"
                 >
                   <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
                   {dateRange.from ? (
@@ -208,7 +208,7 @@ export function DashboardView({
 
             {/* Export Button */}
             <Select onValueChange={(v) => handleExport(v as any)}>
-              <SelectTrigger className="w-[130px] bg-background border-border/50 shadow-sm glass">
+              <SelectTrigger className="w-full sm:w-[130px] bg-background border-border/50 shadow-sm glass">
                 <Download className="mr-2 h-4 w-4 text-muted-foreground" />
                 <SelectValue placeholder="Exportar" />
               </SelectTrigger>
@@ -217,11 +217,11 @@ export function DashboardView({
                 <SelectItem value="deals">Recebimentos (CSV)</SelectItem>
               </SelectContent>
             </Select>
-          </>
+          </div>
         }
       />
 
-      <div className="w-full px-6 py-6 space-y-6">
+      <div className="w-full px-4 py-4 sm:px-6 sm:py-6 space-y-6">
         <KpiCards data={data?.kpis} isLoading={isLoading} />
         <DashboardCharts data={data?.charts} isLoading={isLoading} />
 

@@ -23,11 +23,12 @@ export const resolveGuidedTourTargetElement = (
   if (!step) return null;
 
   const stepWithCompat = step as GuidedTourStep & {
+    selector?: string;
     target?: string;
     fallbackSelector?: string;
   };
 
-  const primarySelector = sanitizeSelector(stepWithCompat.target || step.selector);
+  const primarySelector = sanitizeSelector(stepWithCompat.target || stepWithCompat.selector);
   if (primarySelector) {
     const primaryTarget = querySelectorSafe(root, primarySelector);
     if (primaryTarget) return primaryTarget;

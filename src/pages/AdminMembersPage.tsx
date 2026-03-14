@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/solarzap/PageHeader';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 
 type AdminMembersPageProps = {
   embedded?: boolean;
@@ -57,6 +58,7 @@ function fallbackMemberLabel(member: MemberDto) {
 }
 
 export default function AdminMembersPage({ embedded = false }: AdminMembersPageProps) {
+  const isMobileViewport = useMobileViewport();
   const { loading: authLoading, role, orgId } = useAuth();
   const { toast } = useToast();
 
@@ -321,7 +323,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
         subtitle="Gerencie membros, funções e permissões da sua organização."
         icon={UserCog}
         actionContent={
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             <Button variant="outline" onClick={() => void loadMembers(true)} disabled={refreshing} className="bg-background/50 glass border-border/50 shadow-sm">
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               Atualizar
@@ -334,7 +336,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
           </div>
         }
       />
-      <div className="flex-1 p-6 md:p-8 overflow-y-auto w-full">
+      <div className="flex-1 p-4 md:p-8 overflow-y-auto w-full">
         <div className="mx-auto w-full max-w-6xl space-y-6">
 
           <Card>
@@ -360,7 +362,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                     required
                   />
                 </div>
-                <div className="md:col-span-2">
+                <div className="md:col-span-3 lg:col-span-2">
                   <label className="text-sm font-medium">Função</label>
                   <select
                     data-testid="invite-role-select"
@@ -375,7 +377,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                     ))}
                   </select>
                 </div>
-                <div className="md:col-span-2 flex items-end">
+                <div className="md:col-span-3 lg:col-span-2 flex items-end">
                   <label className="inline-flex items-center gap-2 text-sm">
                     <Switch
                       data-testid="invite-can-view-toggle"
@@ -386,7 +388,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                     <span className="text-xs">Ver leads da equipe</span>
                   </label>
                 </div>
-                <div className="md:col-span-2 flex items-end">
+                <div className="md:col-span-12 lg:col-span-2 flex items-end">
                   <Button data-testid="invite-submit" type="submit" disabled={inviteLoading} className="w-full">
                     {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Convidar'}
                   </Button>
@@ -407,6 +409,115 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
               </CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
+              {isMobileViewport ? (
+                <div className="space-y-3" data-testid="members-table">
+                  {members.map((member) => {
+                    const draft = draftByUserId[member.user_id] || {
+                      role: member.role,
+                      can_view_team_leads: member.can_view_team_leads,
+                    };
+                    const dirty =
+                      draft.role !== member.role ||
+                      draft.can_view_team_leads !== member.can_view_team_leads;
+
+                    return (
+                      <div
+                        key={member.user_id}
+                        data-testid={`member-row-${member.user_id}`}
+                        className="rounded-2xl border border-border bg-card p-4 shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,hsl(var(--primary)/0.22),hsl(var(--secondary)/0.16))] text-sm font-semibold text-foreground ring-1 ring-border/70">
+                                {(fallbackMemberLabel(member)[0] || '?').toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-medium truncate">{fallbackMemberLabel(member)}</p>
+                                <Badge variant="outline" className={`mt-1 text-[10px] ${ROLE_COLORS[member.role]}`}>
+                                  {ROLE_LABELS[member.role]}
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-xs text-muted-foreground text-right">
+                            {new Date(member.joined_at).toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground">Função</label>
+                            <select
+                              data-testid={`member-role-${member.user_id}`}
+                              className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                              value={draft.role}
+                              onChange={(event) =>
+                                handleDraftChange(member.user_id, {
+                                  role: event.target.value as OrgRole,
+                                })
+                              }
+                            >
+                              {ROLE_OPTIONS.map((roleOption) => (
+                                <option key={roleOption} value={roleOption}>
+                                  {ROLE_LABELS[roleOption]}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5">
+                            <div>
+                              <p className="text-sm font-medium">Ver leads da equipe</p>
+                              <p className="text-xs text-muted-foreground">Permite visualizar leads de outros vendedores.</p>
+                            </div>
+                            <Switch
+                              data-testid={`member-can-view-${member.user_id}`}
+                              checked={draft.can_view_team_leads}
+                              onCheckedChange={(checked) =>
+                                handleDraftChange(member.user_id, {
+                                  can_view_team_leads: checked,
+                                })
+                              }
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="h-10 flex-1"
+                              data-testid={`member-save-${member.user_id}`}
+                              disabled={!dirty || submittingByUserId[member.user_id] === true}
+                              onClick={() => void handleSaveMember(member)}
+                            >
+                              {submittingByUserId[member.user_id] ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <><Save className="h-3.5 w-3.5 mr-1" /> Salvar</>
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-10 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              data-testid={`member-remove-${member.user_id}`}
+                              disabled={removingByUserId[member.user_id] === true}
+                              onClick={() => void handleRemoveMember(member)}
+                            >
+                              {removingByUserId[member.user_id] ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <><Trash2 className="h-3.5 w-3.5 mr-1" /> Remover</>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
               <table className="w-full text-sm" data-testid="members-table">
                 <thead>
                   <tr className="border-b text-left">
@@ -518,6 +629,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                   })}
                 </tbody>
               </table>
+              )}
             </CardContent>
           </Card>
           {/* Seller Permissions Card */}

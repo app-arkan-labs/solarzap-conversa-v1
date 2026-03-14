@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useAppointments } from '@/hooks/useAppointments';
 import { AppointmentModal } from './AppointmentModal';
 import { format, isSameDay, parseISO, startOfDay, endOfDay } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarFilters, CalendarFilterState } from './calendar/CalendarFilters';
@@ -18,6 +19,8 @@ import type { MemberDto } from '@/lib/orgAdminClient';
 import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { buildTabBlocker } from '@/lib/billingBlocker';
 import { partitionDayEvents } from '@/lib/calendarDayEvents';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 
 type CalendarAppointmentErrorBoundaryProps = {
   children: ReactNode;
@@ -110,6 +113,7 @@ export function CalendarView({
   leadScopeLoading = false,
   currentUserId = null,
 }: CalendarViewProps) {
+  const isMobileViewport = useMobileViewport();
   const { billing, openBillingBlocker } = useBillingBlocker();
   const [currentDate, setCurrentDate] = useState(new Date());
   const readScope = canViewTeam && leadScope !== 'mine' ? 'org' : 'mine';
@@ -140,6 +144,9 @@ export function CalendarView({
   const [feedbackEvent, setFeedbackEvent] = useState<Appointment | undefined>(undefined);
 
   const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [mobileDrawerMode, setMobileDrawerMode] = useState<'day' | 'upcoming' | 'past'>('upcoming');
+  const [mobileSelectedDate, setMobileSelectedDate] = useState<Date | null>(null);
 
   const handleAppointmentModalError = () => {
     setAppointmentModalOpen(false);
@@ -261,6 +268,22 @@ export function CalendarView({
     setAppointmentModalOpen(true);
   };
 
+  const openCreateEventForDate = (date: Date) => {
+    const blocker = buildTabBlocker('calendario', billing);
+    if (blocker) {
+      openBillingBlocker(blocker);
+      return;
+    }
+
+    const nextDate = new Date(date);
+    const now = new Date();
+    const roundedMinutes = Math.ceil(now.getMinutes() / 15) * 15;
+    nextDate.setHours(now.getHours(), roundedMinutes, 0, 0);
+    setSelectedAppointment(undefined);
+    setModalDate(nextDate);
+    setAppointmentModalOpen(true);
+  };
+
   const handleEventClick = (evt: Appointment, e: React.MouseEvent) => {
     e.stopPropagation();
     const apptDate = parseISO(evt.start_at);
@@ -288,6 +311,12 @@ export function CalendarView({
       return;
     }
     const date = new Date(year, month, day);
+    if (isMobileViewport) {
+      setMobileSelectedDate(date);
+      setMobileDrawerMode('day');
+      setMobileDrawerOpen(true);
+      return;
+    }
     const now = new Date();
     // Use next rounded 15-min slot instead of hardcoded 9:00
     const roundedMinutes = Math.ceil(now.getMinutes() / 15) * 15;
@@ -296,6 +325,25 @@ export function CalendarView({
     setModalDate(date);
     setAppointmentModalOpen(true);
   };
+
+  const mobileDayEvents = useMemo(() => {
+    if (!mobileSelectedDate) return [] as Appointment[];
+    return filteredAppointments.filter((event) => isSameDay(parseISO(event.start_at), mobileSelectedDate));
+  }, [filteredAppointments, mobileSelectedDate]);
+
+  const mobileDrawerTitle = mobileDrawerMode === 'day'
+    ? mobileSelectedDate
+      ? format(mobileSelectedDate, "dd 'de' MMMM", { locale: ptBR })
+      : 'Eventos do dia'
+    : mobileDrawerMode === 'upcoming'
+      ? 'Próximos eventos'
+      : 'Eventos passados';
+
+  const mobileDrawerEvents = mobileDrawerMode === 'day'
+    ? mobileDayEvents
+    : mobileDrawerMode === 'upcoming'
+      ? upcomingEvents
+      : pastEvents;
 
   const renderSidebarEvent = (event: Appointment) => {
     const isPast = new Date(event.start_at) < new Date() && event.status !== 'completed';
@@ -358,7 +406,7 @@ export function CalendarView({
         icon={CalendarIcon}
         className="z-20"
         actionContent={
-          <>
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
             {canViewTeam && onLeadScopeChange ? (
               <LeadScopeSelect
                 value={leadScope}
@@ -373,7 +421,7 @@ export function CalendarView({
               <Plus className="w-4 h-4" />
               Novo Agendamento
             </Button>
-          </>
+          </div>
         }
       />
 
@@ -382,10 +430,10 @@ export function CalendarView({
         <div className="flex-1 flex flex-col min-w-0 bg-card/92 backdrop-blur-sm">
 
           {/* Main Filters & Navigation Bar */}
-          <div className="relative px-6 py-4 border-b border-border/50 flex items-center min-h-[72px]">
+          <div className="relative px-4 py-4 sm:px-6 border-b border-border/50 flex min-h-[72px] flex-wrap items-center gap-3">
 
             {/* Left: Filter Toggle & Filters */}
-            <div className="flex items-center gap-4 z-10">
+            <div className="flex items-center gap-3 z-10 min-w-0 flex-wrap">
               <Button
                 variant="outline"
                 size="sm"
@@ -400,7 +448,7 @@ export function CalendarView({
               </Button>
 
               {showFilters && (
-                <div className="animate-in fade-in slide-in-from-left-2 duration-300 origin-left">
+                <div className="animate-in fade-in slide-in-from-left-2 duration-300 origin-left max-w-full">
                   <CalendarFilters
                     filters={mainFilters}
                     onChange={setMainFilters}
@@ -413,13 +461,13 @@ export function CalendarView({
 
             {/* Navigation - Centered when filters closed, Right when open */}
             <div className={cn(
-              "flex items-center gap-4 transition-all duration-500 ease-in-out",
-              showFilters ? "ml-auto translate-x-0" : "absolute left-1/2 -translate-x-1/2"
+              "flex items-center gap-2 sm:gap-4 transition-all duration-500 ease-in-out min-w-0",
+              showFilters || isMobileViewport ? "ml-auto translate-x-0" : "absolute left-1/2 -translate-x-1/2"
             )}>
               <button onClick={prevMonth} className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-primary">
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              <span className="text-lg font-bold capitalize min-w-[160px] text-center text-foreground tracking-tight">
+              <span className="text-base sm:text-lg font-bold capitalize min-w-[140px] sm:min-w-[160px] text-center text-foreground tracking-tight">
                 {monthName}
               </span>
               <button onClick={nextMonth} className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-primary">
@@ -428,9 +476,36 @@ export function CalendarView({
             </div>
           </div>
 
+          {isMobileViewport && (
+            <div className="flex items-center gap-2 overflow-x-auto border-b border-border/50 bg-background/80 px-4 py-3">
+              <Button
+                variant={mobileDrawerMode === 'upcoming' ? 'default' : 'outline'}
+                size="sm"
+                className="h-9 rounded-full"
+                onClick={() => {
+                  setMobileDrawerMode('upcoming');
+                  setMobileDrawerOpen(true);
+                }}
+              >
+                Próximos ({upcomingEvents.length})
+              </Button>
+              <Button
+                variant={mobileDrawerMode === 'past' ? 'default' : 'outline'}
+                size="sm"
+                className="h-9 rounded-full"
+                onClick={() => {
+                  setMobileDrawerMode('past');
+                  setMobileDrawerOpen(true);
+                }}
+              >
+                Passados ({pastEvents.length})
+              </Button>
+            </div>
+          )}
 
 
-          <div className="flex-1 flex flex-col p-6 overflow-auto">
+
+          <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-auto">
             {/* Days Header */}
             <div className="grid grid-cols-7 mb-4">
               {daysOfWeek.map(day => (
@@ -441,7 +516,7 @@ export function CalendarView({
             </div>
 
             {/* Weeks Grid */}
-            <div className="flex-1 grid grid-rows-6 border border-border rounded-xl overflow-hidden shadow-sm bg-card/94">
+            <div className="flex-1 grid grid-rows-6 border border-border rounded-xl overflow-hidden shadow-sm bg-card/94 min-w-[640px] md:min-w-0">
               {weeks.map((week, weekIndex) => (
                 <div key={weekIndex} className="grid grid-cols-7 border-b border-border/60 last:border-b-0 h-full">
                   {week.map((day, dayIndex) => {
@@ -506,7 +581,7 @@ export function CalendarView({
         </div>
 
         {/* Sidebar - Split View */}
-        <div className="w-96 border-l border-border bg-card/84 flex flex-col shadow-[0_0_15px_rgba(0,0,0,0.03)] dark:shadow-[0_0_18px_rgba(2,6,23,0.28)] z-30 backdrop-blur-sm">
+        {!isMobileViewport && <div className="w-96 border-l border-border bg-card/84 flex flex-col shadow-[0_0_15px_rgba(0,0,0,0.03)] dark:shadow-[0_0_18px_rgba(2,6,23,0.28)] z-30 backdrop-blur-sm">
 
           {/* Top: Upcoming Events */}
           <div className="flex-1 flex flex-col min-h-0 border-b border-border/60 bg-card/92">
@@ -597,8 +672,51 @@ export function CalendarView({
               </div>
             </ScrollArea>
           </div>
-        </div>
+        </div>}
       </div>
+
+      <Drawer open={isMobileViewport && mobileDrawerOpen} onOpenChange={setMobileDrawerOpen}>
+        <DrawerContent className="max-h-[85vh]">
+          <DrawerHeader className="text-left">
+            <DrawerTitle>{mobileDrawerTitle}</DrawerTitle>
+            <DrawerDescription>
+              {mobileDrawerMode === 'day'
+                ? 'Toque em um evento para abrir ações ou crie um novo compromisso nesta data.'
+                : 'Navegue pelos eventos da agenda sem ocupar a lateral no mobile.'}
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="space-y-3 overflow-y-auto px-4 pb-6">
+            {mobileDrawerMode === 'day' && mobileSelectedDate ? (
+              <Button className="w-full gap-2" onClick={() => openCreateEventForDate(mobileSelectedDate)}>
+                <Plus className="h-4 w-4" />
+                Novo agendamento neste dia
+              </Button>
+            ) : null}
+
+            {mobileDrawerEvents.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                Nenhum evento encontrado nesta visualização.
+              </div>
+            ) : (
+              mobileDrawerEvents.map((event) => renderSidebarEvent(event))
+            )}
+
+            {mobileDrawerMode === 'past' ? (
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={() => {
+                  setMobileDrawerOpen(false);
+                  setArchiveModalOpen(true);
+                }}
+              >
+                <Archive className="h-4 w-4" />
+                Abrir arquivo completo
+              </Button>
+            ) : null}
+          </div>
+        </DrawerContent>
+      </Drawer>
 
       {/* Modals */}
       <CalendarAppointmentErrorBoundary

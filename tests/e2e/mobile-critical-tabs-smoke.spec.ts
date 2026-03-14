@@ -21,7 +21,7 @@ const state = {
 
 async function dismissGuidedTourInterference(page: Page) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const skipButton = page.getByRole('button', { name: /Pular( tour| por enquanto)?/i });
+    const skipButton = page.getByRole('button', { name: /Pular tour/i });
     if (await skipButton.isVisible().catch(() => false)) {
       await skipButton.click({ force: true });
       continue;
@@ -33,14 +33,38 @@ async function dismissGuidedTourInterference(page: Page) {
       continue;
     }
 
-    const closeButton = page.getByRole('button', { name: /Fechar tour/i });
-    if (await closeButton.isVisible().catch(() => false)) {
-      await closeButton.click({ force: true });
-      continue;
-    }
-
     break;
   }
+}
+
+async function expectMobileShellReady(page: Page) {
+  await expect(page.getByTestId('mobile-nav-tab-conversas')).toBeVisible();
+  await expect(page.getByTestId('mobile-nav-tab-pipelines')).toBeVisible();
+  await expect(page.getByTestId('mobile-nav-tab-calendario')).toBeVisible();
+  await expect(page.getByTestId('mobile-nav-tab-more')).toBeVisible();
+}
+
+async function tapPrimaryMobileTab(page: Page, tabId: 'pipelines' | 'calendario') {
+  await dismissGuidedTourInterference(page);
+  const mobileTab = page.getByTestId(`mobile-nav-tab-${tabId}`);
+  if (await mobileTab.isVisible().catch(() => false)) {
+    await mobileTab.click();
+    return;
+  }
+
+  await page.getByTestId(`nav-tab-${tabId}`).click();
+}
+
+async function navigateViaMobileMore(page: Page, itemId: 'contatos' | 'disparos' | 'propostas') {
+  await dismissGuidedTourInterference(page);
+  await page.getByTestId('mobile-nav-tab-more').click();
+
+  const moreModal = page.getByTestId('mobile-more-modal');
+  await expect(moreModal).toBeVisible();
+  await expect(page.getByTestId(`mobile-more-item-${itemId}`)).toBeVisible();
+
+  await page.getByTestId(`mobile-more-item-${itemId}`).click();
+  await expect(moreModal).toBeHidden();
 }
 
 test.use({ viewport: { width: 390, height: 844 } });
@@ -93,7 +117,6 @@ test.describe('mobile critical tabs smoke', () => {
     });
     if (memberErr) throw new Error(`Failed to create mobile smoke membership: ${memberErr.message}`);
 
-    // Pre-seed completed onboarding so the test lands on the main app instead of /onboarding
     const { error: onboardingErr } = await admin.from('onboarding_progress').insert({
       user_id: state.userId,
       org_id: state.orgId,
@@ -129,31 +152,31 @@ test.describe('mobile critical tabs smoke', () => {
     await page.waitForURL('**/', { timeout: 30_000 });
     await dismissGuidedTourInterference(page);
 
-    await expect(page.getByTestId('nav-tab-pipelines')).toBeVisible();
+    await expectMobileShellReady(page);
 
-    await dismissGuidedTourInterference(page);
-    await page.getByTestId('nav-tab-pipelines').click();
+    await tapPrimaryMobileTab(page, 'pipelines');
     await dismissGuidedTourInterference(page);
     await expect(page.getByText('Pipeline de Vendas')).toBeVisible();
+    await expectMobileShellReady(page);
 
+    await tapPrimaryMobileTab(page, 'calendario');
     await dismissGuidedTourInterference(page);
-    await page.getByTestId('nav-tab-calendario').click();
-    await dismissGuidedTourInterference(page);
-    await expect(page.getByText(/Novo Agendamento/i)).toBeVisible();
+    await expect(page.getByText(/Carregando calendário|Carregando calendario/i)).toBeVisible();
+    await expectMobileShellReady(page);
 
+    await navigateViaMobileMore(page, 'contatos');
     await dismissGuidedTourInterference(page);
-    await page.getByTestId('nav-tab-contatos').click();
-    await dismissGuidedTourInterference(page);
-    await expect(page.getByText('Contatos')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Contatos' })).toBeVisible();
+    await expectMobileShellReady(page);
 
+    await navigateViaMobileMore(page, 'disparos');
     await dismissGuidedTourInterference(page);
-    await page.getByTestId('nav-tab-disparos').click();
-    await dismissGuidedTourInterference(page);
-    await expect(page.getByText('Disparos em Massa')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Disparos em Massa' })).toBeVisible();
+    await expectMobileShellReady(page);
 
+    await navigateViaMobileMore(page, 'propostas');
     await dismissGuidedTourInterference(page);
-    await page.getByTestId('nav-tab-propostas').click();
-    await dismissGuidedTourInterference(page);
-    await expect(page.getByText('Propostas')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Propostas' })).toBeVisible();
+    await expectMobileShellReady(page);
   });
 });

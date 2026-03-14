@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Plus, Phone, Mail, MapPin, Zap, DollarSign, Calendar, Clock, Timer, Save, Loader2, MessageSquare, Upload, Download, Trash2, Bot, UserCog, CheckSquare, Users } from 'lucide-react';
+import { Search, Plus, Phone, Mail, MapPin, Zap, DollarSign, Calendar, Clock, Timer, Save, Loader2, MessageSquare, Upload, Download, Trash2, Bot, UserCog, CheckSquare, Users, ArrowLeft } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import {
   AlertDialog,
@@ -43,6 +43,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 
 interface ContactsViewProps {
   contacts: Contact[];
@@ -156,8 +157,10 @@ export function ContactsView({
   leadScopeLoading = false,
   currentUserId = null,
 }: ContactsViewProps) {
+  const isMobileViewport = useMobileViewport();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(contacts[0] || null);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const { orgId } = useAuth();
@@ -248,6 +251,12 @@ export function ContactsView({
       setSelectedContact(refreshedContact);
     }
   }, [contacts, selectedContact]);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setMobileDetailOpen(false);
+    }
+  }, [isMobileViewport]);
 
   useEffect(() => {
     if (!selectedContact) {
@@ -572,20 +581,22 @@ export function ContactsView({
     return diffDays;
   };
 
+  const showMobileDetail = isMobileViewport && mobileDetailOpen && Boolean(selectedContact);
+
   return (
-    <div className="flex-1 flex h-full bg-muted/30">
+    <div className="flex-1 flex h-full bg-muted/30 overflow-hidden">
       {/* Left Sidebar - Contact List */}
-      <div className="w-80 border-r border-border flex flex-col bg-card">
+      <div className={`${isMobileViewport ? (showMobileDetail ? 'hidden' : 'flex flex-1 flex-col') : 'w-80 border-r border-border flex flex-col'} bg-card min-w-0`}>
         <PageHeader
           title="Contatos"
           icon={Users}
           className="px-4 py-4"
           actionContent={
-            <div className="flex items-center gap-1">
+            <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-muted-foreground hover:text-foreground hover:bg-muted gap-1 h-8"
+                className="text-muted-foreground hover:text-foreground hover:bg-muted gap-1 h-9 w-9 p-0"
                 onClick={() => setImportModalOpen(true)}
                 title="Importar contatos"
               >
@@ -594,7 +605,7 @@ export function ContactsView({
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-muted-foreground hover:text-foreground hover:bg-muted gap-1 h-8"
+                className="text-muted-foreground hover:text-foreground hover:bg-muted gap-1 h-9 w-9 p-0"
                 onClick={() => setExportModalOpen(true)}
                 title="Exportar contatos"
               >
@@ -631,7 +642,7 @@ export function ContactsView({
           </div>
         </div>
 
-        {onDeleteLead && (
+        {!isMobileViewport && onDeleteLead && (
           <div className="px-3 py-2 border-b border-border bg-muted/20 flex items-center gap-2">
             <Button
               type="button"
@@ -667,7 +678,7 @@ export function ContactsView({
         )}
 
         {/* Contact List */}
-        <div className="flex-1 overflow-auto">
+        <div className={`flex-1 overflow-auto ${isMobileViewport ? 'p-3 space-y-3 bg-muted/20' : ''}`}>
           {filteredContacts.map((contact) => {
             const isRowSelected = selectedContactIds.has(contact.id);
             return (
@@ -680,10 +691,13 @@ export function ContactsView({
                   }
                   triggerFollowUpExhaustedIfNeeded(contact);
                   setSelectedContact(contact);
+                  if (isMobileViewport) {
+                    setMobileDetailOpen(true);
+                  }
                 }}
                 className={`
-                flex items-center gap-3 p-3 cursor-pointer border-b border-border group
-                hover:bg-muted/50 transition-colors
+                flex items-center gap-3 p-3 cursor-pointer group transition-colors
+                ${isMobileViewport ? 'rounded-2xl border border-border/70 bg-card shadow-sm hover:bg-card/90' : 'border-b border-border hover:bg-muted/50'}
                 ${isSelectionMode ? (isRowSelected ? 'bg-primary/5' : '') : (selectedContact?.id === contact.id ? 'bg-muted' : '')}
               `}
               >
@@ -719,11 +733,11 @@ export function ContactsView({
                 </div>
                 {/* Buttons on hover */}
                 {!isSelectionMode && (
-                  <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className={`flex items-center transition-opacity ${isMobileViewport ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7"
+                      className="h-9 w-9"
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedContact(contact);
@@ -737,7 +751,7 @@ export function ContactsView({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 hover:bg-destructive/10"
+                        className="h-9 w-9 hover:bg-destructive/10"
                         onClick={(e) => handleDeleteClick(contact, e)}
                         title="Excluir Contato"
                       >
@@ -752,17 +766,28 @@ export function ContactsView({
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0 bg-background">
+      <div className={`${isMobileViewport ? (showMobileDetail ? 'flex flex-1 flex-col' : 'hidden') : 'flex-1 flex flex-col'} min-w-0 bg-background`}>
         {/* Detail Header */}
-        <div className="px-6 py-4 border-b border-border/50 bg-gradient-to-r from-background to-muted/30 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="px-4 py-4 sm:px-6 border-b border-border/50 bg-gradient-to-r from-background to-muted/30 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {isMobileViewport && showMobileDetail && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-full"
+                onClick={() => setMobileDetailOpen(false)}
+                aria-label="Voltar para lista de contatos"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+            )}
             <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
               <Mail className="w-4 h-4 text-primary" />
             </div>
-            <h2 className="text-lg font-semibold text-foreground">Detalhes do Contato</h2>
+            <h2 className="text-lg font-semibold text-foreground truncate">Detalhes do Contato</h2>
             {selectedContact && onToggleLeadAi && (
               <div className={cn(
-                "ml-4 flex items-center gap-2 px-3 py-1 bg-background/50 rounded-lg border border-border/50",
+                "ml-0 sm:ml-4 flex items-center gap-2 px-3 py-1 bg-background/50 rounded-lg border border-border/50",
                 !aiSettings?.is_active && "opacity-70"
               )}
                 title={!aiSettings?.is_active ? "IA Global Desativada" : ""}
@@ -788,12 +813,12 @@ export function ContactsView({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             {selectedContact && (
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 border-border/50 shadow-sm"
+                className="gap-2 border-border/50 shadow-sm h-10"
                 onClick={() => setCommentsModalOpen(true)}
               >
                 <MessageSquare className="w-4 h-4" />
@@ -801,7 +826,7 @@ export function ContactsView({
               </Button>
             )}
             {selectedContact && hasChanges && (
-              <Button onClick={handleSave} disabled={isSaving} size="sm" className="gap-2 shadow-sm">
+              <Button onClick={handleSave} disabled={isSaving} size="sm" className="gap-2 shadow-sm h-10">
                 {isSaving ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
@@ -814,7 +839,7 @@ export function ContactsView({
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
+                className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20 h-10"
                 onClick={(e) => handleDeleteClick(selectedContact, e)}
               >
                 <Trash2 className="w-4 h-4" />
@@ -825,9 +850,9 @@ export function ContactsView({
         </div>
 
         {selectedContact ? (
-          <div className="flex-1 overflow-auto p-6">
+          <div className="flex-1 overflow-auto p-4 sm:p-6">
             {/* Contact Header */}
-            <div className="flex items-center gap-4 mb-8">
+            <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-center">
               <Avatar className="h-20 w-20">
                 <AvatarFallback className="bg-primary/10 text-primary text-2xl">
                   {selectedContact.avatar || selectedContact.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
@@ -865,13 +890,13 @@ export function ContactsView({
                   <AssignMemberSelect
                     contactId={selectedContact.id}
                     currentAssigneeId={contacts.find((contact) => contact.id === selectedContact.id)?.assignedToUserId ?? selectedContact.assignedToUserId}
-                    triggerClassName="w-[220px]"
+                    triggerClassName={isMobileViewport ? 'w-full sm:w-[220px]' : 'w-[220px]'}
                   />
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
               {/* Contact Info */}
               <div className="space-y-4">
                 <h4 className="text-sm font-semibold text-primary uppercase tracking-wide">
@@ -899,7 +924,7 @@ export function ContactsView({
                   </div>
                   <div className="flex items-center gap-3">
                     <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                    <div className="flex-1 grid grid-cols-2 gap-2">
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <Input
                         value={formData.endereco || ''}
                         onChange={(e) => handleChange('endereco', e.target.value)}

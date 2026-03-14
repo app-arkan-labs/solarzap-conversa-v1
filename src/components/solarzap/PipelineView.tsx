@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
 import { Contact, PIPELINE_STAGES, PipelineStage, CalendarEvent, CHANNEL_INFO, ChannelFilter } from '@/types/solarzap';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useAutomationSettings } from '@/hooks/useAutomationSettings';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 import { EditLeadModal, UpdateLeadData } from './EditLeadModal';
 import { StageBadges } from './StageBadges';
 import { FollowUpIndicator } from './FollowUpIndicator';
@@ -26,6 +27,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -117,6 +121,7 @@ export function PipelineView({
   leadScopeLoading = false,
   currentUserId = null,
 }: PipelineViewProps) {
+  const isMobileViewport = useMobileViewport();
   const [searchQuery, setSearchQuery] = useState('');
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('todos');
   const [draggedContact, setDraggedContact] = useState<Contact | null>(null);
@@ -162,9 +167,45 @@ export function PipelineView({
   const [isDraggingScroll, setIsDraggingScroll] = useState(false);
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [activeMobileStage, setActiveMobileStage] = useState<PipelineStage>('novo_lead');
+
+  const updateActiveMobileStage = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const stageElements = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-pipeline-stage-id]')
+    );
+    if (stageElements.length === 0) return;
+
+    const viewportCenter = container.scrollLeft + container.clientWidth / 2;
+    let nearestStage = activeMobileStage;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    for (const stageElement of stageElements) {
+      const stageId = stageElement.dataset.pipelineStageId as PipelineStage | undefined;
+      if (!stageId) continue;
+      const stageCenter = stageElement.offsetLeft + stageElement.offsetWidth / 2;
+      const distance = Math.abs(stageCenter - viewportCenter);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestStage = stageId;
+      }
+    }
+
+    if (nearestStage !== activeMobileStage) {
+      setActiveMobileStage(nearestStage);
+    }
+  }, [activeMobileStage]);
+
+  useEffect(() => {
+    if (!isMobileViewport) return;
+    updateActiveMobileStage();
+  }, [isMobileViewport, searchQuery, channelFilter, contacts, updateActiveMobileStage]);
 
   // Drag-to-scroll handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (isMobileViewport) return;
     const target = e.target as HTMLElement;
     if (target.closest('[draggable="true"]') || target.closest('button') || target.closest('input')) {
       return;
@@ -176,32 +217,35 @@ export function PipelineView({
     setStartX(e.pageX - scrollContainerRef.current.offsetLeft);
     setScrollLeft(scrollContainerRef.current.scrollLeft);
     scrollContainerRef.current.style.cursor = 'grabbing';
-  }, []);
+  }, [isMobileViewport]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isMobileViewport) return;
     if (!isDraggingScroll || !scrollContainerRef.current) return;
 
     e.preventDefault();
     const x = e.pageX - scrollContainerRef.current.offsetLeft;
     const walk = (x - startX) * 1.5;
     scrollContainerRef.current.scrollLeft = scrollLeft - walk;
-  }, [isDraggingScroll, startX, scrollLeft]);
+  }, [isDraggingScroll, isMobileViewport, startX, scrollLeft]);
 
   const handleMouseUp = useCallback(() => {
+    if (isMobileViewport) return;
     setIsDraggingScroll(false);
     if (scrollContainerRef.current) {
       scrollContainerRef.current.style.cursor = 'grab';
     }
-  }, []);
+  }, [isMobileViewport]);
 
   const handleMouseLeave = useCallback(() => {
+    if (isMobileViewport) return;
     if (isDraggingScroll) {
       setIsDraggingScroll(false);
       if (scrollContainerRef.current) {
         scrollContainerRef.current.style.cursor = 'grab';
       }
     }
-  }, [isDraggingScroll]);
+  }, [isDraggingScroll, isMobileViewport]);
 
   const handleCardClick = (contact: Contact, e: React.MouseEvent) => {
     if (draggedContact) return;
@@ -428,6 +472,20 @@ export function PipelineView({
     }
   }, [onMoveToPipeline, toast]);
 
+  const handleMoveToStageFromMenu = useCallback(async (contact: Contact, targetStage: PipelineStage) => {
+    if (contact.pipelineStage === targetStage) {
+      return;
+    }
+
+    const stageInfo = PIPELINE_STAGES[targetStage];
+    await moveLeadAndToast(
+      contact,
+      targetStage,
+      'Lead movido!',
+      `${contact.name} movido para "${stageInfo.title}"`,
+    );
+  }, [moveLeadAndToast]);
+
   const handleNextActionClick = async (contact: Contact, e: React.MouseEvent) => {
     e.stopPropagation();
     const stage = contact.pipelineStage;
@@ -558,6 +616,7 @@ export function PipelineView({
 
   // Drag & Drop handlers
   const handleDragStart = (e: React.DragEvent, contact: Contact) => {
+    if (isMobileViewport) return;
     e.dataTransfer.setData('text/plain', contact.id);
     e.dataTransfer.setData('application/json', JSON.stringify(contact));
     e.dataTransfer.effectAllowed = 'move';
@@ -570,6 +629,7 @@ export function PipelineView({
   };
 
   const handleDragOver = (e: React.DragEvent, stage: PipelineStage) => {
+    if (isMobileViewport) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
@@ -579,6 +639,7 @@ export function PipelineView({
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
+    if (isMobileViewport) return;
     e.preventDefault();
     const relatedTarget = e.relatedTarget as HTMLElement;
     if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
@@ -587,6 +648,7 @@ export function PipelineView({
   };
 
   const handleDrop = async (e: React.DragEvent, targetStage: PipelineStage) => {
+    if (isMobileViewport) return;
     e.preventDefault();
     e.stopPropagation();
     setDragOverStage(null);
@@ -653,6 +715,7 @@ export function PipelineView({
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
+    if (isMobileViewport) return;
     const target = e.currentTarget as HTMLElement;
     target.style.opacity = '1';
     setDraggedContact(null);
@@ -666,7 +729,7 @@ export function PipelineView({
         subtitle="Arraste os cards entre as etapas para navegar"
         icon={Kanban}
         actionContent={
-          <>
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
             {canViewTeam && onLeadScopeChange ? (
               <LeadScopeSelect
                 value={leadScope}
@@ -722,13 +785,13 @@ export function PipelineView({
               </PopoverContent>
             </Popover>
 
-            <div className="relative w-64">
+            <div className="relative min-w-0 flex-1 basis-full sm:basis-auto lg:w-64 lg:flex-none">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar leads..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-background border-border/50 shadow-sm glass"
+                className="h-10 pl-10 bg-background border-border/50 shadow-sm glass"
               />
             </div>
 
@@ -764,7 +827,7 @@ export function PipelineView({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </>
+          </div>
         }
       />
 
@@ -785,26 +848,46 @@ export function PipelineView({
         </AlertDialogContent>
       </AlertDialog>
 
+      {isMobileViewport && (
+        <div className="border-b border-border/60 bg-background/95 px-4 py-3 backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/90 px-3 py-2 shadow-sm">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Etapa atual
+              </div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <span>{PIPELINE_STAGES[activeMobileStage].icon}</span>
+                <span className="truncate">{PIPELINE_STAGES[activeMobileStage].title}</span>
+              </div>
+            </div>
+            <Badge variant="outline" className="h-8 rounded-full px-3 text-sm">
+              {getContactsForStage(activeMobileStage).length}
+            </Badge>
+          </div>
+        </div>
+      )}
+
       {/* Pipeline Container with drag-to-scroll */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 bg-muted/50 p-5 pipeline-scroll-container select-none relative"
+        className={`flex-1 bg-muted/50 pipeline-scroll-container relative ${isMobileViewport ? 'overflow-x-auto overflow-y-hidden px-4 py-4' : 'p-5 select-none'}`}
         style={{
-          cursor: isDraggingScroll ? 'grabbing' : 'grab',
+          cursor: isMobileViewport ? 'auto' : (isDraggingScroll ? 'grabbing' : 'grab'),
           overflowX: 'scroll',
           overflowY: 'hidden',
           WebkitOverflowScrolling: 'touch',
         }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
+        onMouseDown={isMobileViewport ? undefined : handleMouseDown}
+        onMouseMove={isMobileViewport ? undefined : handleMouseMove}
+        onMouseUp={isMobileViewport ? undefined : handleMouseUp}
+        onMouseLeave={isMobileViewport ? undefined : handleMouseLeave}
+        onScroll={isMobileViewport ? updateActiveMobileStage : undefined}
       >
         <div
-          className="flex gap-4 pb-4"
+          className={`flex gap-4 pb-4 ${isMobileViewport ? 'snap-x snap-mandatory' : ''}`}
           style={{
             width: 'max-content',
-            minWidth: `${stages.length * 296}px`,
+            minWidth: isMobileViewport ? '100%' : `${stages.length * 296}px`,
             height: 'calc(100% - 16px)',
           }}
         >
@@ -817,11 +900,12 @@ export function PipelineView({
             return (
               <div
                 key={stageId}
-                className={`w-[280px] flex-shrink-0 flex flex-col bg-card rounded-lg shadow-md transition-all duration-200 ${isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
+                data-pipeline-stage-id={stageId}
+                className={`${isMobileViewport ? 'w-[85vw] max-w-[360px] min-w-[300px] snap-center scroll-mx-4' : 'w-[280px]'} flex-shrink-0 flex flex-col bg-card rounded-lg shadow-md transition-all duration-200 ${isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
                   }`}
-                onDragOver={(e) => handleDragOver(e, stageId)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, stageId)}
+                onDragOver={isMobileViewport ? undefined : (e) => handleDragOver(e, stageId)}
+                onDragLeave={isMobileViewport ? undefined : handleDragLeave}
+                onDrop={isMobileViewport ? undefined : (e) => handleDrop(e, stageId)}
               >
                 {/* Column Header */}
                 <div
@@ -843,7 +927,7 @@ export function PipelineView({
                 </div>
 
                 {/* Cards Container */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[400px] custom-scrollbar">
+                <div className={`flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar ${isMobileViewport ? 'min-h-[calc(100vh-22rem)] pr-3' : 'min-h-[400px]'}`}>
                   {stageContacts.length === 0 ? (
                     <div className="flex items-center justify-center h-32 text-muted-foreground text-sm border-2 border-dashed border-muted rounded-lg">
                       Nenhum lead
@@ -857,11 +941,11 @@ export function PipelineView({
                       return (
                         <div
                           key={contact.id}
-                          draggable
+                          draggable={!isMobileViewport}
                           onClick={(e) => handleCardClick(contact, e)}
-                          onDragStart={(e) => handleDragStart(e, contact)}
-                          onDragEnd={handleDragEnd}
-                          className={`rounded-lg border border-border/80 bg-card/96 p-3 text-foreground shadow-sm cursor-pointer active:cursor-grabbing transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${isDragging ? 'opacity-50 scale-95' : ''
+                          onDragStart={isMobileViewport ? undefined : (e) => handleDragStart(e, contact)}
+                          onDragEnd={isMobileViewport ? undefined : handleDragEnd}
+                          className={`rounded-lg border border-border/80 bg-card/96 p-3 text-foreground shadow-sm cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!isMobileViewport ? 'active:cursor-grabbing' : ''} ${isDragging ? 'opacity-50 scale-95' : ''
                             }`}
                         >
                           {/* Header with Drag Handle and Actions Button */}
@@ -884,7 +968,7 @@ export function PipelineView({
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted"
+                                    className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted"
                                     data-testid={`lead-actions-${contact.id}`}
                                     aria-label={`Ações do lead ${contact.name}`}
                                   >
@@ -945,6 +1029,39 @@ export function PipelineView({
                                       <span>Marcar como Perdido</span>
                                     </DropdownMenuItem>
                                   ) : null}
+                                  {isMobileViewport ? (
+                                    <>
+                                      <div className="h-px bg-muted my-1" />
+                                      <DropdownMenuSub>
+                                        <DropdownMenuSubTrigger className="gap-2 cursor-pointer">
+                                          <ArrowUpDown className="w-4 h-4 text-primary" />
+                                          <span>Mover etapa</span>
+                                        </DropdownMenuSubTrigger>
+                                        <DropdownMenuSubContent className="w-56">
+                                          {(Object.keys(PIPELINE_STAGES) as PipelineStage[]).map((stageId) => {
+                                            const stageInfo = PIPELINE_STAGES[stageId];
+                                            const isCurrentStage = stageId === contact.pipelineStage;
+
+                                            return (
+                                              <DropdownMenuItem
+                                                key={`${contact.id}-${stageId}`}
+                                                data-testid={`lead-move-stage-${contact.id}-${stageId}`}
+                                                disabled={isCurrentStage}
+                                                onSelect={(event) => {
+                                                  event.preventDefault();
+                                                  void handleMoveToStageFromMenu(contact, stageId);
+                                                }}
+                                                className="gap-2"
+                                              >
+                                                <span>{stageInfo.icon}</span>
+                                                <span className="truncate">{stageInfo.title}</span>
+                                              </DropdownMenuItem>
+                                            );
+                                          })}
+                                        </DropdownMenuSubContent>
+                                      </DropdownMenuSub>
+                                    </>
+                                  ) : null}
                                   {onDeleteLead && (
                                     <>
                                       <div className="h-px bg-muted my-1" />
@@ -959,7 +1076,7 @@ export function PipelineView({
                                   )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                              <GripVertical className="w-4 h-4 text-muted-foreground/30 ml-0.5 cursor-grab active:cursor-grabbing flex-shrink-0" />
+                              {!isMobileViewport && <GripVertical className="w-4 h-4 text-muted-foreground/30 ml-0.5 cursor-grab active:cursor-grabbing flex-shrink-0" />}
                             </div>
                           </div>
 
