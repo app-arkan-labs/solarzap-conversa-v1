@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { format, subDays, startOfMonth, endOfMonth, startOfYear } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, ChevronDown, Download, TrendingDown } from "lucide-react";
+import { BarChart3, CalendarIcon, ChevronDown, Download, TrendingDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -131,7 +131,7 @@ export function DashboardView({
       <PageHeader
         title="Dashboard"
         subtitle="Visão geral do seu negócio"
-        icon={CalendarIcon}
+        icon={BarChart3}
         actionContent={
           <>
             {canViewTeam && onLeadScopeChange ? (

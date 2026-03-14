@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Plus, Phone, Mail, MapPin, Zap, DollarSign, Calendar, Clock, Timer, Save, Loader2, MessageSquare, Upload, Download, Trash2, Bot, UserCog, CheckSquare } from 'lucide-react';
+import { Search, Plus, Phone, Mail, MapPin, Zap, DollarSign, Calendar, Clock, Timer, Save, Loader2, MessageSquare, Upload, Download, Trash2, Bot, UserCog, CheckSquare, Users } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import {
   AlertDialog,
@@ -112,7 +112,7 @@ const PROPOSAL_STATUS_TRANSLATIONS: Record<string, string> = {
 };
 
 const PROPOSAL_STATUS_BADGE_CLASSES: Record<string, string> = {
-  draft: 'bg-slate-100 text-slate-700 border-slate-200',
+  draft: 'bg-muted text-foreground/80 border-border',
   ready: 'bg-blue-100 text-blue-700 border-blue-200',
   sent: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   accepted: 'bg-green-100 text-green-700 border-green-200',
@@ -131,8 +131,8 @@ const getProposalStatusLabel = (status: string | null | undefined) => {
 };
 
 const getProposalStatusBadgeClass = (status: string | null | undefined) => {
-  if (!status) return 'bg-slate-100 text-slate-700 border-slate-200';
-  return PROPOSAL_STATUS_BADGE_CLASSES[status] || 'bg-slate-100 text-slate-700 border-slate-200';
+  if (!status) return 'bg-muted text-foreground/80 border-border';
+  return PROPOSAL_STATUS_BADGE_CLASSES[status] || 'bg-muted text-foreground/80 border-border';
 };
 
 const extractProposalLinks = (payload: Record<string, unknown> | null) => {
@@ -229,6 +229,25 @@ export function ContactsView({
       }
     }
   }, [selectedContact, hasChanges]);
+
+  useEffect(() => {
+    if (!selectedContact) {
+      if (contacts.length > 0) {
+        setSelectedContact(contacts[0]);
+      }
+      return;
+    }
+
+    const refreshedContact = contacts.find((contact) => contact.id === selectedContact.id) || null;
+    if (!refreshedContact) {
+      setSelectedContact(contacts[0] || null);
+      return;
+    }
+
+    if (refreshedContact !== selectedContact) {
+      setSelectedContact(refreshedContact);
+    }
+  }, [contacts, selectedContact]);
 
   useEffect(() => {
     if (!selectedContact) {
@@ -334,6 +353,28 @@ export function ContactsView({
     setHasChanges(true);
   };
 
+  const handlePipelineStageChange = (value: PipelineStage) => {
+    handleChange('status_pipeline', value);
+    setSelectedContact((prev) => (prev ? { ...prev, pipelineStage: value } : prev));
+  };
+
+  const handleToggleLeadAiRealtime = async (enabled: boolean) => {
+    if (!selectedContact || !onToggleLeadAi) return;
+    const previousValue = selectedContact.aiEnabled !== false;
+
+    setSelectedContact((prev) => (prev ? { ...prev, aiEnabled: enabled } : prev));
+    try {
+      await onToggleLeadAi({ leadId: selectedContact.id, enabled });
+    } catch {
+      setSelectedContact((prev) => (prev ? { ...prev, aiEnabled: previousValue } : prev));
+      toast({
+        title: 'Erro ao atualizar IA',
+        description: 'Não foi possível atualizar o status da IA deste lead.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleSave = async () => {
     if (!selectedContact || !onUpdateLead) return;
 
@@ -351,6 +392,23 @@ export function ContactsView({
       }
 
       await onUpdateLead(selectedContact.id, dataToSave);
+      setSelectedContact((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          name: dataToSave.nome ?? prev.name,
+          phone: dataToSave.telefone ?? prev.phone,
+          email: dataToSave.email ?? prev.email,
+          company: dataToSave.empresa ?? prev.company,
+          clientType: (dataToSave.tipo_cliente as ClientType | undefined) ?? prev.clientType,
+          address: dataToSave.endereco ?? prev.address,
+          city: dataToSave.cidade ?? prev.city,
+          consumption: dataToSave.consumo_kwh ?? prev.consumption,
+          projectValue: dataToSave.valor_estimado ?? prev.projectValue,
+          notes: dataToSave.observacoes ?? prev.notes,
+          pipelineStage: (dataToSave.status_pipeline as PipelineStage | undefined) ?? prev.pipelineStage,
+        };
+      });
       setHasChanges(false);
       toast({
         title: "Contato atualizado!",
@@ -520,7 +578,7 @@ export function ContactsView({
       <div className="w-80 border-r border-border flex flex-col bg-card">
         <PageHeader
           title="Contatos"
-          icon={Phone}
+          icon={Users}
           className="px-4 py-4"
           actionContent={
             <div className="flex items-center gap-1">
@@ -711,15 +769,15 @@ export function ContactsView({
               >
                 <Switch
                   checked={selectedContact.aiEnabled !== false}
-                  onCheckedChange={(checked) => onToggleLeadAi({ leadId: selectedContact.id, enabled: checked })}
-                  className="data-[state=checked]:bg-green-600"
+                  onCheckedChange={handleToggleLeadAiRealtime}
+                  className="data-[state=checked]:bg-primary"
                   disabled={!aiSettings?.is_active} // Disable if Global OFF
                 />
                 <div className="flex items-center gap-1.5">
                   {!aiSettings?.is_active ? (
-                    <Bot className="w-4 h-4 text-slate-400" />
+                    <Bot className="w-4 h-4 text-muted-foreground" />
                   ) : selectedContact.aiEnabled !== false ? (
-                    <Bot className="w-4 h-4 text-green-600" />
+                    <Bot className="w-4 h-4 text-primary" />
                   ) : (
                     <UserCog className="w-4 h-4 text-orange-500" />
                   )}
@@ -790,7 +848,7 @@ export function ContactsView({
                 />
                 <Select
                   value={formData.status_pipeline}
-                  onValueChange={(value) => handleChange('status_pipeline', value as PipelineStage)}
+                  onValueChange={(value) => handlePipelineStageChange(value as PipelineStage)}
                 >
                   <SelectTrigger className={`w-fit ${getStageColor(formData.status_pipeline || 'novo_lead')} text-white border-0`}>
                     <SelectValue />

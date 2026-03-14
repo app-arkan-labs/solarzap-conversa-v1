@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+﻿import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { DashboardPayload } from "@/types/dashboard";
 
@@ -434,7 +434,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
             }));
 
             const ownerStatsMap = new Map<string, { leads: number; won: number; revenue: number; profit: number }>();
-            const ownerLabelFromId = (id: string) => (id === user.id ? "Voce" : `Usuario ${id.slice(0, 8)}`);
+            const ownerLabelFromId = (id: string) => (id === user.id ? "Você" : `Usuário ${id.slice(0, 8)}`);
             const ensureOwner = (ownerId: string) => {
                 if (!ownerStatsMap.has(ownerId)) {
                     ownerStatsMap.set(ownerId, { leads: 0, won: 0, revenue: 0, profit: 0 });
@@ -488,7 +488,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     .sort((a, b) => b.revenue - a.revenue)
                 : [{
                     owner_id: ownerUserId ?? undefined,
-                    name: ownerUserId ? ownerLabelFromId(ownerUserId) : "Geral (Organizacao)",
+                    name: ownerUserId ? ownerLabelFromId(ownerUserId) : "Geral (Organização)",
                     leads: leadsCount,
                     won: wonCount,
                     revenue,
@@ -537,6 +537,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
         enabled: !!params.orgId,
     });
 };
+
 
 
 

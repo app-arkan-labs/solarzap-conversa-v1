@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import { Contact, ClientType } from '@/types/solarzap';
 import { generateProposalPDF } from '@/utils/generateProposalPDF';
 import { useToast } from '@/hooks/use-toast';
@@ -131,6 +131,7 @@ export interface ProposalData {
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
+  descontoAvistaPercentual?: number;
   descontoAvistaValor?: number;
   valorAvistaLiquido?: number;
   investimentoBaseMetricas?: number;
@@ -250,7 +251,7 @@ export const ROOF_POSITION_OPTIONS: Array<{ value: RoofPosition; label: string }
   { value: 'norte', label: 'Norte' },
   { value: 'leste_oeste', label: 'Leste-Oeste' },
   { value: 'sul', label: 'Sul' },
-  { value: 'nao_definido', label: 'Nao Definido' },
+  { value: 'nao_definido', label: 'Não Definido' },
 ];
 
 export function createDefaultFinancingCondition(): FinancingCondition {
@@ -271,6 +272,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   const [aiHeadline, setAiHeadline] = useState('');
   const [rentabilityManuallyEdited, setRentabilityManuallyEdited] = useState(false);
   const [tariffManuallyEdited, setTariffManuallyEdited] = useState(false);
+  const [valorTotalManuallyEdited, setValorTotalManuallyEdited] = useState(false);
   const { updateLead } = useLeads();
   const { orgId } = useAuth();
   const { toast } = useToast();
@@ -292,6 +294,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     potenciaSistema: 0,
     quantidadePaineis: 0,
     valorTotal: contact?.projectValue || 0,
+    descontoAvistaPercentual: 0,
     descontoAvistaValor: 0,
     valorAvistaLiquido: Math.max(0, Number(contact?.projectValue) || 0),
     investimentoBaseMetricas: Math.max(0, Number(contact?.projectValue) || 0),
@@ -361,6 +364,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   const formDataRef = React.useRef(formData);
   const rentabilityManuallyEditedRef = React.useRef(rentabilityManuallyEdited);
   const tariffManuallyEditedRef = React.useRef(tariffManuallyEdited);
+  const valorTotalManuallyEditedRef = React.useRef(valorTotalManuallyEdited);
 
   React.useEffect(() => {
     contactRef.current = contact;
@@ -377,6 +381,10 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   React.useEffect(() => {
     tariffManuallyEditedRef.current = tariffManuallyEdited;
   }, [tariffManuallyEdited]);
+
+  React.useEffect(() => {
+    valorTotalManuallyEditedRef.current = valorTotalManuallyEdited;
+  }, [valorTotalManuallyEdited]);
 
   // â”€â”€ Storage Upload (best-effort) â”€â”€
   const uploadPdfToStorage = async (blob: Blob, leadId: string, fileName: string): Promise<{ bucket: string; path: string } | null> => {
@@ -427,12 +435,19 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const rawRentabilityRatePerKwh = Number(next.rentabilityRatePerKwh);
     const rawTeRatePerKwh = Number(next.teRatePerKwh);
     const rawTusdRatePerKwh = Number(next.tusdRatePerKwh);
+    const descontoPercentual = Math.max(
+      0,
+      Math.min(100, Number(next.descontoAvistaPercentual) || 0),
+    );
+    const descontoAvistaValorCalculado = descontoPercentual > 0
+      ? Math.max(0, Number(next.valorTotal) || 0) * (descontoPercentual / 100)
+      : next.descontoAvistaValor;
     const contaLuzMensalReferencia = next.tipo_cliente === 'usina'
       ? 0
       : Math.max(0, Number(next.contaLuzMensal) || 0);
     const cashDiscountSnapshot = resolveCashDiscountSnapshot({
       valorTotal: next.valorTotal,
-      descontoAvistaValor: next.descontoAvistaValor,
+      descontoAvistaValor: descontoAvistaValorCalculado,
       paymentConditions: next.paymentConditions,
     });
 
@@ -478,6 +493,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     return {
       financialInputs,
       financialOutputs,
+      descontoAvistaPercentual: descontoPercentual,
       descontoAvistaValor: cashDiscountSnapshot.descontoAvistaValor,
       valorAvistaLiquido: cashDiscountSnapshot.valorAvistaLiquido,
       investimentoBaseMetricas: cashDiscountSnapshot.investimentoBaseMetricas,
@@ -510,6 +526,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const {
       financialInputs,
       financialOutputs,
+      descontoAvistaPercentual,
       descontoAvistaValor,
       valorAvistaLiquido,
       investimentoBaseMetricas,
@@ -517,6 +534,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     return {
       ...nextWithSizing,
+      descontoAvistaPercentual,
       descontoAvistaValor,
       valorAvistaLiquido,
       investimentoBaseMetricas,
@@ -537,7 +555,11 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     patch: Partial<typeof formData>,
     options?: { preserveValorTotal?: boolean },
   ) => {
-    return recalculateSizing({ ...prev, ...patch }, options);
+    const mergedOptions = {
+      ...options,
+      preserveValorTotal: options?.preserveValorTotal ?? valorTotalManuallyEditedRef.current,
+    };
+    return recalculateSizing({ ...prev, ...patch }, mergedOptions);
   }, [recalculateSizing]);
 
 
@@ -748,7 +770,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       console.error('autofillAddressByCep error:', error);
       toast({
         title: 'Falha no autofill de CEP',
-        description: 'Vamos tentar calcular pela geocodificacao do backend.',
+        description: 'Vamos tentar calcular pela geocodificação do backend.',
         variant: 'destructive',
       });
       return {
@@ -805,10 +827,28 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       || field === 'teRatePerKwh'
       || field === 'tusdRatePerKwh'
       || field === 'tusdCompensationPct'
-      || field === 'descontoAvistaValor'
       || field === 'abaterCustoDisponibilidadeNoDimensionamento'
     ) {
       setFormData(prev => patchAndRecalculate(prev, { [field]: value } as Partial<typeof formData>));
+      return;
+    }
+
+    if (field === 'descontoAvistaPercentual') {
+      const descontoAvistaPercentual = Math.max(0, Math.min(100, Number(value) || 0));
+      setFormData(prev => patchAndRecalculate(prev, { descontoAvistaPercentual }));
+      return;
+    }
+
+    if (field === 'descontoAvistaValor') {
+      const descontoAvistaValor = Math.max(0, Number(value) || 0);
+      const valorTotalAtual = Math.max(0, Number(formDataRef.current.valorTotal) || 0);
+      const descontoAvistaPercentual = valorTotalAtual > 0
+        ? Math.max(0, Math.min(100, (descontoAvistaValor / valorTotalAtual) * 100))
+        : 0;
+      setFormData(prev => patchAndRecalculate(prev, {
+        descontoAvistaValor,
+        descontoAvistaPercentual,
+      }));
       return;
     }
 
@@ -824,6 +864,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     if (field === 'valorTotal') {
       const manualValor = Math.max(0, Number(value) || 0);
+      valorTotalManuallyEditedRef.current = true;
+      setValorTotalManuallyEdited(true);
       setFormData(prev => patchAndRecalculate(
         prev,
         { valorTotal: manualValor },
@@ -952,12 +994,14 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         const {
           financialInputs,
           financialOutputs,
+          descontoAvistaPercentual,
           descontoAvistaValor,
           valorAvistaLiquido,
           investimentoBaseMetricas,
         } = buildFinancialSnapshot(next);
         return {
           ...next,
+          descontoAvistaPercentual,
           descontoAvistaValor,
           valorAvistaLiquido,
           investimentoBaseMetricas,
@@ -1244,6 +1288,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const {
       financialInputs,
       financialOutputs,
+      descontoAvistaPercentual,
       descontoAvistaValor,
       valorAvistaLiquido,
       investimentoBaseMetricas,
@@ -1368,6 +1413,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       const pdfBlob = generateProposalPDF({
         contact: contactForPdf,
         ...formData,
+        descontoAvistaPercentual,
         descontoAvistaValor,
         valorAvistaLiquido,
         investimentoBaseMetricas,
@@ -1476,6 +1522,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         validadeDias: formData.validadeDias,
         parcela36x: legacyParcela36,
         parcela60x: legacyParcela60,
+        descontoAvistaPercentual,
         descontoAvistaValor,
         valorAvistaLiquido,
         investimentoBaseMetricas,
@@ -1511,6 +1558,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       const saveResult = await onGenerate({
         contactId: contact.id,
         ...formData,
+        descontoAvistaPercentual,
         descontoAvistaValor,
         valorAvistaLiquido,
         investimentoBaseMetricas,
@@ -1597,8 +1645,10 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     setAiHeadline('');
     rentabilityManuallyEditedRef.current = false;
     tariffManuallyEditedRef.current = false;
+    valorTotalManuallyEditedRef.current = false;
     setRentabilityManuallyEdited(false);
     setTariffManuallyEdited(false);
+    setValorTotalManuallyEdited(false);
     const explicitUf = normalizeUf(currentContact.state);
     const inferredUf = inferUfFromCep(currentContact.zip);
     const uf = explicitUf || inferredUf || '';
@@ -1626,6 +1676,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           ? Math.max(0, Number(currentContact.averageMonthlyBill) || 0)
           : undefined,
         valorTotal: currentContact.projectValue || 0,
+        descontoAvistaPercentual: 0,
         descontoAvistaValor: 0,
         valorAvistaLiquido: Math.max(0, Number(currentContact.projectValue) || 0),
         investimentoBaseMetricas: Math.max(0, Number(currentContact.projectValue) || 0),
@@ -1750,4 +1801,5 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 }
 
 export type UseProposalFormReturn = ReturnType<typeof useProposalForm>;
+
 

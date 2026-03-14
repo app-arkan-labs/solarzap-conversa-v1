@@ -19,10 +19,10 @@ export default function OrganizationSelect() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-green-50">
+      <div className="auth-shell min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-green-600" />
-          <p className="text-green-700">Carregando empresas...</p>
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-foreground/80">Carregando empresas...</p>
         </div>
       </div>
     );
@@ -56,11 +56,11 @@ export default function OrganizationSelect() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 p-4 sm:p-8">
+    <div className="auth-shell min-h-screen p-4 sm:p-8">
       <div className="mx-auto max-w-4xl">
-        <Card data-testid="org-select-page" className="border-green-200 shadow-sm">
+        <Card data-testid="org-select-page" className="border-border/70 bg-background/90 shadow-[0_24px_70px_-36px_rgba(15,23,42,0.45)] backdrop-blur-xl">
           <CardHeader>
-            <CardTitle className="text-slate-900">Selecao de empresa</CardTitle>
+            <CardTitle className="text-foreground">Selecao de empresa</CardTitle>
             <CardDescription>Selecione o contexto para continuar.</CardDescription>
           </CardHeader>
           <CardContent>

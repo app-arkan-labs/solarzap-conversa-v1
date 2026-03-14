@@ -1,4 +1,4 @@
-import { AlertTriangle, CreditCard, Lock, Sparkles } from 'lucide-react';
+﻿import { AlertTriangle, CreditCard, Lock, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -75,7 +75,7 @@ export function BillingBlockerDialog({
             data-testid="billing-blocker-close-secondary"
             onClick={onClose}
           >
-            Agora nao
+            Agora não
           </Button>
           <Button
             type="button"
@@ -92,3 +92,4 @@ export function BillingBlockerDialog({
 }
 
 export default BillingBlockerDialog;
+

@@ -150,8 +150,8 @@ export function IntegrationsView() {
     <ScrollArea className="flex-1 h-full">
       <div className="bg-muted/30 min-h-full">
         <PageHeader
-          title="WhatsApp Business"
-          subtitle="Gerencie suas conexões WhatsApp e centralize todas as comunicações"
+          title="Central de Integrações"
+          subtitle="Conecte canais e serviços usados pela operação comercial"
           icon={Plug}
           actionContent={
             <div className="flex items-center gap-4 bg-background/50 glass px-4 py-2 rounded-xl border border-border/50">
@@ -177,12 +177,7 @@ export function IntegrationsView() {
                       <MessageCircle className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <CardTitle className="text-xl flex items-center gap-2">
-                        WhatsApp Business
-                        <Badge variant="outline" className="ml-2 bg-background text-xs">
-                          Evolution API
-                        </Badge>
-                      </CardTitle>
+                      <CardTitle className="text-xl">Conexões WhatsApp</CardTitle>
                       <CardDescription className="mt-1">
                         Conecte múltiplos números para sua equipe
                       </CardDescription>
@@ -381,7 +376,7 @@ export function IntegrationsView() {
                                 checked={!!instance.ai_enabled}
                                 onCheckedChange={(checked) => setInstanceAiEnabled(instance.instance_name, checked)}
                                 disabled={actionLoading === instance.id}
-                                className="scale-75 origin-right data-[state=checked]:bg-green-500"
+                                className="scale-75 origin-right data-[state=checked]:bg-primary"
                               />
                             </div>
 

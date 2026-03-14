@@ -506,7 +506,7 @@ export function SolarZapLayout() {
       setSwitchingOrganizationId(nextOrgId);
       await selectOrganization(nextOrgId, { reload: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Falha ao selecionar organizacao.';
+      const message = error instanceof Error ? error.message : 'Falha ao selecionar organização.';
       toast({
         title: 'Erro ao trocar empresa',
         description: message,
@@ -750,7 +750,7 @@ export function SolarZapLayout() {
                 .insert([{
                   org_id: orgId,
                   lead_id: leadId,
-                  texto: `[Feedback Ligacao]: ${normalizedFeedback}`,
+                  texto: `[Feedback Ligação]: ${normalizedFeedback}`,
                   autor: 'Vendedor',
                 }]);
               if (commentError) {
@@ -784,7 +784,7 @@ export function SolarZapLayout() {
 
         toast({
           title: "Feedback registrado!",
-          description: "A descricao da ligacao foi salva.",
+          description: "A descrição da ligação foi salva.",
         });
       }
 
@@ -798,7 +798,7 @@ export function SolarZapLayout() {
       });
       toast({
         title: "Falha ao mover lead",
-        description: "Nao foi possivel atualizar a etapa do lead apos confirmar a ligacao.",
+        description: "Não foi possível atualizar a etapa do lead após confirmar a ligação.",
         variant: "destructive",
       });
     } finally {
@@ -828,7 +828,7 @@ export function SolarZapLayout() {
         });
         toast({
           title: "Falha ao mover lead",
-          description: "Nao foi possivel mover o lead para \"Aguardando Proposta\".",
+          description: "Não foi possível mover o lead para \"Aguardando Proposta\".",
           variant: "destructive",
         });
       }
@@ -886,7 +886,7 @@ export function SolarZapLayout() {
       !options.skipProjectPaidFinanceModal
     ) {
       if (!contact) {
-        throw new Error('Lead nao encontrado para abrir o fechamento financeiro.');
+        throw new Error('Lead não encontrado para abrir o fechamento financeiro.');
       }
 
       const financeCompleted = await openProjectPaidFinanceGate(contact);
@@ -1070,7 +1070,7 @@ export function SolarZapLayout() {
       console.error('Failed to acknowledge follow-up exhausted modal (keep current):', error);
       toast({
         title: 'Erro ao atualizar lead',
-        description: 'Nao foi possivel confirmar o follow-up exaurido.',
+        description: 'Não foi possível confirmar o follow-up exaurido.',
         variant: 'destructive',
       });
     } finally {
@@ -1096,7 +1096,7 @@ export function SolarZapLayout() {
       console.error('Failed to disable follow-up for exhausted lead:', error);
       toast({
         title: 'Erro ao desabilitar follow-up',
-        description: 'Nao foi possivel desabilitar o follow-up para este lead.',
+        description: 'Não foi possível desabilitar o follow-up para este lead.',
         variant: 'destructive',
       });
     } finally {
@@ -1108,11 +1108,11 @@ export function SolarZapLayout() {
     if (!followUpExhaustedLead) return;
 
     const reasonMap: Record<FollowUpLostReasonKey, string> = {
-      sem_resposta: 'Nao respondeu',
+      sem_resposta: 'Não respondeu',
       sem_interesse: 'Sem interesse',
       concorrente: 'Fechou com concorrente',
-      timing: 'Nao e o momento',
-      financeiro: 'Sem condicao financeira',
+      timing: 'Não é o momento',
+      financeiro: 'Sem condição financeira',
       outro: 'Outro',
     };
 
@@ -1165,7 +1165,7 @@ export function SolarZapLayout() {
       console.error('Failed to move exhausted follow-up lead to perdido:', error);
       toast({
         title: 'Erro ao mover para perdido',
-        description: 'Nao foi possivel concluir a acao para follow-up exaurido.',
+        description: 'Não foi possível concluir a ação para follow-up exaurido.',
         variant: 'destructive',
       });
     } finally {
@@ -1325,7 +1325,7 @@ export function SolarZapLayout() {
     }
 
     if (stageMoveError) {
-      throw new Error(`Proposta salva, mas nao foi possivel mover o lead para "Proposta Pronta". ${stageMoveError.message}`);
+      throw new Error(`Proposta salva, mas não foi possível mover o lead para "Proposta Pronta". ${stageMoveError.message}`);
     }
 
     // Modal state is centralized in handlePipelineStageChange for proposta_pronta.
@@ -1338,7 +1338,7 @@ export function SolarZapLayout() {
 
   if (isInitialLoading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-background">
+      <div className="app-shell-bg h-screen w-full flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-10 h-10 animate-spin text-primary" />
           <p className="text-muted-foreground">Carregando dados...</p>
@@ -1348,7 +1348,7 @@ export function SolarZapLayout() {
   }
 
   return (
-    <div className="h-screen w-full flex bg-background overflow-hidden">
+    <div className="app-shell-bg h-screen w-full flex bg-background overflow-hidden">
       <SolarZapNav
         activeTab={activeTab}
         onTabChange={handleTabChange}
@@ -1381,7 +1381,7 @@ export function SolarZapLayout() {
           setIsOrganizationSwitcherOpen(nextOpen);
         }}
       >
-        <DialogContent className="max-w-3xl p-6">
+        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)] overflow-hidden border-border/80 bg-card/97 p-0 sm:max-w-3xl">
           <OrganizationSelectorPanel
             rootTestId="org-selector-modal-panel"
             organizations={organizations}
@@ -1395,7 +1395,7 @@ export function SolarZapLayout() {
             connectLabel="Abrir empresa"
           />
 
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex items-center justify-between border-t border-border/70 bg-muted/25 px-7 py-5 sm:px-9">
             <Button
               type="button"
               variant="outline"
@@ -1447,7 +1447,7 @@ export function SolarZapLayout() {
       </div>
 
       {accessState === 'read_only' ? (
-        <div className="absolute top-14 left-[60px] right-0 z-20 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-900 text-sm">
+        <div className="absolute top-14 left-[60px] right-0 z-20 px-4 py-2 bg-amber-50/95 border-b border-amber-200 text-amber-900 text-sm backdrop-blur-sm">
           Seu acesso está em modo leitura. Algumas ações estão bloqueadas até a regularização da assinatura.
         </div>
       ) : null}
@@ -1915,7 +1915,7 @@ export function SolarZapLayout() {
               });
               toast({
                 title: "Falha ao mover lead",
-                description: "Agendamento salvo, mas nao foi possivel mover o lead para a etapa correspondente.",
+                description: "Agendamento salvo, mas não foi possível mover o lead para a etapa correspondente.",
                 variant: "destructive",
               });
               return;

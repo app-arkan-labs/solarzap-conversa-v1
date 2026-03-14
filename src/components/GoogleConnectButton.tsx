@@ -28,14 +28,14 @@ export const GoogleConnectButton: React.FC<GoogleConnectButtonProps> = ({
 
     if (connected) {
         return (
-            <div className="flex items-center gap-4 p-4 border rounded-lg bg-green-50/50 border-green-200">
+            <div className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-white rounded-full shadow-sm">
-                        <CheckCircle2 className="w-5 h-5 text-green-600" />
+                    <div className="rounded-full border border-border/70 bg-card p-2 shadow-sm">
+                        <CheckCircle2 className="w-5 h-5 text-primary" />
                     </div>
                     <div>
-                        <h3 className="font-medium text-green-900">Google Conectado</h3>
-                        <p className="text-sm text-green-700">Calendar, Gmail e Meet sincronizados</p>
+                        <h3 className="font-medium text-foreground">Google Conectado</h3>
+                        <p className="text-sm text-foreground/70">Calendar, Gmail e Meet sincronizados</p>
                     </div>
                 </div>
                 <Button
@@ -51,21 +51,21 @@ export const GoogleConnectButton: React.FC<GoogleConnectButtonProps> = ({
     }
 
     return (
-        <div className="flex items-center justify-between p-4 border rounded-lg bg-white shadow-sm">
+        <div className="flex items-center justify-between rounded-2xl border border-border/70 bg-card/94 p-4 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.28)] backdrop-blur-sm">
             <div className="flex items-center gap-3">
                 <div className="flex -space-x-2">
-                    <div className="p-2 bg-white rounded-full border shadow-sm z-10">
+                    <div className="z-10 rounded-full border border-border bg-card p-2 shadow-sm">
                         <Calendar className="w-4 h-4 text-blue-600" />
                     </div>
-                    <div className="p-2 bg-white rounded-full border shadow-sm z-20">
+                    <div className="z-20 rounded-full border border-border bg-card p-2 shadow-sm">
                         <Mail className="w-4 h-4 text-red-600" />
                     </div>
-                    <div className="p-2 bg-white rounded-full border shadow-sm z-30">
-                        <Video className="w-4 h-4 text-green-600" />
+                    <div className="z-30 rounded-full border border-border bg-card p-2 shadow-sm">
+                        <Video className="w-4 h-4 text-primary" />
                     </div>
                 </div>
                 <div>
-                    <h3 className="font-medium">Integração Google Workspace</h3>
+                    <h3 className="font-medium text-foreground">Integração Google Workspace</h3>
                     <p className="text-sm text-muted-foreground">Sincronize reuniões e e-mails</p>
                 </div>
             </div>

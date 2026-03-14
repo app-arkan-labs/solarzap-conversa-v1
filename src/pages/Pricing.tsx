@@ -30,23 +30,23 @@ const PLAN_DISPLAY: Record<string, {
     description: 'Para quem está começando a escalar vendas com WhatsApp',
     icon: Zap,
     gradient: 'from-slate-500 to-slate-700',
-    buttonGradient: 'bg-gradient-to-r from-slate-600 to-slate-800 hover:from-slate-700 hover:to-slate-900',
+    buttonGradient: 'brand-gradient-button',
     tagline: 'Essencial',
   },
   pro: {
     label: 'Pro',
     description: 'Ideal para operações em crescimento acelerado',
     icon: Crown,
-    gradient: 'from-emerald-500 to-teal-600',
-    buttonGradient: 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700',
+    gradient: 'from-primary to-secondary',
+    buttonGradient: 'brand-gradient-button',
     tagline: 'Mais popular',
   },
   scale: {
     label: 'Scale',
     description: 'Para times grandes com volume de alta escala',
     icon: Sparkles,
-    gradient: 'from-violet-500 to-purple-700',
-    buttonGradient: 'bg-gradient-to-r from-violet-500 to-purple-700 hover:from-violet-600 hover:to-purple-800',
+    gradient: 'from-secondary to-primary',
+    buttonGradient: 'brand-gradient-button',
     tagline: 'Máximo poder',
   },
 };
@@ -77,17 +77,17 @@ const CARD_HIGHLIGHTS: Record<string, string[]> = {
 };
 
 const SOURCE_LABELS: Record<string, string> = {
-  tracking: 'Tracking avancado',
-  integracoes: 'Integracoes',
+  tracking: 'Tracking avançado',
+  integracoes: 'Integrações',
   calendario: 'Agendamentos',
   ia_agentes: 'IA Agentes',
   broadcasts: 'Disparos',
-  broadcast_credits: 'Creditos de disparo',
-  ai_credits: 'Creditos de IA',
+  broadcast_credits: 'Créditos de disparo',
+  ai_credits: 'Créditos de IA',
   proposal_ai: 'Propostas com IA',
-  whatsapp_instances: 'Instancias de WhatsApp',
+  whatsapp_instances: 'Instâncias de WhatsApp',
   propostas: 'Propostas',
-  automacoes: 'Automacoes',
+  automacoes: 'Automações',
 };
 
 type PlanRow = {
@@ -119,7 +119,7 @@ function getPlanActionLabel(targetPlan: string, currentPlan: string | null, inte
   if (targetPlan === currentPlan) return 'Plano atual';
   const currentRank = PLAN_RANK[currentPlan ?? 'free'] ?? 0;
   const targetRank = PLAN_RANK[targetPlan] ?? 0;
-  if (!currentPlan || currentPlan === 'free') return 'Testar gratis por 7 dias';
+  if (!currentPlan || currentPlan === 'free') return 'Testar grátis por 7 dias';
   if (targetRank > currentRank) return 'Fazer upgrade';
   if (targetRank < currentRank) return 'Fazer downgrade';
   return 'Selecionar plano';
@@ -152,12 +152,12 @@ export default function Pricing() {
   const source = String(searchParams.get('source') || '').trim().toLowerCase();
   const sourceLabel = SOURCE_LABELS[source] || null;
   const isNoPlan = !currentPlan || currentPlan === 'free';
-  const heroBadgeLabel = intent === 'reactivate' ? 'Reativacao guiada' : 'Upgrade guiado';
+  const heroBadgeLabel = intent === 'reactivate' ? 'Reativação guiada' : 'Upgrade guiado';
   const heroTitle = intent === 'reactivate'
     ? 'Retome seu plano e desbloqueie o acesso completo'
-    : 'Escolha o plano ideal para destravar a proxima etapa';
+    : 'Escolha o plano ideal para destravar a próxima etapa';
   const heroDescription = intent === 'reactivate'
-    ? `Regularize a assinatura${sourceLabel ? ` para voltar a usar ${sourceLabel}` : ''} sem friccao.`
+    ? `Regularize a assinatura${sourceLabel ? ` para voltar a usar ${sourceLabel}` : ''} sem fricção.`
     : sourceLabel
       ? `Chegue ao recurso de ${sourceLabel} com o plano mais aderente ao seu uso atual.`
       : 'Compare os planos e siga para o upgrade mais aderente ao seu momento.';
@@ -238,12 +238,12 @@ export default function Pricing() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white overflow-y-auto">
+    <div className="app-shell-bg min-h-screen text-foreground overflow-y-auto">
       {/* Decorative blurs */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-40 left-1/4 h-[500px] w-[500px] rounded-full bg-emerald-500/10 blur-[120px]" />
+        <div className="absolute -top-40 left-1/4 h-[500px] w-[500px] rounded-full bg-primary/12 blur-[120px]" />
         <div className="absolute top-1/3 -right-20 h-[400px] w-[400px] rounded-full bg-violet-500/10 blur-[100px]" />
-        <div className="absolute bottom-0 left-0 h-[300px] w-[300px] rounded-full bg-teal-500/8 blur-[80px]" />
+        <div className="absolute bottom-0 left-0 h-[300px] w-[300px] rounded-full bg-secondary/10 blur-[80px]" />
       </div>
 
       <div className="relative mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
@@ -251,8 +251,8 @@ export default function Pricing() {
         {checkoutState && (
           <div className={`mb-8 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm backdrop-blur-sm ${
             checkoutState === 'success'
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-              : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+              ? 'border-primary/30 bg-primary/10 text-primary'
+              : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
           }`}>
             {checkoutState === 'success' ? <Check className="h-5 w-5 flex-shrink-0" /> : <X className="h-5 w-5 flex-shrink-0" />}
             <span>
@@ -265,33 +265,33 @@ export default function Pricing() {
 
         {/* Hero */}
         <div className="mb-12 text-center">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-400">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-xs font-medium text-primary">
             <Sparkles className="h-3.5 w-3.5" />
-            {intent === 'reactivate' ? heroBadgeLabel : '7 dias gratis em qualquer plano'}
+            {intent === 'reactivate' ? heroBadgeLabel : '7 dias grátis em qualquer plano'}
           </div>
 
           {isNoPlan && intent !== 'reactivate' ? (
             <>
               <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
                 Escolha o plano ideal para{' '}
-                <span className="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
+                <span className="brand-gradient-text">
                   escalar suas vendas
                 </span>
               </h1>
-              <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-400">
-                Comece a fechar mais negocios hoje com automacao via WhatsApp, IA embarcada e CRM solar completo.
-                Teste qualquer plano gratis por 7 dias.
+              <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+                Comece a fechar mais negócios hoje com automação via WhatsApp, IA embarcada e CRM solar completo.
+                Teste qualquer plano grátis por 7 dias.
               </p>
             </>
           ) : (
             <>
               <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
                 {heroTitle}{' '}
-                <span className="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
+                <span className="brand-gradient-text">
                   SolarZap
                 </span>
               </h1>
-              <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-400">
+              <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
                 {heroDescription}
               </p>
             </>
@@ -299,15 +299,15 @@ export default function Pricing() {
 
           {/* Current plan pill */}
           {currentPlan && currentPlan !== 'free' && (
-            <div className="mt-6 inline-flex items-center gap-3 rounded-full border border-slate-700 bg-slate-800/60 px-5 py-2 text-sm backdrop-blur-sm">
-              <span className="text-slate-400">Plano atual:</span>
-              <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/30">
+            <div className="public-hero-surface mt-6 inline-flex items-center gap-3 rounded-full px-5 py-2 text-sm">
+              <span className="text-muted-foreground">Plano atual:</span>
+              <Badge className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/15">
                 {currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}
               </Badge>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 text-xs text-slate-400 hover:text-white"
+                className="h-7 text-xs text-muted-foreground hover:text-foreground"
                 onClick={handleOpenPortal}
                 disabled={openingPortal}
               >
@@ -319,21 +319,21 @@ export default function Pricing() {
         </div>
 
         {/* Trial highlight banner */}
-        <div className="mb-10 overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.07] via-teal-500/[0.05] to-emerald-500/[0.07] backdrop-blur-sm">
+        <div className="brand-gradient-soft mb-10 overflow-hidden rounded-3xl border border-primary/20 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-4 px-6 py-6 text-center sm:flex-row sm:text-left">
-            <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15">
-              <Gift className="h-7 w-7 text-emerald-400" />
+            <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-primary/15">
+              <Gift className="h-7 w-7 text-primary" />
             </div>
             <div className="flex-1">
-              <h2 className="text-lg font-bold text-white">
-                Teste qualquer plano grátis por 7 dias — <span className="text-emerald-400">até o Scale!</span>
+              <h2 className="text-lg font-bold text-foreground">
+                Teste qualquer plano grátis por 7 dias — <span className="text-primary">até o Scale!</span>
               </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Você escolhe o plano que quiser e usa <span className="font-medium text-slate-300">todos os recursos sem restrição</span> durante o trial.
+              <p className="mt-1 text-sm text-muted-foreground">
+                Você escolhe o plano que quiser e usa <span className="font-medium text-foreground">todos os recursos sem restrição</span> durante o trial.
                 Quanto maior o plano, mais você pode testar. Só cobramos após os 7 dias.
               </p>
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-400 sm:flex-shrink-0">
+            <div className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary sm:flex-shrink-0">
               <Clock className="h-4 w-4" />
               R$ 0,00 por 7 dias
             </div>
@@ -360,15 +360,15 @@ export default function Pricing() {
                 key={key}
                 className={`group relative flex flex-col overflow-hidden rounded-3xl border transition-all duration-300 ${
                   isTarget
-                    ? 'border-emerald-300 bg-gradient-to-b from-emerald-400/15 to-transparent shadow-[0_0_70px_-18px_rgba(52,211,153,0.55)] ring-2 ring-emerald-300/70'
+                    ? 'border-primary/50 bg-gradient-to-b from-primary/18 to-transparent shadow-[0_0_70px_-18px_rgba(249,115,22,0.24)] ring-2 ring-primary/35'
                     : isPro
-                    ? 'border-emerald-500/40 bg-gradient-to-b from-emerald-500/[0.08] to-transparent shadow-[0_0_60px_-12px_rgba(16,185,129,0.25)] hover:shadow-[0_0_80px_-12px_rgba(16,185,129,0.35)] lg:scale-[1.03]'
-                    : 'border-slate-700/60 bg-slate-800/40 hover:border-slate-600/80 hover:bg-slate-800/60'
+                    ? 'border-primary/35 bg-gradient-to-b from-primary/[0.08] to-transparent shadow-[0_0_60px_-12px_rgba(249,115,22,0.18)] hover:shadow-[0_0_80px_-12px_rgba(59,130,246,0.18)] lg:scale-[1.03]'
+                    : 'border-border/70 bg-card/86 hover:border-primary/20 hover:bg-card'
                 } backdrop-blur-sm`}
               >
                 {/* Popular ribbon */}
                 {isPro && (
-                  <div className="absolute -right-12 top-6 rotate-45 bg-gradient-to-r from-emerald-500 to-teal-500 px-12 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
+                  <div className="absolute -right-12 top-6 rotate-45 bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--secondary)))] px-12 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
                     Mais popular
                   </div>
                 )}
@@ -381,13 +381,13 @@ export default function Pricing() {
                         <Icon className="h-5 w-5 text-white" />
                       </div>
                       <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                        isPro ? 'bg-emerald-500/20 text-emerald-400' : key === 'scale' ? 'bg-violet-500/20 text-violet-300' : 'bg-slate-700 text-slate-400'
+                        isPro ? 'bg-primary/15 text-primary' : key === 'scale' ? 'bg-violet-500/15 text-violet-600 dark:text-violet-300' : 'bg-muted text-muted-foreground'
                       }`}>
                         {display?.tagline ?? 'Plano'}
                       </span>
                     </div>
                     <h3 className="text-2xl font-bold">{String(plan.display_name)}</h3>
-                    <p className="mt-1 text-sm text-slate-400">{display?.description ?? 'Plano comercial'}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{display?.description ?? 'Plano comercial'}</p>
                   </div>
 
                   {/* Price */}
@@ -396,15 +396,15 @@ export default function Pricing() {
                       <span className="text-4xl font-extrabold tracking-tight">
                         {formatCurrency(Number(plan.price_cents || 0))}
                       </span>
-                      <span className="text-sm text-slate-500">/mês</span>
+                      <span className="text-sm text-muted-foreground">/mês</span>
                     </div>
-                    <p className="text-xs text-slate-500 mt-1">após o trial de 7 dias</p>
+                    <p className="text-xs text-muted-foreground mt-1">após o trial de 7 dias</p>
                     <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
                       isPro
-                        ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                        ? 'border border-primary/20 bg-primary/10 text-primary'
                         : key === 'scale'
                           ? 'border border-violet-400/30 bg-violet-500/15 text-violet-300'
-                          : 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                          : 'border border-primary/20 bg-primary/10 text-primary'
                     }`}>
                       <Gift className="h-3 w-3" />
                       7 dias grátis
@@ -422,14 +422,14 @@ export default function Pricing() {
                       return (
                         <li key={limitKey} className="flex items-start gap-3 text-sm">
                           <div className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ${
-                            isPro ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-300'
+                            isPro ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
                           }`}>
                             <Check className="h-3 w-3" />
                           </div>
-                          <span className="text-slate-300">
+                          <span className="text-foreground/84">
                             {isFeature ? label : (
                               <>
-                                <span className="font-semibold text-white">{formatLimit(value)}</span>{' '}
+                                <span className="font-semibold text-foreground">{formatLimit(value)}</span>{' '}
                                 {label.toLowerCase().replace(/^[^ ]+ /, '')}
                               </>
                             )}
@@ -443,7 +443,7 @@ export default function Pricing() {
                   <Button
                     className={`w-full h-12 rounded-xl text-sm font-semibold transition-all duration-200 ${
                       isDisabled
-                        ? 'border border-slate-600 bg-transparent text-slate-400 hover:bg-slate-700/50'
+                        ? 'border border-border bg-background text-muted-foreground hover:bg-accent'
                         : `${display?.buttonGradient ?? ''} text-white shadow-lg hover:shadow-xl`
                     }`}
                     onClick={() => !isDisabled && handleUpgrade(key)}
@@ -457,7 +457,7 @@ export default function Pricing() {
                     ) : isDisabled ? (
                       <span className="flex items-center gap-2">
                         <Check className="h-4 w-4" />
-                        {intent === 'reactivate' && isCurrent ? 'Plano atual para reativacao' : 'Plano atual'}
+                        {intent === 'reactivate' && isCurrent ? 'Plano atual para reativação' : 'Plano atual'}
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">
@@ -467,7 +467,7 @@ export default function Pricing() {
                     )}
                   </Button>
                   {!isDisabled && isNoPlan && (
-                    <p className="mt-2 text-center text-[11px] text-slate-500">
+                    <p className="mt-2 text-center text-[11px] text-muted-foreground">
                       Sem compromisso · Cancele a qualquer momento
                     </p>
                   )}
@@ -481,24 +481,24 @@ export default function Pricing() {
         <div className="mt-16">
           <button
             onClick={() => setShowComparison(!showComparison)}
-            className="mx-auto flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800/60 px-6 py-3 text-sm font-medium text-slate-300 backdrop-blur-sm transition-colors hover:border-slate-600 hover:text-white"
+            className="public-hero-surface mx-auto flex items-center gap-2 rounded-full px-6 py-3 text-sm font-medium text-foreground transition-colors hover:border-primary/20 hover:text-foreground"
           >
             {showComparison ? 'Ocultar comparativo' : 'Ver comparativo completo'}
             <ArrowRight className={`h-4 w-4 transition-transform ${showComparison ? 'rotate-90' : ''}`} />
           </button>
 
           {showComparison && (
-            <div className="mt-8 overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-800/40 backdrop-blur-sm">
+            <div className="mt-8 overflow-hidden rounded-2xl border border-border/70 bg-card/86 backdrop-blur-sm">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[700px]">
                   <thead>
-                    <tr className="border-b border-slate-700/60">
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-slate-400">Recurso</th>
+                    <tr className="border-b border-border/60">
+                      <th className="px-6 py-4 text-left text-sm font-semibold text-muted-foreground">Recurso</th>
                       {plans.map((plan) => {
                         const isPro = plan.plan_key === 'pro';
                         return (
                           <th key={`head-${plan.plan_key}`} className="px-6 py-4 text-center text-sm font-semibold">
-                            <span className={isPro ? 'text-emerald-400' : 'text-slate-300'}>{plan.display_name}</span>
+                            <span className={isPro ? 'text-primary' : 'text-foreground/84'}>{plan.display_name}</span>
                           </th>
                         );
                       })}
@@ -506,14 +506,14 @@ export default function Pricing() {
                   </thead>
                   <tbody>
                     {comparisonRows.map((row, i) => (
-                      <tr key={row.key} className={`border-b border-slate-700/30 last:border-b-0 ${i % 2 === 0 ? 'bg-slate-800/20' : ''}`}>
-                        <td className="px-6 py-3.5 text-sm text-slate-400">{row.label}</td>
+                      <tr key={row.key} className={`border-b border-border/40 last:border-b-0 ${i % 2 === 0 ? 'bg-muted/18' : ''}`}>
+                        <td className="px-6 py-3.5 text-sm text-muted-foreground">{row.label}</td>
                         {plans.map((plan) => {
                           const value = row.kind === 'limit' ? plan.limits?.[row.key] : plan.features?.[row.key];
                           const isPro = plan.plan_key === 'pro';
                           return (
-                            <td key={`${row.key}-${plan.plan_key}`} className={`px-6 py-3.5 text-center text-sm font-medium ${isPro ? 'text-emerald-400' : 'text-slate-300'}`}>
-                              {row.kind === 'limit' ? formatLimit(value) : value ? <Check className="mx-auto h-4 w-4 text-emerald-400" /> : <X className="mx-auto h-4 w-4 text-slate-600" />}
+                            <td key={`${row.key}-${plan.plan_key}`} className={`px-6 py-3.5 text-center text-sm font-medium ${isPro ? 'text-primary' : 'text-foreground/84'}`}>
+                              {row.kind === 'limit' ? formatLimit(value) : value ? <Check className="mx-auto h-4 w-4 text-primary" /> : <X className="mx-auto h-4 w-4 text-muted-foreground" />}
                             </td>
                           );
                         })}
@@ -536,15 +536,15 @@ export default function Pricing() {
             <div
               key={item.title}
               className={`flex items-start gap-4 rounded-2xl border p-5 backdrop-blur-sm ${
-                item.highlight ? 'border-emerald-500/30 bg-emerald-500/[0.06]' : 'border-slate-700/40 bg-slate-800/30'
+                item.highlight ? 'border-primary/30 bg-primary/[0.06]' : 'border-border/60 bg-card/82'
               }`}
             >
-              <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${item.highlight ? 'bg-emerald-500/20' : 'bg-slate-700/50'}`}>
-                <item.icon className={`h-5 w-5 ${item.highlight ? 'text-emerald-400' : 'text-slate-400'}`} />
+              <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${item.highlight ? 'bg-primary/20' : 'bg-muted'}`}>
+                <item.icon className={`h-5 w-5 ${item.highlight ? 'text-primary' : 'text-muted-foreground'}`} />
               </div>
               <div>
-                <p className="font-semibold text-white">{item.title}</p>
-                <p className="mt-1 text-sm leading-relaxed text-slate-400">{item.desc}</p>
+                <p className="font-semibold text-foreground">{item.title}</p>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{item.desc}</p>
               </div>
             </div>
           ))}
@@ -557,18 +557,18 @@ export default function Pricing() {
               <Star key={i} className="h-5 w-5 fill-amber-400 text-amber-400" />
             ))}
           </div>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-muted-foreground">
             Usado por dezenas de integradores solares para fechar mais negócios
           </p>
         </div>
 
         {/* Bottom CTA */}
         <div className="mt-12 text-center">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted-foreground">
             Precisa de algo personalizado?{' '}
             <button
               onClick={handleOpenPortal}
-              className="text-emerald-400 underline underline-offset-4 hover:text-emerald-300"
+              className="text-primary underline underline-offset-4 hover:text-primary/80"
               disabled={openingPortal}
             >
               Entre em contato
@@ -576,7 +576,7 @@ export default function Pricing() {
           </p>
           <Button
             variant="ghost"
-            className="mt-4 text-sm text-slate-500 hover:text-slate-300 gap-1.5"
+            className="mt-4 text-sm text-muted-foreground hover:text-foreground gap-1.5"
             onClick={() => navigate('/')}
           >
             <ArrowLeft className="h-4 w-4" />

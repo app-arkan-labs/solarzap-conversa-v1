@@ -38,17 +38,17 @@ export default function OnboardingWizardShell({
   const progressPercent = Math.round(((currentIndex + 1) / Math.max(steps.length, 1)) * 100);
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
+    <div className="min-h-screen app-shell-bg p-4 sm:p-6">
       <div className="mx-auto w-full max-w-3xl space-y-6">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-border/70 bg-background/90 p-5 shadow-[0_22px_60px_-34px_rgba(15,23,42,0.35)] backdrop-blur-xl">
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-sm font-medium text-slate-600">
+            <p className="text-sm font-medium text-muted-foreground">
               Etapa {currentIndex + 1} de {steps.length}
             </p>
-            <p className="text-sm text-slate-500">{progressPercent}%</p>
+            <p className="text-sm text-muted-foreground">{progressPercent}%</p>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progressPercent}%` }} />
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--secondary)))] transition-all" style={{ width: `${progressPercent}%` }} />
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             {steps.map((step, index) => {
@@ -59,9 +59,9 @@ export default function OnboardingWizardShell({
                   key={step.key}
                   className={cn(
                     'rounded-full border px-3 py-1 text-xs',
-                    isActive && 'border-emerald-300 bg-emerald-50 text-emerald-700',
-                    isDone && 'border-emerald-200 bg-emerald-100 text-emerald-700',
-                    !isActive && !isDone && 'border-slate-200 bg-white text-slate-500',
+                    isActive && 'border-primary/25 bg-primary/10 text-primary',
+                    isDone && 'border-secondary/20 bg-secondary/10 text-secondary',
+                    !isActive && !isDone && 'border-border bg-card/92 text-muted-foreground',
                   )}
                 >
                   {step.title}
@@ -71,9 +71,9 @@ export default function OnboardingWizardShell({
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
-          <p className="mt-1 text-sm text-slate-600">{description}</p>
+        <div className="rounded-2xl border border-border/70 bg-background/90 p-5 shadow-[0_22px_60px_-34px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:p-6">
+          <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
           <div className="mt-6">{children}</div>
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">

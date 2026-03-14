@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Agentes de Pipeline — SolarZap
  *
  * Apenas as etapas com agente ativo (IA opera) são listadas aqui.
@@ -160,7 +160,7 @@ Agendar: "Perfeito ✅ Vamos marcar sua visita técnica gratuita. Melhor {{DIA1}
 **D+3 (última):** "Última por aqui, {{NOME}}. Se ainda fizer sentido, me diga só: visita ou chamada e qual período (manhã/tarde/noite/sábado). Eu encaixo pra você."
 
 ### Campos para salvar no CRM
-- no_show_reason: tempo | tecnico | duvida | desinteresse | sem_resposta
+- no_show_reason: tempo | tecnico | dúvida | desinteresse | sem_resposta
 - recovery_path: reschedule_call | bant_chat_to_visit | objection_handled
 - next_step: call | visit
 - attempt_count: 1/2/3`,
@@ -170,11 +170,11 @@ Agendar: "Perfeito ✅ Vamos marcar sua visita técnica gratuita. Melhor {{DIA1}
   {
     stage: 'chamada_realizada',
     label: 'Chamada Realizada',
-    objective: 'Enviar mensagem pos-ligacao conduzindo ao proximo passo',
+    objective: 'Enviar mensagem pós-ligação conduzindo ao próximo passo',
     nextStages: 'Aguardando Proposta, Visita Agendada',
     defaultPrompt: AI_PIPELINE_STAGE_PROMPTS_PDF.chamada_realizada,
   },
-  // 4. NEGOCIACAO (proposta_negociacao)
+  // 4. NEGOCIAÇÃO (proposta_negociacao)
   // ================================
   {
     stage: 'proposta_negociacao',
@@ -410,6 +410,10 @@ export const DEFAULT_PROMPTS_BY_STAGE: Record<string, string> = {
   agente_disparos: AI_PIPELINE_STAGE_PROMPTS_PDF.agente_disparos,
   assistente_geral: AI_PIPELINE_STAGE_PROMPTS_PDF.assistente_geral,
 };
+
+
+
+
 
 
 

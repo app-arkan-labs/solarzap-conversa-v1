@@ -86,7 +86,7 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
     const createAppointment = useMutation({
         mutationFn: async (data: CreateAppointmentData) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             const { data: newEvent, error } = await supabase
                 .from('appointments')
@@ -122,7 +122,7 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
     const updateAppointment = useMutation({
         mutationFn: async ({ id, data }: { id: string; data: UpdateAppointmentData }) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             const payload: any = {};
             if (data.title !== undefined) payload.title = data.title;
@@ -155,7 +155,7 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
     const deleteAppointment = useMutation({
         mutationFn: async (id: string) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             const { error } = await supabase
                 .from('appointments')
@@ -166,7 +166,7 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
             if (error) throw error;
         },
         onSuccess: () => {
-            toast.success('Agendamento excluido.');
+            toast.success('Agendamento excluído.');
             queryClient.invalidateQueries({ queryKey: ['appointments', orgId] });
         }
     });
@@ -179,3 +179,4 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
         deleteAppointment: deleteAppointment.mutateAsync
     };
 }
+

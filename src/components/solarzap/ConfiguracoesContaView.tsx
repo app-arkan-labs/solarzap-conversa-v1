@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Loader2, User, Mail, Lock, ShieldCheck, LogOut, Camera } from 'lucide-react';
+import { Loader2, User, Mail, Lock, ShieldCheck, LogOut, Camera, Sun, Moon } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import { useNavigate } from 'react-router-dom';
 import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
 import { PageHeader } from './PageHeader';
@@ -15,6 +16,7 @@ export function ConfiguracoesContaView() {
     const { user, role, signOut } = useAuth();
     const { toast } = useToast();
     const navigate = useNavigate();
+    const { theme, setTheme } = useTheme();
 
     const [isLoading, setIsLoading] = useState(false);
     const [profileName, setProfileName] = useState('');
@@ -168,7 +170,7 @@ export function ConfiguracoesContaView() {
     };
 
     return (
-        <div className="flex-1 flex flex-col items-center h-full bg-slate-50 overflow-hidden">
+        <div className="app-shell-bg flex-1 flex flex-col items-center h-full overflow-hidden">
             <div className="w-full">
                 <PageHeader
                     title="Minha Conta"
@@ -313,6 +315,33 @@ export function ConfiguracoesContaView() {
                                 Atualizar Senha
                             </Button>
                         </CardFooter>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><Sun className="w-5 h-5 text-primary" /> Aparência</CardTitle>
+                            <CardDescription>Personalize o tema da sua interface.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex items-center gap-4">
+                            <Button
+                                type="button"
+                                variant={theme === 'light' ? 'default' : 'outline'}
+                                onClick={() => setTheme('light')}
+                                className="flex-1 sm:flex-none"
+                            >
+                                <Sun className="w-4 h-4 mr-2" />
+                                Claro
+                            </Button>
+                            <Button
+                                type="button"
+                                variant={theme === 'dark' ? 'default' : 'outline'}
+                                onClick={() => setTheme('dark')}
+                                className="flex-1 sm:flex-none"
+                            >
+                                <Moon className="w-4 h-4 mr-2" />
+                                Escuro
+                            </Button>
+                        </CardContent>
                     </Card>
 
                     <Card className="md:col-span-2 border-destructive/20">

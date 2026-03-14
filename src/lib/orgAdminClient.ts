@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+﻿import { supabase } from '@/lib/supabase';
 import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
 import { getActiveOrgId } from '@/lib/activeOrgContext';
 
@@ -251,7 +251,7 @@ async function invokeOrgAdmin<TExpected extends OrgAdminSuccessResponse>(
       && /Failed to send a request to the Edge Function|Failed to fetch|NetworkError|Load failed/i.test(rawErrorMessage);
 
     if (isTransportInvokeError) {
-      detailedMessage = 'Falha de conexao com org-admin (possivel CORS/origem nao permitida).';
+      detailedMessage = 'Falha de conexão com org-admin (possível CORS/origem não permitida).';
       code = code || 'invoke_transport_error';
     }
 
@@ -448,3 +448,4 @@ export async function removeMember(userId: string, orgId?: string) {
   invalidateMembersCache(orgId);
   return response;
 }
+

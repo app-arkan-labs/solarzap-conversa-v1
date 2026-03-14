@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -271,7 +271,7 @@ export function useWhatsAppInstances() {
 
       // Always require real auth
       if (!orgId) {
-        toast.error('Organizacao nao selecionada');
+        toast.error('Organização não selecionada');
         return null;
       }
 
@@ -343,7 +343,7 @@ export function useWhatsAppInstances() {
       }
 
       if (!orgId) {
-        toast.error('Organizacao nao selecionada');
+        toast.error('Organização não selecionada');
         return null;
       }
 
@@ -421,7 +421,7 @@ export function useWhatsAppInstances() {
       }
 
       if (!orgId) {
-        toast.error('Organizacao nao selecionada');
+        toast.error('Organização não selecionada');
         return false;
       }
 
@@ -459,7 +459,7 @@ export function useWhatsAppInstances() {
       }
 
       if (!orgId) {
-        toast.error('Organizacao nao selecionada');
+        toast.error('Organização não selecionada');
         return false;
       }
 
@@ -501,7 +501,7 @@ export function useWhatsAppInstances() {
       }
 
       if (!orgId) {
-        toast.error('Organizacao nao selecionada');
+        toast.error('Organização não selecionada');
         return false;
       }
 
@@ -547,3 +547,4 @@ export function useWhatsAppInstances() {
     isFallbackMode: useFallback,
   };
 }
+

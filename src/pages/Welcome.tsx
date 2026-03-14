@@ -6,11 +6,11 @@ export default function Welcome() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="app-shell-bg min-h-screen p-6">
       <div className="mx-auto max-w-2xl space-y-6">
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
-          <h1 className="text-xl font-semibold text-emerald-800">Assinatura ativada</h1>
-          <p className="text-sm text-emerald-700">Seu trial foi iniciado. Complete o onboarding para acelerar os primeiros resultados.</p>
+        <div className="rounded-2xl border border-primary/20 bg-card/94 p-4 shadow-[0_20px_50px_-34px_rgba(15,23,42,0.22)] backdrop-blur-xl">
+          <h1 className="text-xl font-semibold text-foreground">Assinatura ativada</h1>
+          <p className="text-sm text-muted-foreground">Seu trial foi iniciado. Complete o onboarding para acelerar os primeiros resultados.</p>
         </div>
         <OnboardingChecklist />
         <div className="flex justify-end">

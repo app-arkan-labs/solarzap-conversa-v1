@@ -50,10 +50,10 @@ async function resolveMfaStatus(): Promise<MfaStatus> {
 
 function LoadingScreen({ label }: { label: string }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-green-50">
+    <div className="auth-shell min-h-screen flex items-center justify-center">
       <div className="flex flex-col items-center gap-3 text-center px-6">
-        <Loader2 className="w-8 h-8 animate-spin text-green-600" />
-        <p className="text-green-700">{label}</p>
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <p className="text-foreground/80">{label}</p>
       </div>
     </div>
   );

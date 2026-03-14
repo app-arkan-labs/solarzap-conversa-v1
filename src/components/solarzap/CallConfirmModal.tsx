@@ -71,11 +71,11 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      toast({ title: 'Copiado!', description: 'Copiado para a area de transferencia.' });
+      toast({ title: 'Copiado!', description: 'Copiado para a área de transferência.' });
     } catch {
       toast({
-        title: 'Nao foi possivel copiar',
-        description: 'Seu navegador bloqueou o acesso a area de transferencia.',
+        title: 'Não foi possível copiar',
+        description: 'Seu navegador bloqueou o acesso à área de transferência.',
         variant: 'destructive',
       });
     }
@@ -84,8 +84,8 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
   const handleChooseMethod = (nextMethod: CallMethod) => {
     if (!phoneDigits) {
       toast({
-        title: 'Telefone indisponivel',
-        description: 'Este lead nao possui um numero de telefone valido para ligacao.',
+        title: 'Telefone indisponível',
+        description: 'Este lead não possui um número de telefone válido para ligação.',
         variant: 'destructive',
       });
       return;
@@ -132,7 +132,7 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
             </DialogHeader>
 
             <div className="py-4 space-y-4">
-              <p className="text-sm text-muted-foreground">Escolha como voce quer iniciar a ligacao no celular.</p>
+              <p className="text-sm text-muted-foreground">Escolha como você quer iniciar a ligação no celular.</p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Button
@@ -164,7 +164,7 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Smartphone className="w-4 h-4" />
                   <span>
-                    Numero: <span className="text-foreground font-medium">{phoneDisplay || '-'}</span>
+                    Número: <span className="text-foreground font-medium">{phoneDisplay || '-'}</span>
                   </span>
                 </div>
               </div>
@@ -191,15 +191,15 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
                   {methodLabel} para <span className="font-semibold">{contactName}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Aponte a camera do celular para o QR Code.
+                  Aponte a câmera do celular para o QR Code.
                   {method === 'whatsapp'
-                    ? ' O WhatsApp abrira na conversa do cliente.'
-                    : ' O discador abrira com o numero preenchido.'}
+                    ? ' O WhatsApp abrirá na conversa do cliente.'
+                    : ' O discador abrirá com o número preenchido.'}
                 </p>
               </div>
 
               <div className="flex justify-center">
-                <div className="bg-white p-3 rounded-xl border shadow-sm">
+                <div className="rounded-xl border border-border bg-card/95 p-3 shadow-sm">
                   <QRCode value={directUrl || ''} size={212} />
                 </div>
               </div>
@@ -207,7 +207,7 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
               <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-xs text-muted-foreground">Numero</div>
+                    <div className="text-xs text-muted-foreground">Número</div>
                     <div className="text-sm font-medium truncate">{phoneDisplay || '-'}</div>
                   </div>
                   <Button
@@ -246,7 +246,7 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
                 Voltar
               </Button>
               <Button onClick={handleProceedToConfirm} className="flex-1 gap-2">
-                Ja abri no celular
+                Já abri no celular
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </DialogFooter>
@@ -256,20 +256,20 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-lg">
                 <Phone className="w-5 h-5 text-primary" />
-                Confirmar Ligacao
+                Confirmar Ligação
               </DialogTitle>
             </DialogHeader>
 
             <div className="py-4">
               <p className="text-foreground">
-                A ligacao para <span className="font-semibold">{contactName}</span> foi realizada com sucesso?
+                A ligação para <span className="font-semibold">{contactName}</span> foi realizada com sucesso?
               </p>
             </div>
 
             <DialogFooter className="flex gap-2 sm:gap-2">
               <Button variant="outline" onClick={handleNotCompleted} className="flex-1 gap-2">
                 <X className="w-4 h-4" />
-                Nao Realizei
+                Não Realizei
               </Button>
               <Button onClick={handleCompleted} disabled={isSubmitting} className="flex-1 gap-2">
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
@@ -283,13 +283,13 @@ export function CallConfirmModal({ isOpen, onClose, onConfirm, contactName, cont
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-lg">
                 <Phone className="w-5 h-5 text-primary" />
-                Como foi a ligacao?
+                Como foi a ligação?
               </DialogTitle>
             </DialogHeader>
 
             <div className="py-4 space-y-3">
               <p className="text-sm text-muted-foreground">
-                Descreva rapidamente o resultado da ligacao para registrar no historico do lead.
+                Descreva rapidamente o resultado da ligação para registrar no histórico do lead.
               </p>
               <Textarea
                 value={feedback}

@@ -2,20 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
-/* SolarZap CRM - Design System WhatsApp */
+/* SolarZap CRM - Premium visual system */
 
 @layer base {
   :root {
-    /* WhatsApp Colors */
-    --whatsapp-green: 142 70% 49%;
-    --whatsapp-dark: 168 85% 19%;
-    --whatsapp-light: 109 62% 91%;
-    --whatsapp-gray: 203 15% 58%;
-    --whatsapp-bg: 33 26% 88%;
+    /* Legacy aliases kept for compatibility */
+    --whatsapp-green: 28 92% 54%;
+    --whatsapp-dark: 218 54% 18%;
+    --whatsapp-light: 30 100% 96%;
+    --whatsapp-gray: 217 18% 56%;
+    --whatsapp-bg: 36 45% 95%;
     
     /* Solar Accent */
-    --solar-yellow: 45 100% 51%;
-    --solar-orange: 36 100% 50%;
+    --solar-yellow: 38 94% 59%;
+    --solar-orange: 28 92% 54%;
     
     /* Status Colors */
     --success: 122 39% 49%;
@@ -24,93 +24,93 @@
     --info: 207 90% 54%;
     
     /* Base Theme - Light */
-    --background: 0 0% 100%;
-    --foreground: 210 11% 15%;
+    --background: 34 38% 97%;
+    --foreground: 220 34% 14%;
 
     --card: 0 0% 100%;
-    --card-foreground: 210 11% 15%;
+    --card-foreground: 220 34% 14%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 210 11% 15%;
+    --popover-foreground: 220 34% 14%;
 
-    --primary: 142 70% 49%;
+    --primary: 28 92% 54%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 168 85% 19%;
+    --secondary: 218 58% 36%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 210 20% 96%;
-    --muted-foreground: 203 15% 45%;
+    --muted: 34 24% 92%;
+    --muted-foreground: 219 16% 42%;
 
-    --accent: 109 62% 91%;
-    --accent-foreground: 168 85% 19%;
+    --accent: 214 42% 94%;
+    --accent-foreground: 220 29% 20%;
 
     --destructive: 4 90% 58%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 210 20% 90%;
-    --input: 210 20% 90%;
-    --ring: 142 70% 49%;
+    --border: 30 19% 85%;
+    --input: 32 23% 88%;
+    --ring: 28 92% 54%;
 
-    --radius: 0.5rem;
+    --radius: 1rem;
 
-    /* Sidebar - WhatsApp Dark Green */
-    --sidebar-background: 168 85% 19%;
-    --sidebar-foreground: 0 0% 100%;
-    --sidebar-primary: 142 70% 49%;
+    /* Sidebar */
+    --sidebar-background: 34 41% 98%;
+    --sidebar-foreground: 222 34% 18%;
+    --sidebar-primary: 28 92% 54%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 168 70% 25%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 168 60% 25%;
-    --sidebar-ring: 142 70% 49%;
+    --sidebar-accent: 216 40% 94%;
+    --sidebar-accent-foreground: 222 34% 18%;
+    --sidebar-border: 214 24% 84%;
+    --sidebar-ring: 28 92% 54%;
 
     /* Chat Area */
-    --chat-bg: 33 26% 88%;
-    --chat-bubble-sent: 109 62% 91%;
+    --chat-bg: 32 47% 95%;
+    --chat-bubble-sent: 31 100% 92%;
     --chat-bubble-received: 0 0% 100%;
   }
 
   .dark {
-    --background: 210 11% 12%;
-    --foreground: 210 20% 96%;
+    --background: 222 41% 10%;
+    --foreground: 35 24% 94%;
 
-    --card: 210 11% 15%;
-    --card-foreground: 210 20% 96%;
+    --card: 221 33% 14%;
+    --card-foreground: 35 24% 94%;
 
-    --popover: 210 11% 15%;
-    --popover-foreground: 210 20% 96%;
+    --popover: 221 33% 15%;
+    --popover-foreground: 35 24% 94%;
 
-    --primary: 142 70% 49%;
+    --primary: 31 100% 61%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 168 85% 19%;
+    --secondary: 216 64% 63%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 210 11% 20%;
-    --muted-foreground: 203 15% 60%;
+    --muted: 221 24% 18%;
+    --muted-foreground: 218 18% 68%;
 
-    --accent: 168 70% 25%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 222 28% 18%;
+    --accent-foreground: 35 24% 94%;
 
     --destructive: 4 90% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 210 11% 25%;
-    --input: 210 11% 25%;
-    --ring: 142 70% 49%;
+    --border: 220 21% 24%;
+    --input: 220 21% 22%;
+    --ring: 31 100% 61%;
 
-    --sidebar-background: 210 11% 10%;
-    --sidebar-foreground: 210 20% 96%;
-    --sidebar-primary: 142 70% 49%;
+    --sidebar-background: 223 48% 9%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 31 100% 61%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 11% 18%;
+    --sidebar-accent: 221 36% 15%;
     --sidebar-accent-foreground: 210 20% 96%;
-    --sidebar-border: 210 11% 20%;
-    --sidebar-ring: 142 70% 49%;
+    --sidebar-border: 220 26% 17%;
+    --sidebar-ring: 31 100% 61%;
 
-    --chat-bg: 210 11% 15%;
-    --chat-bubble-sent: 168 70% 25%;
-    --chat-bubble-received: 210 11% 20%;
+    --chat-bg: 222 32% 13%;
+    --chat-bubble-sent: 27 58% 24%;
+    --chat-bubble-received: 221 24% 19%;
   }
 }
 
@@ -121,12 +121,93 @@
 
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at top left, hsl(var(--primary) / 0.12), transparent 28%),
+      radial-gradient(circle at top right, hsl(var(--secondary) / 0.10), transparent 24%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+    min-height: 100vh;
   }
 }
 
 @layer utilities {
   .glass {
-    @apply backdrop-blur-md bg-white/70 border border-white/20 shadow-lg dark:bg-black/30 dark:border-white/10;
+    @apply backdrop-blur-xl border shadow-[0_24px_80px_-32px_rgba(15,23,42,0.25)] dark:shadow-[0_24px_80px_-32px_rgba(2,6,23,0.62)];
+    background-color: hsl(var(--card) / 0.82);
+    border-color: hsl(var(--border) / 0.68);
+  }
+
+  .app-shell-bg {
+    background-image:
+      radial-gradient(circle at top left, hsl(var(--primary) / 0.08), transparent 22%),
+      radial-gradient(circle at top right, hsl(var(--secondary) / 0.08), transparent 26%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+  }
+
+  .auth-shell {
+    background-image:
+      radial-gradient(circle at 12% 18%, rgba(251, 146, 60, 0.24), transparent 24%),
+      radial-gradient(circle at 82% 20%, rgba(59, 130, 246, 0.18), transparent 28%),
+      radial-gradient(circle at 76% 78%, rgba(245, 158, 11, 0.16), transparent 22%),
+      linear-gradient(135deg, #f8f4ee 0%, #f5efe7 42%, #e8edf8 100%);
+  }
+
+  .dark .auth-shell {
+    background-image:
+      radial-gradient(circle at 12% 18%, rgba(251, 146, 60, 0.12), transparent 24%),
+      radial-gradient(circle at 82% 20%, rgba(59, 130, 246, 0.12), transparent 28%),
+      radial-gradient(circle at 76% 78%, rgba(245, 158, 11, 0.08), transparent 22%),
+      linear-gradient(145deg, #0f172a 0%, #111827 46%, #172033 100%);
+  }
+
+  .auth-card {
+    @apply border shadow-[0_30px_100px_-40px_rgba(15,23,42,0.32)] backdrop-blur-2xl dark:shadow-[0_30px_100px_-40px_rgba(2,6,23,0.65)];
+    background-color: hsl(var(--card) / 0.84);
+    border-color: hsl(var(--border) / 0.7);
+  }
+
+  .public-hero-surface {
+    @apply border backdrop-blur-xl shadow-[0_25px_90px_-40px_rgba(15,23,42,0.28)] dark:shadow-[0_25px_90px_-40px_rgba(2,6,23,0.62)];
+    background-color: hsl(var(--card) / 0.8);
+    border-color: hsl(var(--border) / 0.62);
+  }
+
+  .brand-gradient-bg {
+    background-image: linear-gradient(142deg, hsl(var(--primary)) 0%, hsl(30 100% 62%) 34%, hsl(var(--secondary)) 100%);
+  }
+
+  .brand-gradient-button {
+    background-image: linear-gradient(142deg, hsl(var(--primary)) 0%, hsl(30 100% 62%) 36%, hsl(var(--secondary)) 100%);
+    box-shadow: 0 18px 42px -22px hsl(var(--primary) / 0.42);
+  }
+
+  .brand-gradient-button:hover {
+    filter: saturate(1.03) brightness(1.025);
+    box-shadow: 0 20px 48px -20px hsl(var(--primary) / 0.48);
+  }
+
+  .brand-gradient-soft {
+    background-image: linear-gradient(122deg, hsl(var(--card)) 0%, hsl(var(--card)) 42%, hsl(var(--primary) / 0.11) 76%, hsl(var(--secondary) / 0.09) 100%);
+  }
+
+  .brand-gradient-text {
+    background-image: linear-gradient(140deg, hsl(var(--primary)) 0%, hsl(30 100% 62%) 38%, hsl(var(--secondary)) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .brand-logo-disc {
+    @apply flex items-center justify-center rounded-full ring-1 shadow-[0_20px_38px_-24px_rgba(15,23,42,0.55)];
+    background-image:
+      radial-gradient(circle at 30% 28%, rgba(255,255,255,0.16), rgba(255,255,255,0) 32%),
+      linear-gradient(180deg, hsl(223 48% 12%), hsl(223 48% 8%));
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .brand-logo-image {
+    @apply object-contain drop-shadow-md;
+    width: 80%;
+    height: 80%;
   }
   
   .animate-stagger-1 {
@@ -168,10 +249,9 @@
   background: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* Pipeline horizontal scroll - Premium scrollbar */
 .pipeline-scroll-container {
   scrollbar-width: auto;
-  scrollbar-color: hsl(142 70% 49%) hsl(210 20% 90%);
+  scrollbar-color: hsl(var(--primary)) hsl(var(--muted));
 }
 
 .pipeline-scroll-container::-webkit-scrollbar {
@@ -180,25 +260,25 @@
 }
 
 .pipeline-scroll-container::-webkit-scrollbar-track {
-  background: hsl(210 20% 92%);
+  background: hsl(var(--muted));
   border-radius: 8px;
   margin: 0 16px;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .pipeline-scroll-container::-webkit-scrollbar-thumb {
-  background: linear-gradient(90deg, hsl(142 70% 45%), hsl(142 70% 55%));
+  background: linear-gradient(90deg, hsl(var(--primary) / 0.92), hsl(var(--secondary) / 0.92));
   border-radius: 8px;
-  border: 3px solid hsl(210 20% 92%);
+  border: 3px solid hsl(var(--muted));
   min-width: 60px;
 }
 
 .pipeline-scroll-container::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(90deg, hsl(142 70% 40%), hsl(142 70% 50%));
+  background: linear-gradient(90deg, hsl(var(--primary) / 1), hsl(var(--secondary) / 1));
 }
 
 .pipeline-scroll-container::-webkit-scrollbar-thumb:active {
-  background: hsl(142 70% 35%);
+  background: hsl(var(--primary));
 }
 
 /* Ensure scrollbar is always visible */
@@ -209,7 +289,7 @@
 /* Chat background pattern */
 .chat-bg-pattern {
   background-color: hsl(var(--chat-bg));
-  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Ccircle cx='22' cy='22' r='2' fill='%230f172a' fill-opacity='0.05'/%3E%3Ccircle cx='84' cy='34' r='1.5' fill='%23f97316' fill-opacity='0.09'/%3E%3Ccircle cx='38' cy='82' r='2' fill='%233b82f6' fill-opacity='0.06'/%3E%3Cpath d='M0 60h120' stroke='%230f172a' stroke-opacity='0.03'/%3E%3Cpath d='M60 0v120' stroke='%23f97316' stroke-opacity='0.03'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 /* Chat textarea scrollbar */

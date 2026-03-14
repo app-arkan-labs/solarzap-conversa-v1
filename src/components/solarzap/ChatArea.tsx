@@ -885,11 +885,11 @@ export function ChatArea({
     return (
       <div className="flex-1 flex items-center justify-center bg-muted/30">
         <div className="text-center">
-          <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
+          <div className="brand-logo-disc mx-auto mb-4 h-20 w-20">
             <img
               src="/logo.png"
               alt="SolarZap Logo"
-              className="w-10 h-10 object-contain"
+              className="brand-logo-image"
             />
           </div>
           <h2 className="text-xl font-semibold text-foreground mb-2">SolarZap CRM</h2>
@@ -1009,11 +1009,11 @@ export function ChatArea({
             >
               <div className="flex items-center gap-1.5">
                 {!aiSettings?.is_active ? (
-                  <Bot className="w-4 h-4 text-slate-400" />
+                  <Bot className="w-4 h-4 text-muted-foreground" />
                 ) : instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false ? (
-                  <Bot className="w-4 h-4 text-slate-400" />
+                  <Bot className="w-4 h-4 text-muted-foreground" />
                 ) : conversation.contact.aiEnabled !== false ? (
-                  <Bot className="w-4 h-4 text-green-600" />
+                  <Bot className="w-4 h-4 text-primary" />
                 ) : (
                   <UserCog className="w-4 h-4 text-orange-500" />
                 )}
@@ -1030,7 +1030,7 @@ export function ChatArea({
               <Switch
                 checked={conversation.contact.aiEnabled !== false}
                 onCheckedChange={(checked) => onToggleLeadAi({ leadId: conversation.contact.id, enabled: checked })}
-                className="scale-75 data-[state=checked]:bg-green-600"
+                className="scale-75 data-[state=checked]:bg-primary"
                 disabled={!aiSettings?.is_active || instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false}
               />
             </div>

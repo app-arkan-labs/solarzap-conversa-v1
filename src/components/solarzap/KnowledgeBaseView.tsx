@@ -287,11 +287,11 @@ export function KnowledgeBaseView() {
         }
       />
 
-      <div className="flex-1 p-6 overflow-auto bg-slate-50/50">
+      <div className="flex-1 overflow-auto bg-muted/25 p-6">
         <div className="w-full space-y-6">
-          <div className="bg-white border shadow-sm rounded-xl p-4 space-y-3">
+          <div className="rounded-xl border border-border bg-card/95 p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-800">Status de ingestao da base</h3>
+              <h3 className="text-sm font-semibold text-foreground">Status de ingestao da base</h3>
               <Button
                 type="button"
                 variant="outline"
@@ -310,9 +310,9 @@ export function KnowledgeBaseView() {
                 {kbItems.map((item) => {
                   const status = item.ingestion_status || 'pending';
                   return (
-                    <div key={item.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                    <div key={item.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-800 truncate">{item.title}</p>
+                        <p className="text-sm font-medium text-foreground truncate">{item.title}</p>
                         <p className="text-xs text-muted-foreground">status: {status}</p>
                       </div>
                       {status === 'error' ? (
@@ -337,7 +337,7 @@ export function KnowledgeBaseView() {
 
           <BrandingSettingsCard canEdit={canEdit} />
           <Tabs defaultValue="empresa" className="w-full space-y-6">
-            <TabsList className="bg-white border shadow-sm p-1.5 rounded-xl h-auto flex flex-wrap justify-start gap-1">
+            <TabsList className="h-auto flex flex-wrap justify-start gap-1 rounded-xl border border-border bg-card/95 p-1.5 shadow-sm">
               <TabsTrigger
                 value="empresa"
                 className="gap-2 px-4 py-2.5 data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg"
@@ -399,10 +399,10 @@ export function KnowledgeBaseView() {
 
             {uploadSuccess ? (
               <div className="flex flex-col items-center justify-center py-8">
-                <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
-                  <CheckCircle className="w-8 h-8 text-green-600" />
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/12">
+                  <CheckCircle className="w-8 h-8 text-primary" />
                 </div>
-                <h3 className="text-lg font-medium text-green-800">Importado com sucesso!</h3>
+                <h3 className="text-lg font-medium text-foreground">Importado com sucesso!</h3>
                 <p className="text-sm text-muted-foreground">
                   {ingestionState === 'ready'
                     ? 'A IA já pode usar esse conhecimento.'
@@ -414,20 +414,20 @@ export function KnowledgeBaseView() {
                 </p>
               </div>
             ) : uploadedFile ? (
-              <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <FileText className="w-8 h-8 text-blue-600" />
+              <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/8 p-4">
+                <FileText className="w-8 h-8 text-primary" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-blue-800 truncate">
+                  <p className="text-sm font-medium text-foreground truncate">
                     {uploadedFile.name}
                   </p>
-                  <p className="text-xs text-blue-600">
+                  <p className="text-xs text-muted-foreground">
                     {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
                   </p>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-blue-700 hover:text-red-600 hover:bg-red-50"
+                  className="h-8 w-8 text-primary hover:bg-red-50 hover:text-red-600"
                   onClick={() => setUploadedFile(null)}
                 >
                   <X className="w-4 h-4" />

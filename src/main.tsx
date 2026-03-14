@@ -24,16 +24,16 @@ class AppErrorBoundary extends React.Component<React.PropsWithChildren, FatalSta
 	render() {
 		if (this.state.error) {
 			return (
-				<div className="min-h-screen w-full flex items-center justify-center bg-slate-50 p-6">
-					<div className="w-full max-w-xl rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-						<h1 className="text-lg font-semibold text-slate-900">Erro inesperado na aplicação</h1>
-						<p className="mt-2 text-sm text-slate-600">Recarregue a página. Se persistir, envie a mensagem abaixo.</p>
-						<pre className="mt-4 max-h-64 overflow-auto rounded bg-slate-100 p-3 text-xs text-slate-800">
+				<div className="auth-shell min-h-screen w-full flex items-center justify-center p-6">
+					<div className="w-full max-w-xl rounded-3xl border border-border/70 bg-card/90 p-6 shadow-[0_28px_90px_-42px_rgba(15,23,42,0.35)] backdrop-blur-xl dark:shadow-[0_28px_90px_-42px_rgba(2,6,23,0.7)]">
+						<h1 className="text-lg font-semibold text-foreground">Erro inesperado na aplicação</h1>
+						<p className="mt-2 text-sm text-muted-foreground">Recarregue a página. Se persistir, envie a mensagem abaixo.</p>
+						<pre className="mt-4 max-h-64 overflow-auto rounded-2xl border border-border bg-muted/50 p-3 text-xs text-foreground">
 							{this.state.error.message || 'Erro desconhecido'}
 						</pre>
 						<button
 							type="button"
-							className="mt-4 rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+							className="brand-gradient-button mt-4 rounded-xl px-4 py-2 text-sm font-medium text-white"
 							onClick={() => window.location.reload()}
 						>
 							Recarregar

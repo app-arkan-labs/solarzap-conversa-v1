@@ -227,7 +227,7 @@ export function SobreEmpresaTab() {
             {/* Header with Progress */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
+                    <div className="brand-gradient-bg flex h-10 w-10 items-center justify-center rounded-xl shadow-lg shadow-primary/20">
                         <Building2 className="w-5 h-5 text-white" />
                     </div>
                     <div>
@@ -240,9 +240,9 @@ export function SobreEmpresaTab() {
                 <div className="flex items-center gap-4">
                     {/* Progress indicator */}
                     <div className="flex items-center gap-2">
-                        <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
+                        <div className="w-24 h-2 overflow-hidden rounded-full bg-muted">
                             <div
-                                className="h-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-300"
+                                className="h-full bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--secondary)))] transition-all duration-300"
                                 style={{ width: `${progressPercent}%` }}
                             />
                         </div>
@@ -263,9 +263,9 @@ export function SobreEmpresaTab() {
 
             {/* All fields complete celebration */}
             {filledFields === totalFields && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-green-600" />
-                    <span className="text-green-800 font-medium">
+                <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/8 p-4">
+                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                    <span className="font-medium text-foreground">
                         Excelente! Todas as informações foram preenchidas. A IA está pronta para usar esses dados.
                     </span>
                 </div>

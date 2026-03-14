@@ -38,16 +38,17 @@ export function StepPayment({ form }: StepPaymentProps) {
           </p>
         </div>
         <div className="space-y-1.5">
-          <Label>Desconto a vista (R$)</Label>
+          <Label>Desconto a vista (%)</Label>
           <Input
             type="number"
             min={0}
-            max={Math.max(0, Number(form.formData.valorTotal) || 0)}
-            value={form.formData.descontoAvistaValor || ''}
-            onChange={(e) => form.handleChange('descontoAvistaValor', Math.max(0, parseFloat(e.target.value) || 0))}
+            max={100}
+            step={0.1}
+            value={form.formData.descontoAvistaPercentual || ''}
+            onChange={(e) => form.handleChange('descontoAvistaPercentual', Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
           />
           <p className="text-xs text-muted-foreground">
-            Impacta payback e ROI quando houver condicao de pagamento a vista.
+            Percentual aplicado sobre o valor total para condicoes a vista.
           </p>
         </div>
         <div className="rounded-lg border bg-muted/30 p-3 text-sm">
@@ -60,6 +61,9 @@ export function StepPayment({ form }: StepPaymentProps) {
           </p>
           <p className="text-muted-foreground">
             Investimento: {form.formatCurrency(form.formData.valorTotal || 0)}
+          </p>
+          <p className="text-muted-foreground">
+            Desconto: {(Number(form.formData.descontoAvistaPercentual) || 0).toFixed(1)}%
           </p>
           <p className="text-muted-foreground">
             A vista liquido: {form.formatCurrency(form.formData.valorAvistaLiquido || 0)}

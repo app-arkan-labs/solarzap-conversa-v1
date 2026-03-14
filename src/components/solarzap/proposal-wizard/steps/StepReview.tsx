@@ -21,9 +21,9 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
       <h3 className="text-base font-semibold">Revisao final</h3>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div className="rounded-lg border bg-green-50 p-3 dark:bg-green-950/40">
+        <div className="rounded-lg border border-primary/25 bg-primary/8 p-3">
           <p className="text-xs text-muted-foreground">{form.isUsina ? 'Investimento base' : 'Investimento base'}</p>
-          <p className="text-lg font-semibold text-green-700 dark:text-green-400">
+          <p className="text-lg font-semibold text-primary">
             {form.formatCurrency(form.formData.investimentoBaseMetricas || 0)}
           </p>
           <p className="text-[11px] text-muted-foreground">
@@ -31,7 +31,7 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
           </p>
           {(form.formData.descontoAvistaValor || 0) > 0 && (
             <p className="text-[11px] text-muted-foreground">
-              Desconto a vista: {form.formatCurrency(form.formData.descontoAvistaValor || 0)}
+              Desconto a vista: {(Number(form.formData.descontoAvistaPercentual) || 0).toFixed(1)}% ({form.formatCurrency(form.formData.descontoAvistaValor || 0)})
             </p>
           )}
         </div>
@@ -101,7 +101,9 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Desconto a vista</p>
-            <p className="font-medium">{form.formatCurrency(form.formData.descontoAvistaValor || 0)}</p>
+            <p className="font-medium">
+              {(Number(form.formData.descontoAvistaPercentual) || 0).toFixed(1)}% ({form.formatCurrency(form.formData.descontoAvistaValor || 0)})
+            </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Modulo</p>

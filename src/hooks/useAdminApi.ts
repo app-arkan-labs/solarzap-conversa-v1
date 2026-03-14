@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+﻿import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 
 export type SystemRole = 'super_admin' | 'ops' | 'support' | 'billing' | 'read_only';
@@ -443,7 +443,7 @@ async function getCurrentAccessToken(action: AdminApiAction): Promise<string | n
       code: 'missing_auth',
       rawCode: error.code ?? null,
       status: error.status,
-      message: toErrorMessage(error.message, 'Nao foi possivel ler a sessao atual.'),
+      message: toErrorMessage(error.message, 'Não foi possível ler a sessão atual.'),
     });
   }
 
@@ -458,7 +458,7 @@ async function refreshAccessToken(action: AdminApiAction): Promise<string> {
       code: 'missing_auth',
       rawCode: error?.code ?? null,
       status: error?.status,
-      message: toErrorMessage(error?.message, 'Sessao expirada ou ausente para admin-api.'),
+      message: toErrorMessage(error?.message, 'Sessão expirada ou ausente para admin-api.'),
     });
   }
 
@@ -681,3 +681,4 @@ export function useAdminMutation<TData = Record<string, unknown>>(
     },
   });
 }
+

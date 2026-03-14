@@ -29,7 +29,7 @@ const formatCurrency = (value: number): string =>
   });
 
 const toDateLabel = (value: string): string => {
-  if (!value) return 'data nao informada';
+  if (!value) return 'data não informada';
   const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleDateString('pt-BR');
@@ -200,7 +200,7 @@ export function useNotifications() {
   }, [orgId, refreshFinanceNotifications]);
 
   const confirmInstallmentPaid = useCallback(async (installmentId: string) => {
-    if (!orgId) throw new Error('Organizacao nao selecionada.');
+    if (!orgId) throw new Error('Organização não selecionada.');
 
     const { error } = await supabase.rpc('rpc_confirm_installment_paid', {
       p_org_id: orgId,
@@ -217,7 +217,7 @@ export function useNotifications() {
   }, [orgId, refreshFinanceNotifications, user?.id]);
 
   const rescheduleInstallment = useCallback(async (installmentId: string, newDueOn: string) => {
-    if (!orgId) throw new Error('Organizacao nao selecionada.');
+    if (!orgId) throw new Error('Organização não selecionada.');
     if (!newDueOn) throw new Error('Nova data obrigatoria para reagendamento.');
 
     const { error } = await supabase.rpc('rpc_reschedule_installment', {
@@ -475,3 +475,4 @@ export function useNotifications() {
     onFollowUpReminder,
   };
 }
+

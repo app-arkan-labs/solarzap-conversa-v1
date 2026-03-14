@@ -58,9 +58,7 @@ export default function GuidedTour({
         return;
       }
 
-      if (!step.disableScroll) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-      }
+      element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
 
       const rect = element.getBoundingClientRect();
       setTargetBox({
@@ -119,7 +117,7 @@ export default function GuidedTour({
 
           {targetBox ? (
             <div
-              className="absolute rounded-lg border-2 border-emerald-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]"
+              className="absolute rounded-xl border-2 border-primary shadow-[0_0_0_9999px_rgba(2,6,23,0.52)]"
               style={{
                 top: targetBox.top - 4,
                 left: targetBox.left - 4,
@@ -130,14 +128,14 @@ export default function GuidedTour({
           ) : null}
 
           <div
-            className="pointer-events-auto absolute w-[340px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl"
+            className="pointer-events-auto absolute w-[340px] rounded-2xl border border-border/80 bg-card/96 p-4 text-card-foreground shadow-[0_24px_70px_-28px_rgba(15,23,42,0.28)] dark:shadow-[0_24px_70px_-28px_rgba(2,6,23,0.62)] backdrop-blur-xl"
             style={tooltipStyle}
           >
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
               Tour guiado {stepIndex + 1}/{steps.length}
             </p>
-            <h3 className="mt-1 text-base font-semibold text-slate-900">{step.title}</h3>
-            <p className="mt-1 text-sm text-slate-600">{step.content}</p>
+            <h3 className="mt-1 text-base font-semibold text-foreground">{step.title}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
             <div className="mt-4 flex items-center justify-between">
               <Button type="button" variant="ghost" size="sm" onClick={onClose}>Encerrar</Button>
               <div className="flex items-center gap-2">

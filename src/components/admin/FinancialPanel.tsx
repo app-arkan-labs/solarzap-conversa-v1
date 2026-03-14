@@ -20,7 +20,7 @@ import {
 } from '@/hooks/useAdminApi';
 
 const PLAN_COLORS: Record<string, string> = {
-    free: 'bg-slate-100 text-slate-700',
+    free: 'bg-muted text-foreground/80',
     start: 'bg-blue-100 text-blue-700',
     pro: 'bg-purple-100 text-purple-700',
     scale: 'bg-amber-100 text-amber-800',
@@ -91,7 +91,7 @@ export default function FinancialPanel() {
                     count,
                     priceCents: planDef?.price_cents ?? 0,
                     pct: Math.round((count / total) * 100),
-                    colorClass: PLAN_COLORS[planKey] || 'bg-slate-100 text-slate-700',
+                    colorClass: PLAN_COLORS[planKey] || 'bg-muted text-foreground/80',
                     monthlyRevenueCents: (planDef?.price_cents ?? 0) * count,
                 };
             });
@@ -121,7 +121,7 @@ export default function FinancialPanel() {
         <div className="space-y-7">
             {/* Header */}
             <div>
-                <h1 className="text-2xl font-bold text-slate-900">Painel Financeiro</h1>
+                <h1 className="text-2xl font-bold text-foreground">Painel Financeiro</h1>
                 <p className="text-sm text-muted-foreground mt-0.5">Receita, planos e métricas comerciais</p>
             </div>
 
@@ -179,7 +179,7 @@ export default function FinancialPanel() {
                     </Card>
                     <Card className="border-0 shadow-sm">
                         <CardContent className="pt-4 pb-3 text-center">
-                            <p className="text-3xl font-bold text-slate-400">{financial.free_orgs}</p>
+                            <p className="text-3xl font-bold text-muted-foreground">{financial.free_orgs}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">Gratuitas</p>
                         </CardContent>
                     </Card>
@@ -228,7 +228,7 @@ export default function FinancialPanel() {
                     <CardContent>
                         <Table>
                             <TableHeader>
-                                <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
+                                <TableRow className="bg-muted/25 hover:bg-muted/35">
                                     <TableHead>Plano</TableHead>
                                     <TableHead className="text-right">Preço</TableHead>
                                     <TableHead className="text-right">Ciclo</TableHead>
@@ -248,7 +248,7 @@ export default function FinancialPanel() {
                                         </TableCell>
                                         <TableCell className="text-right text-sm capitalize">{plan.billing_cycle}</TableCell>
                                         <TableCell className="text-center">
-                                            <Badge variant={plan.is_active ? 'default' : 'outline'} className={`text-xs ${plan.is_active ? 'bg-emerald-100 text-emerald-700' : 'text-slate-400'}`}>
+                                            <Badge variant={plan.is_active ? 'default' : 'outline'} className={`text-xs ${plan.is_active ? 'bg-emerald-100 text-emerald-700' : 'text-muted-foreground'}`}>
                                                 {plan.is_active ? 'Ativo' : 'Inativo'}
                                             </Badge>
                                         </TableCell>
@@ -272,7 +272,7 @@ export default function FinancialPanel() {
                 <CardContent className="p-0">
                     <Table>
                         <TableHeader>
-                            <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
+                            <TableRow className="bg-muted/25 hover:bg-muted/35">
                                 <TableHead className="pl-5">Organização</TableHead>
                                 <TableHead>Plano</TableHead>
                                 <TableHead className="text-right">Membros</TableHead>
@@ -284,7 +284,7 @@ export default function FinancialPanel() {
                             {payingOrgs.map((org) => (
                                 <TableRow
                                     key={org.id}
-                                    className="cursor-pointer hover:bg-slate-50"
+                                    className="cursor-pointer hover:bg-muted/35"
                                     onClick={() => navigate(`/admin/orgs/${org.id}`)}
                                 >
                                     <TableCell className="pl-5 font-medium">{org.name}</TableCell>

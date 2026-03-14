@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, RefreshCw, Users, UserPlus, Shield, Eye, Trash2, Save, Settings2, Bot, Zap, Plug, Brain, User, Ban, Sparkles, UserCheck } from 'lucide-react';
+import { Loader2, RefreshCw, Users, UserPlus, Shield, Eye, Trash2, Save, Settings2, Bot, Zap, Plug, Building2, User, Ban, Sparkles, UserCheck, UserCog } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSellerPermissions, type SellerPermissions } from '@/hooks/useSellerPermissions';
@@ -43,10 +43,10 @@ const ROLE_LABELS: Record<OrgRole, string> = {
 };
 
 const ROLE_COLORS: Record<OrgRole, string> = {
-  owner: 'bg-purple-100 text-purple-700 border-purple-200',
-  admin: 'bg-blue-100 text-blue-700 border-blue-200',
-  user: 'bg-green-100 text-green-700 border-green-200',
-  consultant: 'bg-amber-100 text-amber-700 border-amber-200',
+  owner: 'border-primary/30 bg-primary/14 text-foreground',
+  admin: 'border-secondary/24 bg-secondary/14 text-foreground',
+  user: 'border-primary/20 bg-primary/10 text-foreground/88',
+  consultant: 'border-secondary/18 bg-secondary/10 text-foreground/88',
 };
 
 function fallbackMemberLabel(member: MemberDto) {
@@ -319,7 +319,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
       <PageHeader
         title="Gestão de Equipe"
         subtitle="Gerencie membros, funções e permissões da sua organização."
-        icon={Shield}
+        icon={UserCog}
         actionContent={
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => void loadMembers(true)} disabled={refreshing} className="bg-background/50 glass border-border/50 shadow-sm">
@@ -435,7 +435,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                       >
                         <td className="py-3 pr-3">
                           <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[linear-gradient(135deg,hsl(var(--primary)/0.22),hsl(var(--secondary)/0.16))] text-xs font-semibold text-foreground ring-1 ring-border/70">
                               {(fallbackMemberLabel(member)[0] || '?').toUpperCase()}
                             </div>
                             <div>
@@ -476,7 +476,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                               }
                               className="scale-90"
                             />
-                            <Eye className={`h-3.5 w-3.5 ${draft.can_view_team_leads ? 'text-green-600' : 'text-slate-300'}`} />
+                            <Eye className={`h-3.5 w-3.5 ${draft.can_view_team_leads ? 'text-primary' : 'text-muted-foreground'}`} />
                           </div>
                         </td>
                         <td className="py-3 pr-3 text-muted-foreground">
@@ -574,8 +574,8 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
                         onChange={(v) => void updateSellerPermissions({ tab_integracoes: v })}
                       />
                       <PermissionToggle
-                        icon={<Brain className="h-4 w-4" />}
-                        label="Banco de Dados IA"
+                        icon={<Building2 className="h-4 w-4" />}
+                        label="Minha Empresa"
                         description="Base de conhecimento"
                         checked={sellerPermissions?.tab_banco_ia ?? true}
                         saving={permissionsSaving}

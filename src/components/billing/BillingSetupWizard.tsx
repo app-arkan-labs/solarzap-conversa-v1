@@ -1,5 +1,5 @@
-import { FormEvent, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,16 +8,27 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { createPlanCheckoutSession } from '@/hooks/useOrgBilling';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOrgBillingInfo } from '@/hooks/useOrgBilling';
+import { isUnlimitedBillingBypass } from '@/lib/billingBlocker';
 
 const PLAN_OPTIONS = ['start', 'pro', 'scale'] as const;
 
 export default function BillingSetupWizard() {
   const { toast } = useToast();
   const { orgId } = useAuth();
+  const navigate = useNavigate();
+  const billingQuery = useOrgBillingInfo(Boolean(orgId));
   const [params] = useSearchParams();
   const [planKey, setPlanKey] = useState<string>(params.get('plan') || 'start');
   const [orgName, setOrgName] = useState('');
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (billingQuery.isLoading) return;
+    if (isUnlimitedBillingBypass(billingQuery.data)) {
+      navigate('/', { replace: true });
+    }
+  }, [billingQuery.data, billingQuery.isLoading, navigate]);
 
   const normalizedPlan = useMemo(() => {
     const candidate = planKey.trim().toLowerCase();
@@ -59,9 +70,9 @@ export default function BillingSetupWizard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="app-shell-bg min-h-screen p-6">
       <div className="mx-auto max-w-lg">
-        <Card>
+        <Card className="border-border/70 bg-card/92 backdrop-blur-xl">
           <CardHeader>
             <CardTitle>Finalizar assinatura</CardTitle>
             <CardDescription>
@@ -89,7 +100,7 @@ export default function BillingSetupWizard() {
                   id="plan-key"
                   value={normalizedPlan}
                   onChange={(e) => setPlanKey(e.target.value)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="w-full rounded-xl border border-input bg-background/90 px-3 py-2 text-sm text-foreground shadow-sm outline-none transition-colors focus:border-primary/40"
                 >
                   <option value="start">Start - R$199/mês</option>
                   <option value="pro">Pro - R$299/mês</option>

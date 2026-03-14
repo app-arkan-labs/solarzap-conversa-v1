@@ -23,7 +23,7 @@ const PLAN_META: Record<string, {
 }> = {
   free:  { label: 'Free',  icon: Shield,   gradient: 'from-slate-400 to-slate-600' },
   start: { label: 'Start', icon: Zap,      gradient: 'from-blue-500 to-indigo-600' },
-  pro:   { label: 'Pro',   icon: Crown,    gradient: 'from-emerald-500 to-teal-600' },
+  pro:   { label: 'Pro',   icon: Crown,    gradient: 'from-primary to-secondary' },
   scale: { label: 'Scale', icon: Sparkles, gradient: 'from-violet-500 to-purple-700' },
 };
 

@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, endOfDay, format, startOfDay, subDays } from 'date-fns';
+﻿import { differenceInCalendarDays, endOfDay, format, startOfDay, subDays } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -57,27 +57,27 @@ const buildActionSuggestion = (reason: LossReasonAggregate): LossInsight => {
     case 'financeiro':
       return {
         title: 'Reforce ancoragem financeira',
-        description: `${reason.count} perdas vieram de objecoes financeiras. Teste comparativos com conta de luz, opcoes de parcelamento e economia em 12 meses logo no primeiro contato comercial.`,
+        description: `${reason.count} perdas vieram de objeções financeiras. Teste comparativos com conta de luz, opções de parcelamento e economia em 12 meses logo no primeiro contato comercial.`,
       };
     case 'concorrente':
       return {
-        title: 'Eleve a prova de confianca',
-        description: `${reason.count} leads foram para concorrentes. Antecipe diferenciais de instalacao, SLA, garantia e casos reais para reduzir comparacao por preco puro.`,
+        title: 'Eleve a prova de confiança',
+        description: `${reason.count} leads foram para concorrentes. Antecipe diferenciais de instalacao, SLA, garantia e casos reais para reduzir comparação por preço puro.`,
       };
     case 'sem_resposta':
       return {
-        title: 'Reduza friccao no follow-up',
-        description: `${reason.count} perdas vieram por falta de resposta. Revise cadencia, CTA unico e personalize o primeiro follow-up com ganho concreto de economia ou prazo.`,
+        title: 'Reduza fricção no follow-up',
+        description: `${reason.count} perdas vieram por falta de resposta. Revise cadência, CTA único e personalize o primeiro follow-up com ganho concreto de economia ou prazo.`,
       };
     case 'retorno_investimento':
       return {
         title: 'Ajuste narrativa de payback',
-        description: `${reason.count} leads nao compraram a tese de retorno. Mostre payback conservador, protecao contra reajuste tarifario e cenarios com e sem financiamento.`,
+        description: `${reason.count} leads não compraram a tese de retorno. Mostre payback conservador, proteção contra reajuste tarifário e cenários com e sem financiamento.`,
       };
     default:
       return {
         title: `Ataque o motivo ${reason.label.toLowerCase()}`,
-        description: `${reason.count} perdas no periodo concentraram-se em ${reason.label.toLowerCase()}. Crie uma resposta padrao e um ativo comercial curto para neutralizar essa objecao antes da proposta.`,
+        description: `${reason.count} perdas no período concentraram-se em ${reason.label.toLowerCase()}. Crie uma resposta padrão e um ativo comercial curto para neutralizar essa objeção antes da proposta.`,
       };
   }
 };
@@ -193,3 +193,5 @@ export function useLossAnalytics({ startDate, endDate, ownerUserId = null, enabl
     },
   });
 }
+
+

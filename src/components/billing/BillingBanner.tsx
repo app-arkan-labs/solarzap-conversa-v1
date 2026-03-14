@@ -8,7 +8,7 @@ export default function BillingBanner({ billing }: { billing: OrgBillingInfo | n
 
   if (billing.subscription_status === 'past_due' || billing.subscription_status === 'unpaid') {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-200/80 bg-red-50/90 px-4 py-2.5 text-sm text-red-700 shadow-[0_16px_40px_-30px_rgba(239,68,68,0.55)] backdrop-blur-sm">
         <span className="inline-flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 flex-shrink-0" />
           <span>
@@ -30,7 +30,7 @@ export default function BillingBanner({ billing }: { billing: OrgBillingInfo | n
     const daysLeft = Math.max(0, Math.ceil((new Date(billing.trial_ends_at).getTime() - Date.now()) / 86_400_000));
     const isUrgent = daysLeft <= 2;
     return (
-      <div className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5 text-sm ${
+      <div className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-2.5 text-sm shadow-[0_16px_40px_-30px_rgba(245,158,11,0.45)] backdrop-blur-sm ${
         isUrgent
           ? 'border-orange-200 bg-orange-50 text-orange-700'
           : 'border-amber-200 bg-amber-50 text-amber-700'

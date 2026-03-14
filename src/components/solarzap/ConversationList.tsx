@@ -392,7 +392,7 @@ export function ConversationList({
   return (
     <div className="w-full h-full flex flex-col border-r border-border bg-card">
       {/* Premium Header */}
-      <div className="p-4 bg-gradient-to-r from-primary/10 via-background to-emerald-500/10 border-b shadow-sm">
+      <div className="p-4 border-b border-border/70 bg-[linear-gradient(120deg,hsl(var(--primary)/0.12),transparent_30%,hsl(var(--secondary)/0.10)_100%)] shadow-sm backdrop-blur-sm">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
@@ -554,7 +554,7 @@ export function ConversationList({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Pesquisar ou começar nova conversa"
+            placeholder="Pesquisar"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-10 bg-background border-0 shadow-sm"
@@ -669,24 +669,6 @@ export function ConversationList({
           </DropdownMenu>
         </div>
       ) : null}
-
-      {/* Channel Filters */}
-      <div className="px-3 py-2 flex gap-2 overflow-x-auto border-b border-border">
-        {channelFilters.map((filter) => (
-          <button
-            key={filter.id}
-            onClick={() => onChannelFilterChange(filter.id)}
-            className={cn(
-              'px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors',
-              channelFilter === filter.id
-                ? 'bg-secondary text-secondary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            )}
-          >
-            {filter.label}
-          </button>
-        ))}
-      </div>
 
       {isSelectionMode && canUseSelectionMode && (
         <div className="px-3 py-3 border-b border-border bg-gradient-to-r from-primary/10 via-primary/5 to-transparent space-y-3">
@@ -835,7 +817,7 @@ export function ConversationList({
                 <div className="relative flex-shrink-0">
                   <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center" title={isAiActive ? 'IA Ativa' : undefined}>
                     {isAiActive ? (
-                      <Bot className="w-6 h-6 text-green-600" />
+                      <Bot className="w-6 h-6 text-primary" />
                     ) : (
                       <span className="text-2xl">{conversation.contact.avatar || '👤'}</span>
                     )}

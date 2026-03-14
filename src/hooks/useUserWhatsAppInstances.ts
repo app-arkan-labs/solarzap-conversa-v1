@@ -248,11 +248,11 @@ export function useUserWhatsAppInstances() {
   // Create new instance
   const createInstance = useCallback(async (displayName?: string): Promise<{ qrCode?: string; instance?: UserWhatsAppInstance; blocked?: boolean } | null> => {
     if (!user) {
-      toast.error('Voce precisa estar logado');
+      toast.error('Você precisa estar logado');
       return null;
     }
     if (!orgId) {
-      toast.error('Organizacao nao vinculada ao usuario');
+      toast.error('Organização não vinculada ao usuário');
       return null;
     }
 
@@ -352,11 +352,11 @@ export function useUserWhatsAppInstances() {
   const refreshQrCode = useCallback(async (instanceName: string): Promise<string | null> => {
     try {
       if (!orgId) {
-        toast.error('Organizacao nao vinculada ao usuario');
+        toast.error('Organização não vinculada ao usuário');
         return null;
       }
       if (!isOrgManager && !user?.id) {
-        toast.error('Voce precisa estar logado');
+        toast.error('Você precisa estar logado');
         return null;
       }
 
@@ -503,11 +503,11 @@ export function useUserWhatsAppInstances() {
   const deleteInstance = useCallback(async (instance: UserWhatsAppInstance, force: boolean = false): Promise<boolean> => {
     try {
       if (!orgId) {
-        toast.error('Organizacao nao vinculada ao usuario');
+        toast.error('Organização não vinculada ao usuário');
         return false;
       }
       if (!isOrgManager && !user?.id) {
-        toast.error('Voce precisa estar logado');
+        toast.error('Você precisa estar logado');
         return false;
       }
       setActionLoading(instance.id);
@@ -556,11 +556,11 @@ export function useUserWhatsAppInstances() {
   const disconnectInstance = useCallback(async (instanceName: string): Promise<boolean> => {
     try {
       if (!orgId) {
-        toast.error('Organizacao nao vinculada ao usuario');
+        toast.error('Organização não vinculada ao usuário');
         return false;
       }
       if (!isOrgManager && !user?.id) {
-        toast.error('Voce precisa estar logado');
+        toast.error('Você precisa estar logado');
         return false;
       }
 
@@ -607,11 +607,11 @@ export function useUserWhatsAppInstances() {
   const renameInstance = useCallback(async (instanceId: string, newName: string): Promise<boolean> => {
     try {
       if (!orgId) {
-        toast.error('Organizacao nao vinculada ao usuario');
+        toast.error('Organização não vinculada ao usuário');
         return false;
       }
       if (!isOrgManager && !user?.id) {
-        toast.error('Voce precisa estar logado');
+        toast.error('Você precisa estar logado');
         return false;
       }
       setActionLoading(instanceId);
@@ -702,11 +702,11 @@ export function useUserWhatsAppInstances() {
     updateColor: async (instanceId: string, color: string) => {
       try {
         if (!orgId) {
-          toast.error('Organizacao nao vinculada ao usuario');
+          toast.error('Organização não vinculada ao usuário');
           return false;
         }
         if (!isOrgManager && !user?.id) {
-          toast.error('Voce precisa estar logado');
+          toast.error('Você precisa estar logado');
           return false;
         }
 
@@ -737,7 +737,7 @@ export function useUserWhatsAppInstances() {
     setInstanceAiEnabled: async (instanceName: string, enabled: boolean): Promise<boolean> => {
       try {
         if (!orgId) {
-          toast.error('Organizacao nao vinculada ao usuario');
+          toast.error('Organização não vinculada ao usuário');
           return false;
         }
 
@@ -763,7 +763,7 @@ export function useUserWhatsAppInstances() {
         if (error) throw error;
         if (!data || data.length === 0) {
           console.error('Update returned 0 rows. RLS mismatch?');
-          throw new Error('Falha ao atualizar: Permissão negada ou instância não encontrada.');
+          throw new Error('Falha ao atualizar: permissão negada ou instância não encontrada.');
         }
 
         // Optimistic update
@@ -787,7 +787,7 @@ export function useUserWhatsAppInstances() {
     toggleAllInstances: async (enabled: boolean): Promise<boolean> => {
       try {
         if (!orgId) {
-          toast.error('Organizacao nao vinculada ao usuario');
+          toast.error('Organização não vinculada ao usuário');
           return false;
         }
 
@@ -823,7 +823,7 @@ export function useUserWhatsAppInstances() {
     activateAiForAllLeads: async (instanceName: string): Promise<number | null> => {
       try {
         if (!orgId) {
-          toast.error('Organizacao nao vinculada ao usuario');
+          toast.error('Organização não vinculada ao usuário');
           return null;
         }
 

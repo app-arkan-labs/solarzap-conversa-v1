@@ -113,7 +113,7 @@ export function BrandingSettingsCard({ canEdit, className }: BrandingSettingsCar
                   title="Alterar logo"
                   onClick={handleLogoClick}
                   disabled={!canEdit || logoLoading}
-                  className="w-10 h-10 rounded-lg border border-border overflow-hidden bg-white hover:ring-2 hover:ring-primary/40 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-10 h-10 rounded-lg border border-border overflow-hidden bg-card hover:ring-2 hover:ring-primary/40 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <img src={logoUrl} alt="Logo da empresa" className="w-full h-full object-contain p-0.5" />
                 </button>
@@ -136,7 +136,7 @@ export function BrandingSettingsCard({ canEdit, className }: BrandingSettingsCar
                 title="Enviar logo da empresa"
                 onClick={handleLogoClick}
                 disabled={!canEdit || logoLoading}
-                className="w-10 h-10 rounded-lg border-2 border-dashed border-border flex items-center justify-center hover:border-primary/50 hover:bg-white/50 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-10 h-10 rounded-lg border-2 border-dashed border-border flex items-center justify-center hover:border-primary/50 hover:bg-card/70 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {logoLoading ? (
                   <div className="w-4 h-4 border-2 border-primary/40 border-t-primary rounded-full animate-spin" />

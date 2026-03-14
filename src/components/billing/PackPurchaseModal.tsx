@@ -30,20 +30,22 @@ interface PackPurchaseModalProps {
   packType: PackType;
 }
 
-const PACK_CONFIG: Record<PackType, { title: string; description: string; icon: typeof Zap; unit: string; gradient: string }> = {
+const PACK_CONFIG: Record<PackType, { title: string; description: string; icon: typeof Zap; unit: string; iconSurfaceClass: string; buttonClass: string }> = {
   disparo: {
     title: 'Packs de Disparo',
     description: 'Amplie seu volume de envios mensais comprando créditos extras.',
     icon: Zap,
     unit: 'créditos',
-    gradient: 'from-orange-500 to-amber-600',
+    iconSurfaceClass: 'brand-gradient-bg',
+    buttonClass: 'brand-gradient-button text-white',
   },
   ai: {
     title: 'Packs de IA',
     description: 'Aumente o volume de requisições de IA para automações e assistente.',
     icon: Brain,
     unit: 'requisições',
-    gradient: 'from-violet-500 to-purple-600',
+    iconSurfaceClass: 'brand-gradient-bg',
+    buttonClass: 'brand-gradient-button text-white',
   },
 };
 
@@ -117,7 +119,7 @@ export function PackPurchaseModal({ open, onOpenChange, packType }: PackPurchase
       <DialogContent data-testid="pack-purchase-modal" className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br ${config.gradient} shadow-lg`}>
+            <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${config.iconSurfaceClass} shadow-lg shadow-primary/20`}>
               <Icon className="h-5 w-5 text-white" />
             </div>
             <div>
@@ -157,7 +159,7 @@ export function PackPurchaseModal({ open, onOpenChange, packType }: PackPurchase
                   <span className="text-lg font-bold">{formatCurrency(pack.price_cents)}</span>
                   <Button
                     size="sm"
-                    className={`bg-gradient-to-r ${config.gradient} text-white shadow hover:shadow-md`}
+                    className={config.buttonClass}
                     onClick={() => handleBuyPack(pack.addon_key)}
                     disabled={busyPack === pack.addon_key}
                   >

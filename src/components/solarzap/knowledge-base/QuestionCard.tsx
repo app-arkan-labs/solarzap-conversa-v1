@@ -41,7 +41,7 @@ export function QuestionCard({
     return (
         <Card className={cn(
             "transition-all duration-200 border-l-4",
-            hasContent ? "border-l-green-500 bg-green-50/30" : "border-l-primary/30 hover:border-l-primary",
+            hasContent ? "border-l-primary bg-primary/6" : "border-l-primary/30 hover:border-l-primary",
             className
         )}>
             <CardHeader className="pb-2 pt-4">
@@ -62,7 +62,7 @@ export function QuestionCard({
                         )}
                     </div>
                     {hasContent && isSaved && (
-                        <div className="flex items-center gap-1 text-green-600 text-sm">
+                        <div className="flex items-center gap-1 text-primary text-sm">
                             <Check className="w-4 h-4" />
                             <span>Salvo</span>
                         </div>
@@ -78,7 +78,7 @@ export function QuestionCard({
                             placeholder={placeholder}
                             rows={rows}
                             maxLength={maxLength}
-                            className="resize-none bg-white/80"
+                            className="resize-none bg-background/92"
                         />
                         {maxLength && (
                             <div className="text-xs text-muted-foreground text-right">
@@ -91,7 +91,7 @@ export function QuestionCard({
                         value={value}
                         onChange={(e) => onChange(e.target.value)}
                         placeholder={placeholder}
-                        className="bg-white/80"
+                        className="bg-background/92"
                     />
                 )}
             </CardContent>

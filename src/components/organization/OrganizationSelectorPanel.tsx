@@ -46,30 +46,30 @@ export function OrganizationSelectorPanel({
   }, [organizations, orgHint]);
 
   return (
-    <div data-testid={rootTestId} className="space-y-3">
-      <div className="space-y-1">
-        <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
-          <Building2 className="h-5 w-5 text-green-600" />
+    <div data-testid={rootTestId} className="space-y-5 px-7 pb-5 pt-7 sm:px-9 sm:pt-8">
+      <div className="space-y-2">
+        <h2 className="flex items-center gap-2 text-xl font-semibold text-foreground">
+          <Building2 className="h-5 w-5 text-primary" />
           {title}
         </h2>
-        <p className="text-sm text-slate-600">{description}</p>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </div>
 
-      <div className="space-y-3">
+      <div className="max-h-[min(56vh,30rem)] space-y-4 overflow-y-auto pr-3">
         {sortedOrganizations.map((organization) => {
           const isSubmitting = submittingOrgId === organization.org_id;
           return (
             <div
               key={organization.org_id}
               data-testid={`org-option-${organization.org_id}`}
-              className="rounded-lg border border-green-200 bg-white p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+              className="rounded-3xl border border-border/80 bg-card/96 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.24)] dark:shadow-[0_18px_42px_-34px_rgba(2,6,23,0.6)]"
             >
               <div className="space-y-1 min-w-0">
-                <p className="font-semibold text-slate-900 truncate">{organization.display_name}</p>
+                <p className="font-semibold text-foreground truncate">{organization.display_name}</p>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary">{ROLE_LABELS[organization.role] || organization.role}</Badge>
                   {orgHint === organization.org_id ? (
-                    <Badge variant="outline" className="border-green-500 text-green-700">
+                    <Badge variant="outline" className="border-primary/30 text-primary">
                       Convite
                     </Badge>
                   ) : null}
@@ -80,7 +80,7 @@ export function OrganizationSelectorPanel({
                 data-testid={`org-select-button-${organization.org_id}`}
                 onClick={() => onSelectOrganization(organization.org_id)}
                 disabled={isSubmitting}
-                className="bg-green-600 hover:bg-green-700"
+                className="brand-gradient-button"
               >
                 {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : connectLabel}
               </Button>

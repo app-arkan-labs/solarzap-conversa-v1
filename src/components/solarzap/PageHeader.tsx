@@ -12,11 +12,11 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, icon: Icon, actionContent, className }: PageHeaderProps) {
   return (
-    <div className={cn("bg-gradient-to-r from-primary/10 via-background to-emerald-500/10 border-b flex-shrink-0 z-10", className)}>
+    <div className={cn("brand-gradient-soft border-b border-border/70 flex-shrink-0 z-10 backdrop-blur-sm", className)}>
       <div className="w-full px-6 py-5">
         <div className="flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20 flex-shrink-0 animate-scale-in">
+            <div className="brand-gradient-bg w-12 h-12 rounded-2xl flex items-center justify-center shadow-[0_18px_42px_-20px_hsl(var(--primary)/0.45)] flex-shrink-0 animate-scale-in">
               <Icon className="w-6 h-6 text-white" />
             </div>
             <div className="animate-fade-up">

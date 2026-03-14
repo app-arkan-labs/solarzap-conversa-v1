@@ -93,7 +93,7 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
-            <FileText className="h-5 w-5 text-green-500" />
+            <FileText className="h-5 w-5 text-primary" />
             Gerador de Proposta
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
@@ -103,7 +103,7 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
 
         {(form.isLoading || form.aiLoading) && (
           <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm">
-            <Loader2 className="mb-4 h-12 w-12 animate-spin text-green-500" />
+            <Loader2 className="mb-4 h-12 w-12 animate-spin text-primary" />
             <p className="text-lg font-semibold">{form.aiLoading ? 'Personalizando com IA...' : 'Gerando proposta...'}</p>
           </div>
         )}
@@ -159,7 +159,7 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
               <Button
                 type="submit"
                 disabled={form.isLoading}
-                className="flex-1 gap-2 bg-green-600 text-white hover:bg-green-700"
+                className="brand-gradient-button flex-1 gap-2 text-white"
                 data-testid="proposal-generate-pdf"
               >
                 {form.isLoading ? (

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+﻿import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -14,13 +14,13 @@ export interface LossReasonRecord {
 const LOSS_REASON_QUERY_KEY = 'loss-reasons';
 
 export const DEFAULT_LOSS_REASON_PRESETS: Array<Pick<LossReasonRecord, 'key' | 'label' | 'isDefault' | 'position'>> = [
-  { key: 'sem_resposta', label: 'Nao respondeu', isDefault: true, position: 1 },
+  { key: 'sem_resposta', label: 'Não respondeu', isDefault: true, position: 1 },
   { key: 'sem_interesse', label: 'Sem interesse', isDefault: true, position: 2 },
   { key: 'concorrente', label: 'Fechou com concorrente', isDefault: true, position: 3 },
-  { key: 'timing', label: 'Nao e o momento', isDefault: true, position: 4 },
-  { key: 'financeiro', label: 'Sem condicao financeira', isDefault: true, position: 5 },
-  { key: 'preco_alto', label: 'Preco acima do esperado', isDefault: true, position: 6 },
-  { key: 'retorno_investimento', label: 'Retorno do investimento nao convenceu', isDefault: true, position: 7 },
+  { key: 'timing', label: 'Não é o momento', isDefault: true, position: 4 },
+  { key: 'financeiro', label: 'Sem condição financeira', isDefault: true, position: 5 },
+  { key: 'preco_alto', label: 'Preço acima do esperado', isDefault: true, position: 6 },
+  { key: 'retorno_investimento', label: 'Retorno do investimento não convenceu', isDefault: true, position: 7 },
   { key: 'mudou_plano', label: 'Projeto adiado ou mudou de prioridade', isDefault: true, position: 8 },
   { key: 'outro', label: 'Outro', isDefault: true, position: 9 },
 ];
@@ -168,3 +168,5 @@ export function useLossReasons() {
     isAddingReason: addReasonMutation.isPending,
   };
 }
+
+

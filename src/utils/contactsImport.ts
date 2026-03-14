@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+﻿import * as XLSX from 'xlsx';
 
 export interface ImportedContactRow {
   name: string;
@@ -54,7 +54,7 @@ const readWorkbookRows = (binaryData: string): string[][] => {
 
 const parseRows = (rows: string[][]): { contacts: ImportedContactRow[]; invalidRows: number } => {
   if (rows.length < 2) {
-    throw new Error('O arquivo precisa ter cabecalho e ao menos uma linha de dados');
+    throw new Error('O arquivo precisa ter cabeçalho e ao menos uma linha de dados');
   }
 
   const headers = rows[0].map((header) => String(header || '').trim());
@@ -63,7 +63,7 @@ const parseRows = (rows: string[][]): { contacts: ImportedContactRow[]; invalidR
     .filter((row) => row.some((cell) => String(cell || '').trim().length > 0));
 
   if (dataRows.length > MAX_ROWS) {
-    throw new Error(`O limite por arquivo e de ${MAX_ROWS} linhas`);
+    throw new Error(`O limite por arquivo é de ${MAX_ROWS} linhas`);
   }
 
   const nameIndex = findHeaderIndex(headers, ['nome', 'name', 'cliente', 'contato']);
@@ -71,7 +71,7 @@ const parseRows = (rows: string[][]): { contacts: ImportedContactRow[]; invalidR
   const emailIndex = findHeaderIndex(headers, ['email', 'e-mail', 'mail']);
 
   if (nameIndex < 0 || phoneIndex < 0) {
-    throw new Error('Nao foi possivel detectar as colunas de nome e telefone');
+    throw new Error('Não foi possível detectar as colunas de nome e telefone');
   }
 
   const parsed = dataRows.map((row) => {
@@ -105,7 +105,7 @@ const readAsBinaryString = (file: File): Promise<string> =>
       resolve(String(event.target?.result || ''));
     };
     reader.onerror = () => {
-      reject(new Error('Nao foi possivel ler o arquivo'));
+      reject(new Error('Não foi possível ler o arquivo'));
     };
     reader.readAsBinaryString(file);
   });
@@ -126,3 +126,6 @@ export async function parseContactsFile(file: File): Promise<ParsedContactsResul
     invalidRows,
   };
 }
+
+
+

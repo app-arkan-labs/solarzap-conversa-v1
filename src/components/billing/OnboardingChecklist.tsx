@@ -171,8 +171,8 @@ export default function OnboardingChecklist() {
         </Button>
       </div>
 
-      <div className="mb-4 h-2 w-full overflow-hidden rounded-full bg-slate-200">
-        <div className="h-full rounded-full bg-emerald-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+      <div className="mb-4 h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--secondary)))] transition-all duration-300" style={{ width: `${progress}%` }} />
       </div>
 
       {error ? (
@@ -187,18 +187,18 @@ export default function OnboardingChecklist() {
             key={item.key}
             className={cn(
               'rounded-md border px-3 py-2 text-sm',
-              item.done ? 'border-emerald-200 bg-emerald-50/50' : 'border-border bg-background',
+              item.done ? 'border-primary/20 bg-primary/5' : 'border-border bg-background',
             )}
           >
             <div className="flex items-start gap-2">
               {item.done ? (
-                <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
+                <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
               ) : (
-                <Circle className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-400" />
+                <Circle className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
               )}
               <div className="min-w-0">
-                <p className={cn('font-medium', item.done ? 'text-emerald-800' : 'text-foreground')}>{item.title}</p>
-                <p className={cn('text-xs', item.done ? 'text-emerald-700/90' : 'text-muted-foreground')}>{item.description}</p>
+                <p className={cn('font-medium', item.done ? 'text-primary' : 'text-foreground')}>{item.title}</p>
+                <p className={cn('text-xs', item.done ? 'text-foreground/75' : 'text-muted-foreground')}>{item.description}</p>
               </div>
             </div>
           </li>

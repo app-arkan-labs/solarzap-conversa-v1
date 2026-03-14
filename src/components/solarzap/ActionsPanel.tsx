@@ -43,9 +43,9 @@ const quickActions = [
   { id: 'call', label: 'Ligar Agora', icon: Phone, color: 'bg-blue-500 hover:bg-blue-600' },
   { id: 'video_call', label: 'Vídeo Chamada', icon: Video, color: 'bg-cyan-500 hover:bg-cyan-600' },
   { id: 'schedule', label: 'Agendar Reunião', icon: Calendar, color: 'bg-purple-500 hover:bg-purple-600' },
-  { id: 'proposal', label: 'Gerar Proposta', icon: FileText, color: 'bg-green-500 hover:bg-green-600' },
+  { id: 'proposal', label: 'Gerar Proposta', icon: FileText, color: 'bg-primary hover:bg-primary/90' },
   { id: 'visit', label: 'Agendar Visita', icon: Home, color: 'bg-orange-500 hover:bg-orange-600' },
-  { id: 'comments', label: 'Comentários', icon: MessageSquare, color: 'bg-teal-500 hover:bg-teal-600' },
+  { id: 'comments', label: 'Comentários', icon: MessageSquare, color: 'bg-secondary hover:bg-secondary/90' },
   { id: 'pipeline', label: 'Ver Pipeline', icon: Kanban, color: 'bg-indigo-500 hover:bg-indigo-600' },
 ];
 

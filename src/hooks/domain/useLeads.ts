@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -383,7 +383,7 @@ export function useLeads() {
                             if (!oldData) return [];
                             return oldData.filter(c => c.id !== deletedId);
                         });
-                        toast.info('Contato excluido');
+                        toast.info('Contato excluído');
                     } else {
                         // UPDATE - optimistic merge to reflect AI toggle and other changes instantly
                         const updated = payload.new;
@@ -575,7 +575,7 @@ export function useLeads() {
     const createLeadMutation = useMutation({
         mutationFn: async (data: LeadPatch) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             const basePayload = {
                 org_id: orgId,
@@ -625,7 +625,7 @@ export function useLeads() {
     const updateLeadMutation = useMutation({
         mutationFn: async ({ contactId, data }: { contactId: string; data: LeadPatch }) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             const basePayload: any = {};
             if (data.nome !== undefined) {
@@ -687,7 +687,7 @@ export function useLeads() {
     const importContactsMutation = useMutation({
         mutationFn: async (contacts: any[]): Promise<ImportLeadsSummary> => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             const payload = contacts.map((contact) => ({
                 ...contact,
@@ -721,7 +721,7 @@ export function useLeads() {
             assignedToUserId: string | null;
         }): Promise<{ updatedCount: number; failedIds: string[] }> => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             const numericLeadIds = Array.from(new Set(
                 (leadIds || [])
@@ -778,7 +778,7 @@ export function useLeads() {
     const deleteLeadMutation = useMutation({
         mutationFn: async (leadId: string) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
             const { data: lead } = await supabase.from('leads').select('phone_e164, instance_name').eq('id', Number(leadId)).eq('org_id', orgId).single();
 
             if (lead?.phone_e164) {
@@ -798,7 +798,7 @@ export function useLeads() {
             return leadId;
         },
         onSuccess: (deletedId) => {
-            toast.success('Contato excluido permanentemente');
+            toast.success('Contato excluído permanentemente');
             queryClient.setQueriesData({ queryKey: ['leads', orgId] }, (old: Contact[] | undefined) =>
                 Array.isArray(old) ? old.filter(c => c.id !== deletedId) : old
             );
@@ -813,7 +813,7 @@ export function useLeads() {
     const toggleLeadAiMutation = useMutation({
         mutationFn: async ({ leadId, enabled, reason }: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
             const updatePayload: any = {
                 ai_enabled: enabled,
                 ai_paused_reason: enabled ? null : (reason || 'manual'),
@@ -850,7 +850,7 @@ export function useLeads() {
     const toggleLeadFollowUpMutation = useMutation({
         mutationFn: async ({ leadId, enabled }: { leadId: string; enabled: boolean }) => {
             if (!user) throw new Error('User not authenticated');
-            if (!orgId) throw new Error('Organizacao nao vinculada ao usuario');
+            if (!orgId) throw new Error('Organização não vinculada ao usuário');
 
             const leadIdNum = Number(leadId);
             const basePatch: Record<string, unknown> = {
@@ -936,5 +936,6 @@ export function useLeads() {
         toggleLeadFollowUp: toggleLeadFollowUpMutation.mutateAsync,
     };
 }
+
 
 

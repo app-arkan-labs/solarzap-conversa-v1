@@ -28,7 +28,7 @@ export function WizardProgressBar({ currentStep }: WizardProgressBarProps) {
               <div
                 className={cn(
                   'flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold',
-                  isDone && 'border-green-600 bg-green-600 text-white',
+                  isDone && 'border-secondary bg-secondary text-secondary-foreground',
                   isActive && 'border-primary bg-primary text-primary-foreground',
                   !isDone && !isActive && 'border-muted-foreground/40 text-muted-foreground',
                 )}

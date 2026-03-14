@@ -46,7 +46,7 @@ export default function AdminAccessErrorScreen({
   const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-8">
+    <div className="app-shell-bg min-h-screen px-4 py-8">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-2xl items-center justify-center">
         <Card className="w-full border-amber-200 shadow-sm">
           <CardHeader className="space-y-3">
@@ -69,11 +69,11 @@ export default function AdminAccessErrorScreen({
               <Badge variant="outline">origin: {origin}</Badge>
             </div>
 
-            <div className="rounded-md border bg-white p-4 text-sm">
-              <p className="font-medium text-slate-900">Mensagem</p>
-              <p className="mt-1 text-slate-600">{message}</p>
-              <p className="mt-3 font-medium text-slate-900">request_id</p>
-              <p className="mt-1 font-mono text-xs text-slate-600">{requestId || 'indisponivel'}</p>
+            <div className="rounded-xl border border-border bg-card/94 p-4 text-sm">
+              <p className="font-medium text-foreground">Mensagem</p>
+              <p className="mt-1 text-muted-foreground">{message}</p>
+              <p className="mt-3 font-medium text-foreground">request_id</p>
+              <p className="mt-1 font-mono text-xs text-muted-foreground">{requestId || 'indisponivel'}</p>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">

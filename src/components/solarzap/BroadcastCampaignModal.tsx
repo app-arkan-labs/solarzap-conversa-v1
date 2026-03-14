@@ -360,7 +360,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)] flex flex-col overflow-hidden sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Nova Campanha de Disparo</DialogTitle>
           <DialogDescription>
@@ -376,7 +376,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pr-1">
           {step === 1 && (
             <div className="space-y-4">
               <div className="space-y-2">

@@ -33,7 +33,7 @@ export default function SubscriptionRequiredScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 flex items-center justify-center p-6">
+    <div className="app-shell-bg min-h-screen flex items-center justify-center p-6">
       <div className="mx-auto w-full max-w-lg text-center">
         {/* Icon */}
         <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-amber-100 shadow-sm">
@@ -41,10 +41,10 @@ export default function SubscriptionRequiredScreen() {
         </div>
 
         {/* Heading */}
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           {isPastDue ? 'Pagamento pendente' : 'Assinatura necessária'}
         </h1>
-        <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-slate-500">
+        <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
           {isPastDue
             ? 'Sua última cobrança não foi processada. Atualize sua forma de pagamento para restaurar o acesso completo.'
             : 'Seu acesso está temporariamente limitado. Escolha um plano ou regularize o pagamento para voltar ao fluxo normal.'}
@@ -72,7 +72,7 @@ export default function SubscriptionRequiredScreen() {
           {isPastDue ? (
             <Button
               size="lg"
-              className="w-full gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600"
+              className="w-full gap-2 bg-[linear-gradient(135deg,#f59e0b,#f97316)] text-white hover:opacity-95"
               onClick={handlePortal}
               disabled={openingPortal}
             >
@@ -82,7 +82,7 @@ export default function SubscriptionRequiredScreen() {
           ) : (
             <Button
               size="lg"
-              className="w-full gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700"
+              className="w-full gap-2 bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--secondary)))] text-white hover:opacity-95"
               onClick={() => navigate('/billing')}
             >
               <Sparkles className="h-4 w-4" />
@@ -117,7 +117,7 @@ export default function SubscriptionRequiredScreen() {
         </div>
 
         {/* Footer */}
-        <p className="mt-8 text-xs text-slate-400">
+        <p className="mt-8 text-xs text-muted-foreground">
           Precisa de ajuda? Entre em contato com nosso suporte.
         </p>
       </div>

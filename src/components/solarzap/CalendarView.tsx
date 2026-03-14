@@ -97,7 +97,7 @@ const STATUS_COLORS: Record<string, string> = {
   scheduled: 'bg-blue-100 text-blue-700',
   confirmed: 'bg-green-100 text-green-700',
   canceled: 'bg-red-100 text-red-700',
-  completed: 'bg-slate-100 text-slate-700',
+  completed: 'bg-muted text-foreground/80',
   rescheduled: 'bg-orange-100 text-orange-700'
 };
 
@@ -314,7 +314,7 @@ export function CalendarView({
       <div
         key={event.id}
         onClick={(e) => handleEventClick(event, e)}
-        className="group relative p-3 bg-white rounded-xl border border-border/60 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer"
+        className="group relative cursor-pointer rounded-xl border border-border/60 bg-card/96 p-3 transition-all hover:border-primary/50 hover:shadow-md"
       >
         <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-full ${EVENT_TYPE_COLORS[event.type] || 'bg-primary'}`} />
         <div className="pl-3 space-y-1">
@@ -379,7 +379,7 @@ export function CalendarView({
 
       <div className="flex-1 flex overflow-hidden">
         {/* Main Calendar Grid */}
-        <div className="flex-1 flex flex-col min-w-0 bg-white">
+        <div className="flex-1 flex flex-col min-w-0 bg-card/92 backdrop-blur-sm">
 
           {/* Main Filters & Navigation Bar */}
           <div className="relative px-6 py-4 border-b border-border/50 flex items-center min-h-[72px]">
@@ -391,7 +391,7 @@ export function CalendarView({
                 size="sm"
                 onClick={() => setShowFilters(!showFilters)}
                 className={cn(
-                  "h-9 w-9 p-0 rounded-lg border-slate-200 text-slate-500 hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all text-xs",
+                  "h-9 w-9 p-0 rounded-lg border-border text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all text-xs",
                   showFilters && "border-primary text-primary bg-primary/5 shadow-sm ring-2 ring-primary/10"
                 )}
                 title={showFilters ? "Ocultar filtros" : "Mostrar filtros"}
@@ -405,7 +405,7 @@ export function CalendarView({
                     filters={mainFilters}
                     onChange={setMainFilters}
                     contacts={contacts}
-                    className="w-full sm:w-auto bg-white p-0.5 rounded-lg"
+                    className="w-full sm:w-auto bg-card/92 p-0.5 rounded-lg"
                   />
                 </div>
               )}
@@ -416,13 +416,13 @@ export function CalendarView({
               "flex items-center gap-4 transition-all duration-500 ease-in-out",
               showFilters ? "ml-auto translate-x-0" : "absolute left-1/2 -translate-x-1/2"
             )}>
-              <button onClick={prevMonth} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-primary">
+              <button onClick={prevMonth} className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-primary">
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              <span className="text-lg font-bold capitalize min-w-[160px] text-center text-slate-800 tracking-tight">
+              <span className="text-lg font-bold capitalize min-w-[160px] text-center text-foreground tracking-tight">
                 {monthName}
               </span>
-              <button onClick={nextMonth} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-primary">
+              <button onClick={nextMonth} className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-primary">
                 <ChevronRight className="w-5 h-5" />
               </button>
             </div>
@@ -434,16 +434,16 @@ export function CalendarView({
             {/* Days Header */}
             <div className="grid grid-cols-7 mb-4">
               {daysOfWeek.map(day => (
-                <div key={day} className="text-center text-xs font-bold text-slate-400 uppercase tracking-widest">
+                <div key={day} className="text-center text-xs font-bold text-muted-foreground uppercase tracking-widest">
                   {day}
                 </div>
               ))}
             </div>
 
             {/* Weeks Grid */}
-            <div className="flex-1 grid grid-rows-6 border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
+            <div className="flex-1 grid grid-rows-6 border border-border rounded-xl overflow-hidden shadow-sm bg-card/94">
               {weeks.map((week, weekIndex) => (
-                <div key={weekIndex} className="grid grid-cols-7 border-b border-slate-100 last:border-b-0 h-full">
+                <div key={weekIndex} className="grid grid-cols-7 border-b border-border/60 last:border-b-0 h-full">
                   {week.map((day, dayIndex) => {
                     const dayEvents = day ? getEventsForDate(day) : [];
                     const dayEventPartition = partitionDayEvents(dayEvents, 4);
@@ -452,8 +452,8 @@ export function CalendarView({
                         key={dayIndex}
                         onClick={() => day && handleDayClick(day)}
                         className={cn(
-                          "p-2 border-r border-slate-100 last:border-r-0 relative transition-colors h-full min-h-[100px] group",
-                          day ? "cursor-pointer hover:bg-slate-50" : "bg-slate-50/50"
+                          "p-2 border-r border-border/60 last:border-r-0 relative transition-colors h-full min-h-[100px] group",
+                          day ? "cursor-pointer hover:bg-accent/60" : "bg-muted/30"
                         )}
                       >
                         {day && (
@@ -463,7 +463,7 @@ export function CalendarView({
                                 "text-sm font-semibold w-8 h-8 flex items-center justify-center rounded-full transition-all",
                                 isToday(day)
                                   ? 'bg-primary text-primary-foreground shadow-md shadow-primary/30 scale-110'
-                                  : 'text-slate-600 group-hover:bg-white group-hover:shadow-sm'
+                                  : 'text-foreground/80 group-hover:bg-card group-hover:shadow-sm'
                               )}>
                                 {day}
                               </span>
@@ -489,7 +489,7 @@ export function CalendarView({
                                 </div>
                               ))}
                               {dayEventPartition.hiddenCount > 0 && (
-                                <div className="text-[10px] text-slate-400 font-medium text-center py-0.5">
+                                <div className="text-[10px] text-muted-foreground font-medium text-center py-0.5">
                                   +{dayEventPartition.hiddenCount} mais
                                 </div>
                               )}
@@ -506,19 +506,19 @@ export function CalendarView({
         </div>
 
         {/* Sidebar - Split View */}
-        <div className="w-96 border-l border-border bg-slate-50 flex flex-col shadow-[0_0_15px_rgba(0,0,0,0.03)] z-30">
+        <div className="w-96 border-l border-border bg-card/84 flex flex-col shadow-[0_0_15px_rgba(0,0,0,0.03)] dark:shadow-[0_0_18px_rgba(2,6,23,0.28)] z-30 backdrop-blur-sm">
 
           {/* Top: Upcoming Events */}
-          <div className="flex-1 flex flex-col min-h-0 border-b border-border/60 bg-white">
-            <div className="px-5 py-4 border-b border-border/50 bg-white sticky top-0 z-10 flex items-center justify-start gap-4">
-              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2.5">
+          <div className="flex-1 flex flex-col min-h-0 border-b border-border/60 bg-card/92">
+            <div className="px-5 py-4 border-b border-border/50 bg-card/92 sticky top-0 z-10 flex items-center justify-start gap-4">
+              <h2 className="text-sm font-bold text-foreground flex items-center gap-2.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                 Próximos Eventos
               </h2>
 
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-primary">
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-primary">
                     <Filter className="w-3.5 h-3.5" />
                   </Button>
                 </PopoverTrigger>
@@ -547,16 +547,16 @@ export function CalendarView({
           </div>
 
           {/* Bottom: Past Events */}
-          <div className="flex-1 flex flex-col min-h-0 bg-slate-50/50">
-            <div className="px-5 py-3 border-b border-border/50 flex justify-between items-center bg-slate-100/50">
+          <div className="flex-1 flex min-h-0 flex-col bg-muted/25">
+            <div className="flex items-center justify-between border-b border-border/50 bg-muted/35 px-5 py-3">
               <div className="flex items-center gap-2.5">
-                <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2.5">
+                <h2 className="flex items-center gap-2.5 text-sm font-bold text-foreground/84">
                   <History className="w-4 h-4 text-orange-500" />
                   Eventos Passados
                 </h2>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-primary">
+                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-primary">
                       <Filter className="w-3.5 h-3.5" />
                     </Button>
                   </PopoverTrigger>
@@ -574,14 +574,14 @@ export function CalendarView({
                 variant="ghost"
                 size="sm"
                 onClick={() => setArchiveModalOpen(true)}
-                className="h-7 text-xs gap-1.5 text-slate-600 hover:text-primary hover:bg-white"
+                className="h-7 gap-1.5 text-xs text-muted-foreground hover:bg-card hover:text-primary"
               >
                 <Archive className="w-3.5 h-3.5" />
                 Arquivo
               </Button>
             </div>
 
-            <div className="px-5 py-2.5 bg-yellow-50/50 text-yellow-700/80 text-xs border-b border-yellow-100/50 leading-relaxed font-medium text-center">
+            <div className="border-b border-primary/15 bg-primary/10 px-5 py-2.5 text-center text-xs font-medium leading-relaxed text-primary/88">
               Clique para registrar o feedback dos eventos
             </div>
 

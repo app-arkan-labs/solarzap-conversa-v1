@@ -41,6 +41,12 @@ import {
     type FollowUpWindowConfig,
 } from '@/types/ai';
 import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
+import { getSupportedTimezones, normalizeSupportedTimezone } from '@/lib/timezones';
+
+const AI_SECTION_CARD_CLASS = 'overflow-hidden border-border/70 bg-card/98 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.18)] dark:shadow-[0_18px_40px_-30px_rgba(2,6,23,0.42)]';
+const AI_SUBSECTION_CLASS = 'rounded-xl border border-border/55 bg-muted/20 p-4';
+const AI_ROW_CLASS = 'rounded-xl border border-border/45 bg-background/55 px-3 py-2.5';
+const AI_STATUS_BADGE_CLASS = 'h-5 border-border/60 bg-background/75 px-2 text-[10px] text-foreground/80';
 
 type SpecialAgentDef = {
     stage: 'follow_up' | 'agente_disparos';
@@ -69,12 +75,13 @@ const SPECIAL_AGENTS: SpecialAgentDef[] = [
 
 const SUPPORT_AGENT_STAGE_KEY = 'assistente_geral';
 
+const APPOINTMENT_WINDOW_CONFIG_TYPE_OPTIONS: AppointmentWindowType[] = ['call', 'visit', 'meeting', 'installation'];
 const APPOINTMENT_WINDOW_TYPE_OPTIONS: Array<{ key: AppointmentWindowType; label: string }> = [
     { key: 'call', label: 'Chamada' },
     { key: 'visit', label: 'Visita' },
-    { key: 'meeting', label: 'Reunião' },
-    { key: 'installation', label: 'Instalação' },
 ];
+
+const SUPPORTED_TIMEZONES = getSupportedTimezones();
 
 const APPOINTMENT_DAY_OPTIONS: Array<{ key: AppointmentDayKey; label: string }> = [
     { key: 'mon', label: 'Seg' },
@@ -112,7 +119,7 @@ const cloneWindowConfig = (config: AppointmentWindowConfig): AppointmentWindowCo
 const normalizeWindowConfig = (raw: unknown): AppointmentWindowConfig => {
     const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, any>) : {};
     const next = cloneWindowConfig(DEFAULT_APPOINTMENT_WINDOW_CONFIG);
-    for (const { key } of APPOINTMENT_WINDOW_TYPE_OPTIONS) {
+    for (const key of APPOINTMENT_WINDOW_CONFIG_TYPE_OPTIONS) {
         const incoming = source[key];
         if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) continue;
         const startMin = parseTimeToMinutes(String(incoming.start || ''));
@@ -354,7 +361,7 @@ const normalizeAutoScheduleMinDays = (raw: unknown, fallback: number): number =>
 };
 
 const buildAutoScheduleDraftFromSettings = (settings: any): AutoScheduleSettingsDraft => ({
-    timezone: String(settings?.timezone || 'America/Sao_Paulo').trim() || 'America/Sao_Paulo',
+    timezone: normalizeSupportedTimezone(settings?.timezone, 'America/Sao_Paulo'),
     auto_schedule_call_enabled: settings?.auto_schedule_call_enabled !== false,
     auto_schedule_visit_enabled: settings?.auto_schedule_visit_enabled !== false,
     auto_schedule_call_min_days: normalizeAutoScheduleMinDays(
@@ -627,7 +634,7 @@ export function AIAgentsView() {
     const handleAutoScheduleTimezoneChange = (value: string) => {
         setAutoScheduleDraft((prev) => ({
             ...prev,
-            timezone: value,
+            timezone: normalizeSupportedTimezone(value, prev.timezone || 'America/Sao_Paulo'),
         }));
         setAutoScheduleDirty(true);
     };
@@ -638,7 +645,7 @@ export function AIAgentsView() {
     };
 
     const handleAutoScheduleSave = async () => {
-        const timezone = String(autoScheduleDraft.timezone || '').trim() || 'America/Sao_Paulo';
+        const timezone = normalizeSupportedTimezone(autoScheduleDraft.timezone, 'America/Sao_Paulo');
         await updateGlobalSettings({
             timezone,
             auto_schedule_call_enabled: autoScheduleDraft.auto_schedule_call_enabled,
@@ -785,32 +792,32 @@ export function AIAgentsView() {
     ].filter(Boolean) as string[];
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-hidden">
+        <div className="app-shell-bg flex-1 flex flex-col h-full overflow-hidden">
             <PageHeader
                 title="Inteligência Artificial"
                 subtitle="Configure os agentes autônomos do seu funil de vendas"
                 icon={Bot}
                 actionContent={
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-2.5">
                         <Button
                             variant="outline"
                             onClick={() => {
                                 void openPackPurchase('ai', { source: 'ai_credits', targetPlan: 'pro' });
                             }}
-                            className="gap-2 font-semibold h-9"
+                            className="h-9 gap-2 border-border/60 bg-background/70 font-semibold"
                         >
                             <Brain className="w-4 h-4" />
                             Comprar créditos de IA
                         </Button>
-                        <div className="flex items-center gap-3 bg-background/50 glass px-4 py-2 rounded-xl border border-border/50">
-                            <Badge variant={settings?.is_active ? "default" : "secondary"} className="h-7 px-3">
+                        <div className="flex items-center gap-3 rounded-xl border border-border/55 bg-background/65 px-3.5 py-2 backdrop-blur-sm">
+                            <Badge variant={settings?.is_active ? "default" : "secondary"} className="h-6 px-2.5 text-[11px]">
                                 {settings?.is_active ? "SISTEMA ATIVO" : "SISTEMA PAUSADO"}
                             </Badge>
                             <Switch
                                 data-testid="ai-master-switch"
                                 checked={settings?.is_active || false}
                                 onCheckedChange={(checked) => updateGlobalSettings({ is_active: checked })}
-                                className="data-[state=checked]:bg-green-500"
+                                className="data-[state=checked]:bg-primary"
                                 disabled={!canEdit}
                             />
                         </div>
@@ -824,9 +831,9 @@ export function AIAgentsView() {
                     {/* Settings Row */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Nome do Assistente */}
-                        <Card className="shadow-sm">
+                        <Card className={AI_SECTION_CARD_CLASS}>
                             <CardContent className="p-4">
-                                <Label className="text-xs uppercase text-slate-400 font-medium">Nome do Assistente</Label>
+                                <Label className="text-xs font-semibold text-muted-foreground">Nome do Assistente</Label>
                                 <Input
                                     className="mt-2"
                                     value={localAssistantName}
@@ -837,10 +844,13 @@ export function AIAgentsView() {
                         </Card>
 
                         {/* Instâncias WhatsApp - TODAS, não só connected */}
-                        <Card className="shadow-sm">
+                        <Card className={AI_SECTION_CARD_CLASS}>
                             <CardContent className="p-4">
-                                <Label className="text-xs uppercase text-slate-400 font-medium">Instâncias WhatsApp</Label>
-                                <div className="flex flex-col gap-2 mt-2">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <Label className="text-xs font-semibold text-muted-foreground">Instâncias WhatsApp</Label>
+                                    <span className="text-[11px] text-muted-foreground">Controle por instância</span>
+                                </div>
+                                <div className="mt-2 flex flex-col gap-2.5">
                                     {whatsappInstances.length === 0 ? (
                                         <p className="text-sm text-muted-foreground italic flex items-center gap-1.5">
                                             <AlertTriangle className="h-3.5 w-3.5" /> Nenhuma instância cadastrada
@@ -850,37 +860,35 @@ export function AIAgentsView() {
                                             const isOnline = inst.status === 'connected';
                                             const isConnecting = inst.status === 'connecting';
                                             return (
-                                                <div key={inst.id} className="flex items-center justify-between text-sm py-1">
-                                                    <div className="flex items-center gap-2 min-w-0">
+                                                <div key={inst.id} className={`${AI_ROW_CLASS} flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between`}>
+                                                    <div className="flex min-w-0 items-center gap-2.5">
                                                         {isOnline ? (
                                                             <Wifi className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
                                                         ) : (
-                                                            <WifiOff className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                                                            <WifiOff className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                                                         )}
-                                                        <span className={`font-medium truncate ${!isOnline ? 'text-slate-400' : ''}`}>
+                                                        <span className={`font-medium truncate ${!isOnline ? 'text-muted-foreground' : 'text-foreground'}`}>
                                                             {inst.display_name || inst.instance_name}
                                                         </span>
                                                         <Badge
-                                                            variant={isOnline ? 'default' : 'secondary'}
-                                                            className={`text-[10px] h-4 px-1.5 flex-shrink-0 ${isOnline ? 'bg-green-100 text-green-700 hover:bg-green-100' :
-                                                                isConnecting ? 'bg-yellow-100 text-yellow-700' : ''
-                                                                }`}
+                                                            variant="outline"
+                                                            className={`flex-shrink-0 ${AI_STATUS_BADGE_CLASS} ${isOnline ? 'border-primary/30 text-primary' : isConnecting ? 'border-amber-300/70 text-amber-700 dark:text-amber-300' : ''}`}
                                                         >
                                                             {isOnline ? 'Online' : isConnecting ? 'Conectando' : 'Offline'}
                                                         </Badge>
                                                     </div>
-                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                    <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
                                                         <Switch
                                                             checked={!!inst.ai_enabled}
                                                             onCheckedChange={(checked) => setInstanceAiEnabled(inst.instance_name, checked)}
                                                             disabled={!settings?.is_active || !isOnline}
-                                                            className="scale-75 origin-right data-[state=checked]:bg-green-500"
+                                                            className="scale-75 origin-right data-[state=checked]:bg-primary"
                                                         />
                                                         <Button
                                                             size="sm"
                                                             variant="outline"
                                                             data-testid={`instance-ai-activate-all-${inst.instance_name}`}
-                                                            className="h-7 text-[11px] text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200 px-2"
+                                                            className="h-7 border-border/60 px-2 text-[11px] text-primary hover:bg-primary/5 hover:text-primary/80"
                                                             disabled={!isOnline}
                                                             onClick={async () => {
                                                                 const count = await activateAiForAllLeads(inst.instance_name);
@@ -901,19 +909,19 @@ export function AIAgentsView() {
                         </Card>
                     </div>
 
-                    <Card className="shadow-sm" data-testid="auto-schedule-controls-card">
+                    <Card className={AI_SECTION_CARD_CLASS} data-testid="auto-schedule-controls-card">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm">Politica de Agendamento Automatico</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                <div className="rounded-md border bg-white p-3">
+                        <CardContent className="space-y-4 pt-1">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className={AI_SUBSECTION_CLASS}>
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <Label className="text-xs font-semibold uppercase text-slate-500">
+                                            <Label className="text-xs font-semibold text-muted-foreground">
                                                 Agendamento de Ligacoes
                                             </Label>
-                                            <p className="mt-1 text-[11px] text-slate-500">
+                                            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
                                                 Ativa/desativa convite automatico para chamada.
                                             </p>
                                         </div>
@@ -921,11 +929,11 @@ export function AIAgentsView() {
                                             checked={autoScheduleDraft.auto_schedule_call_enabled}
                                             onCheckedChange={(checked) => handleAutoScheduleToggle('auto_schedule_call_enabled', checked)}
                                             disabled={!canEdit}
-                                            className="data-[state=checked]:bg-green-500"
+                                            className="data-[state=checked]:bg-primary"
                                         />
                                     </div>
                                     <div className="mt-3 space-y-1">
-                                        <Label className="text-[11px] text-slate-500">Dias minimos para ligacao</Label>
+                                        <Label className="text-[11px] text-muted-foreground">Dias minimos para ligacao</Label>
                                         <Input
                                             type="number"
                                             min={AUTO_SCHEDULE_MIN_DAYS_MIN}
@@ -941,13 +949,13 @@ export function AIAgentsView() {
                                     </div>
                                 </div>
 
-                                <div className="rounded-md border bg-white p-3">
+                                <div className={AI_SUBSECTION_CLASS}>
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <Label className="text-xs font-semibold uppercase text-slate-500">
+                                            <Label className="text-xs font-semibold text-muted-foreground">
                                                 Agendamento de Visitas
                                             </Label>
-                                            <p className="mt-1 text-[11px] text-slate-500">
+                                            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
                                                 Ativa/desativa convite automatico para visita tecnica.
                                             </p>
                                         </div>
@@ -955,11 +963,11 @@ export function AIAgentsView() {
                                             checked={autoScheduleDraft.auto_schedule_visit_enabled}
                                             onCheckedChange={(checked) => handleAutoScheduleToggle('auto_schedule_visit_enabled', checked)}
                                             disabled={!canEdit}
-                                            className="data-[state=checked]:bg-green-500"
+                                            className="data-[state=checked]:bg-primary"
                                         />
                                     </div>
                                     <div className="mt-3 space-y-1">
-                                        <Label className="text-[11px] text-slate-500">Dias minimos para visita</Label>
+                                        <Label className="text-[11px] text-muted-foreground">Dias minimos para visita</Label>
                                         <Input
                                             type="number"
                                             min={AUTO_SCHEDULE_MIN_DAYS_MIN}
@@ -976,17 +984,26 @@ export function AIAgentsView() {
                                 </div>
                             </div>
 
-                            <div className="rounded-md border bg-slate-50 p-3">
-                                <Label className="text-xs font-semibold uppercase text-slate-500">Timezone operacional</Label>
-                                <Input
-                                    className="mt-2"
+                            <div className={AI_SUBSECTION_CLASS}>
+                                <Label className="text-xs font-semibold text-muted-foreground">Timezone operacional</Label>
+                                <Select
                                     value={autoScheduleDraft.timezone}
-                                    onChange={(event) => handleAutoScheduleTimezoneChange(event.target.value)}
-                                    placeholder="Ex: America/Sao_Paulo"
+                                    onValueChange={handleAutoScheduleTimezoneChange}
                                     disabled={!canEdit}
-                                />
-                                <p className="mt-2 text-[11px] text-slate-500">{autoScheduleModeLabel}</p>
-                                <p className="mt-1 text-[11px] text-slate-500">
+                                >
+                                    <SelectTrigger className="mt-2">
+                                        <SelectValue placeholder="Selecione a timezone" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {SUPPORTED_TIMEZONES.map((timezone) => (
+                                            <SelectItem key={timezone} value={timezone}>
+                                                {timezone}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="mt-2 text-[11px] text-muted-foreground">{autoScheduleModeLabel}</p>
+                                <p className="mt-1 text-[11px] text-muted-foreground">
                                     Regra fixa em runtime: apos 18:00 no timezone acima, a IA nao convida para ligacao.
                                 </p>
                             </div>
@@ -1011,18 +1028,22 @@ export function AIAgentsView() {
                         </CardContent>
                     </Card>
 
-                    <Card className="shadow-sm" data-testid="appointment-window-config-card">
+                    <Card className={AI_SECTION_CARD_CLASS} data-testid="appointment-window-config-card">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm">Janela de Agendamento da IA</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
+                        <CardContent className="space-y-4 pt-1">
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                                Defina os intervalos e dias em que a IA pode sugerir chamadas e visitas.
+                            </p>
+                            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                             {APPOINTMENT_WINDOW_TYPE_OPTIONS.map((item) => {
                                 const rule = windowConfigDraft[item.key];
                                 const error = windowConfigErrors[item.key];
                                 return (
-                                    <div key={item.key} className="rounded-md border bg-white p-3">
+                                    <div key={item.key} className={AI_SUBSECTION_CLASS}>
                                         <div className="mb-2 flex items-center justify-between">
-                                            <Label className="text-xs font-semibold uppercase text-slate-500">{item.label}</Label>
+                                            <Label className="text-xs font-semibold text-muted-foreground">{item.label}</Label>
                                             {error && (
                                                 <span className="text-[11px] font-medium text-red-600">{error}</span>
                                             )}
@@ -1030,7 +1051,7 @@ export function AIAgentsView() {
 
                                         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                                             <div className="space-y-1">
-                                                <Label className="text-[11px] text-slate-500">Início</Label>
+                                                <Label className="text-[11px] text-muted-foreground">Início</Label>
                                                 <Input
                                                     type="time"
                                                     value={rule.start}
@@ -1039,7 +1060,7 @@ export function AIAgentsView() {
                                                 />
                                             </div>
                                             <div className="space-y-1">
-                                                <Label className="text-[11px] text-slate-500">Fim</Label>
+                                                <Label className="text-[11px] text-muted-foreground">Fim</Label>
                                                 <Input
                                                     type="time"
                                                     value={rule.end}
@@ -1070,6 +1091,7 @@ export function AIAgentsView() {
                                     </div>
                                 );
                             })}
+                            </div>
 
                             {canEdit && (
                                 <div className="flex items-center justify-end gap-2">
@@ -1092,16 +1114,16 @@ export function AIAgentsView() {
                     </Card>
 
                     {/* Agente de Apoio Global */}
-                    <Card className="shadow-sm border-l-4 border-l-blue-500" data-testid="support-ai-card">
+                    <Card className={AI_SECTION_CARD_CLASS} data-testid="support-ai-card">
                         <CardContent className="p-4">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
-                                        <Shield className="w-5 h-5 text-blue-600" />
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                                        <Shield className="w-5 h-5 text-primary" />
                                     </div>
                                     <div>
                                         <h3 className="font-semibold text-sm">Agente de Apoio Global</h3>
-                                        <p className="text-xs text-slate-500">Responde mensagens fora do horário e em etapas sem agente dedicado. Mantém o lead engajado.</p>
+                                        <p className="text-xs text-muted-foreground">Responde mensagens fora do horário e em etapas sem agente dedicado. Mantém o lead engajado.</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
@@ -1123,7 +1145,7 @@ export function AIAgentsView() {
                                         data-testid="support-ai-toggle"
                                         checked={settings?.support_ai_enabled ?? true}
                                         onCheckedChange={(checked) => updateGlobalSettings({ support_ai_enabled: checked })}
-                                        className="data-[state=checked]:bg-blue-500"
+                                        className="data-[state=checked]:bg-primary"
                                         disabled={!canEdit}
                                     />
                                 </div>
@@ -1133,15 +1155,15 @@ export function AIAgentsView() {
 
                     {/* Pipeline Agents - APENAS OS 5 ATIVOS */}
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                                <h2 className="text-base font-semibold text-slate-800">Agentes de Pipeline</h2>
-                                <p className="text-xs text-slate-500 mt-0.5">
+                                <h2 className="text-base font-semibold text-foreground">Agentes de Pipeline</h2>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
                                     Agentes inteligentes que guiam o lead por cada etapa do funil de vendas.
                                     As demais etapas são operadas pelo vendedor ou por lembretes automáticos.
                                 </p>
                             </div>
-                            <Badge variant="outline" className="text-xs flex-shrink-0">
+                            <Badge variant="outline" className="text-xs flex-shrink-0 border-border/60 bg-background/70">
                                 {activeCount}/{ACTIVE_PIPELINE_AGENTS.length} ativos
                             </Badge>
                         </div>
@@ -1160,11 +1182,11 @@ export function AIAgentsView() {
                                 return (
                                     <div key={agent.stage} data-testid={`ai-stage-row-${agent.stage}`}>
                                         <Card
-                                            className={`shadow-sm transition-all ${isEnabled ? 'border-l-4 border-l-green-500' : 'opacity-70'}`}
+                                            className={`${AI_SECTION_CARD_CLASS} transition-all ${isEnabled ? 'border-l-4 border-l-primary' : 'opacity-75'}`}
                                             data-testid={`ai-stage-card-${agent.stage}`}
                                         >
                                             <CardContent className="p-4">
-                                                <div className="flex items-start gap-3">
+                                                <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
                                                 {/* Stage icon */}
                                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${stageInfo.color} bg-opacity-20`}>
                                                     <span className="text-lg">{stageInfo.icon}</span>
@@ -1172,32 +1194,32 @@ export function AIAgentsView() {
 
                                                 {/* Content */}
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className="font-semibold text-sm text-slate-800">{agent.label}</span>
+                                                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                                                        <span className="text-sm font-semibold text-foreground">{agent.label}</span>
                                                         <Badge
                                                             variant={isEnabled ? "default" : "secondary"}
-                                                            className={`text-[10px] h-4 px-1.5 ${isEnabled ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''}`}
+                                                            className={`h-5 px-2 text-[10px] ${isEnabled ? 'bg-primary/12 text-primary hover:bg-primary/12' : ''}`}
                                                         >
                                                             {isEnabled ? "Ativo" : "Desativado"}
                                                         </Badge>
-                                                        <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                                        <Badge variant="outline" className="h-5 border-border/60 px-2 text-[10px] text-foreground/72">
                                                             Versão {config?.prompt_override_version ?? 0}
                                                         </Badge>
                                                     </div>
-                                                    <p className="text-xs font-medium text-slate-600 mb-0.5">
+                                                    <p className="mb-0.5 text-xs font-medium text-foreground/78">
                                                         🎯 {agent.objective}
                                                     </p>
-                                                    <p className="text-[11px] text-slate-400">
+                                                    <p className="text-[11px] leading-relaxed text-muted-foreground">
                                                         Próxima etapa → {agent.nextStages}
                                                     </p>
                                                 </div>
 
                                                 {/* Controls */}
-                                                <div className="flex items-center gap-2 flex-shrink-0">
+                                                <div className="flex flex-wrap items-center gap-2 lg:flex-shrink-0">
                                                     <Button
                                                         size="sm"
                                                         variant="outline"
-                                                        className="h-8 text-xs gap-1.5"
+                                                        className="h-8 gap-1.5 border-border/60 text-xs"
                                                         onClick={() => handleEditClick(agent, effectivePrompt)}
                                                     >
                                                         <Pencil className="w-3 h-3" />
@@ -1206,7 +1228,7 @@ export function AIAgentsView() {
                                                     <Switch
                                                         checked={isEnabled}
                                                         onCheckedChange={(checked) => updateStageConfig(agent.stage, { is_active: checked })}
-                                                        className="data-[state=checked]:bg-green-500"
+                                                            className="data-[state=checked]:bg-primary"
                                                         disabled={!canEdit}
                                                     />
                                                 </div>
@@ -1219,10 +1241,10 @@ export function AIAgentsView() {
                         </div>
                     </div>
 
-                    <div className="space-y-3 mt-6">
+                    <div className="mt-6 space-y-3">
                         <div>
-                            <h2 className="text-base font-semibold text-slate-800">Agentes Especiais</h2>
-                            <p className="text-xs text-slate-500 mt-0.5">
+                            <h2 className="text-base font-semibold text-foreground">Agentes Especiais</h2>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
                                 Agentes transversais sem etapa fixa de pipeline.
                             </p>
                         </div>
@@ -1234,42 +1256,42 @@ export function AIAgentsView() {
                             return (
                                 <Card
                                     key={agent.stage}
-                                    className={`shadow-sm transition-all ${isEnabled ? 'border-l-4 border-l-emerald-500' : 'opacity-70'}`}
+                                    className={`${AI_SECTION_CARD_CLASS} transition-all ${isEnabled ? 'border-l-4 border-l-primary' : 'opacity-75'}`}
                                     data-testid={`ai-special-stage-card-${agent.stage}`}
                                 >
                                     <CardContent className="p-4">
-                                        <div className="flex items-start gap-3">
-                                            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-100">
+                                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+                                            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-muted">
                                                 <span className="text-lg">{agent.icon}</span>
                                             </div>
 
                                             <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="font-semibold text-sm text-slate-800">{agent.label}</span>
+                                                <div className="mb-1 flex flex-wrap items-center gap-2">
+                                                    <span className="text-sm font-semibold text-foreground">{agent.label}</span>
                                                     <Badge
                                                         variant={isEnabled ? "default" : "secondary"}
-                                                        className={`text-[10px] h-4 px-1.5 ${isEnabled ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''}`}
+                                                        className={`h-5 px-2 text-[10px] ${isEnabled ? 'bg-primary/12 text-primary hover:bg-primary/12' : ''}`}
                                                     >
                                                         {isEnabled ? "Ativo" : "Desativado"}
                                                     </Badge>
-                                                    <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                                                    <Badge variant="outline" className="h-5 border-border/60 px-2 text-[10px] text-foreground/72">
                                                         Versão {config?.prompt_override_version ?? 0}
                                                     </Badge>
                                                 </div>
-                                                <p className="text-xs font-medium text-slate-600 mb-0.5">
+                                                <p className="mb-0.5 text-xs font-medium text-foreground/78">
                                                     🎯 {agent.objective}
                                                 </p>
-                                                <p className="text-[11px] text-slate-400">
+                                                <p className="text-[11px] text-muted-foreground">
                                                     {agent.description}
                                                 </p>
                                             </div>
 
-                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                            <div className="flex flex-wrap items-center gap-2 lg:flex-shrink-0">
                                                 {agent.stage === 'follow_up' && (
                                                     <Button
                                                         size="sm"
                                                         variant={followUpCadenceExpanded ? 'default' : 'outline'}
-                                                        className="h-8 text-xs"
+                                                        className="h-8 border-border/60 text-xs"
                                                         onClick={() => setFollowUpCadenceExpanded((prev) => !prev)}
                                                         disabled={!canEdit}
                                                     >
@@ -1277,9 +1299,8 @@ export function AIAgentsView() {
                                                     </Button>
                                                 )}
                                                 <Button
-                                                    size="sm"
                                                     variant="outline"
-                                                    className="h-8 text-xs gap-1.5"
+                                                    className="h-8 gap-1.5 border-border/60 text-xs"
                                                     onClick={() => handleEditSpecialPrompt(agent.stage)}
                                                 >
                                                     <Pencil className="w-3 h-3" />
@@ -1290,31 +1311,31 @@ export function AIAgentsView() {
                                                     onCheckedChange={(checked) => {
                                                         void handleSpecialAgentToggle(agent.stage, checked);
                                                     }}
-                                                    className="data-[state=checked]:bg-emerald-500"
+                                                    className="data-[state=checked]:bg-primary"
                                                     disabled={!canEdit}
                                                 />
                                             </div>
                                         </div>
 
                                         {agent.stage === 'follow_up' && (
-                                            <div className="mt-4 border-t border-slate-200 pt-4 space-y-3">
+                                            <div className="mt-4 space-y-3 border-t border-border pt-4">
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                                     <div>
-                                                        <p className="text-xs font-semibold text-slate-700">Controlador de Cadencia</p>
-                                                        <p className="text-[11px] text-slate-500">
+                                                        <p className="text-xs font-semibold text-foreground/84">Controlador de Cadencia</p>
+                                                        <p className="text-[11px] text-muted-foreground">
                                                             {followUpCadencePreview || 'Nenhuma etapa ativa'}
                                                         </p>
                                                     </div>
-                                                    <Badge variant="outline" className="text-[10px] h-5 px-2">
+                                                    <Badge variant="outline" className="h-5 border-border/60 bg-background/70 px-2 text-[10px]">
                                                         {followUpEnabledSteps}/5 etapas ativas
                                                     </Badge>
                                                 </div>
 
-                                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 space-y-3">
+                                                <div className="space-y-3 rounded-xl border border-border/55 bg-muted/24 px-4 py-4">
                                                     <div className="flex flex-wrap items-center justify-between gap-2">
                                                         <div>
-                                                            <p className="text-xs font-semibold text-slate-700">Janela Comercial do Follow-up</p>
-                                                            <p className="text-[11px] text-slate-500">
+                                                            <p className="text-xs font-semibold text-foreground/84">Janela Comercial do Follow-up</p>
+                                                            <p className="text-[11px] text-muted-foreground">
                                                                 O worker so dispara follow-up dentro desta janela e nos dias selecionados.
                                                             </p>
                                                         </div>
@@ -1325,7 +1346,7 @@ export function AIAgentsView() {
 
                                                     <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                                                         <div className="space-y-1">
-                                                            <Label className="text-[11px] text-slate-500">Inicio</Label>
+                                                            <Label className="text-[11px] text-muted-foreground">Inicio</Label>
                                                             <Input
                                                                 type="time"
                                                                 value={followUpWindowDraft.start}
@@ -1334,7 +1355,7 @@ export function AIAgentsView() {
                                                             />
                                                         </div>
                                                         <div className="space-y-1">
-                                                            <Label className="text-[11px] text-slate-500">Fim</Label>
+                                                            <Label className="text-[11px] text-muted-foreground">Fim</Label>
                                                             <Input
                                                                 type="time"
                                                                 value={followUpWindowDraft.end}
@@ -1343,7 +1364,7 @@ export function AIAgentsView() {
                                                             />
                                                         </div>
                                                         <div className="space-y-1">
-                                                            <Label className="text-[11px] text-slate-500">Horario preferencial (opcional)</Label>
+                                                            <Label className="text-[11px] text-muted-foreground">Horario preferencial (opcional)</Label>
                                                             <Input
                                                                 type="time"
                                                                 value={followUpWindowDraft.preferred_time || ''}
@@ -1394,23 +1415,23 @@ export function AIAgentsView() {
                                                 </div>
 
                                                 {followUpCadenceExpanded && (
-                                                    <div className="space-y-2">
+                                                    <div className="space-y-2.5">
                                                         {followUpCadenceDraft.map((item) => (
                                                             <div
                                                                 key={item.step}
-                                                                className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                                                                className="grid grid-cols-1 gap-2 rounded-xl border border-border/45 bg-background/60 px-3 py-3 md:grid-cols-[auto_1fr_auto_auto] md:items-center"
                                                             >
                                                                 <div className="flex items-center gap-2">
                                                                     <Switch
                                                                         checked={item.enabled}
                                                                         onCheckedChange={(checked) => handleFollowUpCadenceToggle(item.step, checked)}
-                                                                        className="data-[state=checked]:bg-emerald-500"
+                                                                        className="data-[state=checked]:bg-primary"
                                                                         disabled={!canEdit}
                                                                     />
-                                                                    <span className="text-xs font-semibold text-slate-700">Etapa {item.step}</span>
+                                                                    <span className="text-xs font-semibold text-foreground/84">Etapa {item.step}</span>
                                                                 </div>
 
-                                                                <div className="text-[11px] text-slate-500">
+                                                                <div className="text-[11px] text-muted-foreground md:pr-2">
                                                                     {item.enabled ? 'Disparo automatico ativo' : 'Etapa pausada'}
                                                                 </div>
 
@@ -1434,7 +1455,7 @@ export function AIAgentsView() {
                                                                     onValueChange={(value) => handleFollowUpCadenceUnitChange(item.step, value as FollowUpCadenceUnit)}
                                                                     disabled={!canEdit || !item.enabled}
                                                                 >
-                                                                    <SelectTrigger className="h-8 w-[82px] text-xs">
+                                                                        <SelectTrigger className="h-8 w-[92px] text-xs">
                                                                         <SelectValue />
                                                                     </SelectTrigger>
                                                                     <SelectContent>
@@ -1457,7 +1478,7 @@ export function AIAgentsView() {
                                                 )}
 
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                                    <p className="text-[11px] text-slate-500">
+                                                    <p className="text-[11px] text-muted-foreground">
                                                         Padrao do sistema: E1 3h {'->'} E2 1d {'->'} E3 2d {'->'} E4 3d {'->'} E5 7d.
                                                     </p>
                                                     <div className="flex items-center gap-2">
@@ -1494,13 +1515,13 @@ export function AIAgentsView() {
 
             {hasUnsavedChanges && (
                 <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-4">
-                    <div className="bg-white rounded-lg shadow-xl border p-4 flex items-center gap-4">
-                        <span className="text-sm font-medium text-slate-600">Alterações não salvas</span>
+                    <div className="flex items-center gap-4 rounded-xl border border-border/70 bg-card/96 p-4 shadow-[0_22px_56px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl dark:shadow-[0_22px_56px_-28px_rgba(2,6,23,0.65)]">
+                        <span className="text-sm font-medium text-muted-foreground">Alterações não salvas</span>
                         <div className="flex items-center gap-2">
                             <Button variant="outline" size="sm" onClick={handleCancelNameChange} className="h-9">
                                 ✕ Cancelar
                             </Button>
-                            <Button size="sm" onClick={handleSaveNameChange} className="bg-green-500 hover:bg-green-600 text-white h-9">
+                            <Button size="sm" onClick={handleSaveNameChange} className="bg-primary hover:bg-primary/90 text-white h-9">
                                 <Save className="w-4 h-4 mr-2" /> Salvar
                             </Button>
                         </div>
@@ -1516,7 +1537,7 @@ export function AIAgentsView() {
                             <AlertTriangle className="h-5 w-5" />
                             Editar prompt do agente
                         </DialogTitle>
-                        <DialogDescription className="pt-2 text-slate-700">
+                        <DialogDescription className="pt-2 text-foreground/80">
                             <p className="font-medium">Atenção: editar as instruções pode prejudicar o funcionamento do agente.</p>
                             <p className="mt-2 text-sm">Os prompts padrão foram exaustivamente testados para garantir conversão e humanização. Faça alterações apenas se souber exatamente o que está fazendo.</p>
                         </DialogDescription>
@@ -1562,7 +1583,7 @@ export function AIAgentsView() {
                                 </Badge>
                             ))}
                             {promptWarnings.length > 0 && (
-                                <span className="text-[11px] text-slate-500">Avisos não bloqueiam o salvamento.</span>
+                                <span className="text-[11px] text-muted-foreground">Avisos não bloqueiam o salvamento.</span>
                             )}
                         </div>
                         <Textarea
@@ -1572,7 +1593,7 @@ export function AIAgentsView() {
                         />
                     </div>
                     <DialogFooter className="flex justify-between items-center sm:justify-between">
-                        <Button variant="ghost" className="text-slate-500 hover:text-slate-800" onClick={handleRestoreDefault}>
+                        <Button variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={handleRestoreDefault}>
                             <RefreshCcw className="w-4 h-4 mr-2" /> Restaurar Padrão
                         </Button>
                         <div className="flex gap-2">

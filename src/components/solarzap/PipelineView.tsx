@@ -861,7 +861,7 @@ export function PipelineView({
                           onClick={(e) => handleCardClick(contact, e)}
                           onDragStart={(e) => handleDragStart(e, contact)}
                           onDragEnd={handleDragEnd}
-                          className={`bg-white rounded-lg shadow-sm border border-border p-3 cursor-pointer active:cursor-grabbing transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${isDragging ? 'opacity-50 scale-95' : ''
+                          className={`rounded-lg border border-border/80 bg-card/96 p-3 text-foreground shadow-sm cursor-pointer active:cursor-grabbing transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${isDragging ? 'opacity-50 scale-95' : ''
                             }`}
                         >
                           {/* Header with Drag Handle and Actions Button */}
@@ -978,11 +978,11 @@ export function PipelineView({
                                 <Switch
                                   checked={contact.aiEnabled !== false}
                                   onCheckedChange={(checked) => onToggleLeadAi({ leadId: contact.id, enabled: checked })}
-                                  className="scale-75 data-[state=checked]:bg-green-600"
+                                  className="scale-75 data-[state=checked]:bg-primary"
                                   title={contact.aiEnabled !== false ? 'IA Ativa' : 'IA Pausada'}
                                 />
                                 {contact.aiEnabled !== false ? (
-                                  <Bot className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                                  <Bot className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                                 ) : (
                                   <UserCog className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
                                 )}

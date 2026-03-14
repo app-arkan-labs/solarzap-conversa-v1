@@ -7,23 +7,23 @@ type OrgSuspendedScreenProps = {
 
 export default function OrgSuspendedScreen({ reason }: OrgSuspendedScreenProps) {
   return (
-    <div className="min-h-screen bg-amber-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-xl rounded-xl border border-amber-300 bg-white p-6 shadow-sm">
+    <div className="app-shell-bg min-h-screen flex items-center justify-center px-4">
+      <div className="w-full max-w-xl rounded-2xl border border-amber-300/60 bg-card/94 p-6 shadow-[0_24px_56px_-32px_rgba(15,23,42,0.32)] backdrop-blur-xl">
         <div className="flex items-start gap-3">
           <div className="rounded-full bg-amber-100 p-2 text-amber-700">
             <AlertTriangle className="h-5 w-5" />
           </div>
           <div className="space-y-2">
-            <h1 className="text-xl font-semibold text-slate-900">Sua organizacao foi suspensa</h1>
-            <p className="text-sm text-slate-700">
+            <h1 className="text-xl font-semibold text-foreground">Sua organizacao foi suspensa</h1>
+            <p className="text-sm text-foreground/80">
               O acesso ao CRM esta bloqueado ate a reativacao pela equipe de operacoes.
             </p>
             {reason ? (
-              <p className="text-sm text-slate-800">
+              <p className="text-sm text-foreground/84">
                 <span className="font-medium">Motivo:</span> {reason}
               </p>
             ) : null}
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               Suporte: suporte@solarzap.com.br
             </p>
             <Button

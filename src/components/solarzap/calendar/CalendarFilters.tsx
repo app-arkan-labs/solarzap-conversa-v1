@@ -84,7 +84,7 @@ export function CalendarFilters({ filters, onChange, contacts, className }: Cale
         <div className={cn("flex flex-wrap items-center gap-2", className)}>
             {/* Filter by Type */}
             <Select value={filters.type || 'all'} onValueChange={handleTypeChange}>
-                <SelectTrigger className="w-[150px] h-8 text-xs bg-white text-primary border border-slate-300 shadow-sm hover:bg-white/90 focus:ring-0 focus:ring-offset-0">
+                <SelectTrigger className="h-8 w-[150px] border-border bg-card/92 text-xs text-foreground shadow-sm hover:bg-accent/60 focus:ring-0 focus:ring-offset-0">
                     <SelectValue placeholder="Tipo de Evento" />
                 </SelectTrigger>
                 <SelectContent>
@@ -99,7 +99,7 @@ export function CalendarFilters({ filters, onChange, contacts, className }: Cale
 
             {/* Filter by Lead Source */}
             <Select value={filters.channel || 'all'} onValueChange={handleChannelChange}>
-                <SelectTrigger className="w-[170px] h-8 text-xs bg-white text-primary border border-slate-300 shadow-sm hover:bg-white/90 focus:ring-0 focus:ring-offset-0">
+                <SelectTrigger className="h-8 w-[170px] border-border bg-card/92 text-xs text-foreground shadow-sm hover:bg-accent/60 focus:ring-0 focus:ring-offset-0">
                     <SelectValue placeholder="Origem" />
                 </SelectTrigger>
                 <SelectContent>
@@ -119,7 +119,7 @@ export function CalendarFilters({ filters, onChange, contacts, className }: Cale
                         variant="outline"
                         role="combobox"
                         className={cn(
-                            "w-[200px] h-8 justify-between text-xs bg-white text-primary border border-slate-300 shadow-sm hover:bg-white/90 hover:text-primary",
+                            "h-8 w-[200px] justify-between border-border bg-card/92 text-xs text-foreground shadow-sm hover:bg-accent/60 hover:text-foreground",
                             !filters.clientId && "text-muted-foreground"
                         )}
                     >
@@ -171,14 +171,14 @@ export function CalendarFilters({ filters, onChange, contacts, className }: Cale
             </Popover>
 
             {/* Date Range Group - Tighter spacing, White Background optimized */}
-            <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300 shadow-sm">
+            <div className="flex items-center gap-1 rounded-xl border border-border bg-card/92 p-0.5 shadow-sm">
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button
                             variant={"ghost"}
                             className={cn(
-                                "h-7 px-2 text-left font-normal text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900",
-                                !filters.startDate && "text-slate-400"
+                                "h-7 px-2 text-left font-normal text-xs text-foreground/84 hover:bg-accent hover:text-foreground",
+                                !filters.startDate && "text-muted-foreground"
                             )}
                         >
                             <CalendarIcon className="mr-1.5 h-3 w-3" />
@@ -196,15 +196,15 @@ export function CalendarFilters({ filters, onChange, contacts, className }: Cale
                     </PopoverContent>
                 </Popover>
 
-                <span className="text-[10px] text-slate-300 mx-1">-</span>
+                <span className="mx-1 text-[10px] text-border">-</span>
 
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button
                             variant={"ghost"}
                             className={cn(
-                                "h-7 px-2 text-left font-normal text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900",
-                                !filters.endDate && "text-slate-400"
+                                "h-7 px-2 text-left font-normal text-xs text-foreground/84 hover:bg-accent hover:text-foreground",
+                                !filters.endDate && "text-muted-foreground"
                             )}
                         >
                             <CalendarIcon className="mr-1.5 h-3 w-3" />
@@ -229,7 +229,7 @@ export function CalendarFilters({ filters, onChange, contacts, className }: Cale
                     variant="ghost"
                     size="sm"
                     onClick={clearFilters}
-                    className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:bg-red-50 hover:text-red-500"
                     title="Limpar filtros"
                 >
                     <X className="h-4 w-4" />

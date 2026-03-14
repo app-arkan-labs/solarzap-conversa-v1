@@ -184,7 +184,7 @@ export default function FeatureFlagsPanel({
 
         <Table>
           <TableHeader>
-            <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
+            <TableRow className="bg-muted/25 hover:bg-muted/35">
               <TableHead className="pl-5">Flag Key</TableHead>
               <TableHead>Descrição</TableHead>
               <TableHead className="text-center">Default</TableHead>
@@ -200,12 +200,12 @@ export default function FeatureFlagsPanel({
                   <TableCell className="pl-5 font-mono text-xs">{flag.flag_key}</TableCell>
                   <TableCell className="text-sm">{flag.description || '—'}</TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={flag.default_enabled ? 'default' : 'outline'} className={`text-xs ${flag.default_enabled ? 'bg-emerald-100 text-emerald-700' : 'text-slate-400'}`}>
+                    <Badge variant={flag.default_enabled ? 'default' : 'outline'} className={`text-xs ${flag.default_enabled ? 'bg-emerald-100 text-emerald-700' : 'text-muted-foreground'}`}>
                       {flag.default_enabled ? 'ON' : 'OFF'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={effective ? 'default' : 'outline'} className={`text-xs ${effective ? 'bg-emerald-100 text-emerald-700' : 'text-slate-400'}`}>
+                    <Badge variant={effective ? 'default' : 'outline'} className={`text-xs ${effective ? 'bg-emerald-100 text-emerald-700' : 'text-muted-foreground'}`}>
                       {effective ? 'ON' : 'OFF'}
                     </Badge>
                   </TableCell>

@@ -21,7 +21,7 @@ export function GoogleAccountButton({ variant = 'default', className }: GoogleAc
           className={cn(
             "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors",
             isConnected 
-              ? "bg-green-50 text-green-700 hover:bg-green-100" 
+              ? "border border-primary/20 bg-primary/8 text-foreground hover:bg-primary/12" 
               : "bg-muted text-muted-foreground hover:bg-muted/80",
             className
           )}
@@ -56,7 +56,7 @@ export function GoogleAccountButton({ variant = 'default', className }: GoogleAc
         onClick={() => setShowModal(true)}
         className={cn(
           "gap-2",
-          isConnected && "border-green-200 bg-green-50 text-green-700 hover:bg-green-100",
+          isConnected && "border-primary/20 bg-primary/8 text-foreground hover:bg-primary/12 hover:text-foreground",
           className
         )}
       >

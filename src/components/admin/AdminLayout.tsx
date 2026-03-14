@@ -44,19 +44,19 @@ export default function AdminLayout() {
   const { identity } = useAdminGuardContext();
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
+    <div className="app-shell-bg min-h-screen bg-background text-foreground">
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[280px_1fr]">
         {/* ── Sidebar ── */}
-        <aside className="relative bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800 text-white hidden lg:flex lg:flex-col">
+        <aside className="relative hidden lg:flex lg:flex-col border-r border-sidebar-border/70 bg-[linear-gradient(180deg,hsl(var(--sidebar-background)),hsl(var(--sidebar-accent))_135%)] text-sidebar-foreground">
           {/* Brand */}
-          <div className="px-5 py-5 border-b border-white/10">
+          <div className="px-5 py-5 border-b border-sidebar-border/80">
             <Link to="/admin" className="inline-flex items-center gap-2.5 group">
-              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-500/20 group-hover:shadow-amber-500/40 transition-shadow">
+              <div className="brand-gradient-bg flex items-center justify-center w-9 h-9 rounded-lg shadow-[0_16px_30px_-16px_hsl(var(--primary)/0.45)] transition-shadow">
                 <Sun className="h-5 w-5 text-white" />
               </div>
               <div>
                 <span className="block text-base font-bold tracking-tight">SolarZap</span>
-                <span className="block text-[10px] font-medium tracking-widest text-amber-400/80 uppercase">Admin Panel</span>
+                <span className="block text-[10px] font-medium tracking-widest text-primary uppercase">Admin Panel</span>
               </div>
             </Link>
           </div>
@@ -74,8 +74,8 @@ export default function AdminLayout() {
                     cn(
                       'flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-sm font-medium transition-all duration-200',
                       isActive
-                        ? 'bg-white/15 text-white shadow-sm backdrop-blur-sm'
-                        : 'text-slate-400 hover:bg-white/5 hover:text-white',
+                        ? 'brand-gradient-bg text-white shadow-[0_18px_34px_-22px_hsl(var(--primary)/0.55)]'
+                        : 'text-sidebar-foreground/68 hover:bg-sidebar-accent hover:text-sidebar-foreground',
                     )
                   }
                 >
@@ -87,16 +87,16 @@ export default function AdminLayout() {
           </nav>
 
           {/* Footer - Admin info */}
-          <div className="px-4 py-4 border-t border-white/10">
+          <div className="px-4 py-4 border-t border-sidebar-border/80">
             <div className="flex items-center gap-2.5">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/15 text-primary text-xs font-bold">
                 <Shield className="h-3.5 w-3.5" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-slate-300 truncate">
+                <p className="text-xs font-medium text-sidebar-foreground truncate">
                   {getRoleLabel(identity?.system_role)}
                 </p>
-                <p className="text-[10px] text-slate-500 truncate">
+                <p className="text-[10px] text-sidebar-foreground/60 truncate">
                   {identity?.user_id?.slice(0, 8) ?? ''}...
                 </p>
               </div>
@@ -107,13 +107,13 @@ export default function AdminLayout() {
         {/* ── Main Content ── */}
         <main className="min-w-0 flex flex-col">
           {/* Top Header */}
-          <header className="sticky top-0 z-30 border-b bg-white/80 backdrop-blur-md px-5 py-3 flex items-center justify-between">
+          <header className="sticky top-0 z-30 border-b border-border/70 bg-card/82 backdrop-blur-md px-5 py-3 flex items-center justify-between">
             {/* Mobile brand */}
             <div className="flex items-center gap-3 lg:hidden">
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500">
+              <div className="brand-gradient-bg flex items-center justify-center w-8 h-8 rounded-lg">
                 <Sun className="h-4 w-4 text-white" />
               </div>
-              <span className="font-bold text-slate-900">SolarZap Admin</span>
+              <span className="font-bold text-foreground">SolarZap Admin</span>
             </div>
 
             <div className="hidden lg:flex items-center gap-2">
@@ -127,7 +127,7 @@ export default function AdminLayout() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  className="text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                   onClick={() => {
                     void (async () => {
                       await signOut();

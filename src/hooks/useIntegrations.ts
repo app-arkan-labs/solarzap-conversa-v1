@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -231,7 +231,7 @@ export function useIntegrations() {
     try {
       setConnecting('whatsapp');
       if (!orgId) {
-        toast.error('Organizacao nao selecionada');
+        toast.error('Organização não selecionada');
         return null;
       }
       const headers = await getAuthHeaders();
@@ -296,7 +296,7 @@ export function useIntegrations() {
 
       if (provider === 'whatsapp') {
         if (!orgId) {
-          toast.error('Organizacao nao selecionada');
+          toast.error('Organização não selecionada');
           return;
         }
         const { error } = await supabase.functions.invoke('whatsapp-connect', {
@@ -351,3 +351,4 @@ export function useIntegrations() {
     getIntegration,
   };
 }
+

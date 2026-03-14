@@ -1,7 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
-  BarChart3,
+  Activity,
   CheckCircle2,
   Clock3,
   Copy,
@@ -922,7 +922,7 @@ export function TrackingView() {
         <PageHeader
           title="Tracking & Conversões"
           subtitle="Gerencie atribuição, plataformas, gatilhos e monitoramento de entregas."
-          icon={BarChart3}
+          icon={Activity}
           actionContent={
             <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
               <Badge
@@ -1468,7 +1468,7 @@ export function TrackingView() {
                 <Card className="border-0 shadow-sm"><CardContent className="p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Enviados</p><p className="mt-2 text-2xl font-bold text-emerald-600">{summary.sent}</p></CardContent></Card>
                 <Card className="border-0 shadow-sm"><CardContent className="p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Pendentes</p><p className="mt-2 text-2xl font-bold text-amber-600">{summary.pending}</p></CardContent></Card>
                 <Card className="border-0 shadow-sm"><CardContent className="p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Falhos</p><p className="mt-2 text-2xl font-bold text-destructive">{summary.failed}</p></CardContent></Card>
-                <Card className="border-0 shadow-sm"><CardContent className="p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Ignorados</p><p className="mt-2 text-2xl font-bold text-slate-600">{summary.skipped}</p></CardContent></Card>
+                <Card className="border-0 shadow-sm"><CardContent className="p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Ignorados</p><p className="mt-2 text-2xl font-bold text-foreground/78">{summary.skipped}</p></CardContent></Card>
               </div>
 
               <Card className="border-0 shadow-sm">

@@ -17,7 +17,7 @@ import { Progress } from '@/components/ui/progress';
 import { useAdminSystemMetrics, useAdminFinancialSummary, useAdminAuditLog } from '@/hooks/useAdminApi';
 
 const PLAN_COLORS: Record<string, string> = {
-  free: 'bg-slate-100 text-slate-700',
+  free: 'bg-muted text-foreground/80',
   start: 'bg-blue-100 text-blue-700',
   starter: 'bg-blue-100 text-blue-700',
   pro: 'bg-purple-100 text-purple-700',
@@ -104,7 +104,7 @@ export default function AdminDashboard() {
         count,
         label: PLAN_LABELS[plan] || plan,
         pct: Math.round((count / total) * 100),
-        colorClass: PLAN_COLORS[plan] || 'bg-slate-100 text-slate-700',
+        colorClass: PLAN_COLORS[plan] || 'bg-muted text-foreground/80',
       }));
   }, [financial]);
 
@@ -132,7 +132,7 @@ export default function AdminDashboard() {
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Visão geral do SolarZap</p>
         </div>
         <div className="flex gap-2">
@@ -270,7 +270,7 @@ export default function AdminDashboard() {
                   <div key={entry.id} className="flex items-start gap-3 text-sm">
                     <div className="w-2 h-2 mt-1.5 rounded-full bg-emerald-400 shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-900 truncate">{entry.action}</p>
+                      <p className="font-medium text-foreground truncate">{entry.action}</p>
                       <p className="text-xs text-muted-foreground">
                         {entry.target_type} · {entry.reason || 'sem motivo'}
                       </p>

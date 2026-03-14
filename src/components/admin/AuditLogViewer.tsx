@@ -77,7 +77,7 @@ export default function AuditLogViewer() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Audit Log</h1>
+          <h1 className="text-2xl font-bold text-foreground">Audit Log</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{total} entradas registradas</p>
         </div>
         <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={!entries.length}>
@@ -118,7 +118,7 @@ export default function AuditLogViewer() {
         <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
+              <TableRow className="bg-muted/25 hover:bg-muted/35">
                 <TableHead className="pl-5 w-8"></TableHead>
                 <TableHead>Timestamp</TableHead>
                 <TableHead>Actor</TableHead>
@@ -131,13 +131,13 @@ export default function AuditLogViewer() {
             <TableBody>
               {entries.map((entry) => {
                 const isOpen = expandedId === entry.id;
-                const actionColor = ACTION_COLORS[entry.action] || 'bg-slate-100 text-slate-700';
+                const actionColor = ACTION_COLORS[entry.action] || 'bg-muted text-foreground/80';
                 const hasDiff = entry.before !== null || entry.after !== null;
                 return (
                   <Collapsible key={entry.id} open={isOpen} onOpenChange={() => setExpandedId(isOpen ? null : entry.id)} asChild>
                     <>
                       <CollapsibleTrigger asChild>
-                        <TableRow className="cursor-pointer hover:bg-slate-50 transition-colors">
+                        <TableRow className="cursor-pointer transition-colors hover:bg-muted/35">
                           <TableCell className="pl-5 w-8">
                             {hasDiff && <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />}
                           </TableCell>
@@ -160,7 +160,7 @@ export default function AuditLogViewer() {
                       </CollapsibleTrigger>
                       {hasDiff && (
                         <CollapsibleContent asChild>
-                          <TableRow className="bg-slate-50">
+                          <TableRow className="bg-muted/25">
                             <TableCell colSpan={7} className="px-5 py-3">
                               <div className="grid md:grid-cols-2 gap-3">
                                 {entry.before !== null && (

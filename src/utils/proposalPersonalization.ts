@@ -403,7 +403,7 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
   // Visit steps: segment-specific + closing step with CTA
   const visitSteps = [
     ...cfg.visitSteps,
-    `No final, peca a decisao do que fazer agora (${cfg.cta})`,
+    `No final, peça a decisão do que fazer agora (${cfg.cta})`,
   ];
 
   // BANT qualification rows
@@ -416,16 +416,16 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
 
   const bantQualification: BantQualificationRow[] = [
     {
-      item: 'Orcamento',
+      item: 'Orçamento',
       status: `Investimento estimado: ${formatCurrency(input.metrics.valorTotal)}`,
       question: pmt36 > 0
-        ? `Se a parcela de 36x (${formatCurrency(pmt36)}/mes) ficar proxima/abaixo da conta atual, faz sentido avancar?`
-        : 'O investimento esta dentro do orcamento previsto?',
+        ? `Se a parcela de 36x (${formatCurrency(pmt36)}/mês) ficar próxima/abaixo da conta atual, faz sentido avançar?`
+        : 'O investimento está dentro do orçamento previsto?',
     },
     {
       item: 'Decisor',
       status: 'A confirmar na visita',
-      question: 'Quem mais participa da decisao? Precisamos incluir alguem na conversa?',
+      question: 'Quem mais participa da decisão? Precisamos incluir alguém na conversa?',
     },
     {
       item: 'Motivo',
@@ -435,7 +435,7 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
     {
       item: 'Prazo',
       status: 'A confirmar',
-      question: 'Tem alguma data ou urgencia para a instalacao?',
+      question: 'Tem alguma data ou urgência para a instalação?',
     },
   ];
 
@@ -481,33 +481,33 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
   const paymentLabels = Array.from(new Set((input.paymentConditions || []).map((id) => PAYMENT_CONDITION_LABEL_BY_ID[id] || id)));
   const hasFinancing = (input.paymentConditions || []).includes('financiamento_bancario');
   const termsConditions = [
-    `Validade desta proposta: 15 dias corridos a partir da data de emissao.`,
+    `Validade desta proposta: 15 dias corridos a partir da data de emissão.`,
     isUsina
-      ? `Os valores apresentados sao estimativas baseadas na potencia projetada de ${input.metrics.potenciaSistema} kWp e estao sujeitos a vistoria tecnica.`
-      : `Os valores apresentados sao estimativas baseadas no consumo informado de ${input.metrics.consumoMensal} kWh/mes e estao sujeitos a vistoria tecnica.`,
-    `O dimensionamento segue as normas da ANEEL e da Lei 14.300/2022 (geracao distribuida).`,
+      ? `Os valores apresentados são estimativas baseadas na potência projetada de ${input.metrics.potenciaSistema} kWp e estão sujeitos à vistoria técnica.`
+      : `Os valores apresentados são estimativas baseadas no consumo informado de ${input.metrics.consumoMensal} kWh/mês e estão sujeitos à vistoria técnica.`,
+    `O dimensionamento segue as normas da ANEEL e da Lei 14.300/2022 (geração distribuída).`,
     isUsina
-      ? `A receita projetada considera a tarifa vigente ou mercado livre e pode variar conforme reajustes tarifarios/contratos.`
-      : `A economia projetada considera a tarifa vigente e pode variar conforme reajustes tarifarios.`,
-    `Garantia dos equipamentos conforme fabricante: modulos (12 anos produto / 25 anos performance linear), inversor (conforme marca selecionada).`,
-    `A instalacao inclui: projeto eletrico, instalacao mecanica e eletrica, comissionamento e solicitacao de vistoria junto a concessionaria.`,
-    `Prazo estimado de instalacao: 7 a 15 dias uteis apos aprovacao do projeto e disponibilidade de materiais.`,
+      ? `A receita projetada considera a tarifa vigente ou mercado livre e pode variar conforme reajustes tarifários/contratos.`
+      : `A economia projetada considera a tarifa vigente e pode variar conforme reajustes tarifários.`,
+    `Garantia dos equipamentos conforme fabricante: módulos (12 anos produto / 25 anos performance linear), inversor (conforme marca selecionada).`,
+    `A instalação inclui: projeto elétrico, instalação mecânica e elétrica, comissionamento e solicitação de vistoria junto à concessionária.`,
+    `Prazo estimado de instalação: 7 a 15 dias úteis após aprovação do projeto e disponibilidade de materiais.`,
     paymentLabels.length > 0
-      ? `Condicoes de pagamento selecionadas: ${paymentLabels.join(', ')}.`
-      : 'Condicoes de pagamento sob consulta comercial.',
+      ? `Condições de pagamento selecionadas: ${paymentLabels.join(', ')}.`
+      : 'Condições de pagamento sob consulta comercial.',
     hasFinancing
-      ? 'Financiamento bancario (quando selecionado) esta sujeito a aprovacao de credito pela instituicao financeira.'
-      : 'Nao ha simulacao de financiamento vinculada nesta proposta, salvo negociacao comercial posterior.',
+      ? 'Financiamento bancário (quando selecionado) está sujeito à aprovação de crédito pela instituição financeira.'
+      : 'Não há simulação de financiamento vinculada nesta proposta, salvo negociação comercial posterior.',
   ];
 
   // ── Next Steps Detailed ──
   const nextStepsDetailed: NextStepDetailed[] = [
-    { step: 'Aprovacao da Proposta', description: 'Confirmacao dos termos comerciais e assinatura do contrato.' },
-    { step: isUsina ? 'Estudo de Viabilidade' : 'Vistoria Tecnica', description: isUsina ? 'Levantamento topografico, analise de solo e conexao com a rede.' : 'Visita ao local para validacao das condicoes do telhado, rede eletrica e dimensionamento final.' },
-    { step: 'Projeto Executivo', description: 'Elaboracao do projeto eletrico e registro junto a concessionaria de energia.' },
-    { step: 'Instalacao', description: 'Montagem dos equipamentos, conexao eletrica e comissionamento do sistema.' },
-    { step: 'Homologacao', description: 'Solicitacao de vistoria pela concessionaria e troca do medidor para bidirecional.' },
-    { step: 'Geracao de Energia', description: 'Sistema ativo e gerando economia a partir da aprovacao da concessionaria.' },
+    { step: 'Aprovação da Proposta', description: 'Confirmação dos termos comerciais e assinatura do contrato.' },
+    { step: isUsina ? 'Estudo de Viabilidade' : 'Vistoria Técnica', description: isUsina ? 'Levantamento topográfico, análise de solo e conexão com a rede.' : 'Visita ao local para validação das condições do telhado, rede elétrica e dimensionamento final.' },
+    { step: 'Projeto Executivo', description: 'Elaboração do projeto elétrico e registro junto à concessionária de energia.' },
+    { step: 'Instalação', description: 'Montagem dos equipamentos, conexão elétrica e comissionamento do sistema.' },
+    { step: 'Homologação', description: 'Solicitação de vistoria pela concessionária e troca do medidor para bidirecional.' },
+    { step: 'Geração de Energia', description: 'Sistema ativo e gerando economia a partir da aprovação da concessionária.' },
   ];
 
   const base: PremiumProposalContent = {

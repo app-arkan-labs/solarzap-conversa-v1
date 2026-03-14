@@ -30,13 +30,13 @@ export function FollowUpIndicator({ step, enabled, compact = false }: FollowUpIn
           <span
             key={dotStep}
             className={cn(
-              'rounded-full border border-slate-300',
+              'rounded-full border border-border',
               dotSizeClass,
               isExhausted
                 ? 'bg-red-500 border-red-500'
                 : isFilled
                   ? 'bg-emerald-500 border-emerald-500'
-                  : 'bg-slate-200'
+                  : 'bg-muted'
             )}
           />
         );

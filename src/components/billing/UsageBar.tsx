@@ -18,7 +18,7 @@ export default function UsageBar({
         <span>{label}</span>
         <span>{used} / {limit}</span>
       </div>
-      <div className="h-2 rounded-full bg-slate-200">
+      <div className="h-2 rounded-full bg-muted">
         <div className={`h-2 rounded-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
     </div>

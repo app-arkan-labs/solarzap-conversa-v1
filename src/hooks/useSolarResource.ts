@@ -1,4 +1,4 @@
-/**
+﻿/**
  * useSolarResource — Isolated hook for geocoding + PVGIS irradiance resolution.
  *
  * Extracted from useProposalForm to prevent unrelated changes from breaking
@@ -335,8 +335,8 @@ export function useSolarResource(): UseSolarResourceReturn {
 
       if (code === 'unauthorized') {
         toast({
-          title: 'Sessao invalida',
-          description: `Sua sessao expirou. Faca login novamente para calcular irradiancia.${requestSuffix}`,
+          title: 'Sessão invalida',
+          description: `Sua sessão expirou. Faca login novamente para calcular irradiancia.${requestSuffix}`,
           variant: 'destructive',
         });
         return;
@@ -344,8 +344,8 @@ export function useSolarResource(): UseSolarResourceReturn {
 
       if (code === 'geocode_provider_unavailable') {
         toast({
-          title: 'Geocodificacao indisponivel',
-          description: `Servico de geocodificacao indisponivel. Verifique a chave Google e tente novamente.${requestSuffix}`,
+          title: 'Geocodificação indisponivel',
+          description: `Servico de geocodificação indisponivel. Verifique a chave Google e tente novamente.${requestSuffix}`,
           variant: 'destructive',
         });
         return;
@@ -353,8 +353,8 @@ export function useSolarResource(): UseSolarResourceReturn {
 
       if (code === 'geocode_low_confidence') {
         toast({
-          title: 'Endereco com baixa confianca',
-          description: `Nao foi possivel validar coordenadas com confianca para esse CEP/endereco.${requestSuffix}`,
+          title: 'Endereço com baixa confiança',
+          description: `Não foi possível validar coordenadas com confiança para esse CEP/endereço.${requestSuffix}`,
           variant: 'destructive',
         });
         return;
@@ -362,8 +362,8 @@ export function useSolarResource(): UseSolarResourceReturn {
 
       if (code === 'geocode_failed') {
         toast({
-          title: 'Falha na geocodificacao',
-          description: `Nao foi possivel converter a localizacao em coordenadas validas.${requestSuffix}`,
+          title: 'Falha na geocodificação',
+          description: `Não foi possível converter a localização em coordenadas válidas.${requestSuffix}`,
           variant: 'destructive',
         });
         return;
@@ -513,7 +513,7 @@ export function useSolarResource(): UseSolarResourceReturn {
       if (isStrictPvgisSource(contactData.irradianceSource)) {
         setStatus('resolved');
         // We don't have full monthly data from contact storage,
-        // but mark as resolved so the generate guard allows proceeding.
+        // but mark as resolved só the generate guard allows proceeding.
         // The full data will be populated after resolve() is called.
       }
     },
@@ -522,3 +522,6 @@ export function useSolarResource(): UseSolarResourceReturn {
 
   return { status, data, loading, errorCode, resolve, reset, restoreFromContact };
 }
+
+
+

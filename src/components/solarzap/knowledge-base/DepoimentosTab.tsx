@@ -51,11 +51,11 @@ const STEPS = [
 ];
 
 const MEDIA_TYPES = [
-    { type: 'text', icon: MessageSquareQuote, label: 'Só Texto', color: 'green', accept: '', description: 'Nenhuma mídia' },
-    { type: 'image', icon: ImageIcon, label: 'Foto', color: 'purple', accept: 'image/*', description: 'JPG, PNG, WebP' },
-    { type: 'video', icon: Video, label: 'Vídeo', color: 'blue', accept: 'video/*', description: 'MP4, MOV, WebM' },
-    { type: 'audio', icon: Mic, label: 'Áudio', color: 'orange', accept: 'audio/*', description: 'MP3, WAV, M4A' },
-    { type: 'pdf', icon: FileText, label: 'Print', color: 'red', accept: 'image/*,.pdf', description: 'Print ou PDF' },
+    { type: 'text', icon: MessageSquareQuote, label: 'Só Texto', color: 'brand', accept: '', description: 'Nenhuma mídia' },
+    { type: 'image', icon: ImageIcon, label: 'Foto', color: 'brand', accept: 'image/*', description: 'JPG, PNG, WebP' },
+    { type: 'video', icon: Video, label: 'Vídeo', color: 'brand', accept: 'video/*', description: 'MP4, MOV, WebM' },
+    { type: 'audio', icon: Mic, label: 'Áudio', color: 'brand', accept: 'audio/*', description: 'MP3, WAV, M4A' },
+    { type: 'pdf', icon: FileText, label: 'Print', color: 'brand', accept: 'image/*,.pdf', description: 'Print ou PDF' },
 ];
 
 export function DepoimentosTab() {
@@ -255,12 +255,12 @@ export function DepoimentosTab() {
 
     const getTypeIcon = (type: string) => {
         switch (type) {
-            case 'video': return <Video className="w-4 h-4 text-blue-500" />;
-            case 'audio': return <Mic className="w-4 h-4 text-orange-500" />;
-            case 'image': return <ImageIcon className="w-4 h-4 text-purple-500" />;
-            case 'pdf': return <FileText className="w-4 h-4 text-red-500" />;
-            case 'other': return <MessageSquareQuote className="w-4 h-4 text-green-500" />;
-            default: return <MessageSquareQuote className="w-4 h-4 text-green-500" />;
+            case 'video': return <Video className="w-4 h-4 text-primary" />;
+            case 'audio': return <Mic className="w-4 h-4 text-primary" />;
+            case 'image': return <ImageIcon className="w-4 h-4 text-primary" />;
+            case 'pdf': return <FileText className="w-4 h-4 text-primary" />;
+            case 'other': return <MessageSquareQuote className="w-4 h-4 text-primary" />;
+            default: return <MessageSquareQuote className="w-4 h-4 text-primary" />;
         }
     };
 
@@ -294,7 +294,7 @@ export function DepoimentosTab() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--secondary)))] shadow-lg shadow-primary/20">
                         <MessageSquareQuote className="w-5 h-5 text-white" />
                     </div>
                     <div>
@@ -392,7 +392,7 @@ export function DepoimentosTab() {
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <MessageSquareQuote className="w-5 h-5 text-purple-500" />
+                            <MessageSquareQuote className="w-5 h-5 text-primary" />
                             Novo Depoimento
                         </DialogTitle>
                     </DialogHeader>
@@ -405,7 +405,7 @@ export function DepoimentosTab() {
                                     <div className={cn(
                                         "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors",
                                         currentStep >= step.id
-                                            ? "bg-purple-600 text-white"
+                                                ? "brand-gradient-bg text-white"
                                             : "bg-muted text-muted-foreground"
                                     )}>
                                         {step.id}
@@ -415,7 +415,7 @@ export function DepoimentosTab() {
                                 {i < STEPS.length - 1 && (
                                     <div className={cn(
                                         "flex-1 h-0.5 mx-2",
-                                        currentStep > step.id ? "bg-purple-600" : "bg-muted"
+                                        currentStep > step.id ? "bg-primary" : "bg-muted"
                                     )} />
                                 )}
                             </React.Fragment>
@@ -508,20 +508,20 @@ export function DepoimentosTab() {
                                         />
 
                                         {formData.mediaFile ? (
-                                            <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-                                                <CheckCircle className="w-5 h-5 text-green-600" />
+                                            <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/8 p-4">
+                                                <CheckCircle className="w-5 h-5 text-primary" />
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-medium text-green-800 truncate">
+                                                    <p className="text-sm font-medium text-foreground truncate">
                                                         {formData.mediaFile.name}
                                                     </p>
-                                                    <p className="text-xs text-green-600">
+                                                    <p className="text-xs text-muted-foreground">
                                                         {(formData.mediaFile.size / 1024 / 1024).toFixed(2)} MB
                                                     </p>
                                                 </div>
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
-                                                    className="h-8 w-8 text-green-700 hover:text-red-600 hover:bg-red-50"
+                                                    className="h-8 w-8 text-primary hover:text-red-600 hover:bg-red-50"
                                                     onClick={() => setFormData(prev => ({ ...prev, mediaFile: null }))}
                                                 >
                                                     <X className="w-4 h-4" />

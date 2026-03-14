@@ -17,7 +17,7 @@ const Index = () => {
       {showCrmFlagBlock ? (
         <div
           data-testid="crm-feature-flag-banner"
-          className="fixed bottom-3 right-3 z-50 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 shadow"
+          className="fixed bottom-3 right-3 z-50 rounded-xl border border-primary/25 bg-background/95 px-3 py-2 text-xs text-foreground shadow-[0_16px_40px_-30px_rgba(15,23,42,0.45)] backdrop-blur-sm"
         >
           Feature flag `crm_feature_flag_banner` ativa para esta organizacao.
         </div>
