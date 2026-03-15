@@ -221,7 +221,74 @@ export function DashboardView({
             </Select>
           </div>
         }
+        mobileToolbar={
+          <div className="flex items-center gap-2">
+            <Select value={periodLabel} onValueChange={handlePeriodChange}>
+              <SelectTrigger className="h-8 w-[120px] text-xs bg-background border-border/50">
+                <SelectValue placeholder="Período" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="this_month">Este Mês</SelectItem>
+                <SelectItem value="last_7_days">7 dias</SelectItem>
+                <SelectItem value="last_30_days">30 dias</SelectItem>
+                <SelectItem value="this_year">Ano</SelectItem>
+              </SelectContent>
+            </Select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                  <CalendarIcon className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto max-w-[calc(100vw-2rem)] p-0" align="end">
+                <Calendar
+                  initialFocus
+                  mode="range"
+                  defaultMonth={dateRange.from}
+                  selected={dateRange}
+                  onSelect={(range) => {
+                    if (range?.from) {
+                      setDateRange({ from: range.from, to: range.to || range.from });
+                      setPeriodLabel("custom");
+                    }
+                  }}
+                  numberOfMonths={1}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+        }
       />
+
+      {isMobileViewport && (
+        <div className="flex items-center gap-2 overflow-x-auto border-b border-border/50 bg-background/80 px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {canViewTeam && onLeadScopeChange ? (
+            <LeadScopeSelect
+              value={leadScope}
+              onChange={onLeadScopeChange}
+              members={leadScopeMembers}
+              loading={isLoadingLeadScopeMembers}
+              currentUserId={user?.id ?? null}
+              testId="dashboard-owner-scope-trigger"
+              triggerClassName="h-8 text-xs shrink-0"
+            />
+          ) : null}
+          <Button variant="outline" size="sm" className="h-8 shrink-0 gap-1 text-xs" onClick={() => setLossAnalyticsOpen(true)}>
+            <TrendingDown className="h-3.5 w-3.5 text-rose-500" />
+            Perdas
+          </Button>
+          <Select onValueChange={(v) => handleExport(v as any)}>
+            <SelectTrigger className="h-8 w-[100px] text-xs shrink-0 bg-background border-border/50">
+              <Download className="mr-1 h-3.5 w-3.5" />
+              <SelectValue placeholder="Exportar" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="leads">Leads</SelectItem>
+              <SelectItem value="deals">Recebimentos</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="w-full px-4 py-4 sm:px-6 sm:py-6 space-y-6">
         <KpiCards data={data?.kpis} isLoading={isLoading} />

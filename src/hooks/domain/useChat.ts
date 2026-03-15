@@ -1261,7 +1261,9 @@ export function useChat(contacts: Contact[] = []) {
 
             // 3. Upload Audio
             const safeLeadId = String(conversationId || 'general').replace(/[^a-zA-Z0-9_-]/g, '_');
-            const fileName = `${orgId}/chat/${safeLeadId}/${Date.now()}_audio.webm`;
+            const audioMime = audioBlob.type || 'audio/webm';
+            const audioExt = audioMime.includes('ogg') ? 'ogg' : 'webm';
+            const fileName = `${orgId}/chat/${safeLeadId}/${Date.now()}_audio.${audioExt}`;
             const bucketCandidates = ['chat-attachments', 'chat-delivery'] as const;
             let usedBucket = '';
             let lastUploadError: { message?: string } | null = null;
@@ -1269,7 +1271,7 @@ export function useChat(contacts: Contact[] = []) {
             for (const bucket of bucketCandidates) {
                 const { error: uploadError } = await supabase.storage
                     .from(bucket)
-                    .upload(fileName, audioBlob, { contentType: 'audio/webm' });
+                    .upload(fileName, audioBlob, { contentType: audioMime });
 
                 if (!uploadError) {
                     usedBucket = bucket;

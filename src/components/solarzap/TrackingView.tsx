@@ -23,6 +23,7 @@ import { getDefaultStageEventMap, type StageEventMap, type StageEventMapEntry } 
 import { PIPELINE_STAGES, type PipelineStage } from '@/types/solarzap';
 import { cn } from '@/lib/utils';
 import { PageHeader } from './PageHeader';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -255,6 +256,7 @@ function SecretField({ label, placeholder, value, visible, onToggle, onChange }:
 
 export function TrackingView() {
   const { orgId } = useAuth();
+  const isMobileViewport = useMobileViewport();
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingDeliveries, setLoadingDeliveries] = useState(false);
@@ -948,6 +950,33 @@ export function TrackingView() {
               >
                 <RefreshCw className={cn('h-4 w-4', (loading || refreshing || loadingDeliveries) && 'animate-spin')} />
                 Atualizar
+              </Button>
+            </div>
+          }
+          mobileToolbar={
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={cn(
+                  'border-0 px-2 py-1 text-[10px] font-semibold',
+                  settings.tracking_enabled
+                    ? 'bg-emerald-500/10 text-emerald-700'
+                    : 'bg-muted text-muted-foreground',
+                )}
+              >
+                {settings.tracking_enabled ? 'Ativo' : 'Inativo'}
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => {
+                  void loadPanel(true);
+                  void loadDeliveries();
+                }}
+                disabled={loading || refreshing || loadingDeliveries}
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', (loading || refreshing || loadingDeliveries) && 'animate-spin')} />
               </Button>
             </div>
           }

@@ -180,6 +180,28 @@ export function BroadcastView() {
             </Button>
           </div>
         )}
+        mobileToolbar={(
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1 text-xs px-2"
+              onClick={() => { void openPackPurchase('disparo', { source: 'broadcasts' }); }}
+            >
+              <Zap className="w-3.5 h-3.5" />
+              Créditos
+            </Button>
+            <Button
+              data-testid="broadcast-create-campaign"
+              size="sm"
+              onClick={() => setIsCampaignModalOpen(true)}
+              className="bg-primary hover:bg-primary/90 gap-1 h-8 px-3 font-semibold text-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Nova
+            </Button>
+          </div>
+        )}
       />
 
       <div className="flex-1 overflow-y-auto">

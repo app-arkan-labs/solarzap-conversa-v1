@@ -613,6 +613,16 @@ export function ContactsView({
               </Button>
             </div>
           }
+          mobileToolbar={
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setImportModalOpen(true)} title="Importar">
+                <Upload className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setExportModalOpen(true)} title="Exportar">
+                <Download className="w-4 h-4" />
+              </Button>
+            </div>
+          }
         />
 
         {canViewTeam && onLeadScopeChange ? (
@@ -731,9 +741,9 @@ export function ContactsView({
                     />
                   </div>
                 </div>
-                {/* Buttons on hover */}
-                {!isSelectionMode && (
-                  <div className={`flex items-center transition-opacity ${isMobileViewport ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                {/* Buttons on hover — hidden on mobile to save space */}
+                {!isSelectionMode && !isMobileViewport && (
+                  <div className="flex items-center transition-opacity opacity-0 group-hover:opacity-100">
                     <Button
                       variant="ghost"
                       size="icon"

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { Phone, Video, Search, Paperclip, Smile, Mic, Send, FileText, Image, Film, X, CheckSquare, Copy, Forward, ArrowLeft, Reply, Bot, UserCog } from 'lucide-react';
+import { Phone, Video, Search, Paperclip, Smile, Mic, Send, FileText, Image, Film, X, CheckSquare, Copy, Forward, ArrowLeft, Reply, Bot, UserCog, MoreVertical } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { Conversation, Message, PIPELINE_STAGES, Contact } from '@/types/solarzap';
@@ -17,9 +17,11 @@ import { ChatSearchModal } from './ChatSearchModal';
 import { ForwardMessageModal } from './ForwardMessageModal';
 import { MessageContent } from './MessageContent';
 import { AudioDeviceModal } from './AudioDeviceModal';
+import { ChatHeaderActionsDrawer } from './ChatHeaderActionsDrawer';
 import { ImportedContact } from './ImportContactsModal';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 
 import { InstanceSelector } from './InstanceSelector';
 import { useUserWhatsAppInstances } from '@/hooks/useUserWhatsAppInstances';
@@ -169,6 +171,8 @@ export function ChatArea({
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [showAudioDeviceModal, setShowAudioDeviceModal] = useState(false);
+  const [showActionsDrawer, setShowActionsDrawer] = useState(false);
+  const isMobileChat = useMobileViewport();
   const [selectedMicrophoneId, setSelectedMicrophoneId] = useState<string | null>(() => {
     return localStorage.getItem('solarzap_audio_input');
   });
@@ -538,7 +542,13 @@ export function ChatArea({
         setSelectedMicrophoneId(null);
         localStorage.removeItem('solarzap_audio_input');
       }
-      const mediaRecorder = new MediaRecorder(stream);
+      // Prefer ogg/opus (WhatsApp-compatible) over webm
+      const preferredMime = MediaRecorder.isTypeSupported('audio/ogg; codecs=opus')
+        ? 'audio/ogg; codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
+          ? 'audio/webm; codecs=opus'
+          : undefined;
+      const mediaRecorder = new MediaRecorder(stream, preferredMime ? { mimeType: preferredMime } : undefined);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -561,7 +571,8 @@ export function ChatArea({
 
         if (conversation && onSendAudio && audioChunksRef.current.length > 0) {
           const selectedInstance = instances.find(i => i.id === selectedInstanceId);
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const actualMime = mediaRecorder.mimeType || 'audio/webm';
+          const audioBlob = new Blob(audioChunksRef.current, { type: actualMime });
           try {
             await onSendAudio(conversation.id, audioBlob, finalDuration, selectedInstance?.instance_name);
           } catch (error) {
@@ -957,12 +968,12 @@ export function ChatArea({
         </div>
       )}
       {/* Chat Header */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-border bg-card">
+      <div className="h-14 px-3 flex items-center justify-between border-b border-border bg-card gap-1">
         {onBack ? (
           <button
             type="button"
             onClick={onBack}
-            className="mr-2 inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground flex-shrink-0"
             title="Voltar para conversas"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -971,122 +982,176 @@ export function ChatArea({
         <button
           onClick={onOpenDetails}
           data-testid="chat-open-details"
-          className="flex items-center gap-3 min-w-0 flex-1 text-left hover:bg-muted/50 -ml-2 pl-2 py-2 rounded-lg transition-colors cursor-pointer"
+          className="flex items-center gap-2 min-w-0 flex-1 text-left hover:bg-muted/50 pl-1 py-1.5 rounded-lg transition-colors cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-full bg-muted flex-shrink-0 flex items-center justify-center text-xl">
+          <div className="w-9 h-9 rounded-full bg-muted flex-shrink-0 flex items-center justify-center text-lg">
             {conversation.contact.avatar || '👤'}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="font-medium text-foreground truncate min-w-[50px]">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-medium text-sm text-foreground truncate">
                 {conversation.contact.name}
               </span>
-              {!isDetailsOpen && (
+              {/* Instance color dot */}
+              {isMobileChat && instances.find(i => i.id === selectedInstanceId)?.color && (
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: instances.find(i => i.id === selectedInstanceId)?.color || '#999' }}
+                  title={instances.find(i => i.id === selectedInstanceId)?.display_name}
+                />
+              )}
+              {!isDetailsOpen && !isMobileChat && (
                 <Badge variant="secondary" className={cn('text-[10px] flex-shrink truncate max-w-[120px] sm:max-w-[160px] whitespace-nowrap', stage.color.replace('bg-', 'bg-'))}>
                   <span className="truncate">{stage.icon} {stage.title}</span>
                 </Badge>
               )}
             </div>
-            {conversation.contact.company && (
-              <div className="text-sm text-muted-foreground truncate">{conversation.contact.company}</div>
+            {conversation.contact.company && !isMobileChat && (
+              <div className="text-xs text-muted-foreground truncate">{conversation.contact.company}</div>
             )}
           </div>
         </button>
 
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {onToggleLeadAi && (
-            <div className={cn(
-              "flex items-center gap-2 mr-2 px-2 py-1 bg-muted/50 rounded-lg border border-border/50",
-              (!aiSettings?.is_active || instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false) && "opacity-70"
-            )}
-              title={
-                !aiSettings?.is_active
-                  ? "IA Global Desativada"
-                  : instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false
-                    ? "IA da Instância Desativada"
-                    : ""
-              }
-            >
-              <div className="flex items-center gap-1.5">
-                {!aiSettings?.is_active ? (
-                  <Bot className="w-4 h-4 text-muted-foreground" />
-                ) : instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false ? (
-                  <Bot className="w-4 h-4 text-muted-foreground" />
-                ) : conversation.contact.aiEnabled !== false ? (
-                  <Bot className="w-4 h-4 text-primary" />
-                ) : (
-                  <UserCog className="w-4 h-4 text-orange-500" />
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          {/* Desktop: show all controls inline */}
+          {!isMobileChat && (
+            <>
+              {onToggleLeadAi && (
+                <div className={cn(
+                  "flex items-center gap-2 mr-2 px-2 py-1 bg-muted/50 rounded-lg border border-border/50",
+                  (!aiSettings?.is_active || instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false) && "opacity-70"
                 )}
-                <span className="text-xs font-medium hidden md:inline">
-                  {!aiSettings?.is_active
-                    ? 'Sistema Pausado'
-                    : instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false
-                      ? (isDetailsOpen ? 'Pausada' : 'Instância Pausada')
-                      : conversation.contact.aiEnabled !== false
-                        ? 'IA Ativa'
-                        : 'Pausada'}
-                </span>
+                  title={
+                    !aiSettings?.is_active
+                      ? "IA Global Desativada"
+                      : instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false
+                        ? "IA da Instância Desativada"
+                        : ""
+                  }
+                >
+                  <div className="flex items-center gap-1.5">
+                    {!aiSettings?.is_active ? (
+                      <Bot className="w-4 h-4 text-muted-foreground" />
+                    ) : instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false ? (
+                      <Bot className="w-4 h-4 text-muted-foreground" />
+                    ) : conversation.contact.aiEnabled !== false ? (
+                      <Bot className="w-4 h-4 text-primary" />
+                    ) : (
+                      <UserCog className="w-4 h-4 text-orange-500" />
+                    )}
+                    <span className="text-xs font-medium hidden md:inline">
+                      {!aiSettings?.is_active
+                        ? 'Sistema Pausado'
+                        : instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false
+                          ? (isDetailsOpen ? 'Pausada' : 'Instância Pausada')
+                          : conversation.contact.aiEnabled !== false
+                            ? 'IA Ativa'
+                            : 'Pausada'}
+                    </span>
+                  </div>
+                  <Switch
+                    checked={conversation.contact.aiEnabled !== false}
+                    onCheckedChange={(checked) => onToggleLeadAi({ leadId: conversation.contact.id, enabled: checked })}
+                    className="scale-75 data-[state=checked]:bg-primary"
+                    disabled={!aiSettings?.is_active || instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false}
+                  />
+                </div>
+              )}
+
+              <div className="mr-2">
+                {isOrgManager ? (
+                  <InstanceSelector
+                    instances={instances}
+                    selectedInstanceId={selectedInstanceId}
+                    onSelect={handleInstanceSelect}
+                    onUpdateColor={updateColor}
+                  />
+                ) : (
+                  <Badge
+                    data-testid="user-assigned-instance-badge"
+                    variant="secondary"
+                    className="h-8 px-2 text-xs max-w-[220px] truncate"
+                    title={instances.find(i => i.id === selectedInstanceId)?.display_name || undefined}
+                  >
+                    {instances.find(i => i.id === selectedInstanceId)?.display_name ||
+                      instances.find(i => i.id === selectedInstanceId)?.instance_name ||
+                      'Instancia atribuida'}
+                  </Badge>
+                )}
               </div>
-              <Switch
-                checked={conversation.contact.aiEnabled !== false}
-                onCheckedChange={(checked) => onToggleLeadAi({ leadId: conversation.contact.id, enabled: checked })}
-                className="scale-75 data-[state=checked]:bg-primary"
-                disabled={!aiSettings?.is_active || instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false}
-              />
-            </div>
+              <button
+                onClick={handleCall}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                title="Ligar"
+              >
+                <Phone className="w-5 h-5" />
+              </button>
+              <button
+                onClick={handleVideoCall}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                title="Chamada de vídeo (Google Meet)"
+              >
+                <Video className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setShowSearchModal(true)}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                title="Pesquisar mensagens"
+              >
+                <Search className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => handleMenuAction('select_messages')}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                title="Selecionar mensagens"
+              >
+                <CheckSquare className="w-5 h-5" />
+              </button>
+            </>
           )}
 
-          <div className="mr-2">
-            {isOrgManager ? (
-              <InstanceSelector
-                instances={instances}
-                selectedInstanceId={selectedInstanceId}
-                onSelect={handleInstanceSelect}
-                onUpdateColor={updateColor}
-              />
-            ) : (
-              <Badge
-                data-testid="user-assigned-instance-badge"
-                variant="secondary"
-                className="h-8 px-2 text-xs max-w-[220px] truncate"
-                title={instances.find(i => i.id === selectedInstanceId)?.display_name || undefined}
+          {/* Mobile: compact — only phone + 3-dot menu */}
+          {isMobileChat && (
+            <>
+              <button
+                onClick={handleCall}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                title="Ligar"
               >
-                {instances.find(i => i.id === selectedInstanceId)?.display_name ||
-                  instances.find(i => i.id === selectedInstanceId)?.instance_name ||
-                  'Instancia atribuida'}
-              </Badge>
-            )}
-          </div>
-          <button
-            onClick={handleCall}
-            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-            title="Ligar"
-          >
-            <Phone className="w-5 h-5" />
-          </button>
-          <button
-            onClick={handleVideoCall}
-            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-            title="Chamada de vídeo (Google Meet)"
-          >
-            <Video className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setShowSearchModal(true)}
-            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-            title="Pesquisar mensagens"
-          >
-            <Search className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => handleMenuAction('select_messages')}
-            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-            title="Selecionar mensagens"
-          >
-            <CheckSquare className="w-5 h-5" />
-          </button>
+                <Phone className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setShowActionsDrawer(true)}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                title="Mais ações"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Mobile actions drawer */}
+      {isMobileChat && onToggleLeadAi && (
+        <ChatHeaderActionsDrawer
+          open={showActionsDrawer}
+          onOpenChange={setShowActionsDrawer}
+          onCall={handleCall}
+          onVideoCall={handleVideoCall}
+          onSearch={() => setShowSearchModal(true)}
+          onSelectMessages={() => handleMenuAction('select_messages')}
+          aiEnabled={conversation.contact.aiEnabled !== false}
+          aiGlobalActive={aiSettings?.is_active ?? false}
+          aiInstanceDisabled={instances.find(i => i.id === selectedInstanceId)?.ai_enabled === false}
+          onToggleAi={(checked) => onToggleLeadAi({ leadId: conversation.contact.id, enabled: checked })}
+          isOrgManager={isOrgManager}
+          instances={instances}
+          selectedInstanceId={selectedInstanceId}
+          onSelectInstance={handleInstanceSelect}
+          onUpdateInstanceColor={updateColor}
+        />
+      )}
 
       {/* Messages Area */}
       <div
@@ -1419,7 +1484,7 @@ export function ChatArea({
                     onEmojiClick={handleEmojiClick}
                     theme={Theme.DARK}
                     width={typeof window === 'undefined' ? 320 : Math.min(320, Math.max(240, window.innerWidth - 16))}
-                    height={typeof window === 'undefined' ? 400 : Math.min(400, Math.max(320, window.innerHeight - 220))}
+                    height={typeof window === 'undefined' ? 350 : Math.min(350, Math.max(260, window.innerHeight * 0.45))}
                     categories={emojiCategories}
                     searchPlaceHolder="Buscar emoji..."
                     previewConfig={{ showPreview: false }}
@@ -1488,11 +1553,10 @@ export function ChatArea({
                     ? "bg-destructive text-destructive-foreground"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 )}
-                onMouseDown={handleMicrophoneClick}
-                onMouseUp={stopRecording}
-                onMouseLeave={isRecording ? stopRecording : undefined}
-                onTouchStart={handleMicrophoneClick}
-                onTouchEnd={stopRecording}
+                onPointerDown={handleMicrophoneClick}
+                onPointerUp={stopRecording}
+                onPointerLeave={isRecording ? stopRecording : undefined}
+                onContextMenu={(e) => e.preventDefault()}
               >
                 <Mic className="w-6 h-6" />
               </button>

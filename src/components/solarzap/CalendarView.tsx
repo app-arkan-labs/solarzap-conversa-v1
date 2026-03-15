@@ -423,6 +423,25 @@ export function CalendarView({
             </Button>
           </div>
         }
+        mobileToolbar={
+          <div className="flex items-center gap-2">
+            {canViewTeam && onLeadScopeChange ? (
+              <LeadScopeSelect
+                value={leadScope}
+                onChange={onLeadScopeChange}
+                members={leadScopeMembers}
+                loading={leadScopeLoading}
+                currentUserId={currentUserId}
+                testId="calendar-owner-scope-trigger"
+                triggerClassName="h-8 text-xs"
+              />
+            ) : null}
+            <Button data-testid="calendar-create-appointment" onClick={handleCreateEvent} size="sm" className="bg-primary hover:bg-primary/90 gap-1 h-8 px-3 font-semibold">
+              <Plus className="w-4 h-4" />
+              Novo
+            </Button>
+          </div>
+        }
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -503,7 +522,7 @@ export function CalendarView({
             </div>
           )}
           <div className="flex-1 overflow-auto p-4 sm:p-6">
-            <div className="min-w-[540px] sm:min-w-[640px] md:min-w-0">
+            <div className={cn("sm:min-w-[640px] md:min-w-0", isMobileViewport ? 'min-w-0' : 'min-w-[540px]')}>
               {/* Days Header */}
               <div className="mb-4 grid grid-cols-7">
                 {daysOfWeek.map(day => (

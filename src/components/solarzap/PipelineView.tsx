@@ -728,6 +728,89 @@ export function PipelineView({
         title="Pipeline de Vendas"
         subtitle="Arraste os cards entre as etapas para navegar"
         icon={Kanban}
+        mobileToolbar={
+          <div className="flex items-center gap-1.5">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className={`h-9 w-9 border-border/50 shadow-sm glass ${hasChannelFilter ? 'bg-primary/10 text-primary border-primary/40' : ''}`}
+                  title="Filtros"
+                >
+                  <Filter className="w-4 h-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-3 bg-popover border border-border shadow-xl">
+                <div className="space-y-3">
+                  {canViewTeam && onLeadScopeChange ? (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground mb-1.5">Responsável</p>
+                      <LeadScopeSelect
+                        value={leadScope}
+                        onChange={onLeadScopeChange}
+                        members={leadScopeMembers}
+                        loading={leadScopeLoading}
+                        currentUserId={currentUserId}
+                        testId="pipeline-owner-scope-trigger"
+                        triggerClassName="w-full"
+                      />
+                    </div>
+                  ) : null}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-xs font-semibold text-muted-foreground">Origem do lead</p>
+                      {hasChannelFilter && (
+                        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setChannelFilter('todos')}>
+                          Limpar
+                        </Button>
+                      )}
+                    </div>
+                    <Select value={channelFilter} onValueChange={(v) => setChannelFilter(v as ChannelFilter)}>
+                      <SelectTrigger className="h-9 bg-background"><SelectValue placeholder="Selecione a origem" /></SelectTrigger>
+                      <SelectContent>
+                        {channelFilters.map((filter) => (
+                          <SelectItem key={`pipeline-origin-${filter.id}`} value={filter.id}>
+                            {`${filter.label} (${getChannelCount(filter.id)})`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="h-px bg-border" />
+                  <Button variant="outline" className="w-full gap-2" size="sm" onClick={() => setLossAnalyticsOpen(true)}>
+                    <TrendingDown className="h-4 w-4 text-rose-500" /> Análise de Perdas
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1 gap-1.5" size="sm" onClick={() => setShowImportModal(true)}>
+                      <FileUp className="w-3.5 h-3.5" /> Importar
+                    </Button>
+                    <Button variant="outline" className="flex-1 gap-1.5" size="sm" onClick={() => setShowExportModal(true)}>
+                      <FileDown className="w-3.5 h-3.5" /> Exportar
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Import/Export Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" title="Importar / Exportar" className="h-9 w-9 border-border/50 shadow-sm glass">
+                  <ArrowUpDown className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-popover">
+                <DropdownMenuItem onClick={() => setShowImportModal(true)} className="gap-2">
+                  <FileUp className="w-4 h-4" /> Importar Contatos
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowExportModal(true)} className="gap-2">
+                  <FileDown className="w-4 h-4" /> Exportar Contatos
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        }
         actionContent={
           <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
             {canViewTeam && onLeadScopeChange ? (
@@ -830,6 +913,21 @@ export function PipelineView({
           </div>
         }
       />
+
+      {/* Mobile search bar */}
+      {isMobileViewport && (
+        <div className="px-3 py-2 border-b border-border/60 bg-background/95 backdrop-blur-sm">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar leads..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9 pl-9 bg-muted/50 border-border/50 shadow-sm text-sm"
+            />
+          </div>
+        </div>
+      )}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
