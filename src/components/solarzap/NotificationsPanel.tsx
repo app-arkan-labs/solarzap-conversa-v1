@@ -350,7 +350,7 @@ export function NotificationsPanel({
 
         {/* ── Config panel (slides in alongside) ── */}
         {showConfig && (
-          <div className="w-[360px] animate-in slide-in-from-left-4 duration-300">
+          <div className="w-full max-w-full animate-in slide-in-from-left-4 duration-300 sm:w-[360px]">
             <NotificationConfigPanel onClose={() => setShowConfig(false)} />
           </div>
         )}

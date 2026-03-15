@@ -264,7 +264,7 @@ function AudioPlayer({ url, duration }: { url: string; duration?: string }) {
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors min-w-[200px]"
+        className="flex min-w-0 items-center gap-3 rounded-lg bg-muted/50 p-3 transition-colors hover:bg-muted sm:min-w-[200px]"
       >
         <div className="w-10 h-10 rounded-full bg-destructive/20 flex items-center justify-center flex-shrink-0">
           <Volume2 className="w-5 h-5 text-destructive" />
@@ -279,7 +279,7 @@ function AudioPlayer({ url, duration }: { url: string; duration?: string }) {
   }
 
   return (
-    <div className="flex items-center gap-3 min-w-[240px] p-2">
+    <div className="flex min-w-0 max-w-full items-center gap-3 p-2 sm:min-w-[240px]">
       <audio
         ref={audioRef}
         src={url}

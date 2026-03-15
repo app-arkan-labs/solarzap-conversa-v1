@@ -1181,7 +1181,7 @@ export function ChatArea({
 
                   <div
                     className={cn(
-                      'max-w-[65%] px-3 py-2 rounded-lg shadow-sm relative transition-colors group',
+                      'max-w-[82%] px-3 py-2 rounded-lg shadow-sm relative transition-colors group sm:max-w-[65%]',
                       isSent
                         ? 'bg-chat-sent rounded-tr-none ml-auto'
                         : 'bg-chat-received rounded-tl-none mr-auto',
@@ -1414,12 +1414,12 @@ export function ChatArea({
                 <Smile className="w-6 h-6" />
               </button>
               {showEmojiPicker && (
-                <div className="absolute bottom-12 left-0 z-50">
+                <div className="absolute bottom-12 left-0 z-50 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl shadow-2xl">
                   <EmojiPicker
                     onEmojiClick={handleEmojiClick}
                     theme={Theme.DARK}
-                    width={320}
-                    height={400}
+                    width={typeof window === 'undefined' ? 320 : Math.min(320, Math.max(240, window.innerWidth - 16))}
+                    height={typeof window === 'undefined' ? 400 : Math.min(400, Math.max(320, window.innerHeight - 220))}
                     categories={emojiCategories}
                     searchPlaceHolder="Buscar emoji..."
                     previewConfig={{ showPreview: false }}

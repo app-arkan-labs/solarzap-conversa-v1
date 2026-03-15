@@ -131,7 +131,7 @@ export function MobileMoreModal({
       <DialogContent
         data-testid="mobile-more-modal"
         className="left-0 top-auto z-50 w-full max-w-none translate-x-0 translate-y-0 gap-0 rounded-t-[28px] rounded-b-none border-x-0 border-b-0 p-0 sm:left-0 sm:top-auto sm:max-w-none sm:translate-x-0 sm:translate-y-0 sm:rounded-t-[28px] sm:rounded-b-none [&>button]:hidden"
-        style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom))', maxHeight: 'min(70vh, calc(100dvh - 4rem - env(safe-area-inset-bottom)))' }}
+        style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom))', maxHeight: 'min(82dvh, calc(100dvh - 4rem - env(safe-area-inset-bottom) - 0.5rem))' }}
       >
         <div className="rounded-t-[28px] bg-card/97 backdrop-blur-xl">
           <div className="flex justify-center pt-3">
@@ -172,7 +172,7 @@ export function MobileMoreModal({
             </div>
           ) : null}
 
-          <div className="max-h-[calc(70vh-5rem)] overflow-y-auto px-5 pb-5">
+          <div className="max-h-[min(68dvh,calc(100dvh-9rem))] overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-5">
             {!showSettings ? (
               <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
                 <div className="grid grid-cols-2 gap-3">

@@ -19,8 +19,8 @@ export function StaleLeadsTable({ data, isLoading }: StaleLeadsTableProps) {
     if (!data || data.length === 0) return <div className="text-center p-4 text-muted-foreground">Nenhum lead estagnado.</div>;
 
     return (
-        <div className="rounded-md border">
-            <Table>
+        <div className="overflow-x-auto rounded-md border">
+            <Table className="min-w-[720px]">
                 <TableHeader>
                     <TableRow>
                         <TableHead>Lead</TableHead>

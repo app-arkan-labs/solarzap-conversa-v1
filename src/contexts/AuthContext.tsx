@@ -183,6 +183,38 @@ const sortOrgOptions = (orgs: UserOrganizationOption[]) =>
     return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
   });
 
+const resolveSelectedOrganizationOption = (
+  orgs: UserOrganizationOption[],
+  source: string,
+  orgHint: string | null,
+): MembershipState | null => {
+  if (orgHint) {
+    const hinted = orgs.find((org) => org.org_id === orgHint);
+    if (hinted) {
+      return toMembershipState(hinted);
+    }
+  }
+
+  if (orgs.length === 1) {
+    return toMembershipState(orgs[0]);
+  }
+
+  const activeOrgId = getActiveOrgId();
+  const selected = activeOrgId
+    ? orgs.find((org) => org.org_id === activeOrgId)
+    : null;
+
+  if (selected) {
+    return toMembershipState(selected);
+  }
+
+  if (AUTH_ENTRY_EVENTS_REQUIRING_SELECTION.has(source) && shouldForceOrgSelectionForEntryEvent(source)) {
+    return null;
+  }
+
+  return null;
+};
+
 const AUTH_ENTRY_EVENTS_REQUIRING_SELECTION = new Set(['SIGNED_IN', 'PASSWORD_RECOVERY']);
 
 const shouldForceOrgSelectionForEntryEvent = (source: string): boolean => {
@@ -515,6 +547,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   };
 
+  const resolveOrganizationsFromApiFallback = async (source: string, orgHint: string | null) => {
+    try {
+      const response = await listUserOrgs();
+      const orgs = sortOrgOptions(response.orgs ?? []);
+      if (orgs.length === 0) {
+        return null;
+      }
+
+      const selectedMembership = resolveSelectedOrganizationOption(orgs, source, orgHint);
+      return {
+        orgs,
+        selectedMembership,
+      };
+    } catch (error) {
+      console.warn('[AuthContext] Failed to recover organizations via listUserOrgs fallback', error);
+      return null;
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -587,6 +638,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
+        const apiFallback = await resolveOrganizationsFromApiFallback(source, orgHint);
+        if (!isCurrent()) return;
+        if (apiFallback) {
+          setOrganizations(apiFallback.orgs);
+          if (apiFallback.selectedMembership?.orgId) {
+            setActiveOrgId(apiFallback.selectedMembership.orgId);
+            rememberLastGoodMembership(nextUser.id, apiFallback.selectedMembership);
+            setMembershipState(apiFallback.selectedMembership);
+            markOrgReady();
+            return;
+          }
+
+          setMembershipState(EMPTY_MEMBERSHIP);
+          markOrgSelectionRequired();
+          return;
+        }
+
         if (cachedMembership?.orgId && !AUTH_ENTRY_EVENTS_REQUIRING_SELECTION.has(source)) {
           setMembershipState(cachedMembership);
           setOrganizations(sortOrgOptions([
@@ -609,6 +677,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (resolution.status === 'membership_ausente_confirmada') {
+        const apiFallback = await resolveOrganizationsFromApiFallback(source, orgHint);
+        if (!isCurrent()) return;
+        if (apiFallback) {
+          setOrganizations(apiFallback.orgs);
+          if (apiFallback.selectedMembership?.orgId) {
+            setActiveOrgId(apiFallback.selectedMembership.orgId);
+            rememberLastGoodMembership(nextUser.id, apiFallback.selectedMembership);
+            setMembershipState(apiFallback.selectedMembership);
+            markOrgReady();
+            return;
+          }
+
+          setMembershipState(EMPTY_MEMBERSHIP);
+          markOrgSelectionRequired();
+          return;
+        }
+
         setMembershipState(EMPTY_MEMBERSHIP);
         setOrganizations([]);
         clearActiveOrgId();

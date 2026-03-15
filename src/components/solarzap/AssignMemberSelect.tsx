@@ -123,7 +123,7 @@ export function AssignMemberSelect({ contactId, currentAssigneeId, className, tr
             >
                 <SelectTrigger
                     data-testid={`assign-member-select-trigger-${contactId}`}
-                    className={`h-8 text-xs max-w-[130px] truncate ${triggerClassName || "w-[130px]"}`}
+                    className={`h-8 w-full max-w-full truncate text-xs sm:max-w-[130px] ${triggerClassName || "w-full sm:w-[130px]"}`}
                 >
                     <div className="flex items-center gap-2 overflow-hidden w-full">
                         {isUpdating ? <Loader2 className="w-3 h-3 animate-spin flex-shrink-0" /> : <User className="w-3 h-3 flex-shrink-0" />}

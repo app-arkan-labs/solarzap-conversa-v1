@@ -21,6 +21,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { PageHeader } from "@/components/solarzap/PageHeader";
 import { LeadScopeSelect, type LeadScopeValue } from "@/components/solarzap/LeadScopeSelect";
 import { LossAnalyticsModal } from "@/components/solarzap/LossAnalyticsModal";
+import { useMobileViewport } from "@/hooks/useMobileViewport";
 import type { MemberDto } from "@/lib/orgAdminClient";
 
 interface DashboardViewProps {
@@ -41,6 +42,7 @@ export function DashboardView({
 }: DashboardViewProps) {
   const { toast } = useToast();
   const { orgId, user } = useAuth();
+  const isMobileViewport = useMobileViewport();
 
 
   // State for Filters
@@ -147,7 +149,7 @@ export function DashboardView({
 
             <Button
               variant="outline"
-              className="border-border/50 shadow-sm glass h-10"
+              className="h-10 w-full border-border/50 shadow-sm glass sm:w-auto"
               onClick={() => setLossAnalyticsOpen(true)}
             >
               <TrendingDown className="mr-2 h-4 w-4 text-rose-500" />
@@ -189,7 +191,7 @@ export function DashboardView({
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
+              <PopoverContent className="w-auto max-w-[calc(100vw-2rem)] p-0" align="end">
                 <Calendar
                   initialFocus
                   mode="range"
@@ -201,7 +203,7 @@ export function DashboardView({
                       setPeriodLabel("custom");
                     }
                   }}
-                  numberOfMonths={2}
+                  numberOfMonths={isMobileViewport ? 1 : 2}
                 />
               </PopoverContent>
             </Popover>

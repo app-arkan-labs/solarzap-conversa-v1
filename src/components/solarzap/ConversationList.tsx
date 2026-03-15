@@ -788,9 +788,11 @@ export function ConversationList({
             const isRowSelected = selectedLeadIds.has(conversation.contact.id);
 
             return (
-              <button
+              <div
                 key={conversation.id}
                 data-testid="conversation-row"
+                role="button"
+                tabIndex={0}
                 onClick={() => {
                   if (isSelectionMode) {
                     toggleLeadSelection(conversation.contact.id);
@@ -798,8 +800,17 @@ export function ConversationList({
                   }
                   onSelect(conversation);
                 }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  if (isSelectionMode) {
+                    toggleLeadSelection(conversation.contact.id);
+                    return;
+                  }
+                  onSelect(conversation);
+                }}
                 className={cn(
-                  'w-full p-3 flex items-start gap-3 hover:bg-muted/50 transition-colors border-b border-border/50 group',
+                  'w-full p-3 flex items-start gap-3 hover:bg-muted/50 transition-colors border-b border-border/50 group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
                   isSelectionMode ? isRowSelected && 'bg-primary/5' : isSelected && 'bg-muted'
                 )}
               >
@@ -927,7 +938,7 @@ export function ConversationList({
                           <AssignMemberSelect
                             contactId={conversation.contact.id}
                             currentAssigneeId={conversation.contact.assignedToUserId}
-                            triggerClassName="w-[130px]"
+                            triggerClassName="w-full sm:w-[130px]"
                           />
                         </div>
                       )}
@@ -944,7 +955,7 @@ export function ConversationList({
                     </div>
                   </div>
                 </div>
-              </button>
+              </div>
             );
           })
         )}

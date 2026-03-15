@@ -17,8 +17,8 @@ export function OwnerPerformanceTable({ data, isLoading }: OwnerPerformanceProps
         revenue > 0 ? `${((profit / revenue) * 100).toFixed(1)}%` : "—";
 
     return (
-        <div className="rounded-md border">
-            <Table>
+        <div className="overflow-x-auto rounded-md border">
+            <Table className="min-w-[760px]">
                 <TableHeader>
                     <TableRow>
                         <TableHead>Responsavel</TableHead>

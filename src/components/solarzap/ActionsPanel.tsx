@@ -345,7 +345,7 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
   };
 
   return (
-    <div className="w-[340px] h-full border-l border-border bg-card overflow-y-auto custom-scrollbar">
+    <div className="h-full w-full border-l border-border bg-card overflow-y-auto custom-scrollbar sm:w-[340px]">
       {/* Header with close button */}
       <div className="p-4 bg-muted/50 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">

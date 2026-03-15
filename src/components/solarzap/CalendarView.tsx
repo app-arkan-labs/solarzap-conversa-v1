@@ -461,13 +461,13 @@ export function CalendarView({
 
             {/* Navigation - Centered when filters closed, Right when open */}
             <div className={cn(
-              "flex items-center gap-2 sm:gap-4 transition-all duration-500 ease-in-out min-w-0",
+              "flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none sm:gap-4 transition-all duration-500 ease-in-out",
               showFilters || isMobileViewport ? "ml-auto translate-x-0" : "absolute left-1/2 -translate-x-1/2"
             )}>
               <button onClick={prevMonth} className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-primary">
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              <span className="text-base sm:text-lg font-bold capitalize min-w-[140px] sm:min-w-[160px] text-center text-foreground tracking-tight">
+              <span className="min-w-[110px] flex-1 text-center text-base font-bold capitalize tracking-tight text-foreground sm:min-w-[160px] sm:flex-none sm:text-lg">
                 {monthName}
               </span>
               <button onClick={nextMonth} className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-primary">
@@ -477,11 +477,11 @@ export function CalendarView({
           </div>
 
           {isMobileViewport && (
-            <div className="flex items-center gap-2 overflow-x-auto border-b border-border/50 bg-background/80 px-4 py-3">
+            <div className="flex items-center gap-2 overflow-x-auto border-b border-border/50 bg-background/80 px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <Button
                 variant={mobileDrawerMode === 'upcoming' ? 'default' : 'outline'}
                 size="sm"
-                className="h-9 rounded-full"
+                className="h-9 shrink-0 rounded-full"
                 onClick={() => {
                   setMobileDrawerMode('upcoming');
                   setMobileDrawerOpen(true);
@@ -492,7 +492,7 @@ export function CalendarView({
               <Button
                 variant={mobileDrawerMode === 'past' ? 'default' : 'outline'}
                 size="sm"
-                className="h-9 rounded-full"
+                className="h-9 shrink-0 rounded-full"
                 onClick={() => {
                   setMobileDrawerMode('past');
                   setMobileDrawerOpen(true);
@@ -502,23 +502,21 @@ export function CalendarView({
               </Button>
             </div>
           )}
+          <div className="flex-1 overflow-auto p-4 sm:p-6">
+            <div className="min-w-[540px] sm:min-w-[640px] md:min-w-0">
+              {/* Days Header */}
+              <div className="mb-4 grid grid-cols-7">
+                {daysOfWeek.map(day => (
+                  <div key={day} className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground sm:text-xs sm:tracking-widest">
+                    {day}
+                  </div>
+                ))}
+              </div>
 
-
-
-          <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-auto">
-            {/* Days Header */}
-            <div className="grid grid-cols-7 mb-4">
-              {daysOfWeek.map(day => (
-                <div key={day} className="text-center text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                  {day}
-                </div>
-              ))}
-            </div>
-
-            {/* Weeks Grid */}
-            <div className="flex-1 grid grid-rows-6 border border-border rounded-xl overflow-hidden shadow-sm bg-card/94 min-w-[640px] md:min-w-0">
+              {/* Weeks Grid */}
+              <div className="flex-1 grid grid-rows-6 overflow-hidden rounded-xl border border-border bg-card/94 shadow-sm">
               {weeks.map((week, weekIndex) => (
-                <div key={weekIndex} className="grid grid-cols-7 border-b border-border/60 last:border-b-0 h-full">
+                <div key={weekIndex} className="grid h-full grid-cols-7 border-b border-border/60 last:border-b-0">
                   {week.map((day, dayIndex) => {
                     const dayEvents = day ? getEventsForDate(day) : [];
                     const dayEventPartition = partitionDayEvents(dayEvents, 4);
@@ -527,7 +525,7 @@ export function CalendarView({
                         key={dayIndex}
                         onClick={() => day && handleDayClick(day)}
                         className={cn(
-                          "p-2 border-r border-border/60 last:border-r-0 relative transition-colors h-full min-h-[100px] group",
+                          "group relative h-full min-h-[88px] border-r border-border/60 p-2 transition-colors last:border-r-0 sm:min-h-[100px]",
                           day ? "cursor-pointer hover:bg-accent/60" : "bg-muted/30"
                         )}
                       >
@@ -550,7 +548,7 @@ export function CalendarView({
                                   onClick={(e) => handleEventClick(event, e)}
                                   className={cn(
                                     EVENT_TYPE_COLORS[event.type] || 'bg-primary',
-                                    "text-white text-[10px] px-2 py-1 rounded-[4px] truncate shadow-sm",
+                                    "truncate rounded-[4px] px-1.5 py-1 text-[9px] text-white shadow-sm sm:px-2 sm:text-[10px]",
                                     "hover:brightness-110 hover:shadow-md hover:-translate-y-0.5 transition-all flex items-center gap-1.5 cursor-pointer"
                                   )}
                                   title={`${event.title} - ${format(parseISO(event.start_at), 'HH:mm')}`}
@@ -576,6 +574,7 @@ export function CalendarView({
                   })}
                 </div>
               ))}
+              </div>
             </div>
           </div>
         </div>

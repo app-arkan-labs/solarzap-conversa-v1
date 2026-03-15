@@ -870,7 +870,7 @@ export function PipelineView({
       {/* Pipeline Container with drag-to-scroll */}
       <div
         ref={scrollContainerRef}
-        className={`flex-1 bg-muted/50 pipeline-scroll-container relative ${isMobileViewport ? 'overflow-x-auto overflow-y-hidden px-4 py-4' : 'p-5 select-none'}`}
+        className={`flex-1 bg-muted/50 pipeline-scroll-container relative ${isMobileViewport ? 'overflow-x-auto overflow-y-hidden px-3 py-4 sm:px-4' : 'p-5 select-none'}`}
         style={{
           cursor: isMobileViewport ? 'auto' : (isDraggingScroll ? 'grabbing' : 'grab'),
           overflowX: 'scroll',
@@ -901,7 +901,7 @@ export function PipelineView({
               <div
                 key={stageId}
                 data-pipeline-stage-id={stageId}
-                className={`${isMobileViewport ? 'w-[85vw] max-w-[360px] min-w-[300px] snap-center scroll-mx-4' : 'w-[280px]'} flex-shrink-0 flex flex-col bg-card rounded-lg shadow-md transition-all duration-200 ${isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
+                className={`${isMobileViewport ? 'w-[calc(100vw-2rem)] max-w-[360px] min-w-[280px] snap-center scroll-mx-3 sm:scroll-mx-4' : 'w-[280px]'} flex-shrink-0 flex flex-col bg-card rounded-lg shadow-md transition-all duration-200 ${isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
                   }`}
                 onDragOver={isMobileViewport ? undefined : (e) => handleDragOver(e, stageId)}
                 onDragLeave={isMobileViewport ? undefined : handleDragLeave}
@@ -927,7 +927,7 @@ export function PipelineView({
                 </div>
 
                 {/* Cards Container */}
-                <div className={`flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar ${isMobileViewport ? 'min-h-[calc(100vh-22rem)] pr-3' : 'min-h-[400px]'}`}>
+                <div className={`flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar ${isMobileViewport ? 'min-h-[calc(100dvh-24rem)] pr-2' : 'min-h-[400px]'}`}>
                   {stageContacts.length === 0 ? (
                     <div className="flex items-center justify-center h-32 text-muted-foreground text-sm border-2 border-dashed border-muted rounded-lg">
                       Nenhum lead

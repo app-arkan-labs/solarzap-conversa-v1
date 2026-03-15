@@ -21,7 +21,7 @@ export function LeadScopeSelect({
   members = [],
   loading = false,
   currentUserId = null,
-  triggerClassName = 'w-[220px] bg-background border-border/50 shadow-sm glass',
+  triggerClassName = 'w-full sm:w-[220px] bg-background border-border/50 shadow-sm glass',
   testId,
 }: LeadScopeSelectProps) {
   const currentUserLabel = useMemo(() => {
