@@ -43,6 +43,7 @@ import { WHATSAPP_COLORS } from '@/constants';
 
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
 import { PageHeader } from './PageHeader';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 
 export function IntegrationsView() {
   const { settings: aiSettings } = useAISettings(); // Get Global Settings
@@ -163,6 +164,12 @@ export function IntegrationsView() {
                 <CheckCircle2 className="w-5 h-5 text-[#25D366]" />
               </div>
             </div>
+          }
+          mobileToolbar={
+            <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1">
+              <CheckCircle2 className="w-3 h-3 text-[#25D366]" />
+              {whatsappConnectedCount}/{whatsappInstances.length}
+            </Badge>
           }
         />
 

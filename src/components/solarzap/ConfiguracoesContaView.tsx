@@ -196,7 +196,7 @@ export function ConfiguracoesContaView() {
                                             data-testid="profile-avatar-trigger"
                                             onClick={() => avatarInputRef.current?.click()}
                                             disabled={isLoading}
-                                            className="group relative h-24 w-24 overflow-hidden rounded-full border-2 border-border bg-muted transition hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                            className="group relative h-20 w-20 sm:h-24 sm:w-24 overflow-hidden rounded-full border-2 border-border bg-muted transition hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
                                             aria-label="Alterar foto de perfil"
                                         >
                                             {avatarUrl ? (

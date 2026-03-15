@@ -247,14 +247,14 @@ export function WhatsAppInstancesManager() {
     <>
       <Card className="overflow-hidden">
         <CardHeader className="pb-4">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-xl flex items-center justify-center bg-green-500/10">
-                <WhatsAppLogo className="w-8 h-8" />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-10 h-10 sm:w-14 sm:h-14 shrink-0 rounded-xl flex items-center justify-center bg-green-500/10">
+                <WhatsAppLogo className="w-6 h-6 sm:w-8 sm:h-8" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <CardTitle className="text-lg">WhatsApp</CardTitle>
+                  <CardTitle className="text-base sm:text-lg">WhatsApp</CardTitle>
                   {connectedCount > 0 && (
                     <Badge className="bg-green-500 hover:bg-green-600">
                       <CheckCircle2 className="w-3 h-3 mr-1" />
@@ -267,7 +267,7 @@ export function WhatsAppInstancesManager() {
                     </Badge>
                   )}
                 </div>
-                <CardDescription className="mt-1">
+                <CardDescription className="mt-1 text-xs sm:text-sm">
                   {isFallbackMode ? (
                     <span className="text-amber-600">
                       Edge Function indisponível. Usando modo local para demonstração.
@@ -278,25 +278,26 @@ export function WhatsAppInstancesManager() {
                 </CardDescription>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 self-end sm:self-auto shrink-0">
               <Button
                 variant="outline"
+                size="sm"
                 onClick={testEdgeFunction}
                 disabled={testing}
-                className="border-amber-500 text-amber-600 hover:bg-amber-50"
+                className="border-amber-500 text-amber-600 hover:bg-amber-50 h-8 sm:h-9 text-xs sm:text-sm"
               >
                 {testing ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                 ) : (
-                  <Bug className="w-4 h-4 mr-2" />
+                  <Bug className="w-3.5 h-3.5 mr-1.5" />
                 )}
                 Testar API
               </Button>
-              <Button onClick={() => setCreateModalOpen(true)} disabled={creating}>
+              <Button size="sm" onClick={() => setCreateModalOpen(true)} disabled={creating} className="h-8 sm:h-9 text-xs sm:text-sm">
                 {creating ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                 ) : (
-                  <Plus className="w-4 h-4 mr-2" />
+                  <Plus className="w-3.5 h-3.5 mr-1.5" />
                 )}
                 Nova Instância
               </Button>

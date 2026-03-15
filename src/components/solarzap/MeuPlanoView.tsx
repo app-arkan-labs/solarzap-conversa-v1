@@ -239,15 +239,15 @@ export function MeuPlanoView() {
           <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-background shadow-sm">
             <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${meta.gradient}`} />
 
-            <div className="px-6 pt-8 pb-6 sm:px-8">
+            <div className="px-4 pt-5 pb-4 sm:px-8 sm:pt-8 sm:pb-6">
               <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex items-start gap-4">
-                  <div className={`flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${meta.gradient} shadow-lg`}>
-                    <PlanIcon className="h-7 w-7 text-white" />
+                <div className="flex items-start gap-3 sm:gap-4">
+                  <div className={`flex h-11 w-11 sm:h-14 sm:w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${meta.gradient} shadow-lg`}>
+                    <PlanIcon className="h-5 w-5 sm:h-7 sm:w-7 text-white" />
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-3 flex-wrap">
-                      <h2 className="break-words text-2xl font-bold tracking-tight text-foreground">
+                      <h2 className="break-words text-xl sm:text-2xl font-bold tracking-tight text-foreground">
                         Plano {meta.label}
                       </h2>
                       <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-0.5 text-xs font-semibold ${statusInfo.color}`}>

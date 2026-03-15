@@ -12,6 +12,7 @@ import { DepoimentosTab } from './knowledge-base/DepoimentosTab';
 import { ObjecoesFAQTab } from './knowledge-base/ObjecoesFAQTab';
 import { BrandingSettingsCard } from './knowledge-base/BrandingSettingsCard';
 import { PageHeader } from './PageHeader';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 
 type IngestionState = 'idle' | 'pending' | 'processing' | 'ready' | 'error';
 
@@ -285,9 +286,21 @@ export function KnowledgeBaseView() {
             Importar Documento
           </Button>
         }
+        mobileToolbar={
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1 text-xs"
+            onClick={() => setIsImportDialogOpen(true)}
+            disabled={!canEdit}
+          >
+            <FileUp className="w-3.5 h-3.5" />
+            Importar
+          </Button>
+        }
       />
 
-      <div className="flex-1 overflow-auto bg-muted/25 p-6">
+      <div className="flex-1 overflow-auto bg-muted/25 p-4 sm:p-6">
         <div className="w-full space-y-6">
           <div className="rounded-xl border border-border bg-card/95 p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">

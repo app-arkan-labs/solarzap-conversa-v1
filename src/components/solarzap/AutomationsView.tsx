@@ -26,6 +26,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { PageHeader } from './PageHeader';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 
 interface AutomationCardProps {
     title: string;
@@ -40,22 +41,22 @@ function AutomationCard({ title, description, icon, enabled, onToggle, disabled 
     return (
         <div
             className={cn(
-                "flex items-center justify-between p-4 rounded-xl border transition-all duration-200",
+                "flex flex-wrap items-center gap-3 p-3 sm:p-4 rounded-xl border transition-all duration-200",
                 enabled
                     ? "bg-primary/5 border-primary/20 hover:bg-primary/10"
                     : "bg-muted/30 border-border/50 hover:bg-muted/50"
             )}
         >
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
                 <div className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+                    "w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl flex items-center justify-center transition-colors",
                     enabled ? "bg-primary/10" : "bg-muted"
                 )}>
                     {icon}
                 </div>
-                <div>
-                    <h4 className="font-medium text-foreground flex items-center gap-2">
-                        {title}
+                <div className="min-w-0">
+                    <h4 className="font-medium text-foreground flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span className="truncate">{title}</span>
                         {enabled ? (
                             <Badge className="bg-primary/10 text-primary border-0 text-xs">
                                 Ativa
@@ -66,7 +67,7 @@ function AutomationCard({ title, description, icon, enabled, onToggle, disabled 
                             </Badge>
                         )}
                     </h4>
-                    <p className="text-sm text-muted-foreground mt-0.5">
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 line-clamp-2">
                         {description}
                     </p>
                 </div>
@@ -74,7 +75,7 @@ function AutomationCard({ title, description, icon, enabled, onToggle, disabled 
             <Switch
                 checked={enabled}
                 onCheckedChange={onToggle}
-                className="data-[state=checked]:bg-primary"
+                className="data-[state=checked]:bg-primary shrink-0"
                 disabled={disabled}
             />
         </div>
@@ -227,6 +228,21 @@ export function AutomationsView() {
                                 </Button>
                             </div>
                         }
+                        mobileToolbar={
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-[10px] px-2 py-0.5">{activeCount}/{dragDropAutomations.length} ativas</Badge>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={handleReset}
+                                    disabled={!canEdit || isSaving || isHydrating}
+                                    title="Restaurar Padrão"
+                                >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                </Button>
+                            </div>
+                        }
                     />
 
                     <div className="mx-auto max-w-4xl space-y-6 px-4 py-4 sm:px-6 sm:py-6">
@@ -234,13 +250,13 @@ export function AutomationsView() {
                         <Card className="border-0 shadow-sm overflow-hidden">
                             <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/5">
                                 <CardContent className="p-6">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                                                <ArrowLeftRight className="w-6 h-6 text-white" />
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <div className="flex items-center gap-3 sm:gap-4">
+                                            <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                                <ArrowLeftRight className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                                             </div>
-                                            <div>
-                                                <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                                            <div className="min-w-0">
+                                                <h3 className="text-base sm:text-lg font-semibold text-foreground flex items-center gap-2">
                                                     Ignorar Retrocessos
                                                     {settings.skipBackwardMoves ? (
                                                         <Badge className="bg-blue-500/10 text-blue-600 border-0 text-xs">
@@ -260,7 +276,7 @@ export function AutomationsView() {
                                         <Switch
                                             checked={settings.skipBackwardMoves}
                                             onCheckedChange={(checked) => updateSetting('skipBackwardMoves', checked)}
-                                            className="data-[state=checked]:bg-blue-500"
+                                            className="data-[state=checked]:bg-blue-500 self-end sm:self-auto shrink-0"
                                             disabled={!canEdit || isSaving || isHydrating}
                                         />
                                     </div>

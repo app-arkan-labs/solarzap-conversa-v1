@@ -29,6 +29,7 @@ import {
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { PageHeader } from './PageHeader';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 import {
     DEFAULT_APPOINTMENT_WINDOW_CONFIG,
     DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
@@ -821,6 +822,29 @@ export function AIAgentsView() {
                                 disabled={!canEdit}
                             />
                         </div>
+                    </div>
+                }
+                mobileToolbar={
+                    <div className="flex items-center gap-2">
+                        <Badge variant={settings?.is_active ? "default" : "secondary"} className="h-6 px-2 text-[10px]">
+                            {settings?.is_active ? "ATIVO" : "PAUSADO"}
+                        </Badge>
+                        <Switch
+                            data-testid="ai-master-switch"
+                            checked={settings?.is_active || false}
+                            onCheckedChange={(checked) => updateGlobalSettings({ is_active: checked })}
+                            className="data-[state=checked]:bg-primary"
+                            disabled={!canEdit}
+                        />
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => { void openPackPurchase('ai', { source: 'ai_credits', targetPlan: 'pro' }); }}
+                            title="Comprar créditos de IA"
+                        >
+                            <Brain className="w-3.5 h-3.5" />
+                        </Button>
                     </div>
                 }
             />

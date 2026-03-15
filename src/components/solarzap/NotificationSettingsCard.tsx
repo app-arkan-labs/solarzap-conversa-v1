@@ -76,22 +76,22 @@ function AutomationCard({ title, description, icon, enabled, onToggle }: Automat
     return (
         <div
             className={cn(
-                "flex items-center justify-between p-4 rounded-xl border transition-all duration-200",
+                "flex flex-wrap items-center gap-3 p-3 sm:p-4 rounded-xl border transition-all duration-200",
                 enabled
                     ? "bg-primary/5 border-primary/20 hover:bg-primary/10"
                     : "bg-muted/30 border-border/50 hover:bg-muted/50"
             )}
         >
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
                 <div className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+                    "w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl flex items-center justify-center transition-colors",
                     enabled ? "bg-primary/10" : "bg-muted"
                 )}>
                     {icon}
                 </div>
-                <div>
-                    <h4 className="font-medium text-foreground flex items-center gap-2">
-                        {title}
+                <div className="min-w-0">
+                    <h4 className="font-medium text-foreground flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span className="truncate">{title}</span>
                         {enabled ? (
                             <Badge className="bg-primary/10 text-primary border-0 text-xs">
                                 Ativa
@@ -102,7 +102,7 @@ function AutomationCard({ title, description, icon, enabled, onToggle }: Automat
                             </Badge>
                         )}
                     </h4>
-                    <p className="text-sm text-muted-foreground mt-0.5">
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 line-clamp-2">
                         {description}
                     </p>
                 </div>
@@ -110,7 +110,7 @@ function AutomationCard({ title, description, icon, enabled, onToggle }: Automat
             <Switch
                 checked={enabled}
                 onCheckedChange={onToggle}
-                className="data-[state=checked]:bg-primary"
+                className="data-[state=checked]:bg-primary shrink-0"
             />
         </div>
     );
@@ -150,12 +150,12 @@ export function NotificationSettingsCard() {
         <Card className="border-0 shadow-sm overflow-hidden">
             <div className="bg-gradient-to-r from-emerald-500/10 to-teal-500/5">
                 <CardHeader className="pb-4">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                            <Bell className="w-6 h-6 text-white" />
+                    <div className="flex items-center gap-3 sm:gap-4">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                            <Bell className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                         </div>
-                        <div>
-                            <CardTitle className="text-xl">Notificações e Resumo da IA</CardTitle>
+                        <div className="min-w-0">
+                            <CardTitle className="text-base sm:text-xl">Notificações e Resumo da IA</CardTitle>
                             <CardDescription className="mt-1">
                                 Configurações globais de notificação e resumos
                             </CardDescription>

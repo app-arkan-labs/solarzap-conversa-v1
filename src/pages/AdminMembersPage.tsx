@@ -335,6 +335,11 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
             )}
           </div>
         }
+        mobileToolbar={
+          <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => void loadMembers(true)} disabled={refreshing} title="Atualizar">
+            {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          </Button>
+        }
       />
       <div className="flex-1 p-4 md:p-8 overflow-y-auto w-full">
         <div className="mx-auto w-full max-w-6xl space-y-6">
