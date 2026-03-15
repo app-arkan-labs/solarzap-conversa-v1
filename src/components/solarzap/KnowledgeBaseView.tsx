@@ -33,6 +33,7 @@ const isSchemaMismatchError = (error: { code?: string; message?: string } | null
 export function KnowledgeBaseView() {
   const { toast } = useToast();
   const { user, orgId, role } = useAuth();
+  const isMobileViewport = useMobileViewport();
   const queryClient = useQueryClient();
   const canEdit = role === 'owner' || role === 'admin';
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -357,7 +358,7 @@ export function KnowledgeBaseView() {
                   className="shrink-0 gap-2 rounded-lg px-4 py-2.5 data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
                 >
                   <Building2 className="w-4 h-4" />
-                  Sobre a Empresa
+                  {isMobileViewport ? 'Empresa' : 'Sobre a Empresa'}
                 </TabsTrigger>
                 <TabsTrigger
                   value="depoimentos"
@@ -371,7 +372,7 @@ export function KnowledgeBaseView() {
                   className="shrink-0 gap-2 rounded-lg px-4 py-2.5 data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
                 >
                   <ShieldQuestion className="w-4 h-4" />
-                  Objecoes & FAQ
+                  {isMobileViewport ? 'FAQ' : 'Objecoes & FAQ'}
                 </TabsTrigger>
               </TabsList>
             </div>

@@ -21,6 +21,7 @@ import { ImportContactsModal, ImportedContact } from './ImportContactsModal';
 import { ExportContactsModal } from './ExportContactsModal';
 import { AssignMemberSelect } from './AssignMemberSelect';
 import { FollowUpIndicator } from './FollowUpIndicator';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -100,6 +101,7 @@ export function ConversationList({
   currentUserId = null,
 }: ConversationListProps) {
   const { toast } = useToast();
+  const isMobileViewport = useMobileViewport();
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
   const [commentsContact, setCommentsContact] = useState<{ id: string; name: string } | null>(null);
 
@@ -933,12 +935,12 @@ export function ConversationList({
 
                   <div className="mt-1 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap min-w-0">
-                      {!isSelectionMode && (
+                      {!isSelectionMode && !isMobileViewport && (
                         <div onClick={(e) => e.stopPropagation()}>
                           <AssignMemberSelect
                             contactId={conversation.contact.id}
                             currentAssigneeId={conversation.contact.assignedToUserId}
-                            triggerClassName="w-full sm:w-[130px]"
+                            triggerClassName="w-[130px]"
                           />
                         </div>
                       )}

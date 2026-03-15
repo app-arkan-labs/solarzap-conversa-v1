@@ -584,7 +584,7 @@ export function ContactsView({
   const showMobileDetail = isMobileViewport && mobileDetailOpen && Boolean(selectedContact);
 
   return (
-    <div className="flex-1 flex h-full bg-muted/30 overflow-hidden">
+    <div className="flex-1 flex h-full bg-muted/30 overflow-hidden min-h-0">
       {/* Left Sidebar - Contact List */}
       <div className={`${isMobileViewport ? (showMobileDetail ? 'hidden' : 'flex flex-1 flex-col') : 'w-80 border-r border-border flex flex-col'} bg-card min-w-0`}>
         <PageHeader

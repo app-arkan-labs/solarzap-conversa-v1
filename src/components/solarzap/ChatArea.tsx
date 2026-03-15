@@ -949,7 +949,7 @@ export function ChatArea({
 
   return (
     <div
-      className="flex-1 flex flex-col min-w-0 relative"
+      className="flex-1 flex flex-col min-w-0 min-h-0 relative overflow-hidden"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -968,7 +968,7 @@ export function ChatArea({
         </div>
       )}
       {/* Chat Header */}
-      <div className="h-14 px-3 flex items-center justify-between border-b border-border bg-card gap-1">
+      <div className="h-14 shrink-0 px-3 flex items-center justify-between border-b border-border bg-card gap-1">
         {onBack ? (
           <button
             type="button"
@@ -1156,7 +1156,7 @@ export function ChatArea({
       {/* Messages Area */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto chat-bg-pattern custom-scrollbar"
+        className="flex-1 min-h-0 overflow-y-auto chat-bg-pattern custom-scrollbar"
         onScroll={handleMessagesScroll}
       >
         <div className="flex flex-col space-y-1 py-2 px-4 min-h-full">
@@ -1393,7 +1393,7 @@ export function ChatArea({
 
       {/* Selection Mode Bar */}
       {isSelectionMode && (
-        <div className="h-14 px-4 flex items-center justify-between border-t border-border bg-card">
+        <div className="h-14 shrink-0 px-4 flex items-center justify-between border-t border-border bg-card">
           <div className="flex items-center gap-3">
             <button
               onClick={exitSelectionMode}
@@ -1452,7 +1452,7 @@ export function ChatArea({
 
       {/* Message Input - Hidden during selection mode */}
       {!isSelectionMode && (
-        <div className={cn("px-4 py-3 border-t border-border bg-card", replyTarget && "border-t-0")}>
+        <div className={cn("px-4 py-3 border-t border-border bg-card shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]", replyTarget && "border-t-0")}>
           {/* Recording indicator */}
           {isRecording && (
             <div className="flex items-center justify-center gap-2 mb-2 py-2 bg-destructive/10 rounded-lg">

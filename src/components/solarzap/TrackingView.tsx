@@ -920,7 +920,7 @@ export function TrackingView() {
   if (!orgId) return null;
 
   return (
-    <ScrollArea className="h-full flex-1">
+    <div className="h-full flex-1 overflow-y-auto overscroll-contain">
       <div className="min-h-full bg-muted/30">
         <PageHeader
           title="Tracking & Conversões"
@@ -987,10 +987,10 @@ export function TrackingView() {
             <div className="overflow-x-auto pb-1">
               <TabsList className="flex h-auto min-w-full flex-nowrap justify-start gap-1 rounded-xl border bg-background p-1 shadow-sm sm:flex-wrap">
                 <TabsTrigger value="geral" className="shrink-0">Geral</TabsTrigger>
-                <TabsTrigger value="webhook" className="shrink-0">Webhook & Snippet</TabsTrigger>
+                <TabsTrigger value="webhook" className="shrink-0">{isMobileViewport ? 'Webhook' : 'Webhook & Snippet'}</TabsTrigger>
                 <TabsTrigger value="plataformas" className="shrink-0">Plataformas</TabsTrigger>
-                <TabsTrigger value="mapeamento" className="shrink-0">Mapeamento de Etapas</TabsTrigger>
-                <TabsTrigger value="gatilhos" className="shrink-0">Mensagens Gatilho</TabsTrigger>
+                <TabsTrigger value="mapeamento" className="shrink-0">{isMobileViewport ? 'Mapear' : 'Mapeamento de Etapas'}</TabsTrigger>
+                <TabsTrigger value="gatilhos" className="shrink-0">{isMobileViewport ? 'Gatilhos' : 'Mensagens Gatilho'}</TabsTrigger>
                 <TabsTrigger value="entregas" className="shrink-0">Entregas</TabsTrigger>
               </TabsList>
             </div>
@@ -1535,6 +1535,27 @@ export function TrackingView() {
                       <p className="mt-1 text-sm text-muted-foreground">Assim que os eventos forem processados, eles aparecerão aqui com status e tentativas.</p>
                     </div>
                   ) : (
+                    isMobileViewport ? (
+                      <div className="grid gap-3">
+                        {deliveries.map((row) => (
+                          <div key={row.id} className="rounded-xl border bg-background p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium text-sm">{formatPlatform(row.platform)}</span>
+                              <Badge variant="outline" className={cn('border-0 text-xs', row.status === 'sent' && 'bg-emerald-500/10 text-emerald-700', row.status === 'failed' && 'bg-destructive/10 text-destructive', (row.status === 'pending' || row.status === 'processing') && 'bg-amber-500/10 text-amber-700', (row.status === 'skipped' || row.status === 'disabled') && 'bg-muted text-muted-foreground')}>
+                                {formatDeliveryStatus(row.status)}
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                              <span>Evento: {row.conversion_event?.event_name || '-'}</span>
+                              <span>Etapa: {row.conversion_event?.crm_stage ? formatStageLabel(row.conversion_event.crm_stage) : '-'}</span>
+                              <span>Tentativas: {row.attempt_count}</span>
+                              <span>Próxima: {formatDateTime(row.next_attempt_at)}</span>
+                            </div>
+                            {row.last_error && <p className="text-xs text-destructive line-clamp-2 break-all">{row.last_error}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
                     <div className="overflow-x-auto rounded-xl border bg-background">
                       <Table className="min-w-[980px]">
                         <TableHeader>
@@ -1564,6 +1585,7 @@ export function TrackingView() {
                         </TableBody>
                       </Table>
                     </div>
+                    )
                   )}
                 </CardContent>
               </Card>
@@ -1571,7 +1593,7 @@ export function TrackingView() {
           </Tabs>
         </div>
       </div>
-    </ScrollArea>
+    </div>
   );
 }
 

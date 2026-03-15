@@ -129,7 +129,7 @@ export function DashboardView({
     return <div className="p-8 text-red-500">Erro ao carregar dashboard: {(error as Error).message}</div>;
   }
   return (
-    <div className="flex-1 flex flex-col bg-muted/30 overflow-y-auto">
+    <div className="flex-1 flex flex-col min-h-0 bg-muted/30 overflow-y-auto overscroll-contain">
       <PageHeader
         title="Dashboard"
         subtitle="Visão geral do seu negócio"

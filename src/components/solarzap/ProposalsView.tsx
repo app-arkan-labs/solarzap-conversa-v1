@@ -56,6 +56,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { PageHeader } from './PageHeader';
 import { useMobileViewport } from '@/hooks/useMobileViewport';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface ProposalRow {
   proposal_version_id: string;
@@ -665,11 +666,15 @@ export function ProposalsView() {
 
       <ScrollArea className="flex-1">
         <div className="p-4 sm:p-6 space-y-4">
+          <Collapsible defaultOpen={!isMobileViewport}>
           <Card>
-            <CardHeader>
-              <CardTitle>Filtros</CardTitle>
+            <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer">
+              <CardTitle className="flex items-center justify-between">Filtros <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform [[data-state=open]_&]:rotate-180" /></CardTitle>
               <CardDescription>Lead, período, vendedor, etapa e status</CardDescription>
             </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
             <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label>Lead</Label>
@@ -797,7 +802,9 @@ export function ProposalsView() {
                 <Button onClick={fetchProposals} disabled={loading} className="w-full sm:w-auto">Aplicar filtros</Button>
               </div>
             </CardContent>
+            </CollapsibleContent>
           </Card>
+          </Collapsible>
 
           <Card>
             <CardHeader>

@@ -1,8 +1,10 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
 import { Contact, PIPELINE_STAGES, PipelineStage, CalendarEvent, CHANNEL_INFO, ChannelFilter } from '@/types/solarzap';
+
+const STAGES_ARRAY = Object.keys(PIPELINE_STAGES) as PipelineStage[];
 import { Badge } from '@/components/ui/badge';
-import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog, MapPin, MessageSquareQuote, Kanban, Filter, CircleX, TrendingDown } from 'lucide-react';
+import { Search, GripVertical, MoreVertical, Phone, Calendar, FileText, Home, MessageSquare, ArrowUpDown, FileUp, FileDown, Trash2, Bot, UserCog, MapPin, MessageSquareQuote, Kanban, Filter, CircleX, TrendingDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -1127,39 +1129,7 @@ export function PipelineView({
                                       <span>Marcar como Perdido</span>
                                     </DropdownMenuItem>
                                   ) : null}
-                                  {isMobileViewport ? (
-                                    <>
-                                      <div className="h-px bg-muted my-1" />
-                                      <DropdownMenuSub>
-                                        <DropdownMenuSubTrigger className="gap-2 cursor-pointer">
-                                          <ArrowUpDown className="w-4 h-4 text-primary" />
-                                          <span>Mover etapa</span>
-                                        </DropdownMenuSubTrigger>
-                                        <DropdownMenuSubContent className="w-56">
-                                          {(Object.keys(PIPELINE_STAGES) as PipelineStage[]).map((stageId) => {
-                                            const stageInfo = PIPELINE_STAGES[stageId];
-                                            const isCurrentStage = stageId === contact.pipelineStage;
-
-                                            return (
-                                              <DropdownMenuItem
-                                                key={`${contact.id}-${stageId}`}
-                                                data-testid={`lead-move-stage-${contact.id}-${stageId}`}
-                                                disabled={isCurrentStage}
-                                                onSelect={(event) => {
-                                                  event.preventDefault();
-                                                  void handleMoveToStageFromMenu(contact, stageId);
-                                                }}
-                                                className="gap-2"
-                                              >
-                                                <span>{stageInfo.icon}</span>
-                                                <span className="truncate">{stageInfo.title}</span>
-                                              </DropdownMenuItem>
-                                            );
-                                          })}
-                                        </DropdownMenuSubContent>
-                                      </DropdownMenuSub>
-                                    </>
-                                  ) : null}
+                                  {isMobileViewport ? null : null}
                                   {onDeleteLead && (
                                     <>
                                       <div className="h-px bg-muted my-1" />
@@ -1238,6 +1208,33 @@ export function PipelineView({
                               ⚡ {contact.consumption} kWh/mês
                             </span>
                           </div>
+
+                          {/* Mobile Stage Arrows */}
+                          {isMobileViewport && (() => {
+                            const idx = STAGES_ARRAY.indexOf(contact.pipelineStage);
+                            const prevStage = idx > 0 ? STAGES_ARRAY[idx - 1] : null;
+                            const nextStage = idx < STAGES_ARRAY.length - 1 ? STAGES_ARRAY[idx + 1] : null;
+                            return (
+                              <div className="mt-2 pt-2 border-t border-border/50 flex items-center justify-between gap-1">
+                                <button
+                                  disabled={!prevStage}
+                                  onClick={(e) => { e.stopPropagation(); if (prevStage) void handleMoveToStageFromMenu(contact, prevStage); }}
+                                  className="flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors min-w-0"
+                                >
+                                  <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">{prevStage ? PIPELINE_STAGES[prevStage].title : ''}</span>
+                                </button>
+                                <button
+                                  disabled={!nextStage}
+                                  onClick={(e) => { e.stopPropagation(); if (nextStage) void handleMoveToStageFromMenu(contact, nextStage); }}
+                                  className="flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors min-w-0"
+                                >
+                                  <span className="truncate">{nextStage ? PIPELINE_STAGES[nextStage].title : ''}</span>
+                                  <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                                </button>
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     })

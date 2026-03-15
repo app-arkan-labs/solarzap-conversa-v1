@@ -519,6 +519,14 @@ export function CalendarView({
               >
                 Passados ({pastEvents.length})
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0 rounded-full"
+                onClick={() => setArchiveModalOpen(true)}
+              >
+                Arquivo
+              </Button>
             </div>
           )}
           <div className="flex-1 overflow-auto p-4 sm:p-6">

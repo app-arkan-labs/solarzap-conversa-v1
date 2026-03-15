@@ -4,7 +4,8 @@ import { Notification, NOTIFICATION_CONFIG } from '@/types/notifications';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
-import { X, Check, CheckCheck, Trash2, Bell, BellOff, Settings2, Loader2 } from 'lucide-react';
+import { X, Check, CheckCheck, Trash2, Bell, BellOff, Settings2, Loader2, ArrowLeft } from 'lucide-react';
+import { useMobileViewport } from '@/hooks/useMobileViewport';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { NotificationConfigPanel } from './NotificationConfigPanel';
@@ -38,6 +39,7 @@ export function NotificationsPanel({
   onRescheduleInstallment,
 }: NotificationsPanelProps) {
   const { toast } = useToast();
+  const isMobileViewport = useMobileViewport();
   const [showConfig, setShowConfig] = useState(false);
   const [rescheduleTarget, setRescheduleTarget] = useState<Notification | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
@@ -240,17 +242,27 @@ export function NotificationsPanel({
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/20 z-40"
-        onClick={handleClose}
-      />
+      {/* Backdrop — hidden on mobile (panel is full-screen) */}
+      {!isMobileViewport && (
+        <div
+          className="fixed inset-0 bg-black/20 z-40"
+          onClick={handleClose}
+        />
+      )}
 
-      {/* Panel container — expands when config is open */}
-      <div className="fixed left-[60px] top-0 h-full z-50 flex shadow-xl animate-in slide-in-from-left-2 duration-200">
+      {/* Panel container — full-screen on mobile, side panel on desktop */}
+      <div className={cn(
+        'fixed z-50 flex shadow-xl animate-in duration-200',
+        isMobileViewport
+          ? 'inset-0 slide-in-from-bottom-4'
+          : 'left-[60px] top-0 h-full slide-in-from-left-2'
+      )}>
 
         {/* ── Notifications list (always visible) ── */}
-        <div className="w-80 bg-background border-r border-border flex flex-col">
+        <div className={cn(
+          'bg-background border-r border-border flex flex-col',
+          isMobileViewport ? 'w-full' : 'w-80'
+        )}>
           {/* Header */}
           <div className="p-4 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -279,7 +291,7 @@ export function NotificationsPanel({
                 className="h-8 w-8"
                 onClick={handleClose}
               >
-                <X className="h-4 w-4" />
+                {isMobileViewport ? <ArrowLeft className="h-4 w-4" /> : <X className="h-4 w-4" />}
               </Button>
             </div>
           </div>
@@ -348,9 +360,14 @@ export function NotificationsPanel({
           </ScrollArea>
         </div>
 
-        {/* ── Config panel (slides in alongside) ── */}
+        {/* ── Config panel (slides in alongside / overlays on mobile) ── */}
         {showConfig && (
-          <div className="w-full max-w-full animate-in slide-in-from-left-4 duration-300 sm:w-[360px]">
+          <div className={cn(
+            'animate-in duration-300',
+            isMobileViewport
+              ? 'absolute inset-0 z-10 slide-in-from-right-4'
+              : 'w-[360px] slide-in-from-left-4'
+          )}>
             <NotificationConfigPanel onClose={() => setShowConfig(false)} />
           </div>
         )}

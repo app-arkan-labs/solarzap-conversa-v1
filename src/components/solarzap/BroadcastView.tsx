@@ -153,7 +153,7 @@ export function BroadcastView() {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-muted/30 overflow-hidden">
+    <div className="flex-1 flex flex-col bg-muted/30 overflow-hidden min-h-0">
       <PageHeader
         title="Disparos em Massa"
         subtitle="Crie campanhas, acompanhe progresso e controle o envio via WhatsApp."

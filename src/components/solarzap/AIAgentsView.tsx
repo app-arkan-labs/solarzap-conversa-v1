@@ -811,7 +811,7 @@ export function AIAgentsView() {
                             Comprar créditos de IA
                         </Button>
                         <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border border-border/55 bg-background/65 px-3.5 py-2 backdrop-blur-sm sm:w-auto sm:justify-start">
-                            <Badge variant={settings?.is_active ? "default" : "secondary"} className="h-6 px-2.5 text-[11px]">
+                            <Badge variant={settings?.is_active ? "default" : "secondary"} className="h-6 px-2.5 text-xs">
                                 {settings?.is_active ? "SISTEMA ATIVO" : "SISTEMA PAUSADO"}
                             </Badge>
                             <Switch
@@ -849,7 +849,7 @@ export function AIAgentsView() {
                 }
             />
 
-            <div className="flex-1 overflow-y-auto w-full px-4 py-4 pb-24 sm:px-6 sm:py-6">
+            <div className="flex-1 overflow-y-auto w-full px-4 py-4 pb-8 sm:px-6 sm:py-6 sm:pb-24">
                 <div className="mx-auto w-full max-w-[900px] space-y-6">
 
                     {/* Settings Row */}
@@ -906,7 +906,7 @@ export function AIAgentsView() {
                                                             checked={!!inst.ai_enabled}
                                                             onCheckedChange={(checked) => setInstanceAiEnabled(inst.instance_name, checked)}
                                                             disabled={!settings?.is_active || !isOnline}
-                                                            className="scale-75 origin-right data-[state=checked]:bg-primary"
+                                                            className="data-[state=checked]:bg-primary"
                                                         />
                                                         <Button
                                                             size="sm"
