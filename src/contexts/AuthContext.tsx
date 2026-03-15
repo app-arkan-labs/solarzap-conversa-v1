@@ -6,7 +6,14 @@ import {
   type OrgRole,
   type UserOrganizationOption,
 } from '@/lib/orgAdminClient';
-import { clearActiveOrgId, getActiveOrgId, setActiveOrgId } from '@/lib/activeOrgContext';
+import {
+  clearActiveOrgId,
+  clearPersistedMembership,
+  getActiveOrgId,
+  getPersistedMembership,
+  setActiveOrgId,
+  setPersistedMembership,
+} from '@/lib/activeOrgContext';
 
 export type OrgResolutionStatus = 'idle' | 'resolving' | 'selection_required' | 'ready' | 'error';
 
@@ -347,6 +354,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const rememberLastGoodMembership = (userId: string, membership: MembershipState) => {
     if (!membership.orgId) return;
     lastGoodMembershipRef.current = { userId, membership };
+    setPersistedMembership({
+      userId,
+      orgId: membership.orgId,
+      role: membership.role,
+      canViewTeamLeads: membership.canViewTeamLeads,
+    });
+  };
+
+  const getPersistedMembershipState = (userId: string): MembershipState | null => {
+    const cached = getPersistedMembership();
+    if (!cached || cached.userId !== userId || !cached.orgId) return null;
+
+    return {
+      orgId: cached.orgId,
+      role: isValidOrgRole(cached.role) ? cached.role : null,
+      canViewTeamLeads: cached.canViewTeamLeads || canRoleViewTeamLeads(isValidOrgRole(cached.role) ? cached.role : null),
+    };
+  };
+
+  const getStoredOrgFallbackMembership = (userId: string): MembershipState | null => {
+    const persisted = getPersistedMembershipState(userId);
+    if (persisted?.orgId) {
+      return persisted;
+    }
+
+    const activeOrgId = getActiveOrgId();
+    if (!activeOrgId) return null;
+
+    return {
+      orgId: activeOrgId,
+      role: null,
+      canViewTeamLeads: false,
+    };
   };
 
   const resolveMembershipsOnce = async (userId: string): Promise<MembershipResolution> => {
@@ -585,6 +625,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastGoodMembershipRef.current = null;
         setOrganizations([]);
         clearActiveOrgId();
+        clearPersistedMembership();
         setMembershipState(EMPTY_MEMBERSHIP);
         setOrgResolutionStatus('idle');
         setOrgResolutionError(null);
@@ -600,6 +641,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const cachedMembership = getLastGoodMembership(nextUser.id);
+  const persistedMembership = getPersistedMembershipState(nextUser.id);
+      const storedOrgFallback = getStoredOrgFallbackMembership(nextUser.id);
 
       const resolution = await resolveMembershipsWithRetry(nextUser.id, source);
       if (!isCurrent()) return;
@@ -655,6 +698,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
+        if (persistedMembership?.orgId) {
+          setActiveOrgId(persistedMembership.orgId);
+          setOrganizations(sortOrgOptions([
+            {
+              org_id: persistedMembership.orgId,
+              role: persistedMembership.role || 'user',
+              can_view_team_leads: persistedMembership.canViewTeamLeads,
+              joined_at: new Date(0).toISOString(),
+              company_name: null,
+              organization_name: null,
+              display_name: `Organizacao ${persistedMembership.orgId.slice(0, 8)}`,
+            },
+          ]));
+          setMembershipState(persistedMembership);
+          rememberLastGoodMembership(nextUser.id, persistedMembership);
+          markOrgReady();
+          return;
+        }
+
+        if (storedOrgFallback?.orgId) {
+          setActiveOrgId(storedOrgFallback.orgId);
+          setOrganizations(sortOrgOptions([
+            {
+              org_id: storedOrgFallback.orgId,
+              role: storedOrgFallback.role || 'user',
+              can_view_team_leads: storedOrgFallback.canViewTeamLeads,
+              joined_at: new Date(0).toISOString(),
+              company_name: null,
+              organization_name: null,
+              display_name: `Organizacao ${storedOrgFallback.orgId.slice(0, 8)}`,
+            },
+          ]));
+          setMembershipState(storedOrgFallback);
+          rememberLastGoodMembership(nextUser.id, storedOrgFallback);
+          markOrgReady();
+          return;
+        }
+
         if (cachedMembership?.orgId && !AUTH_ENTRY_EVENTS_REQUIRING_SELECTION.has(source)) {
           setMembershipState(cachedMembership);
           setOrganizations(sortOrgOptions([
@@ -691,6 +772,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           setMembershipState(EMPTY_MEMBERSHIP);
           markOrgSelectionRequired();
+          return;
+        }
+
+        if (persistedMembership?.orgId) {
+          setActiveOrgId(persistedMembership.orgId);
+          setOrganizations(sortOrgOptions([
+            {
+              org_id: persistedMembership.orgId,
+              role: persistedMembership.role || 'user',
+              can_view_team_leads: persistedMembership.canViewTeamLeads,
+              joined_at: new Date(0).toISOString(),
+              company_name: null,
+              organization_name: null,
+              display_name: `Organizacao ${persistedMembership.orgId.slice(0, 8)}`,
+            },
+          ]));
+          setMembershipState(persistedMembership);
+          rememberLastGoodMembership(nextUser.id, persistedMembership);
+          markOrgReady();
+          return;
+        }
+
+        if (storedOrgFallback?.orgId) {
+          setActiveOrgId(storedOrgFallback.orgId);
+          setOrganizations(sortOrgOptions([
+            {
+              org_id: storedOrgFallback.orgId,
+              role: storedOrgFallback.role || 'user',
+              can_view_team_leads: storedOrgFallback.canViewTeamLeads,
+              joined_at: new Date(0).toISOString(),
+              company_name: null,
+              organization_name: null,
+              display_name: `Organizacao ${storedOrgFallback.orgId.slice(0, 8)}`,
+            },
+          ]));
+          setMembershipState(storedOrgFallback);
+          rememberLastGoodMembership(nextUser.id, storedOrgFallback);
+          markOrgReady();
           return;
         }
 

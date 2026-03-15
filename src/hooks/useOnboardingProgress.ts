@@ -36,6 +36,8 @@ type GuidedTourPatch = Partial<Pick<OnboardingProgress,
   | 'guided_tour_last_manual_completed_at'
 >>;
 
+type ProgressRowRecord = Record<string, unknown>;
+
 const ONBOARDING_QUERY_KEY = ['onboarding-progress'] as const;
 
 const SELECT_COLUMNS = [
@@ -57,6 +59,76 @@ const SELECT_COLUMNS = [
 
 const asStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+const isNoRowsError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const code = 'code' in error ? error.code : undefined;
+  const details = 'details' in error ? error.details : undefined;
+  const message = 'message' in error ? error.message : undefined;
+  return code === 'PGRST116'
+    || (typeof details === 'string' && details.includes('0 rows'))
+    || (typeof message === 'string' && message.includes('0 rows'));
+};
+
+const readProgressRow = async (userId: string, orgId: string): Promise<ProgressRowRecord | null> => {
+  const { data, error } = await supabase
+    .from('onboarding_progress')
+    .select(SELECT_COLUMNS)
+    .eq('user_id', userId)
+    .eq('org_id', orgId)
+    .limit(1);
+
+  if (error) throw error;
+  const rows = data as unknown as ProgressRowRecord[] | null;
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+};
+
+const insertProgressRow = async (payload: Record<string, unknown>): Promise<ProgressRowRecord> => {
+  const { data, error } = await supabase
+    .from('onboarding_progress')
+    .insert(payload)
+    .select(SELECT_COLUMNS)
+    .single();
+
+  if (error) throw error;
+  return data as unknown as ProgressRowRecord;
+};
+
+const updateProgressRow = async (userId: string, orgId: string, patch: Record<string, unknown>): Promise<ProgressRowRecord | null> => {
+  const { data, error } = await supabase
+    .from('onboarding_progress')
+    .update(patch)
+    .eq('user_id', userId)
+    .eq('org_id', orgId)
+    .select(SELECT_COLUMNS)
+    .limit(1);
+
+  if (error) throw error;
+  const rows = data as unknown as ProgressRowRecord[] | null;
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+};
+
+const hasLegacyOperationalData = async (orgId: string): Promise<boolean> => {
+  const [leadResult, companyResult] = await Promise.all([
+    supabase
+      .from('leads')
+      .select('id')
+      .eq('org_id', orgId)
+      .limit(1),
+    supabase
+      .from('company_profile')
+      .select('org_id, company_name')
+      .eq('org_id', orgId)
+      .limit(1),
+  ]);
+
+  if (leadResult.error) throw leadResult.error;
+  if (companyResult.error) throw companyResult.error;
+
+  const hasLead = Array.isArray(leadResult.data) && leadResult.data.length > 0;
+  const hasCompanyProfile = Array.isArray(companyResult.data) && companyResult.data.length > 0;
+  return hasLead || hasCompanyProfile;
+};
 
 const toProgressRow = (input: unknown, fallbackUserId: string, fallbackOrgId: string | null): OnboardingProgress => {
   const row = (typeof input === 'object' && input !== null) ? input as Record<string, unknown> : {};
@@ -94,17 +166,106 @@ export function useOnboardingProgress(enabled = true) {
     queryFn: async (): Promise<OnboardingProgress | null> => {
       if (!user?.id || !orgId) return null;
 
-      const { data, error } = await supabase
-        .from('onboarding_progress')
-        .select(SELECT_COLUMNS)
-        .eq('user_id', user.id)
-        .eq('org_id', orgId)
-        .maybeSingle();
+      const coerceLegacyProgress = async (row: unknown) => {
+        const normalized = toProgressRow(row, user.id, orgId);
+        const looksLikeFreshSeed =
+          normalized.is_complete === false &&
+          normalized.current_step === 'profile' &&
+          normalized.completed_steps.length === 0 &&
+          normalized.skipped_steps.length === 0 &&
+          normalized.tour_completed_tabs.length === 0;
 
-      if (error) throw error;
+        if (!looksLikeFreshSeed) {
+          return normalized;
+        }
+
+        const legacyOrg = await hasLegacyOperationalData(orgId).catch(() => false);
+        if (!legacyOrg) {
+          return normalized;
+        }
+
+        const promoted = await updateProgressRow(user.id, orgId, { is_complete: true });
+        return toProgressRow(promoted ?? { ...normalized, is_complete: true }, user.id, orgId);
+      };
+
+      let data: unknown = null;
+      try {
+        data = await readProgressRow(user.id, orgId);
+      } catch (error) {
+        if (!isNoRowsError(error)) {
+          throw error;
+        }
+      }
 
       if (!data) {
+        const legacyOrg = await hasLegacyOperationalData(orgId).catch(() => false);
         const seed = {
+          user_id: user.id,
+          org_id: orgId,
+          current_step: 'profile',
+          completed_steps: [],
+          skipped_steps: [],
+          tour_completed_tabs: [],
+          is_complete: legacyOrg,
+          guided_tour_version: null,
+          guided_tour_status: 'never_seen',
+          guided_tour_seen_at: null,
+          guided_tour_completed_at: null,
+          guided_tour_dismissed_at: null,
+          guided_tour_last_manual_started_at: null,
+          guided_tour_last_manual_completed_at: null,
+        };
+
+        let inserted: unknown;
+        try {
+          inserted = await insertProgressRow(seed);
+        } catch (error) {
+          const existing = await readProgressRow(user.id, orgId);
+          if (!existing) {
+            throw error;
+          }
+          inserted = existing;
+        }
+        return coerceLegacyProgress(inserted);
+      }
+
+      return coerceLegacyProgress(data);
+    },
+  });
+
+  const patchMutation = useMutation({
+    mutationFn: async (patch: ProgressPatch): Promise<OnboardingProgress | null> => {
+      if (!user?.id || !orgId) return null;
+
+      const current = await readProgressRow(user.id, orgId);
+      const payload = {
+        user_id: user.id,
+        org_id: patch.org_id ?? orgId,
+        current_step: patch.current_step ?? current?.current_step ?? 'profile',
+        completed_steps: patch.completed_steps ?? asStringArray(current?.completed_steps),
+        skipped_steps: patch.skipped_steps ?? asStringArray(current?.skipped_steps),
+        tour_completed_tabs: patch.tour_completed_tabs ?? asStringArray(current?.tour_completed_tabs),
+        is_complete: patch.is_complete ?? (current && typeof current.is_complete === 'boolean' ? current.is_complete : false),
+      };
+
+      const data = current
+        ? await updateProgressRow(user.id, orgId, payload)
+        : await insertProgressRow(payload);
+      return toProgressRow(data, user.id, orgId);
+    },
+    onSuccess: (nextValue) => {
+      queryClient.setQueryData(queryKey, nextValue);
+    },
+  });
+
+  const tourMutation = useMutation({
+    mutationFn: async (patch: GuidedTourPatch): Promise<OnboardingProgress | null> => {
+      if (!user?.id || !orgId) return null;
+
+      const current = await readProgressRow(user.id, orgId);
+      const data = current
+        ? await updateProgressRow(user.id, orgId, patch)
+        : await insertProgressRow({
           user_id: user.id,
           org_id: orgId,
           current_step: 'profile',
@@ -119,63 +280,8 @@ export function useOnboardingProgress(enabled = true) {
           guided_tour_dismissed_at: null,
           guided_tour_last_manual_started_at: null,
           guided_tour_last_manual_completed_at: null,
-        };
-
-        const { data: inserted, error: insertError } = await supabase
-          .from('onboarding_progress')
-          .upsert(seed, { onConflict: 'user_id,org_id' })
-          .select(SELECT_COLUMNS)
-          .single();
-
-        if (insertError) throw insertError;
-        return toProgressRow(inserted, user.id, orgId);
-      }
-
-      return toProgressRow(data, user.id, orgId);
-    },
-  });
-
-  const patchMutation = useMutation({
-    mutationFn: async (patch: ProgressPatch): Promise<OnboardingProgress | null> => {
-      if (!user?.id || !orgId) return null;
-
-      const payload = {
-        user_id: user.id,
-        org_id: patch.org_id ?? orgId,
-        current_step: patch.current_step ?? 'profile',
-        completed_steps: patch.completed_steps ?? [],
-        skipped_steps: patch.skipped_steps ?? [],
-        tour_completed_tabs: patch.tour_completed_tabs ?? [],
-        is_complete: patch.is_complete ?? false,
-      };
-
-      const { data, error } = await supabase
-        .from('onboarding_progress')
-        .upsert(payload, { onConflict: 'user_id,org_id' })
-        .select(SELECT_COLUMNS)
-        .single();
-
-      if (error) throw error;
-      return toProgressRow(data, user.id, orgId);
-    },
-    onSuccess: (nextValue) => {
-      queryClient.setQueryData(queryKey, nextValue);
-    },
-  });
-
-  const tourMutation = useMutation({
-    mutationFn: async (patch: GuidedTourPatch): Promise<OnboardingProgress | null> => {
-      if (!user?.id || !orgId) return null;
-
-      const { data, error } = await supabase
-        .from('onboarding_progress')
-        .update(patch)
-        .eq('user_id', user.id)
-        .eq('org_id', orgId)
-        .select(SELECT_COLUMNS)
-        .single();
-
-      if (error) throw error;
+          ...patch,
+        });
       return toProgressRow(data, user.id, orgId);
     },
     onSuccess: (nextValue) => {

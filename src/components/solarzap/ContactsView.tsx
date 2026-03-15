@@ -872,7 +872,7 @@ export function ContactsView({
                   placeholder="Empresa"
                 />
                 <Select
-                  value={formData.status_pipeline}
+                  value={formData.status_pipeline || 'novo_lead'}
                   onValueChange={(value) => handlePipelineStageChange(value as PipelineStage)}
                 >
                   <SelectTrigger className={`w-fit ${getStageColor(formData.status_pipeline || 'novo_lead')} text-white border-0`}>
@@ -970,13 +970,14 @@ export function ContactsView({
                   <div className="flex items-center gap-3">
                     <span className="w-4 h-4 text-muted-foreground flex-shrink-0 text-center">🏠</span>
                     <Select
-                      value={formData.tipo_cliente}
-                      onValueChange={(value) => handleChange('tipo_cliente', value as ClientType)}
+                      value={formData.tipo_cliente || '__unset__'}
+                      onValueChange={(value) => handleChange('tipo_cliente', value === '__unset__' ? null : value as ClientType)}
                     >
                       <SelectTrigger className="flex-1">
                         <SelectValue placeholder="Tipo de cliente" />
                       </SelectTrigger>
                       <SelectContent className="bg-popover">
+                        <SelectItem value="__unset__">Selecionar tipo</SelectItem>
                         {CLIENT_TYPES.map(type => (
                           <SelectItem key={type.value} value={type.value}>
                             {type.label}
