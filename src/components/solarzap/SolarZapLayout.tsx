@@ -1748,7 +1748,7 @@ export function SolarZapLayout() {
 
         {activeTab === 'contatos' && (
         <Suspense fallback={<TabLoadingFallback label="Carregando contatos..." />}>
-          <div className="flex-1 min-w-0 relative">
+          <div className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden">
             <ContactsView
               contacts={contacts}
               onUpdateLead={handleLeadUpdateWithStageGuard}

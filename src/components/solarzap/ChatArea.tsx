@@ -1246,7 +1246,7 @@ export function ChatArea({
 
                   <div
                     className={cn(
-                      'max-w-[82%] px-3 py-2 rounded-lg shadow-sm relative transition-colors group sm:max-w-[65%]',
+                      'max-w-[78%] px-3 py-2 rounded-lg shadow-sm relative transition-colors group sm:max-w-[65%]',
                       isSent
                         ? 'bg-chat-sent rounded-tr-none ml-auto'
                         : 'bg-chat-received rounded-tl-none mr-auto',

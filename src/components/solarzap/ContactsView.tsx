@@ -586,7 +586,7 @@ export function ContactsView({
   return (
     <div className="flex-1 flex h-full bg-muted/30 overflow-hidden min-h-0">
       {/* Left Sidebar - Contact List */}
-      <div className={`${isMobileViewport ? (showMobileDetail ? 'hidden' : 'flex flex-1 flex-col') : 'w-80 border-r border-border flex flex-col'} bg-card min-w-0`}>
+      <div className={`${isMobileViewport ? (showMobileDetail ? 'hidden' : 'flex flex-1 flex-col min-h-0 overflow-hidden') : 'w-80 border-r border-border flex flex-col min-h-0 overflow-hidden'} bg-card min-w-0`}>
         <PageHeader
           title="Contatos"
           icon={Users}
@@ -626,7 +626,7 @@ export function ContactsView({
         />
 
         {canViewTeam && onLeadScopeChange ? (
-          <div className="px-3 py-2 border-b border-border bg-card">
+          <div className="shrink-0 px-3 py-2 border-b border-border bg-card">
             <LeadScopeSelect
               value={leadScope}
               onChange={onLeadScopeChange}
@@ -640,7 +640,7 @@ export function ContactsView({
         ) : null}
 
         {/* Search */}
-        <div className="p-3 border-b border-border">
+        <div className="shrink-0 p-3 border-b border-border">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -688,7 +688,7 @@ export function ContactsView({
         )}
 
         {/* Contact List */}
-        <div className={`flex-1 overflow-auto ${isMobileViewport ? 'p-3 space-y-3 bg-muted/20' : ''}`}>
+        <div className={`flex-1 min-h-0 overflow-y-auto overscroll-contain ${isMobileViewport ? 'p-3 space-y-3 bg-muted/20' : ''}`}>
           {filteredContacts.map((contact) => {
             const isRowSelected = selectedContactIds.has(contact.id);
             return (
@@ -776,9 +776,9 @@ export function ContactsView({
         </div>
       </div>
 
-      <div className={`${isMobileViewport ? (showMobileDetail ? 'flex flex-1 flex-col' : 'hidden') : 'flex-1 flex flex-col'} min-w-0 bg-background`}>
+      <div className={`${isMobileViewport ? (showMobileDetail ? 'flex flex-1 flex-col min-h-0 overflow-hidden' : 'hidden') : 'flex-1 flex flex-col min-h-0 overflow-hidden'} min-w-0 bg-background`}>
         {/* Detail Header */}
-        <div className="px-4 py-4 sm:px-6 border-b border-border/50 bg-gradient-to-r from-background to-muted/30 flex flex-wrap items-center justify-between gap-3">
+        <div className="shrink-0 px-4 py-4 sm:px-6 border-b border-border/50 bg-gradient-to-r from-background to-muted/30 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             {isMobileViewport && showMobileDetail && (
               <Button
@@ -860,7 +860,7 @@ export function ContactsView({
         </div>
 
         {selectedContact ? (
-          <div className="flex-1 overflow-auto p-4 sm:p-6">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
             {/* Contact Header */}
             <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-center">
               <Avatar className="h-20 w-20">

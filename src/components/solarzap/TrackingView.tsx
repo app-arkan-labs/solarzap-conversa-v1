@@ -920,71 +920,72 @@ export function TrackingView() {
   if (!orgId) return null;
 
   return (
-    <div className="h-full flex-1 overflow-y-auto overscroll-contain">
-      <div className="min-h-full bg-muted/30">
-        <PageHeader
-          title="Tracking & Conversões"
-          subtitle="Gerencie atribuição, plataformas, gatilhos e monitoramento de entregas."
-          icon={Activity}
-          actionContent={
-            <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-end">
-              <Badge
-                variant="outline"
-                className={cn(
-                  'border-0 px-3 py-1.5 text-xs font-semibold',
-                  settings.tracking_enabled
-                    ? 'bg-emerald-500/10 text-emerald-700 animate-pulse'
-                    : 'bg-muted text-muted-foreground',
-                )}
-              >
-                {settings.tracking_enabled ? 'Tracking ativo' : 'Tracking inativo'}
-              </Badge>
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => {
-                  void loadPanel(true);
-                  void loadDeliveries();
-                }}
-                disabled={loading || refreshing || loadingDeliveries}
-              >
-                <RefreshCw className={cn('h-4 w-4', (loading || refreshing || loadingDeliveries) && 'animate-spin')} />
-                Atualizar
-              </Button>
-            </div>
-          }
-          mobileToolbar={
-            <div className="flex items-center gap-2">
-              <Badge
-                variant="outline"
-                className={cn(
-                  'border-0 px-2 py-1 text-[10px] font-semibold',
-                  settings.tracking_enabled
-                    ? 'bg-emerald-500/10 text-emerald-700'
-                    : 'bg-muted text-muted-foreground',
-                )}
-              >
-                {settings.tracking_enabled ? 'Ativo' : 'Inativo'}
-              </Badge>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => {
-                  void loadPanel(true);
-                  void loadDeliveries();
-                }}
-                disabled={loading || refreshing || loadingDeliveries}
-              >
-                <RefreshCw className={cn('h-3.5 w-3.5', (loading || refreshing || loadingDeliveries) && 'animate-spin')} />
-              </Button>
-            </div>
-          }
-        />
+    <div className="flex h-full flex-1 min-h-0 flex-col overflow-hidden bg-muted/30">
+      <PageHeader
+        title="Tracking & Conversões"
+        subtitle="Gerencie atribuição, plataformas, gatilhos e monitoramento de entregas."
+        icon={Activity}
+        actionContent={
+          <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-end">
+            <Badge
+              variant="outline"
+              className={cn(
+                'border-0 px-3 py-1.5 text-xs font-semibold',
+                settings.tracking_enabled
+                  ? 'bg-emerald-500/10 text-emerald-700 animate-pulse'
+                  : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {settings.tracking_enabled ? 'Tracking ativo' : 'Tracking inativo'}
+            </Badge>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => {
+                void loadPanel(true);
+                void loadDeliveries();
+              }}
+              disabled={loading || refreshing || loadingDeliveries}
+            >
+              <RefreshCw className={cn('h-4 w-4', (loading || refreshing || loadingDeliveries) && 'animate-spin')} />
+              Atualizar
+            </Button>
+          </div>
+        }
+        mobileToolbar={
+          <div className="flex items-center gap-2">
+            <Badge
+              variant="outline"
+              className={cn(
+                'border-0 px-2 py-1 text-[10px] font-semibold',
+                settings.tracking_enabled
+                  ? 'bg-emerald-500/10 text-emerald-700'
+                  : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {settings.tracking_enabled ? 'Ativo' : 'Inativo'}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => {
+                void loadPanel(true);
+                void loadDeliveries();
+              }}
+              disabled={loading || refreshing || loadingDeliveries}
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', (loading || refreshing || loadingDeliveries) && 'animate-spin')} />
+            </Button>
+          </div>
+        }
+      />
 
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <div className="min-h-full bg-muted/30">
         <div className="w-full space-y-6 px-4 py-4 sm:px-6 sm:py-6">
           <Tabs defaultValue="geral" className="space-y-4">
-            <div className="overflow-x-auto pb-1">
+            <div className="overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <TabsList className="flex h-auto min-w-full flex-nowrap justify-start gap-1 rounded-xl border bg-background p-1 shadow-sm sm:flex-wrap">
                 <TabsTrigger value="geral" className="shrink-0">Geral</TabsTrigger>
                 <TabsTrigger value="webhook" className="shrink-0">{isMobileViewport ? 'Webhook' : 'Webhook & Snippet'}</TabsTrigger>
@@ -994,6 +995,9 @@ export function TrackingView() {
                 <TabsTrigger value="entregas" className="shrink-0">Entregas</TabsTrigger>
               </TabsList>
             </div>
+            {isMobileViewport ? (
+              <p className="-mt-2 text-[11px] text-muted-foreground">Arraste a barra lateralmente para ver todas as seções.</p>
+            ) : null}
 
             <TabsContent value="geral" className="space-y-4">
               <Card className="border-0 shadow-sm">
@@ -1593,6 +1597,7 @@ export function TrackingView() {
           </Tabs>
         </div>
       </div>
+    </div>
     </div>
   );
 }

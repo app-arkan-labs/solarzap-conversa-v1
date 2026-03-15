@@ -377,7 +377,7 @@ function ImagePreview({ url, fileName, onLoad }: { url: string; fileName?: strin
 
   return (
     <>
-      <div className="relative max-w-[280px] rounded-lg overflow-hidden">
+      <div className="relative w-[min(64vw,240px)] max-w-[240px] rounded-lg overflow-hidden sm:w-auto sm:max-w-[280px]">
         {!isLoaded && (
           <div className="absolute inset-0 bg-muted animate-pulse flex items-center justify-center">
             <ImageIcon className="w-8 h-8 text-muted-foreground" />
@@ -387,7 +387,7 @@ function ImagePreview({ url, fileName, onLoad }: { url: string; fileName?: strin
           src={url}
           alt={fileName || 'Imagem'}
           className={cn(
-            'max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity',
+            'block max-w-full max-h-[42vh] h-auto rounded-lg cursor-pointer object-cover hover:opacity-90 transition-opacity sm:max-h-[360px]',
             !isLoaded && 'opacity-0'
           )}
           onLoad={() => {
@@ -441,12 +441,12 @@ function VideoPreview({ url, fileName, onLoad }: { url: string; fileName?: strin
   }
 
   return (
-    <div className="relative max-w-[280px] rounded-lg overflow-hidden">
+    <div className="relative w-[min(64vw,240px)] max-w-[240px] rounded-lg overflow-hidden sm:w-auto sm:max-w-[280px]">
       <video
         src={url}
         controls
         onLoadedMetadata={onLoad}
-        className="max-w-full h-auto rounded-lg"
+        className="block max-w-full max-h-[42vh] h-auto rounded-lg object-cover sm:max-h-[360px]"
         onError={() => setHasError(true)}
         preload="metadata"
       />

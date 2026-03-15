@@ -399,7 +399,7 @@ export function CalendarView({
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-muted/30 h-full overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-0 bg-muted/30 h-full overflow-hidden">
       <PageHeader
         title="Calendário"
         subtitle="Gestão de Agenda"
@@ -520,16 +520,19 @@ export function CalendarView({
                 Passados ({pastEvents.length})
               </Button>
               <Button
-                variant="outline"
+                variant={mobileDrawerOpen && mobileDrawerMode !== 'day' ? 'default' : 'outline'}
                 size="sm"
                 className="h-9 shrink-0 rounded-full"
-                onClick={() => setArchiveModalOpen(true)}
+                onClick={() => {
+                  setMobileDrawerMode('upcoming');
+                  setMobileDrawerOpen(true);
+                }}
               >
-                Arquivo
+                Eventos
               </Button>
             </div>
           )}
-          <div className="flex-1 overflow-auto p-4 sm:p-6">
+          <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-6">
             <div className={cn("sm:min-w-[640px] md:min-w-0", isMobileViewport ? 'min-w-0' : 'min-w-[540px]')}>
               {/* Days Header */}
               <div className="mb-4 grid grid-cols-7">
@@ -711,7 +714,24 @@ export function CalendarView({
                 : 'Navegue pelos eventos da agenda sem ocupar a lateral no mobile.'}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="space-y-3 overflow-y-auto px-4 pb-6">
+          <div className="space-y-3 overflow-y-auto px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            {mobileDrawerMode !== 'day' ? (
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant={mobileDrawerMode === 'upcoming' ? 'default' : 'outline'}
+                  onClick={() => setMobileDrawerMode('upcoming')}
+                >
+                  Próximos
+                </Button>
+                <Button
+                  variant={mobileDrawerMode === 'past' ? 'default' : 'outline'}
+                  onClick={() => setMobileDrawerMode('past')}
+                >
+                  Passados
+                </Button>
+              </div>
+            ) : null}
+
             {mobileDrawerMode === 'day' && mobileSelectedDate ? (
               <Button className="w-full gap-2" onClick={() => openCreateEventForDate(mobileSelectedDate)}>
                 <Plus className="h-4 w-4" />

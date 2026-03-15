@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ChevronRight, GripHorizontal } from 'lucide-react';
+import { ArrowLeft, GripHorizontal } from 'lucide-react';
 
 import {
   Dialog,
@@ -208,13 +208,10 @@ export function MobileMoreModal({
                     <button
                       type="button"
                       onClick={() => setShowSettings(true)}
-                      className="flex w-full items-center justify-between rounded-2xl border border-border/60 bg-background/65 px-4 py-3 text-left transition-colors hover:bg-muted/70"
+                      className="w-full rounded-2xl border border-border/60 bg-background/65 px-4 py-3 text-left transition-colors hover:bg-muted/70"
                     >
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Configuracoes</p>
-                        <p className="text-xs text-muted-foreground">Conta, IA, integracoes e equipe</p>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-sm font-semibold text-foreground">Configuracoes</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Conta, IA, integracoes e equipe</p>
                     </button>
                   </div>
                 ) : null}

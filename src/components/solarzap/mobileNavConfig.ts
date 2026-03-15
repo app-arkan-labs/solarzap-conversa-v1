@@ -93,7 +93,6 @@ export const mobileMoreMainItems: SolarZapNavItem[] = [
   { type: 'tab', id: 'propostas', icon: FileText, label: 'Propostas' },
   { type: 'tab', id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
   { type: 'action', id: 'notifications', icon: Bell, label: 'Notificacoes' },
-  { type: 'action', id: 'settings', icon: Settings, label: 'Configuracoes' },
 ];
 
 export const desktopSettingsMainItems: SolarZapNavItem[] = [
