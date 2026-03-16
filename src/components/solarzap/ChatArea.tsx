@@ -18,6 +18,12 @@ import { ForwardMessageModal } from './ForwardMessageModal';
 import { MessageContent } from './MessageContent';
 import { AudioDeviceModal } from './AudioDeviceModal';
 import { ChatHeaderActionsDrawer } from './ChatHeaderActionsDrawer';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
 import { ImportedContact } from './ImportContactsModal';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -172,6 +178,7 @@ export function ChatArea({
   const [isDragging, setIsDragging] = useState(false);
   const [showAudioDeviceModal, setShowAudioDeviceModal] = useState(false);
   const [showActionsDrawer, setShowActionsDrawer] = useState(false);
+  const [showAttachDrawer, setShowAttachDrawer] = useState(false);
   const isMobileChat = useMobileViewport();
   const [selectedMicrophoneId, setSelectedMicrophoneId] = useState<string | null>(() => {
     return localStorage.getItem('solarzap_audio_input');
@@ -1494,24 +1501,65 @@ export function ChatArea({
             </div>
 
             {/* Attachment Button */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
+            {isMobileChat ? (
+              <>
+                <button
+                  className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                  onClick={() => setShowAttachDrawer(true)}
+                >
                   <Paperclip className="w-5 h-5" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuItem onClick={() => handleAttachmentSelect('document')}>
-                  <FileText className="w-4 h-4 mr-2" /> Documento
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAttachmentSelect('image')}>
-                  <Image className="w-4 h-4 mr-2" /> Foto
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAttachmentSelect('video')}>
-                  <Film className="w-4 h-4 mr-2" /> Vídeo
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <Drawer open={showAttachDrawer} onOpenChange={setShowAttachDrawer}>
+                  <DrawerContent className="max-h-[50vh]">
+                    <DrawerHeader className="pb-2">
+                      <DrawerTitle>Anexar arquivo</DrawerTitle>
+                    </DrawerHeader>
+                    <div className="space-y-1 px-2 pb-6">
+                      <button
+                        type="button"
+                        onClick={() => { handleAttachmentSelect('document'); setShowAttachDrawer(false); }}
+                        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                      >
+                        <FileText className="w-5 h-5 text-blue-500" /> Documento
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { handleAttachmentSelect('image'); setShowAttachDrawer(false); }}
+                        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                      >
+                        <Image className="w-5 h-5 text-green-500" /> Foto
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { handleAttachmentSelect('video'); setShowAttachDrawer(false); }}
+                        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                      >
+                        <Film className="w-5 h-5 text-purple-500" /> Vídeo
+                      </button>
+                    </div>
+                  </DrawerContent>
+                </Drawer>
+              </>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuItem onClick={() => handleAttachmentSelect('document')}>
+                    <FileText className="w-4 h-4 mr-2" /> Documento
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAttachmentSelect('image')}>
+                    <Image className="w-4 h-4 mr-2" /> Foto
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAttachmentSelect('video')}>
+                    <Film className="w-4 h-4 mr-2" /> Vídeo
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             <input
               ref={fileInputRef}
