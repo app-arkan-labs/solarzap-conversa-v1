@@ -128,7 +128,7 @@ export default function GuidedTour({
           ) : null}
 
           <div
-            className="pointer-events-auto absolute w-[340px] rounded-2xl border border-border/80 bg-card/96 p-4 text-card-foreground shadow-[0_24px_70px_-28px_rgba(15,23,42,0.28)] dark:shadow-[0_24px_70px_-28px_rgba(2,6,23,0.62)] backdrop-blur-xl"
+            className="pointer-events-auto absolute w-[340px] max-w-[calc(100vw-2rem)] rounded-2xl border border-border/80 bg-card/96 p-4 text-card-foreground shadow-[0_24px_70px_-28px_rgba(15,23,42,0.28)] dark:shadow-[0_24px_70px_-28px_rgba(2,6,23,0.62)] backdrop-blur-xl"
             style={tooltipStyle}
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">

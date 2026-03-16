@@ -1001,7 +1001,7 @@ export function PipelineView({
               <div
                 key={stageId}
                 data-pipeline-stage-id={stageId}
-                className={`${isMobileViewport ? 'w-[calc(100vw-2rem)] max-w-[360px] min-w-[280px] snap-center scroll-mx-3 sm:scroll-mx-4' : 'w-[280px]'} flex-shrink-0 flex flex-col bg-card rounded-lg shadow-md transition-all duration-200 ${isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
+                className={`${isMobileViewport ? 'w-[calc(100vw-1.5rem)] max-w-[360px] min-w-0 snap-center scroll-mx-3 sm:scroll-mx-4' : 'w-[280px]'} flex-shrink-0 flex flex-col bg-card rounded-lg shadow-md transition-all duration-200 ${isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
                   }`}
                 onDragOver={isMobileViewport ? undefined : (e) => handleDragOver(e, stageId)}
                 onDragLeave={isMobileViewport ? undefined : handleDragLeave}

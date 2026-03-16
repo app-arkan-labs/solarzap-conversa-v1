@@ -247,7 +247,8 @@ export function CalendarView({
     return today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
   };
 
-  const daysOfWeek = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const daysOfWeekFull = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const daysOfWeekNarrow = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
   const calendarDays: (number | null)[] = [];
   for (let i = startingDayOfWeek - 1; i >= 0; i--) calendarDays.push(null);
   for (let day = 1; day <= daysInMonth; day++) calendarDays.push(day);
@@ -536,9 +537,10 @@ export function CalendarView({
             <div className={cn("sm:min-w-[640px] md:min-w-0", isMobileViewport ? 'min-w-0' : 'min-w-[540px]')}>
               {/* Days Header */}
               <div className="mb-4 grid grid-cols-7">
-                {daysOfWeek.map(day => (
-                  <div key={day} className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground sm:text-xs sm:tracking-widest">
-                    {day}
+                {daysOfWeekFull.map((day, i) => (
+                  <div key={day} className="text-center text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground sm:text-xs sm:tracking-widest">
+                    <span className="hidden sm:inline">{day}</span>
+                    <span className="sm:hidden">{daysOfWeekNarrow[i]}</span>
                   </div>
                 ))}
               </div>
@@ -555,7 +557,7 @@ export function CalendarView({
                         key={dayIndex}
                         onClick={() => day && handleDayClick(day)}
                         className={cn(
-                          "group relative h-full min-h-[88px] border-r border-border/60 p-2 transition-colors last:border-r-0 sm:min-h-[100px]",
+                          "group relative h-full min-h-[56px] border-r border-border/60 p-1 transition-colors last:border-r-0 sm:min-h-[88px] sm:p-2",
                           day ? "cursor-pointer hover:bg-accent/60" : "bg-muted/30"
                         )}
                       >
@@ -563,7 +565,7 @@ export function CalendarView({
                           <>
                             <div className="flex justify-between items-start mb-2">
                               <span className={cn(
-                                "text-sm font-semibold w-8 h-8 flex items-center justify-center rounded-full transition-all",
+                                "text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full transition-all sm:text-sm sm:w-8 sm:h-8",
                                 isToday(day)
                                   ? 'bg-primary text-primary-foreground shadow-md shadow-primary/30 scale-110'
                                   : 'text-foreground/80 group-hover:bg-card group-hover:shadow-sm'

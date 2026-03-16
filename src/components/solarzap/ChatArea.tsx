@@ -1476,7 +1476,7 @@ export function ChatArea({
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                 className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
               >
-                <Smile className="w-6 h-6" />
+                <Smile className="w-5 h-5" />
               </button>
               {showEmojiPicker && (
                 <div className="absolute bottom-12 left-0 z-50 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl shadow-2xl">
@@ -1497,7 +1497,7 @@ export function ChatArea({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
-                  <Paperclip className="w-6 h-6" />
+                  <Paperclip className="w-5 h-5" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48">
@@ -1558,7 +1558,7 @@ export function ChatArea({
                 onPointerLeave={isRecording ? stopRecording : undefined}
                 onContextMenu={(e) => e.preventDefault()}
               >
-                <Mic className="w-6 h-6" />
+                <Mic className="w-5 h-5" />
               </button>
             )}
           </div>

@@ -18,6 +18,7 @@ export function OwnerPerformanceTable({ data, isLoading }: OwnerPerformanceProps
 
     return (
         <div className="overflow-x-auto rounded-md border">
+            <p className="px-3 py-1.5 text-[10px] text-muted-foreground md:hidden">Arraste para ver mais colunas →</p>
             <Table className="min-w-[760px]">
                 <TableHeader>
                     <TableRow>

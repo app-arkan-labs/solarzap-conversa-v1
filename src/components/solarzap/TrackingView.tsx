@@ -1564,6 +1564,7 @@ export function TrackingView() {
                       </div>
                     ) : (
                     <div className="overflow-x-auto rounded-xl border bg-background">
+                      <p className="px-3 py-1.5 text-[10px] text-muted-foreground md:hidden">Arraste para ver mais colunas →</p>
                       <Table className="min-w-[980px]">
                         <TableHeader>
                           <TableRow>
