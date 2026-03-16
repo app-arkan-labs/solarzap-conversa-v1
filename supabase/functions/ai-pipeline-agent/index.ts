@@ -37,6 +37,18 @@ const TERMINAL_STAGES = new Set([
     'coletar_avaliacao',
 ]);
 
+const FOLLOW_UP_STAGE_GOALS: Record<string, string> = {
+    novo_lead: 'Fazer o lead responder e evoluir a conversa.',
+    respondeu: 'Qualificar para Chamada Agendada ou Visita Agendada.',
+    nao_compareceu: 'Recuperar no-show e levar para agendamento.',
+    chamada_realizada: 'Conduzir ao proximo passo pos-ligacao.',
+    chamada_agendada: 'Confirmar presenca na chamada agendada.',
+    visita_agendada: 'Confirmar presenca na visita agendada.',
+    proposta_negociacao: 'Negociar ate compromisso de aprovacao ou proximo passo comercial.',
+    financiamento: 'Acompanhar financiamento e levar para aprovacao do projeto.',
+};
+const FOLLOW_UP_STAGE_GOAL_FALLBACK = 'Manter continuidade comercial e reengajar o lead.';
+
 type FollowUpStepRule = {
     step: 1 | 2 | 3 | 4 | 5;
     enabled: boolean;
@@ -1426,6 +1438,12 @@ function normalizeHistoryText(message: any, attachmentUrl: string | null): strin
     let text = String(message || '').trim();
     if (attachmentUrl && text.includes(attachmentUrl)) {
         text = text.replace(attachmentUrl, '').trim();
+    }
+    // Strip audio transcription prefix (🎤) to prevent AI from mimicking the emoji
+    text = text.replace(/^🎤\s*/u, '').trim();
+    // If only placeholder remained (e.g. "Áudio" or "Áudio (12s)"), provide minimal context
+    if (/^[Áá]udio(\s*\(\d+s?\))?$/i.test(text) || text === '') {
+        return text === '' ? '[audio sem transcricao]' : '[audio sem transcricao]';
     }
     return text;
 }
@@ -4265,11 +4283,20 @@ INSTRUCOES:
 `
                 : '';
 
+            const followUpStageGoal = FOLLOW_UP_STAGE_GOALS[currentStage] || FOLLOW_UP_STAGE_GOAL_FALLBACK;
+
             const followUpContextBlock = isFollowUpTrigger
                 ? `
 === FOLLOW UP (STEP ${followUpStep || '?'}/5) ===
+ETAPA_ATUAL_DO_LEAD: ${currentStage || 'desconhecida'}
+OBJETIVO_DA_ETAPA: ${followUpStageGoal}
 O lead nao responde ha ${followUpElapsedText}.
 Este e o follow-up ${followUpStep || '?'} de 5.
+
+O CTA deste follow-up DEVE estar alinhado com o OBJETIVO_DA_ETAPA acima.
+Se o objetivo e agendar chamada, o follow-up deve puxar para chamada.
+Se o objetivo e agendar visita, o follow-up deve puxar para visita.
+Se o objetivo e negociar proposta, o follow-up deve puxar para apresentacao (nunca envio por WhatsApp).
 
 INSTRUCOES POR STEP:
 - Step 1: toque leve, pergunta curta.
@@ -4283,6 +4310,8 @@ OBRIGATORIO:
 - Referenciar a ultima conversa com base no historico real.
 - 1-2 frases no maximo.
 - Nao repetir perguntas ja feitas.
+- NAO usar emojis. Zero emojis no follow-up.
+- NAO copiar prefixos de formato do historico (ex: icones, marcadores de audio, anexo).
 === FIM DO FOLLOW UP ===
 `
                 : '';

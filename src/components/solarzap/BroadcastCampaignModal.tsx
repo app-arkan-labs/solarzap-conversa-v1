@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Upload, FileSpreadsheet, Plus, Trash2, Loader2, Sparkles, RefreshCw } from 'lucide-react';
+import { Upload, FileSpreadsheet, Plus, Trash2, Loader2, Sparkles, RefreshCw, Phone, Users } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -37,6 +37,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
 import { isBillingInterruptionError } from '@/lib/billingBlocker';
+import { BroadcastLeadSelector } from './BroadcastLeadSelector';
 
 interface BroadcastCampaignModalProps {
   isOpen: boolean;
@@ -88,6 +89,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
   const [membersLoadError, setMembersLoadError] = useState<string | null>(null);
   const membersRequestRef = useRef(0);
   const fallbackAssigneeId = user?.id || '';
+  const [contactSource, setContactSource] = useState<'upload' | 'crm'>('upload');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -191,6 +193,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
     setIsLoadingMembers(false);
     setDidLoadMembers(false);
     setMembersLoadError(null);
+    setContactSource('upload');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -380,6 +383,31 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
           {step === 1 && (
             <div className="space-y-4">
               <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  <Phone className="w-4 h-4 text-green-500" />
+                  Instância de disparo
+                </Label>
+                <Select value={instanceName} onValueChange={setInstanceName}>
+                  <SelectTrigger className="border-green-200 focus:ring-green-500">
+                    <SelectValue placeholder="Selecione uma instância conectada" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {connectedInstances.map((instance) => (
+                      <SelectItem key={instance.id} value={instance.instance_name}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                          {instance.display_name || instance.instance_name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {connectedInstances.length === 0 && (
+                  <p className="text-xs text-destructive">Nenhuma instância conectada encontrada.</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="campaign-name">Nome da campanha</Label>
                 <Input
                   id="campaign-name"
@@ -387,25 +415,6 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                   onChange={(event) => setCampaignName(event.target.value)}
                   placeholder="Ex.: Lista Fria Zona Sul"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Instancia WhatsApp</Label>
-                <Select value={instanceName} onValueChange={setInstanceName}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma instancia conectada" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {connectedInstances.map((instance) => (
-                      <SelectItem key={instance.id} value={instance.instance_name}>
-                        {instance.display_name || instance.instance_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {connectedInstances.length === 0 && (
-                  <p className="text-xs text-destructive">Nenhuma instancia conectada encontrada.</p>
-                )}
               </div>
 
               <div className="space-y-2">
@@ -494,70 +503,125 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
 
           {step === 2 && (
             <div className="space-y-4 h-full flex flex-col min-h-0">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,.xlsx,.xls"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
+              {/* Tab toggle: Upload vs CRM */}
+              <div className="flex rounded-lg border bg-muted/30 p-1 gap-1">
+                <button
+                  type="button"
+                  className={`flex-1 flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    contactSource === 'upload'
+                      ? 'bg-background shadow-sm text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={() => {
+                    if (contactSource !== 'upload') {
+                      setContacts([]);
+                      setUploadedFileName('');
+                      setInvalidRows(0);
+                      setContactSource('upload');
+                    }
+                  }}
+                >
+                  <Upload className="w-4 h-4" />
+                  Upload CSV/XLSX
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    contactSource === 'crm'
+                      ? 'bg-background shadow-sm text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={() => {
+                    if (contactSource !== 'crm') {
+                      setContacts([]);
+                      setUploadedFileName('');
+                      setInvalidRows(0);
+                      setContactSource('crm');
+                    }
+                  }}
+                >
+                  <Users className="w-4 h-4" />
+                  Leads do CRM
+                </button>
+              </div>
 
-              <button
-                type="button"
-                className="w-full border-2 border-dashed border-muted-foreground/30 rounded-xl p-6 hover:border-primary/50 hover:bg-muted/30 transition-colors"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isParsing}
-              >
-                <div className="flex flex-col items-center gap-3 text-center">
-                  {isParsing ? (
-                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                  ) : (
-                    <Upload className="w-8 h-8 text-muted-foreground" />
-                  )}
-                  <div>
-                    <p className="font-medium">Upload CSV/XLSX</p>
-                    <p className="text-sm text-muted-foreground">Colunas esperadas: nome, telefone, email (opcional).</p>
-                  </div>
-                </div>
-              </button>
+              {contactSource === 'upload' && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
 
-              {uploadedFileName && (
-                <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    <FileSpreadsheet className="w-4 h-4" />
-                    {uploadedFileName}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{contacts.length} contato(s) valido(s).</p>
-                  {invalidRows > 0 && (
-                    <p className="text-xs text-amber-600">{invalidRows} linha(s) ignorada(s) por falta de nome/telefone.</p>
-                  )}
-                </div>
-              )}
+                  <button
+                    type="button"
+                    className="w-full border-2 border-dashed border-muted-foreground/30 rounded-xl p-6 hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isParsing}
+                  >
+                    <div className="flex flex-col items-center gap-3 text-center">
+                      {isParsing ? (
+                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                      ) : (
+                        <Upload className="w-8 h-8 text-muted-foreground" />
+                      )}
+                      <div>
+                        <p className="font-medium">Upload CSV/XLSX</p>
+                        <p className="text-sm text-muted-foreground">Colunas esperadas: nome, telefone, email (opcional).</p>
+                      </div>
+                    </div>
+                  </button>
 
-              <div className="flex-1 min-h-0 border rounded-md p-3">
-                {previewContacts.length > 0 ? (
-                  <ScrollArea className="h-[320px] sm:h-[360px] lg:h-[420px] pr-2">
-                    <div className="space-y-2">
-                      {previewContacts.map((contact) => (
-                        <div key={contact.phone} className="rounded border p-2 text-sm">
-                          <p className="font-medium">{contact.name}</p>
-                          <p className="text-muted-foreground">{contact.phone}</p>
-                          {contact.email && <p className="text-muted-foreground">{contact.email}</p>}
-                        </div>
-                      ))}
-                      {contacts.length > previewContacts.length && (
-                        <p className="text-xs text-muted-foreground">
-                          Mostrando {previewContacts.length} de {contacts.length} contatos.
-                        </p>
+                  {uploadedFileName && (
+                    <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                      <p className="text-sm font-medium flex items-center gap-2">
+                        <FileSpreadsheet className="w-4 h-4" />
+                        {uploadedFileName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{contacts.length} contato(s) valido(s).</p>
+                      {invalidRows > 0 && (
+                        <p className="text-xs text-amber-600">{invalidRows} linha(s) ignorada(s) por falta de nome/telefone.</p>
                       )}
                     </div>
-                  </ScrollArea>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                    A lista importada aparecera aqui.
+                  )}
+
+                  <div className="flex-1 min-h-0 border rounded-md p-3">
+                    {previewContacts.length > 0 ? (
+                      <ScrollArea className="h-[320px] sm:h-[360px] lg:h-[420px] pr-2">
+                        <div className="space-y-2">
+                          {previewContacts.map((contact) => (
+                            <div key={contact.phone} className="rounded border p-2 text-sm">
+                              <p className="font-medium">{contact.name}</p>
+                              <p className="text-muted-foreground">{contact.phone}</p>
+                              {contact.email && <p className="text-muted-foreground">{contact.email}</p>}
+                            </div>
+                          ))}
+                          {contacts.length > previewContacts.length && (
+                            <p className="text-xs text-muted-foreground">
+                              Mostrando {previewContacts.length} de {contacts.length} contatos.
+                            </p>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                        A lista importada aparecera aqui.
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </>
+              )}
+
+              {contactSource === 'crm' && orgId && (
+                <BroadcastLeadSelector
+                  orgId={orgId}
+                  members={members}
+                  fallbackUserId={fallbackAssigneeId}
+                  onSelectionChange={setContacts}
+                />
+              )}
             </div>
           )}
 
@@ -670,8 +734,13 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                   <p className="font-semibold">{instanceName || '-'}</p>
                 </div>
                 <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Contatos validos</p>
-                  <p className="font-semibold">{contacts.length}</p>
+                  <p className="text-xs text-muted-foreground">Contatos válidos</p>
+                  <p className="font-semibold">
+                    {contacts.length}
+                    <span className="text-xs font-normal text-muted-foreground ml-1">
+                      ({contactSource === 'crm' ? 'CRM' : 'Upload'})
+                    </span>
+                  </p>
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Intervalo base</p>
