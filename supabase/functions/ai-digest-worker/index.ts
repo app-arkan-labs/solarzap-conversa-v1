@@ -1346,6 +1346,19 @@ Deno.serve(async (req) => {
     let failed = 0
 
     for (const settings of rows) {
+      // ── Suspension guard: skip digest for suspended orgs ──
+      if (settings.org_id) {
+        const { data: orgGuard } = await supabase
+          .from('organizations')
+          .select('status')
+          .eq('id', settings.org_id)
+          .single()
+        if (orgGuard?.status === 'suspended') {
+          continue
+        }
+      }
+      // ── End suspension guard ──
+
       const dueDigests = resolveDueDigest(settings)
       candidates += dueDigests.length
 

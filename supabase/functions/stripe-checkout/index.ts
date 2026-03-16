@@ -74,6 +74,19 @@ Deno.serve(async (req) => {
     let orgId = typeof payload.org_id === 'string' ? payload.org_id.trim() : '';
     let userRole = 'owner';
 
+    // ── Suspension guard: block new checkouts for suspended orgs ──
+    if (orgId) {
+      const { data: orgGuard } = await serviceClient
+        .from('organizations')
+        .select('status')
+        .eq('id', orgId)
+        .single();
+      if (orgGuard?.status === 'suspended') {
+        return json(corsHeaders, 403, { ok: false, error: 'org_suspended', message: 'Conta suspensa — checkout bloqueado' });
+      }
+    }
+    // ── End suspension guard ──
+
     if (orgId) {
       const { data: membership } = await serviceClient
         .from('organization_members')

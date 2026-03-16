@@ -790,6 +790,18 @@ Deno.serve(async (req: Request) => {
             })
         }
 
+        // ── Suspension guard: allow inbound storage, block all outbound ──
+        let isOrgSuspended = false
+        {
+            const { data: orgGuard } = await supabase
+                .from('organizations')
+                .select('status')
+                .eq('id', orgId)
+                .single()
+            isOrgSuspended = orgGuard?.status === 'suspended'
+        }
+        // ── End suspension guard (isOrgSuspended used below to block AI/sends) ──
+
         let protocolVersion: 'legacy' | 'pipeline_pdf_v1' = 'legacy'
         let supportAiEnabled = false
         let supportAiAutoDisableOnSellerMessage = true
@@ -1455,6 +1467,21 @@ Deno.serve(async (req: Request) => {
                     } catch (followUpCancelErr) {
                         console.warn('Failed to cancel/reset follow-up after inbound message:', followUpCancelErr)
                     }
+
+                    // ── Suspension guard: block AI pipeline invoke for suspended orgs ──
+                    if (isOrgSuspended) {
+                        console.log(`[webhook] Org ${orgId} suspended — inbound message saved, AI pipeline blocked`)
+                        await supabase
+                            .from('_admin_suspension_log')
+                            .insert({
+                                org_id: orgId,
+                                blocked_action: 'ai_pipeline_invoke_from_webhook',
+                                details: { lead_id: leadId, interaction_id: inserted.id },
+                            })
+                            .catch(() => {})
+                        break
+                    }
+                    // ── End suspension guard ──
 
                     const aiLimit = await checkLimit(supabase, orgId, 'included_ai_requests_month', 1)
                     if (!aiLimit.allowed || aiLimit.access_state === 'blocked' || aiLimit.access_state === 'read_only') {

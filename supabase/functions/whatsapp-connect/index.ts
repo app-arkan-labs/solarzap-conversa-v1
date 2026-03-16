@@ -106,6 +106,26 @@ Deno.serve(async (req) => {
         const role = String(member.role || 'user').toLowerCase()
         const isOrgManager = role === 'owner' || role === 'admin'
 
+        // ── Suspension guard: block instance management for suspended orgs ──
+        {
+            const { data: orgGuard } = await supabaseClient
+                .from('organizations')
+                .select('status')
+                .eq('id', orgId)
+                .single()
+            if (orgGuard?.status === 'suspended') {
+                // Allow 'list' and 'status' only; block creates/connects/deletes
+                const readOnlyActions = ['list', 'status']
+                if (!readOnlyActions.includes(payload.action)) {
+                    return new Response(
+                        JSON.stringify({ error: 'org_suspended', message: 'Conta suspensa — operação bloqueada' }),
+                        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    )
+                }
+            }
+        }
+        // ── End suspension guard ──
+
         const { action, instanceId, newName, displayName, instanceName, key, reaction } = payload
 
         // Base Response if config is missing (for 'list' or others)

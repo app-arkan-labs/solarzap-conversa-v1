@@ -82,6 +82,31 @@ Deno.serve(async (req) => {
                     if (!limit.allowed || limit.access_state === 'blocked' || limit.access_state === 'read_only') {
                         throw new Error('billing_limit_reached_for_reminder')
                     }
+
+                    // ── Suspension guard ──
+                    const { data: orgGuard } = await supabase
+                        .from('organizations')
+                        .select('status')
+                        .eq('id', orgId)
+                        .single()
+
+                    if (orgGuard?.status === 'suspended') {
+                        await supabase
+                            .from('appointment_reminders')
+                            .update({ status: 'skipped_suspended', last_error: 'org_suspended' })
+                            .eq('id', r.reminder_id)
+                        await supabase
+                            .from('_admin_suspension_log')
+                            .insert({
+                                org_id: orgId,
+                                blocked_action: 'reminder_send',
+                                details: { reminder_id: r.reminder_id, appointment_id: r.appointment_id },
+                            })
+                            .catch(() => {})
+                        results.push({ id: r.reminder_id, status: 'skipped_suspended' })
+                        continue
+                    }
+                    // ── End suspension guard ──
                 }
 
                 // 2. Get active instance for user

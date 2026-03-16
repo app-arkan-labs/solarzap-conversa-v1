@@ -2901,6 +2901,29 @@ Deno.serve(async (req) => {
             );
         }
 
+        // ── Suspension guard: block AI pipeline for suspended orgs ──
+        {
+            const { data: orgGuard } = await supabaseBase
+                .from('organizations')
+                .select('status')
+                .eq('id', leadOrgId)
+                .single();
+
+            if (orgGuard?.status === 'suspended') {
+                console.log(`🛑 [${runId}] Org ${leadOrgId} suspended — skipping AI pipeline`);
+                await supabaseBase
+                    .from('_admin_suspension_log')
+                    .insert({
+                        org_id: leadOrgId,
+                        blocked_action: 'ai_pipeline',
+                        details: { lead_id: leadId, trigger_type: triggerType, run_id: runId },
+                    })
+                    .catch(() => {});
+                return respondNoSend({ skipped: 'org_suspended' }, 'org_suspended', 'blocked');
+            }
+        }
+        // ── End suspension guard ──
+
         const { data: settings, error: settingsErr } = await supabase
             .from('ai_settings')
             .select('*')

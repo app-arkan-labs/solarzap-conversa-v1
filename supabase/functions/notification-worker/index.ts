@@ -798,10 +798,59 @@ Deno.serve(async (req) => {
 
     const events = Array.isArray(claimedRows) ? (claimedRows as NotificationEventRow[]) : []
 
+    // ── Suspension guard: skip events for suspended orgs ──
+    const orgIdsInBatch = [...new Set(events.map(e => e.org_id).filter(Boolean))]
+    const suspendedOrgIds = new Set<string>()
+    if (orgIdsInBatch.length > 0) {
+      const { data: suspendedRows } = await supabase
+        .from('organizations')
+        .select('id')
+        .in('id', orgIdsInBatch)
+        .eq('status', 'suspended')
+      for (const row of suspendedRows || []) {
+        suspendedOrgIds.add(row.id)
+      }
+    }
+
+    const skippedBySuspension: string[] = []
+    const activeEvents = events.filter(e => {
+      if (suspendedOrgIds.has(e.org_id)) {
+        skippedBySuspension.push(e.id)
+        return false
+      }
+      return true
+    })
+
+    if (skippedBySuspension.length > 0) {
+      await supabase
+        .from('notification_events')
+        .update({
+          status: 'skipped_suspended',
+          locked_at: null,
+          processed_at: new Date().toISOString(),
+          last_error: 'org_suspended',
+        })
+        .in('id', skippedBySuspension)
+
+      // Audit log
+      const logRows = skippedBySuspension.map(id => {
+        const evt = events.find(e => e.id === id)
+        return {
+          org_id: evt?.org_id,
+          blocked_action: 'notification_send',
+          details: { notification_event_id: id, event_type: evt?.event_type },
+        }
+      }).filter(r => r.org_id)
+      if (logRows.length > 0) {
+        await supabase.from('_admin_suspension_log').insert(logRows).catch(() => {})
+      }
+    }
+    // ── End suspension guard ──
+
     let processed = 0
     let failed = 0
 
-    for (const event of events) {
+    for (const event of activeEvents) {
       try {
         await processEvent(supabase, supabaseUrl, serviceRoleKey, internalApiKey, event)
         processed += 1
@@ -843,6 +892,7 @@ Deno.serve(async (req) => {
         claimed: events.length,
         processed,
         failed,
+        skipped_suspended: skippedBySuspension.length,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

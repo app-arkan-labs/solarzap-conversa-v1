@@ -292,6 +292,19 @@ Deno.serve(async (req) => {
     }
     const orgId = String(membership.org_id);
 
+    // ── Suspension guard: block KB ingestion for suspended orgs ──
+    {
+      const { data: orgGuard } = await serviceClient
+        .from('organizations')
+        .select('status')
+        .eq('id', orgId)
+        .single();
+      if (orgGuard?.status === 'suspended') {
+        return jsonResponse({ error: 'org_suspended', message: 'Conta suspensa — ingestão bloqueada' }, corsHeaders, 403);
+      }
+    }
+    // ── End suspension guard ──
+
     const body = await req.json().catch(() => ({}));
     const kbItemId = asString(body?.kbItemId || body?.kb_item_id, 80) || null;
     const force = Boolean(body?.force);

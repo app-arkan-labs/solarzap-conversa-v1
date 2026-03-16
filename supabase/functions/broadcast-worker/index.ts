@@ -666,6 +666,43 @@ Deno.serve(async (req) => {
       serviceClient,
     );
 
+    // ── Suspension guard: block dispatch for suspended orgs ──
+    if (scope.orgId) {
+      const { data: orgGuard } = await serviceClient
+        .from('organizations')
+        .select('status')
+        .eq('id', scope.orgId)
+        .single();
+
+      if (orgGuard?.status === 'suspended') {
+        // Auto-pause any active campaigns for this org
+        if (scope.campaignId) {
+          await serviceClient
+            .from('broadcast_campaigns')
+            .update({ status: 'paused_suspended' })
+            .eq('id', scope.campaignId)
+            .in('status', ['active', 'sending']);
+        }
+
+        // Audit log
+        await serviceClient
+          .from('_admin_suspension_log')
+          .insert({
+            org_id: scope.orgId,
+            blocked_action: 'broadcast_dispatch',
+            details: { campaign_id: scope.campaignId },
+          })
+          .catch(() => {});
+
+        return jsonResponse(
+          { success: false, error: 'org_suspended', message: 'Organização suspensa — campanha bloqueada' },
+          corsHeaders,
+          403,
+        );
+      }
+    }
+    // ── End suspension guard ──
+
     const { error: staleError } = await serviceClient.rpc('broadcast_requeue_stale_recipients', {
       p_stale_minutes: 5,
     });

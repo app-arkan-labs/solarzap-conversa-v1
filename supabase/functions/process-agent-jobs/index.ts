@@ -1207,6 +1207,28 @@ Deno.serve(async (req: Request) => {
           continue
         }
 
+        // ── Suspension guard: skip jobs for suspended orgs ──
+        const { data: orgGuard } = await supabase
+          .from('organizations')
+          .select('status')
+          .eq('id', job.org_id)
+          .single()
+
+        if (orgGuard?.status === 'suspended') {
+          await markJobCancelled(supabase, job.job_id, 'org_suspended')
+          await supabase
+            .from('_admin_suspension_log')
+            .insert({
+              org_id: job.org_id,
+              blocked_action: 'agent_job_execution',
+              details: { job_id: job.job_id, agent_type: job.agent_type, lead_id: job.lead_id },
+            })
+            .catch(() => {})
+          summary.cancelled += 1
+          continue
+        }
+        // ── End suspension guard ──
+
         const outcome = job.agent_type === 'post_call'
           ? await processPostCallJob(supabase, job, lead)
           : await processFollowUpJob(supabase, job, lead)

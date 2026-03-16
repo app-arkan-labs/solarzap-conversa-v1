@@ -280,6 +280,22 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── Suspension guard: block proposal generation for suspended orgs ──
+    {
+      const { data: orgGuard } = await serviceClient
+        .from('organizations')
+        .select('status')
+        .eq('id', orgId)
+        .single();
+      if (orgGuard?.status === 'suspended') {
+        return new Response(JSON.stringify({ error: 'org_suspended', message: 'Conta suspensa — geração de proposta bloqueada' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+    // ── End suspension guard ──
+
     const proposalLimit = await checkLimit(serviceClient, orgId, "max_proposals_month", 1);
     if (!proposalLimit.allowed || proposalLimit.access_state === 'blocked' || proposalLimit.access_state === 'read_only') {
       return new Response(JSON.stringify({

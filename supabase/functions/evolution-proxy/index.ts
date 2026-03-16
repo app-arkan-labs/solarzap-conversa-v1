@@ -464,6 +464,35 @@ Deno.serve(async (req) => {
       return response
     }
 
+    // ── Suspension guard: block outbound send actions for suspended orgs ──
+    const sendActions = new Set(['send-text', 'send-media', 'send-sticker', 'send-reaction'])
+    if (sendActions.has(action)) {
+      const { data: orgGuard } = await supabaseAdmin
+        .from('organizations')
+        .select('status')
+        .eq('id', ctx.orgId)
+        .single()
+
+      if (orgGuard?.status === 'suspended') {
+        console.log(`[evolution-proxy] Org ${ctx.orgId} suspended — blocking ${action}`)
+        await supabaseAdmin
+          .from('_admin_suspension_log')
+          .insert({
+            org_id: ctx.orgId,
+            blocked_action: `evolution_proxy_${action}`,
+            details: { instance_name: instanceName, trace_id: traceId },
+          })
+          .catch(() => {})
+
+        return jsonResponse(
+          { success: false, error: 'org_suspended', message: 'Envio bloqueado — conta suspensa' },
+          corsHeaders,
+          403,
+        )
+      }
+    }
+    // ── End suspension guard ──
+
     switch (action) {
       case 'ping': {
         data = {

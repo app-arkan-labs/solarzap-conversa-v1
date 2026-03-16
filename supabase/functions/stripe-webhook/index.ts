@@ -270,14 +270,50 @@ Deno.serve(async (req) => {
     }
 
     if (event.type === 'invoice.payment_succeeded') {
+      // ── Reactivation guard: if org was suspended, reactivate on payment ──
+      const { data: currentOrg } = await serviceClient
+        .from('organizations')
+        .select('status')
+        .eq('id', orgId)
+        .single();
+
+      const wasSuspended = currentOrg?.status === 'suspended';
+
       await serviceClient
         .from('organizations')
         .update({
           subscription_status: 'active',
           grace_ends_at: null,
           updated_at: new Date().toISOString(),
+          ...(wasSuspended ? {
+            status: 'active',
+            suspended_at: null,
+            suspended_by: null,
+            suspension_reason: null,
+          } : {}),
         })
         .eq('id', orgId);
+
+      if (wasSuspended) {
+        // Restore campaigns that were auto-paused by suspension
+        await serviceClient
+          .from('broadcast_campaigns')
+          .update({ status: 'paused' })
+          .eq('org_id', orgId)
+          .eq('status', 'paused_suspended');
+
+        console.log(`[stripe-webhook] Org ${orgId} reactivated after payment`);
+
+        await serviceClient
+          .from('_admin_suspension_log')
+          .insert({
+            org_id: orgId,
+            blocked_action: 'org_reactivated_by_payment',
+            details: { stripe_event_id: event.id },
+          })
+          .catch(() => {});
+      }
+      // ── End reactivation guard ──
 
       await appendBillingTimeline(serviceClient, orgId, 'invoice_payment_succeeded', {
         stripe_event_id: event.id,
