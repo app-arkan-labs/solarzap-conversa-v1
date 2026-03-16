@@ -296,18 +296,6 @@ export function TrackingView() {
   const snippet = useMemo(() => buildUniversalAttributionSnippet(), []);
   const webhookEndpoint = `${import.meta.env.VITE_SUPABASE_URL || '<SUPABASE_URL>'}/functions/v1/attribution-webhook`;
 
-  const platformConnected = useMemo(
-    () => ({
-      meta: forms.meta.enabled && forms.meta.meta_pixel_id.trim().length > 0,
-      google_ads:
-        googleAdsConnected &&
-        forms.google_ads.google_customer_id.trim().length > 0 &&
-        forms.google_ads.google_conversion_action_id.trim().length > 0,
-      ga4: forms.ga4.enabled && forms.ga4.ga4_measurement_id.trim().length > 0,
-    }),
-    [forms, googleAdsConnected],
-  );
-
   const stageRows = useMemo(() => {
     const defaults = getDefaultStageEventMap();
     const keys = Array.from(new Set([...Object.keys(defaults), ...Object.keys(settings.stage_event_map)]));
@@ -463,9 +451,16 @@ export function TrackingView() {
       });
       if (error || !data?.authUrl) throw new Error(error?.message || data?.error || 'failed_to_get_auth_url');
       window.location.href = String(data.authUrl);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error('Falha ao iniciar conexão com Google Ads.');
+      const msg = String(error?.message || '');
+      const errorMap: Record<string, string> = {
+        missing_authorization: 'Sessão expirada. Faça login novamente e tente conectar.',
+        forbidden: 'Seu usuário não possui acesso a esta organização.',
+        missing_org_id: 'Organização não identificada para iniciar OAuth.',
+        missing_global_google_config: 'Configuração de Google Ads ausente no Supabase (CLIENT_ID/SECRET).',
+      };
+      toast.error(errorMap[msg] || 'Falha ao iniciar conexão com Google Ads. Verifique OAuth, permissões e secrets do Supabase.');
       setGoogleAdsConnecting(false);
     }
   }, [orgId]);
@@ -917,6 +912,28 @@ export function TrackingView() {
     return snapshot;
   }, [deliveries]);
 
+  const platformStatus = useMemo(() => {
+    const meta = forms.meta.enabled
+      ? forms.meta.meta_pixel_id.trim() ? 'connected' : 'incomplete'
+      : 'disabled';
+    const google = googleAdsConnected
+      ? (forms.google_ads.google_customer_id.trim() && forms.google_ads.google_conversion_action_id.trim() ? 'connected' : 'incomplete')
+      : (forms.google_ads.enabled ? 'incomplete' : 'disabled');
+    const ga4 = forms.ga4.enabled
+      ? forms.ga4.ga4_measurement_id.trim() ? 'connected' : 'incomplete'
+      : 'disabled';
+    return { meta, google, ga4 };
+  }, [forms, googleAdsConnected]);
+
+  const statusLabel = (s: string) =>
+    s === 'connected' ? 'Conectado' : s === 'incomplete' ? 'Incompleto' : 'Desativado';
+  const statusColor = (s: string) =>
+    s === 'connected'
+      ? 'bg-emerald-500/10 text-emerald-700'
+      : s === 'incomplete'
+        ? 'bg-amber-500/10 text-amber-700'
+        : 'bg-muted text-muted-foreground';
+
   if (!orgId) return null;
 
   return (
@@ -984,47 +1001,63 @@ export function TrackingView() {
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="min-h-full bg-muted/30">
         <div className="w-full space-y-6 px-4 py-4 sm:px-6 sm:py-6">
-          <Tabs defaultValue="geral" className="space-y-4">
+          <Tabs defaultValue="configuracao" className="space-y-4">
             <div className="relative">
             <div className="overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <TabsList className="flex h-auto min-w-full flex-nowrap justify-start gap-1 rounded-xl border bg-background p-1 shadow-sm sm:flex-wrap">
-                <TabsTrigger value="geral" className="shrink-0">Geral</TabsTrigger>
-                <TabsTrigger value="webhook" className="shrink-0">{isMobileViewport ? 'Webhook' : 'Webhook & Snippet'}</TabsTrigger>
-                <TabsTrigger value="plataformas" className="shrink-0">Plataformas</TabsTrigger>
-                <TabsTrigger value="mapeamento" className="shrink-0">{isMobileViewport ? 'Mapear' : 'Mapeamento de Etapas'}</TabsTrigger>
-                <TabsTrigger value="gatilhos" className="shrink-0">{isMobileViewport ? 'Gatilhos' : 'Mensagens Gatilho'}</TabsTrigger>
-                <TabsTrigger value="entregas" className="shrink-0">Entregas</TabsTrigger>
+                <TabsTrigger value="configuracao" className="shrink-0">{isMobileViewport ? 'Config' : 'Configuração'}</TabsTrigger>
+                <TabsTrigger value="regras" className="shrink-0">Regras</TabsTrigger>
+                <TabsTrigger value="monitoramento" className="shrink-0">{isMobileViewport ? 'Fila' : 'Monitoramento'}</TabsTrigger>
               </TabsList>
             </div>
             {isMobileViewport && <div className="pointer-events-none absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-muted/80 to-transparent rounded-r-xl sm:hidden" />}
             </div>
-            {isMobileViewport ? (
-              <p className="-mt-2 text-[11px] text-muted-foreground">Arraste para ver todas as seções →</p>
-            ) : null}
 
-            <TabsContent value="geral" className="space-y-4">
+            {/* ─── ABA CONFIGURAÇÃO ─── */}
+            <TabsContent value="configuracao" className="space-y-6">
+
+              {/* Mini-badges de status das plataformas */}
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline" className={cn('border-0 text-xs', statusColor(platformStatus.meta))}>{statusLabel(platformStatus.meta)} — Meta CAPI</Badge>
+                <Badge variant="outline" className={cn('border-0 text-xs', statusColor(platformStatus.google))}>{statusLabel(platformStatus.google)} — Google Ads</Badge>
+                <Badge variant="outline" className={cn('border-0 text-xs', statusColor(platformStatus.ga4))}>{statusLabel(platformStatus.ga4)} — GA4</Badge>
+              </div>
+
+              {/* Seção 1: Comportamento do Tracking (ex-aba Geral) */}
               <Card className="border-0 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-lg">Configurações gerais</CardTitle>
+                  <CardTitle className="text-lg">Comportamento do Tracking</CardTitle>
                   <CardDescription>Controle o comportamento global do tracking e da atribuição automática.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <label className="flex items-center justify-between rounded-xl border bg-background p-4">
-                      <span className="text-sm font-medium">Tracking ativado</span>
-                      <Switch checked={settings.tracking_enabled} onCheckedChange={(v) => setSettings((s) => ({ ...s, tracking_enabled: v }))} />
+                    <label className="flex flex-col gap-2 rounded-xl border bg-background p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Tracking ativado</span>
+                        <Switch checked={settings.tracking_enabled} onCheckedChange={(v) => setSettings((s) => ({ ...s, tracking_enabled: v }))} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">Liga ou desliga todo o sistema de tracking. Quando desativado, nenhuma conversão é enviada.</p>
                     </label>
-                    <label className="flex items-center justify-between rounded-xl border bg-background p-4">
-                      <span className="text-sm font-medium">Auto-atribuição</span>
-                      <Switch checked={settings.auto_channel_attribution} onCheckedChange={(v) => setSettings((s) => ({ ...s, auto_channel_attribution: v }))} />
+                    <label className="flex flex-col gap-2 rounded-xl border bg-background p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Auto-atribuição</span>
+                        <Switch checked={settings.auto_channel_attribution} onCheckedChange={(v) => setSettings((s) => ({ ...s, auto_channel_attribution: v }))} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">Infere automaticamente o canal de origem (Google, Meta, etc.) pelo UTM/Click ID da mensagem.</p>
                     </label>
-                    <label className="flex items-center justify-between rounded-xl border bg-background p-4">
-                      <span className="text-sm font-medium">Forçar overwrite</span>
-                      <Switch checked={settings.force_channel_overwrite} onCheckedChange={(v) => setSettings((s) => ({ ...s, force_channel_overwrite: v }))} />
+                    <label className="flex flex-col gap-2 rounded-xl border bg-background p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Forçar overwrite</span>
+                        <Switch checked={settings.force_channel_overwrite} onCheckedChange={(v) => setSettings((s) => ({ ...s, force_channel_overwrite: v }))} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">Reescreve o canal de origem mesmo que o lead já tenha um canal atribuído anteriormente.</p>
                     </label>
-                    <label className="flex items-center justify-between rounded-xl border bg-background p-4">
-                      <span className="text-sm font-medium">Google validate-only</span>
-                      <Switch checked={settings.google_validate_only} onCheckedChange={(v) => setSettings((s) => ({ ...s, google_validate_only: v }))} />
+                    <label className="flex flex-col gap-2 rounded-xl border bg-background p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Google validate-only</span>
+                        <Switch checked={settings.google_validate_only} onCheckedChange={(v) => setSettings((s) => ({ ...s, google_validate_only: v }))} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">Eventos Google Ads enviados em modo de validação (não contam como conversão real). Útil para testar.</p>
                     </label>
                   </div>
                   <div className="flex flex-col gap-4 rounded-xl border bg-background p-4 sm:flex-row sm:items-end sm:justify-between">
@@ -1037,81 +1070,35 @@ export function TrackingView() {
                         value={settings.rate_limit_per_minute}
                         onChange={(event) => setSettings((s) => ({ ...s, rate_limit_per_minute: Number(event.target.value || 60) }))}
                       />
+                      <p className="text-xs text-muted-foreground">Limite máximo de requisições de webhook por minuto. Protege contra spam/bots.</p>
                     </div>
                     <Button className="gap-2" onClick={() => void saveSettings()} disabled={savingSettings}>
                       {savingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                       Salvar configurações
                     </Button>
                   </div>
+                  <p className="text-xs text-muted-foreground">Para envio real no Google Ads, o lead precisa ter <code className="px-1 bg-muted rounded">gclid</code>, <code className="px-1 bg-muted rounded">gbraid</code> ou <code className="px-1 bg-muted rounded">wbraid</code>. Sem isso, o evento pode ser validado, mas não enviado como conversão offline.</p>
                 </CardContent>
               </Card>
-            </TabsContent>
 
-            <TabsContent value="webhook" className="space-y-4">
-              <div className="grid gap-4 xl:grid-cols-2">
-                <Card className="border-0 shadow-sm">
-                  <CardHeader>
-                    <CardTitle className="text-base">Endpoint do webhook</CardTitle>
-                    <CardDescription>Use este endpoint para receber dados de atribuição do site.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <Label htmlFor="webhook-url">URL</Label>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Input id="webhook-url" value={webhookEndpoint} readOnly className="font-mono text-xs" />
-                      <Button type="button" variant="outline" className="gap-2 sm:self-start" onClick={() => void copy(webhookEndpoint, 'Endpoint copiado.') }>
-                        <Copy className="h-4 w-4" />
-                        Copiar
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-sm">
-                  <CardHeader>
-                    <CardTitle className="text-base">Chave pública da organização</CardTitle>
-                    <CardDescription>Use a chave no formulário para validar chamadas ao webhook.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <Input value={settings.webhook_public_key || 'Nenhuma chave gerada'} readOnly className="font-mono text-xs" />
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="outline" className="gap-2" onClick={() => void generatePublicKey()} disabled={generatingKey}>
-                        {generatingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
-                        Gerar chave
-                      </Button>
-                      <Button type="button" variant="outline" className="gap-2" onClick={() => void revokePublicKey()} disabled={revokingKey}>
-                        {revokingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                        Revogar chave
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
+              {/* Seção 2: Plataformas de Anúncios (ex-aba Plataformas) */}
               <Card className="border-0 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-base">Snippet universal</CardTitle>
-                  <CardDescription>Instale este snippet no site para capturar UTMs e click IDs.</CardDescription>
+                  <CardTitle className="text-lg">Plataformas de Anúncios</CardTitle>
+                  <CardDescription>Configure as plataformas que receberão eventos de conversão.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <Textarea value={snippet} readOnly className="min-h-[220px] font-mono text-[11px]" />
-                  <Button type="button" variant="outline" className="gap-2" onClick={() => void copy(snippet, 'Snippet copiado.') }>
-                    <Copy className="h-4 w-4" />
-                    Copiar snippet
-                  </Button>
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="plataformas" className="space-y-4">
+                <CardContent>
               <div className="grid gap-4 xl:grid-cols-3">
-                <Card className="border-0 shadow-sm">
+                {/* Meta CAPI card */}
+                <Card className="border shadow-none">
                   <CardHeader className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <CardTitle className="text-base">Meta CAPI</CardTitle>
                         <CardDescription>Envio de conversões para Meta Ads.</CardDescription>
                       </div>
-                      <Badge variant="outline" className={cn('border-0', platformConnected.meta ? 'bg-emerald-500/10 text-emerald-700 animate-pulse' : 'bg-muted text-muted-foreground')}>
-                        {platformConnected.meta ? 'Conectado' : 'Desconectado'}
+                      <Badge variant="outline" className={cn('border-0 text-xs', statusColor(platformStatus.meta))}>
+                        {statusLabel(platformStatus.meta)}
                       </Badge>
                     </div>
                     <label className="flex items-center justify-between rounded-lg border bg-background px-3 py-2">
@@ -1150,15 +1137,16 @@ export function TrackingView() {
                   </CardContent>
                 </Card>
 
-                <Card className="border-0 shadow-sm">
+                {/* Google Ads card */}
+                <Card className="border shadow-none">
                   <CardHeader className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <CardTitle className="text-base">Google Ads</CardTitle>
                         <CardDescription>Conversões offline para Google Ads.</CardDescription>
                       </div>
-                      <Badge variant="outline" className={cn('border-0', platformConnected.google_ads ? 'bg-emerald-500/10 text-emerald-700 animate-pulse' : 'bg-muted text-muted-foreground')}>
-                        {platformConnected.google_ads ? 'Conectado' : 'Desconectado'}
+                      <Badge variant="outline" className={cn('border-0 text-xs', statusColor(platformStatus.google))}>
+                        {statusLabel(platformStatus.google)}
                       </Badge>
                     </div>
                     <label className="flex items-center justify-between rounded-lg border bg-background px-3 py-2">
@@ -1309,15 +1297,16 @@ export function TrackingView() {
                   )}
                 </Card>
 
-                <Card className="border-0 shadow-sm">
+                {/* GA4 card */}
+                <Card className="border shadow-none">
                   <CardHeader className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <CardTitle className="text-base">GA4</CardTitle>
                         <CardDescription>Eventos para Google Analytics 4.</CardDescription>
                       </div>
-                      <Badge variant="outline" className={cn('border-0', platformConnected.ga4 ? 'bg-emerald-500/10 text-emerald-700 animate-pulse' : 'bg-muted text-muted-foreground')}>
-                        {platformConnected.ga4 ? 'Conectado' : 'Desconectado'}
+                      <Badge variant="outline" className={cn('border-0 text-xs', statusColor(platformStatus.ga4))}>
+                        {statusLabel(platformStatus.ga4)}
                       </Badge>
                     </div>
                     <label className="flex items-center justify-between rounded-lg border bg-background px-3 py-2">
@@ -1338,13 +1327,102 @@ export function TrackingView() {
                   </CardContent>
                 </Card>
               </div>
+                </CardContent>
+              </Card>
+
+              {/* Seção 3: Integração com Site (ex-aba Webhook & Snippet) */}
+              <Card className="border-0 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-lg">Integração com Site</CardTitle>
+                  <CardDescription>Conecte seu site ao sistema de atribuição da SolarZap seguindo os passos abaixo.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Fluxo resumido */}
+                  <div className="rounded-xl border bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
+                    <p className="font-semibold text-foreground mb-1">Como funciona</p>
+                    <p>Visitante acessa com UTM → snippet captura dados e guarda na sessão → formulário envia campos ocultos → webhook aplica atribuição → dispatcher envia conversões para as plataformas.</p>
+                  </div>
+
+                  {/* Passo 1 */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">1</span>
+                      <h4 className="text-sm font-semibold">Gere uma chave pública</h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Use esta chave quando o seu formulário ou backend enviar dados diretamente para o webhook da SolarZap.</p>
+                    <Input value={settings.webhook_public_key || 'Nenhuma chave gerada'} readOnly className="font-mono text-xs" />
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" className="gap-2" onClick={() => void generatePublicKey()} disabled={generatingKey}>
+                        {generatingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
+                        Gerar chave
+                      </Button>
+                      <Button type="button" variant="outline" className="gap-2" onClick={() => void revokePublicKey()} disabled={revokingKey}>
+                        {revokingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Revogar chave
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Passo 2 */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">2</span>
+                      <h4 className="text-sm font-semibold">Endpoint do webhook</h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Esta URL recebe os dados de atribuição. Use no POST do seu formulário ou integração server-to-server.</p>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input value={webhookEndpoint} readOnly className="font-mono text-xs" />
+                      <Button type="button" variant="outline" className="gap-2 sm:self-start" onClick={() => void copy(webhookEndpoint, 'Endpoint copiado.')}>
+                        <Copy className="h-4 w-4" />
+                        Copiar
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Passo 3 */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">3</span>
+                      <h4 className="text-sm font-semibold">Instale o snippet no site</h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Cole este código antes de <code className="px-1 bg-muted rounded">&lt;/body&gt;</code>. Ele captura UTMs e click IDs, guarda na sessão e injeta campos ocultos nos formulários da página.</p>
+                    <Textarea value={snippet} readOnly className="min-h-[220px] font-mono text-[11px]" />
+                    <Button type="button" variant="outline" className="gap-2" onClick={() => void copy(snippet, 'Snippet copiado.')}>
+                      <Copy className="h-4 w-4" />
+                      Copiar snippet
+                    </Button>
+                  </div>
+
+                  {/* Passo 4 */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">4</span>
+                      <h4 className="text-sm font-semibold">Conecte o envio do formulário</h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground">O snippet sozinho <strong>não faz POST</strong> para o webhook. Ele prepara os dados para que o seu formulário ou integração envie esses campos para a SolarZap.</p>
+                  </div>
+
+                  {/* Passo 5 */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">5</span>
+                      <h4 className="text-sm font-semibold">Envie a chave no header</h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Inclua o header <code className="px-1 bg-muted rounded">x-szap-org-key</code> na requisição ao webhook. Sem este header o webhook retorna erro.</p>
+                    <p className="text-[11px] text-amber-600 bg-amber-500/10 rounded-lg px-3 py-2">Formulário HTML nativo não permite enviar headers customizados. Use <code className="px-1 bg-amber-100 rounded">fetch</code>/XHR ou backend próprio para enviar a chave.</p>
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
 
-            <TabsContent value="mapeamento" className="space-y-4">
+            {/* ─── ABA REGRAS ─── */}
+            <TabsContent value="regras" className="space-y-6">
+
+              {/* Seção 1: Mapeamento de Etapas */}
               <Card className="border-0 shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-base">Mapeamento de etapas do CRM</CardTitle>
-                  <CardDescription>Defina os eventos enviados para cada plataforma em cada etapa.</CardDescription>
+                  <CardDescription>Quando um lead muda de etapa no CRM, o sistema envia um evento de conversão com o nome configurado abaixo para cada plataforma ativa. Deixe o campo vazio para não enviar evento naquela etapa.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="overflow-x-auto rounded-xl border bg-background">
@@ -1380,14 +1458,15 @@ export function TrackingView() {
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
-            <TabsContent value="gatilhos" className="space-y-4">
+
+              {/* Seção 2: Gatilhos de Atribuição */}
               <Card className="border-0 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-base">Novo gatilho de atribuição</CardTitle>
-                  <CardDescription>Crie regras para inferir canal e campanha com base nas mensagens recebidas.</CardDescription>
+                  <CardTitle className="text-base">Gatilhos de Atribuição</CardTitle>
+                  <CardDescription>Gatilhos permitem inferir o canal de origem com base no texto da mensagem recebida. Exemplo: se a mensagem contém &quot;vi seu anúncio no Instagram&quot;, o sistema atribui o canal como Instagram.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <p className="text-xs text-muted-foreground">Regex inválida é ignorada pelo backend sem quebrar o fluxo, mas deve ser evitada. Valide antes de salvar.</p>
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     <div className="space-y-2 xl:col-span-2">
                       <Label>Texto</Label>
@@ -1502,7 +1581,8 @@ export function TrackingView() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="entregas" className="space-y-4">
+            {/* ─── ABA MONITORAMENTO ─── */}
+            <TabsContent value="monitoramento" className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <Card className="border-0 shadow-sm"><CardContent className="p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Enviados</p><p className="mt-2 text-2xl font-bold text-emerald-600">{summary.sent}</p></CardContent></Card>
                 <Card className="border-0 shadow-sm"><CardContent className="p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Pendentes</p><p className="mt-2 text-2xl font-bold text-amber-600">{summary.pending}</p></CardContent></Card>
@@ -1538,8 +1618,8 @@ export function TrackingView() {
                   ) : deliveries.length === 0 ? (
                     <div className="rounded-xl border border-dashed bg-background p-10 text-center">
                       <BarChart3 className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                      <p className="font-medium">Nenhuma entrega encontrada neste período</p>
-                      <p className="mt-1 text-sm text-muted-foreground">Assim que os eventos forem processados, eles aparecerão aqui com status e tentativas.</p>
+                      <p className="font-medium">Nenhuma entrega encontrada</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Entregas aparecem quando leads mudam de etapa e as plataformas (Meta, Google Ads, GA4) estão configuradas e ativas.</p>
                     </div>
                   ) : (
                     isMobileViewport ? (
