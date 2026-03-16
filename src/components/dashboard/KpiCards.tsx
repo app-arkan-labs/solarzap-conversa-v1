@@ -89,14 +89,14 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
   return (
     <div className="space-y-4">
       <Card className={`${heroTone} shadow-md transition-shadow`}>
-        <CardContent className="flex flex-col gap-6 p-8 lg:flex-row lg:items-center lg:justify-between">
+        <CardContent className="flex flex-col gap-4 p-4 lg:gap-6 lg:p-8 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
             <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">Lucro Acrescido</p>
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-background/80 shadow-sm">
+              <div className="flex h-10 w-10 lg:h-12 lg:w-12 items-center justify-center rounded-full bg-background/80 shadow-sm">
                 <HeroIcon className={`h-6 w-6 ${deltaColor(profitDelta)}`} />
               </div>
-              <div className={`text-4xl font-bold tracking-tight sm:text-5xl ${deltaColor(profitDelta)}`}>
+              <div className={`text-2xl font-bold tracking-tight lg:text-4xl xl:text-5xl ${deltaColor(profitDelta)}`}>
                 {formatPercent(profitDelta)}
               </div>
             </div>

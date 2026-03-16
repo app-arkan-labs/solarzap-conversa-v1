@@ -28,7 +28,7 @@ interface ChatHeaderActionsDrawerProps {
   instances: any[];
   selectedInstanceId: string | null;
   onSelectInstance: (instance: any) => void;
-  onUpdateInstanceColor: (instanceId: string, color: string) => Promise<void>;
+  onUpdateInstanceColor: (instanceId: string, color: string) => Promise<boolean>;
 }
 
 export function ChatHeaderActionsDrawer({

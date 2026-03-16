@@ -985,6 +985,7 @@ export function TrackingView() {
         <div className="min-h-full bg-muted/30">
         <div className="w-full space-y-6 px-4 py-4 sm:px-6 sm:py-6">
           <Tabs defaultValue="geral" className="space-y-4">
+            <div className="relative">
             <div className="overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <TabsList className="flex h-auto min-w-full flex-nowrap justify-start gap-1 rounded-xl border bg-background p-1 shadow-sm sm:flex-wrap">
                 <TabsTrigger value="geral" className="shrink-0">Geral</TabsTrigger>
@@ -995,8 +996,10 @@ export function TrackingView() {
                 <TabsTrigger value="entregas" className="shrink-0">Entregas</TabsTrigger>
               </TabsList>
             </div>
+            {isMobileViewport && <div className="pointer-events-none absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-muted/80 to-transparent rounded-r-xl sm:hidden" />}
+            </div>
             {isMobileViewport ? (
-              <p className="-mt-2 text-[11px] text-muted-foreground">Arraste a barra lateralmente para ver todas as seções.</p>
+              <p className="-mt-2 text-[11px] text-muted-foreground">Arraste para ver todas as seções →</p>
             ) : null}
 
             <TabsContent value="geral" className="space-y-4">
