@@ -129,7 +129,7 @@ export function DashboardView({
     return <div className="p-8 text-red-500">Erro ao carregar dashboard: {(error as Error).message}</div>;
   }
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-muted/30 overflow-y-auto overscroll-contain">
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-muted/30">
       <PageHeader
         title="Dashboard"
         subtitle="Visão geral do seu negócio"
@@ -290,6 +290,7 @@ export function DashboardView({
         </div>
       )}
 
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
       <div className="w-full px-4 py-4 sm:px-6 sm:py-6 space-y-6">
         <KpiCards data={data?.kpis} isLoading={isLoading} />
         <DashboardCharts data={data?.charts} isLoading={isLoading} />
@@ -323,6 +324,7 @@ export function DashboardView({
             </div>
           </CollapsibleContent>
         </Collapsible>
+      </div>
       </div>
 
       <LossAnalyticsModal

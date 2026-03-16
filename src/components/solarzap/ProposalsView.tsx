@@ -817,11 +817,18 @@ export function ProposalsView() {
                     const isDeletingRow = deletingVersionId === row.proposal_version_id;
 
                     return (
-                      <button
+                      <div
                         key={row.proposal_version_id}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         className="w-full rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:bg-muted/30"
                         onClick={() => setSelectedRow(row)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setSelectedRow(row);
+                          }
+                        }}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
@@ -895,7 +902,7 @@ export function ProposalsView() {
                             </Button>
                           )}
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
