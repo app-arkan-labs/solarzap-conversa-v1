@@ -1363,7 +1363,7 @@ export function SolarZapLayout() {
 
   if (isInitialLoading) {
     return (
-      <div className="app-shell-bg h-screen w-full flex items-center justify-center bg-background">
+      <div className="app-shell-bg h-dvh w-full flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-10 h-10 animate-spin text-primary" />
           <p className="text-muted-foreground">Carregando dados...</p>
@@ -1373,7 +1373,7 @@ export function SolarZapLayout() {
   }
 
   return (
-    <div className="app-shell-bg relative h-screen w-full flex bg-background overflow-hidden">
+    <div className="app-shell-bg relative h-dvh w-full flex bg-background overflow-hidden">
       {!isMobileViewport ? (
         <SolarZapNav
           activeTab={activeTab}

@@ -125,7 +125,7 @@
       radial-gradient(circle at top left, hsl(var(--primary) / 0.12), transparent 28%),
       radial-gradient(circle at top right, hsl(var(--secondary) / 0.10), transparent 24%),
       linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
-    min-height: 100vh;
+    min-height: 100dvh;
   }
 }
 
