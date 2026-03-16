@@ -1779,7 +1779,7 @@ export function SolarZapLayout() {
         <Suspense fallback={<TabLoadingFallback label="Carregando disparos..." />}>
           <div
             data-tour="tab-disparos-root"
-            className="flex-1 min-w-0 h-full overflow-hidden"
+            className="flex-1 min-w-0 flex flex-col h-full overflow-hidden"
             onPointerDownCapture={handleBillingGovernedInteractionCapture}
             onClickCapture={handleBillingGovernedInteractionCapture}
             onKeyDownCapture={handleBillingGovernedKeyDownCapture}
