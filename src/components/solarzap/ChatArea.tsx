@@ -28,6 +28,10 @@ import { ImportedContact } from './ImportContactsModal';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMobileViewport } from '@/hooks/useMobileViewport';
+import { useMobileCapabilities } from '@/hooks/useMobileCapabilities';
+import { useHoldToRecord } from '@/hooks/useHoldToRecord';
+import { MobileRecordingOverlay } from './MobileRecordingOverlay';
+import { Camera } from 'lucide-react';
 
 import { InstanceSelector } from './InstanceSelector';
 import { useUserWhatsAppInstances } from '@/hooks/useUserWhatsAppInstances';
@@ -180,6 +184,7 @@ export function ChatArea({
   const [showActionsDrawer, setShowActionsDrawer] = useState(false);
   const [showAttachDrawer, setShowAttachDrawer] = useState(false);
   const isMobileChat = useMobileViewport();
+  const { isTouchDevice, isIOSWebKit, isMobileChatExperience } = useMobileCapabilities();
   const [selectedMicrophoneId, setSelectedMicrophoneId] = useState<string | null>(() => {
     return localStorage.getItem('solarzap_audio_input');
   });
@@ -188,6 +193,10 @@ export function ChatArea({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraImageInputRef = useRef<HTMLInputElement>(null);
+  const galleryImageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -234,6 +243,28 @@ export function ChatArea({
   const [attachmentType, setAttachmentType] = useState<'document' | 'image' | 'video' | null>(null);
   const { toast } = useToast();
   const { settings: aiSettings } = useAISettings(); // Get Global Settings
+
+  // Mobile hold-to-record hook (only active mechanics on mobile)
+  const mobileRecorder = useHoldToRecord({
+    onSend: async (blob, dur) => {
+      if (!conversation || !onSendAudio) return;
+      const selectedInstance = instances.find(i => i.id === selectedInstanceId);
+      await onSendAudio(conversation.id, blob, dur, selectedInstance?.instance_name);
+    },
+    onError: (err) => {
+      console.error('Mobile recording error:', err);
+      toast({
+        title: 'Erro ao gravar áudio',
+        description: 'Verifique as permissões do microfone e tente novamente.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Force-cancel mobile recording when conversation changes
+  useEffect(() => {
+    mobileRecorder.forceCancel();
+  }, [conversation?.id]);
 
   // Determine file type from mime type
   const getFileType = (file: File): 'image' | 'video' | 'document' => {
@@ -476,6 +507,32 @@ export function ChatArea({
     }
   };
 
+  /** Mobile-specific: use dedicated inputs to avoid iOS quirks with mutated accept */
+  const handleMobileAttachment = (kind: 'camera' | 'gallery' | 'video' | 'document') => {
+    setShowAttachDrawer(false);
+    // Small delay so drawer closes before file picker opens (Safari quirk)
+    setTimeout(() => {
+      const refMap: Record<string, React.RefObject<HTMLInputElement | null>> = {
+        camera: cameraImageInputRef,
+        gallery: galleryImageInputRef,
+        video: videoInputRef,
+        document: documentInputRef,
+      };
+      const typeMap: Record<string, 'image' | 'image' | 'video' | 'document'> = {
+        camera: 'image',
+        gallery: 'image',
+        video: 'video',
+        document: 'document',
+      };
+      setAttachmentType(typeMap[kind]);
+      const ref = refMap[kind];
+      if (ref?.current) {
+        ref.current.value = '';
+        ref.current.click();
+      }
+    }, 150);
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !conversation || !onSendAttachment) return;
@@ -512,6 +569,11 @@ export function ChatArea({
   };
 
   const handleMicrophoneClick = () => {
+    // On mobile, skip the AudioDeviceModal entirely — use default mic
+    if (isMobileChatExperience) {
+      startRecordingWithDevice(null);
+      return;
+    }
     const isAudioConfigured = localStorage.getItem('solarzap_audio_configured') === 'true';
 
     if (!isAudioConfigured) {
@@ -1460,8 +1522,11 @@ export function ChatArea({
       {/* Message Input - Hidden during selection mode */}
       {!isSelectionMode && (
         <div className={cn("px-4 py-3 border-t border-border bg-card shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]", replyTarget && "border-t-0")}>
-          {/* Recording indicator */}
-          {isRecording && (
+          {/* Mobile hold-to-record overlay */}
+          {isMobileChatExperience && <MobileRecordingOverlay state={mobileRecorder.state} durationSeconds={mobileRecorder.durationSeconds} cancelRatio={mobileRecorder.cancelRatio} />}
+
+          {/* Desktop recording indicator */}
+          {!isMobileChatExperience && isRecording && (
             <div className="flex items-center justify-center gap-2 mb-2 py-2 bg-destructive/10 rounded-lg">
               <div className="w-3 h-3 rounded-full bg-destructive animate-pulse" />
               <span className="text-destructive font-medium">
@@ -1517,24 +1582,31 @@ export function ChatArea({
                     <div className="space-y-1 px-2 pb-6">
                       <button
                         type="button"
-                        onClick={() => { handleAttachmentSelect('document'); setShowAttachDrawer(false); }}
+                        onClick={() => handleMobileAttachment('camera')}
                         className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-muted transition-colors"
                       >
-                        <FileText className="w-5 h-5 text-blue-500" /> Documento
+                        <Camera className="w-5 h-5 text-orange-500" /> Tirar foto
                       </button>
                       <button
                         type="button"
-                        onClick={() => { handleAttachmentSelect('image'); setShowAttachDrawer(false); }}
+                        onClick={() => handleMobileAttachment('gallery')}
                         className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-muted transition-colors"
                       >
-                        <Image className="w-5 h-5 text-green-500" /> Foto
+                        <Image className="w-5 h-5 text-green-500" /> Foto da galeria
                       </button>
                       <button
                         type="button"
-                        onClick={() => { handleAttachmentSelect('video'); setShowAttachDrawer(false); }}
+                        onClick={() => handleMobileAttachment('video')}
                         className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-muted transition-colors"
                       >
                         <Film className="w-5 h-5 text-purple-500" /> Vídeo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMobileAttachment('document')}
+                        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                      >
+                        <FileText className="w-5 h-5 text-blue-500" /> Documento
                       </button>
                     </div>
                   </DrawerContent>
@@ -1567,6 +1639,11 @@ export function ChatArea({
               className="hidden"
               onChange={handleFileChange}
             />
+            {/* Mobile-only dedicated file inputs with fixed accept/capture */}
+            <input ref={cameraImageInputRef}  type="file" className="hidden" accept="image/*" capture="environment" onChange={handleFileChange} />
+            <input ref={galleryImageInputRef} type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+            <input ref={videoInputRef}         type="file" className="hidden" accept="video/*" onChange={handleFileChange} />
+            <input ref={documentInputRef}      type="file" className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" onChange={handleFileChange} />
 
             <div className="flex-1 max-h-32 overflow-y-auto">
               <Textarea
@@ -1584,7 +1661,7 @@ export function ChatArea({
                   }
                 }}
                 placeholder="Digite uma mensagem"
-                className="bg-muted border-0 min-h-[40px] max-h-32 resize-none py-2 px-3 text-sm leading-relaxed scrollbar-thin"
+                className={cn("bg-muted border-0 min-h-[40px] max-h-32 resize-none py-2 px-3 leading-relaxed scrollbar-thin", isMobileChatExperience ? "text-base" : "text-sm")}
                 rows={1}
               />
             </div>
@@ -1594,20 +1671,34 @@ export function ChatArea({
                 <Send className="w-5 h-5" />
               </Button>
             ) : (
-              <button
-                className={cn(
-                  "p-2 rounded-lg transition-colors",
-                  isRecording
-                    ? "bg-destructive text-destructive-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                )}
-                onPointerDown={handleMicrophoneClick}
-                onPointerUp={stopRecording}
-                onPointerLeave={isRecording ? stopRecording : undefined}
-                onContextMenu={(e) => e.preventDefault()}
-              >
-                <Mic className="w-5 h-5" />
-              </button>
+              isMobileChatExperience ? (
+                <button
+                  className={cn(
+                    "p-2 rounded-lg transition-colors touch-none select-none",
+                    mobileRecorder.state === 'recording' || mobileRecorder.state === 'canceling'
+                      ? "bg-destructive text-destructive-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
+                  {...mobileRecorder.handlers}
+                >
+                  <Mic className="w-5 h-5" />
+                </button>
+              ) : (
+                <button
+                  className={cn(
+                    "p-2 rounded-lg transition-colors",
+                    isRecording
+                      ? "bg-destructive text-destructive-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
+                  onPointerDown={handleMicrophoneClick}
+                  onPointerUp={stopRecording}
+                  onPointerLeave={isRecording ? stopRecording : undefined}
+                  onContextMenu={(e) => e.preventDefault()}
+                >
+                  <Mic className="w-5 h-5" />
+                </button>
+              )
             )}
           </div>
         </div>
@@ -1631,13 +1722,15 @@ export function ChatArea({
         onForwardInternally={handleForwardInternally}
       />
 
-      {/* Audio Device Selection Modal */}
-      <AudioDeviceModal
-        isOpen={showAudioDeviceModal}
-        onClose={() => setShowAudioDeviceModal(false)}
-        onConfirm={handleAudioDeviceConfirm}
-        mode="select"
-      />
+      {/* Audio Device Selection Modal — desktop only */}
+      {!isMobileChatExperience && (
+        <AudioDeviceModal
+          isOpen={showAudioDeviceModal}
+          onClose={() => setShowAudioDeviceModal(false)}
+          onConfirm={handleAudioDeviceConfirm}
+          mode="select"
+        />
+      )}
     </div>
   );
 }

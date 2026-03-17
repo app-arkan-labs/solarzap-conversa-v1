@@ -194,8 +194,16 @@ function AudioPlayer({ url, duration }: { url: string; duration?: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const blobUrlRef = useRef<string | null>(null);
 
   const playbackRates = [1, 1.5, 2];
+
+  // Clean up blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+    };
+  }, []);
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -239,10 +247,31 @@ function AudioPlayer({ url, duration }: { url: string; duration?: string }) {
     setIsLoading(false);
   };
 
-  const handleError = () => {
-    console.error('Audio load error for URL:', url);
-    setHasError(true);
-    setIsLoading(false);
+  const handleError = async () => {
+    // If we already tried the blob fallback, give up
+    if (blobUrlRef.current) {
+      console.error('Audio blob fallback also failed for:', url);
+      setHasError(true);
+      setIsLoading(false);
+      return;
+    }
+
+    // Try fetch-to-blob: fixes CORS, auth token, and some codec issues
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const objUrl = URL.createObjectURL(blob);
+      blobUrlRef.current = objUrl;
+      if (audioRef.current) {
+        audioRef.current.src = objUrl;
+        audioRef.current.load();
+      }
+    } catch (fetchErr) {
+      console.error('Audio fetch fallback failed:', fetchErr);
+      setHasError(true);
+      setIsLoading(false);
+    }
   };
 
   const handleEnded = () => {
