@@ -135,7 +135,7 @@ export default function GuidedTour({
               Tour guiado {stepIndex + 1}/{steps.length}
             </p>
             <h3 className="mt-1 text-base font-semibold text-foreground">{step.title}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{step.content}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
             <div className="mt-4 flex items-center justify-between">
               <Button type="button" variant="ghost" size="sm" onClick={onClose}>Encerrar</Button>
               <div className="flex items-center gap-2">

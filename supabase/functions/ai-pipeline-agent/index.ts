@@ -275,7 +275,7 @@ function normalizeAppointmentWindowConfig(raw: any): AppointmentWindowConfig {
         const start = normalizeHHMM(incoming.start, DEFAULT_APPOINTMENT_WINDOW_CONFIG[key].start);
         const end = normalizeHHMM(incoming.end, DEFAULT_APPOINTMENT_WINDOW_CONFIG[key].end);
         const incomingDays = Array.isArray(incoming.days) ? incoming.days : [];
-        const normalizedDays = Array.from(
+        const normalizedDays: DayKey[] = Array.from(
             new Set(
                 incomingDays
                     .map((day: any) => normalizeDayKey(day))
@@ -2627,11 +2627,12 @@ Deno.serve(async (req) => {
         internalApiKey,
     });
     if (!invocationAuth.ok) {
+        const fail = invocationAuth as { ok: false; status: number; code: string; reason: string };
         return new Response(JSON.stringify({
-            error: invocationAuth.code,
-            reason: invocationAuth.reason,
+            error: fail.code,
+            reason: fail.reason,
         }), {
-            status: invocationAuth.status,
+            status: fail.status,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
     }
@@ -2648,6 +2649,7 @@ Deno.serve(async (req) => {
     let currentStage = '';
     let configStageKey = '';
     let effectiveAgentType: 'standard' | 'disparos' | 'follow_up' = 'standard';
+    let persistAgentOutcome: (envelope: Record<string, any>) => Promise<void> = async () => {};
 
     try {
         try {
@@ -2753,7 +2755,7 @@ Deno.serve(async (req) => {
                 ? parsedMaxOutboundPerLeadPerMin
                 : 3;
 
-        const persistAgentOutcome = async (envelope: Record<string, any>) => {
+        persistAgentOutcome = async (envelope: Record<string, any>) => {
             if (!supabase || !leadId) return;
 
             try {
@@ -4258,7 +4260,7 @@ Deno.serve(async (req) => {
         let gate: { intent: string | null; missing: string[]; directive: string | null; } = { intent: null, missing: [], directive: null };
 
         // 7. OPENAI CALL
-        let aiRes: AIResponse | null = null;
+        let aiRes: Record<string, any> | null = null;
 
         const deterministicCompanyReply = !isScheduledTrigger
             ? buildCompanyFactualReply(lastUserTextAggregated || lastUserText || '', companyProfileFacts, currentStage, lead)
@@ -4319,6 +4321,8 @@ Deno.serve(async (req) => {
         if (!aiRes && webNoKeyFallbackResponse) {
             aiRes = webNoKeyFallbackResponse as any;
         }
+
+        let systemPrompt = '';
 
         if (!aiRes) {
             if (!openai) {
@@ -4407,7 +4411,7 @@ OBRIGATORIO:
 `
                 : '';
 
-            const systemPrompt = `
+            systemPrompt = `
 IDENTIDADE: ${settings.assistant_identity_name || 'Consultor Solar'}. Consultor de energia solar no Brasil.
 Ao se apresentar, use explicitamente o nome "${settings.assistant_identity_name || 'Consultor Solar'}". Evite apresentações genéricas como "assistente da empresa".
 TIMEZONE_OPERACIONAL: ${scheduleTimezone}

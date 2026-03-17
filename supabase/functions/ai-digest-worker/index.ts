@@ -1318,20 +1318,21 @@ Deno.serve(async (req) => {
 
     const auth = validateInvocationAuth(req, serviceRoleKey, internalApiKey)
     if (!auth.ok) {
+      const fail = auth as Extract<InvocationAuthResult, { ok: false }>
       console.warn('[ai-digest-worker][auth_rejected]', {
-        code: auth.code,
-        reason: auth.reason,
-        hasAuthorization: auth.hasAuthorization,
-        hasInternalHeader: auth.hasInternalHeader,
+        code: fail.code,
+        reason: fail.reason,
+        hasAuthorization: fail.hasAuthorization,
+        hasInternalHeader: fail.hasInternalHeader,
       })
       return new Response(
         JSON.stringify({
           success: false,
-          code: auth.code,
-          error: auth.status === 401 ? 'Unauthorized' : 'Forbidden',
+          code: fail.code,
+          error: fail.status === 401 ? 'Unauthorized' : 'Forbidden',
         }),
         {
-          status: auth.status,
+          status: fail.status,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         },
       )

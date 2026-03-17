@@ -17,6 +17,7 @@ export type AdminApiAction =
   | 'create_feature_flag'
   | 'set_org_feature'
   | 'delete_org'
+  | 'bulk_delete_orgs'
   | 'list_subscription_plans'
   | 'get_financial_summary';
 
@@ -55,6 +56,7 @@ export type AdminOrgSummary = {
   suspended_at: string | null;
   suspended_by: string | null;
   suspension_reason: string | null;
+  owner_email: string | null;
   member_count: number;
   lead_count: number;
   proposal_count: number;
@@ -588,6 +590,9 @@ export function useAdminOrgs(params: {
   per_page?: number;
   search?: string;
   status?: string;
+  plan?: string;
+  sort_by?: string;
+  sort_dir?: string;
 }) {
   return useQuery({
     queryKey: adminQueryKeys.orgs(params),

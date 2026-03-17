@@ -761,14 +761,6 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const envImpact: EnvironmentalImpact = calcEnvironmentalImpact(data.consumoMensal * 12, 25);
   const fallbackMonthlyGen = calcMonthlyGeneration(
     resolvedFinancialInputs.potenciaSistemaKwp,
-    resolvedFinancialInputs.consumoMensalKwh,
-    {
-      monthlyGenerationFactors: resolvedFinancialInputs.monthlyGenerationFactors,
-      uf: resolvedFinancialInputs.uf,
-      avgDailyIrradiance: resolvedFinancialInputs.avgDailyIrradiance,
-      performanceRatio: resolvedFinancialInputs.performanceRatio,
-      daysInMonth: resolvedFinancialInputs.daysInMonth,
-    },
   );
   const annualGenerationFromModel = Number(financialOutputs?.annualGenerationKwhYear1);
   const annualGenerationKwh = Number.isFinite(annualGenerationFromModel) && annualGenerationFromModel > 0
@@ -1382,8 +1374,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     valorTotal: investimentoBaseMetricas,
     economiaMensal: econMensal,
     paybackMeses: paybackMonths,
-    cumulativeRevenueSeries: financialOutputs?.cumulativeRevenueSeries,
-  }, chartTheme, isUsina);
+  }, chartTheme);
   y += cumulativeStep;
 
   // Summary text

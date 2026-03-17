@@ -34,6 +34,7 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   create_feature_flag: { minRole: 'ops', requireMfa: true },
   set_org_feature: { minRole: 'ops', requireMfa: true },
   delete_org: { minRole: 'super_admin', requireMfa: true },
+  bulk_delete_orgs: { minRole: 'super_admin', requireMfa: true },
   list_subscription_plans: { minRole: 'read_only', requireMfa: true },
   get_financial_summary: { minRole: 'billing', requireMfa: true },
 };
@@ -405,6 +406,9 @@ async function handleWhoAmI(
   return response;
 }
 
+const ALLOWED_SORT_COLUMNS = new Set(['created_at', 'name', 'member_count', 'lead_count', 'proposal_count', 'instance_count']);
+const ALLOWED_SORT_DIRS = new Set(['asc', 'desc']);
+
 async function handleListOrgs(
   adminClient: ReturnType<typeof createClient>,
   admin: AdminIdentity,
@@ -414,19 +418,28 @@ async function handleListOrgs(
   const { page, perPage } = parsePagination(payload);
   const search = toTrimmedString(payload.search);
   const status = toTrimmedString(payload.status);
+  const plan = toTrimmedString(payload.plan);
+  const sortBy = toTrimmedString(payload.sort_by);
+  const sortDir = toTrimmedString(payload.sort_dir);
   const from = (page - 1) * perPage;
   const to = from + perPage - 1;
+
+  const orderColumn = sortBy && ALLOWED_SORT_COLUMNS.has(sortBy) ? sortBy : 'created_at';
+  const orderAscending = sortDir && ALLOWED_SORT_DIRS.has(sortDir) ? sortDir === 'asc' : false;
 
   let query = adminClient
     .from('_admin_orgs_summary')
     .select('*', { count: 'exact' })
-    .order('created_at', { ascending: false });
+    .order(orderColumn, { ascending: orderAscending });
 
   if (search) {
-    query = query.ilike('name', `%${search}%`);
+    query = query.or(`name.ilike.%${search}%,owner_email.ilike.%${search}%`);
   }
   if (status) {
     query = query.eq('status', status);
+  }
+  if (plan) {
+    query = query.eq('plan', plan);
   }
 
   const { data, error, count } = await query.range(from, to);
@@ -1185,6 +1198,59 @@ async function handleDeleteOrg(
   };
 }
 
+async function handleBulkDeleteOrgs(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const reason = toReason(payload.reason);
+  if (!reason) throw { status: 400, code: 'reason_required' };
+
+  const confirmation = toTrimmedString(payload.confirmation);
+  if (confirmation !== 'EXCLUIR') {
+    throw { status: 400, code: 'confirmation_required' };
+  }
+
+  const orgIds = payload.org_ids;
+  if (!Array.isArray(orgIds) || orgIds.length === 0) {
+    throw { status: 400, code: 'invalid_org_ids' };
+  }
+  if (orgIds.length > 50) {
+    throw { status: 400, code: 'too_many_org_ids' };
+  }
+
+  const validIds = orgIds.filter((id) => isUuid(id));
+  if (validIds.length === 0) {
+    throw { status: 400, code: 'invalid_org_ids' };
+  }
+
+  const deleted: string[] = [];
+  const failed: { id: string; error: string }[] = [];
+
+  for (const orgId of validIds) {
+    try {
+      await handleDeleteOrg(adminClient, admin, {
+        org_id: orgId,
+        reason,
+        confirmation: 'EXCLUIR',
+      }, req);
+      deleted.push(orgId as string);
+    } catch (err: unknown) {
+      const code = (err && typeof err === 'object' && 'code' in err)
+        ? String((err as Record<string, unknown>).code)
+        : 'unknown';
+      failed.push({ id: orgId as string, error: code });
+    }
+  }
+
+  return {
+    ok: true,
+    deleted,
+    failed,
+  };
+}
+
 async function handleListSubscriptionPlans(
   adminClient: ReturnType<typeof createClient>,
   admin: AdminIdentity,
@@ -1334,6 +1400,8 @@ async function dispatchAction(
       return await handleSetOrgFeature(adminClient, admin, payload, req);
     case 'delete_org':
       return await handleDeleteOrg(adminClient, admin, payload, req);
+    case 'bulk_delete_orgs':
+      return await handleBulkDeleteOrgs(adminClient, admin, payload, req);
     case 'list_subscription_plans':
       return await handleListSubscriptionPlans(adminClient, admin, req);
     case 'get_financial_summary':

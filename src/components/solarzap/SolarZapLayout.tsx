@@ -1349,7 +1349,7 @@ export function SolarZapLayout() {
     minha_conta: sellerPerms.tab_minha_conta,
     meu_plano: canAccessAdmin,
   }), [canAccessAdmin, sellerPerms]);
-  const guidedTour = useGuidedTour(activeTab, handleTabChange, Boolean(user));
+  const guidedTour = useGuidedTour(activeTab, Boolean(user));
 
   useEffect(() => {
     if (!showMobileBottomBar) {
@@ -1389,7 +1389,7 @@ export function SolarZapLayout() {
           userDisplayName={userDisplayName}
           tabPermissions={tabPermissions}
           currentPlanKey={billing?.plan_key ?? null}
-          onHelpClick={() => guidedTour.startTour('manual')}
+          onHelpClick={() => guidedTour.startTour()}
         />
       ) : null}
 
@@ -1484,12 +1484,12 @@ export function SolarZapLayout() {
           stepIndex={guidedTour.stepIndex}
           welcomeTitle="Bem-vindo ao novo SolarZap"
           welcomeDescription="Preparamos um tour rapido para apresentar os principais atalhos e fluxos."
-          onStart={() => guidedTour.startTour('auto')}
+          onStart={() => guidedTour.startTour()}
           onSkip={() => {
-            void guidedTour.closeTour('skip');
+            void guidedTour.closeTour(false);
           }}
           onClose={() => {
-            void guidedTour.closeTour('close');
+            void guidedTour.closeTour();
           }}
           onNext={() => {
             void guidedTour.nextStep();
