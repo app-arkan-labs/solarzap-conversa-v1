@@ -41,11 +41,18 @@ const FOLLOW_UP_STAGE_GOALS: Record<string, string> = {
     novo_lead: 'Fazer o lead responder e evoluir a conversa.',
     respondeu: 'Qualificar para Chamada Agendada ou Visita Agendada.',
     nao_compareceu: 'Recuperar no-show e levar para agendamento.',
-    chamada_realizada: 'Conduzir ao proximo passo pos-ligacao.',
     chamada_agendada: 'Confirmar presenca na chamada agendada.',
+    chamada_realizada: 'Conduzir ao proximo passo pos-ligacao.',
     visita_agendada: 'Confirmar presenca na visita agendada.',
+    visita_realizada: 'Conduzir ao proximo passo pos-visita.',
+    proposta_pronta: 'Apresentar proposta ao lead (por ligacao, videochamada ou visita — nunca por WhatsApp).',
     proposta_negociacao: 'Negociar ate compromisso de aprovacao ou proximo passo comercial.',
+    aguardando_proposta: 'Manter lead engajado enquanto proposta esta sendo preparada.',
     financiamento: 'Acompanhar financiamento e levar para aprovacao do projeto.',
+    aprovou_projeto: 'Alinhar proximos passos pos-aprovacao (contrato, instalacao).',
+    contrato_assinado: 'Acompanhar andamento pos-contrato.',
+    projeto_pago: 'Alinhar timeline de instalacao e proximos passos.',
+    aguardando_instalacao: 'Manter lead informado sobre timeline de instalacao.',
 };
 const FOLLOW_UP_STAGE_GOAL_FALLBACK = 'Manter continuidade comercial e reengajar o lead.';
 
@@ -1432,6 +1439,35 @@ function extractTextFromMessageContent(content: any): string {
         .filter(Boolean)
         .join('\n')
         .trim();
+}
+
+function extractStageCoreSections(fullPrompt: string): string {
+    if (!fullPrompt) return '';
+    const sections: string[] = [];
+    const objMatch = fullPrompt.match(/^OBJETIVO:.*$/m);
+    if (objMatch) sections.push(objMatch[0].trim());
+    const nextMatch = fullPrompt.match(/^ETAPA(?:S)?_SEGUINTE(?:S)?:.*$/m);
+    if (nextMatch) sections.push(nextMatch[0].trim());
+    const rulesMatch = fullPrompt.match(/^REGRAS OBRIGAT[ÓO]RIAS:[\s\S]*?(?=\n[A-Z_]{3,}|\n\n[A-Z]|$)/m);
+    if (rulesMatch) sections.push(rulesMatch[0].trim());
+    const dontMatch = fullPrompt.match(/^N[ÃA]O FAZER[\s\S]*?(?=\n[A-Z_]{3,}|\n\n[A-Z]|$)/m);
+    if (dontMatch) sections.push(dontMatch[0].trim());
+    return sections.join('\n\n');
+}
+
+function getFollowUpProhibitions(stage: string): string {
+    const prohibitions: Record<string, string> = {
+        novo_lead: '- NAO assumir que houve contato previo.\n- NAO falar de proposta, preco ou economia.\n- Apenas tentar gerar a primeira resposta do lead.',
+        respondeu: '- NAO falar de proposta, preco, economia ou financiamento.\n- NAO dizer que enviou proposta.\n- O unico objetivo e qualificar e agendar chamada ou visita.',
+        chamada_agendada: '- NAO falar de proposta ou preco.\n- Apenas confirmar presenca na chamada agendada.',
+        visita_agendada: '- NAO falar de proposta ou preco.\n- Apenas confirmar presenca na visita agendada.',
+        nao_compareceu: '- NAO culpar o lead.\n- Apenas recuperar e reagendar.',
+        proposta_pronta: '- NAO enviar proposta por WhatsApp.\n- NAO inventar valores de proposta.\n- Conduzir para apresentacao (ligacao, videochamada ou visita).\n- Se a proposta NAO foi apresentada ainda, NAO perguntar se o lead analisou a proposta.',
+        proposta_negociacao: '- NAO enviar proposta por WhatsApp.\n- NAO inventar valores.\n- Focar em destravar objecao e fechar compromisso.',
+        aguardando_proposta: '- NAO inventar que a proposta esta pronta se nao estiver.\n- Manter lead engajado e informado.',
+        financiamento: '- NAO inventar status de financiamento.\n- Acompanhar e reduzir atrito.',
+    };
+    return prohibitions[stage] || '- NAO inventar contexto que nao existe no historico.\n- Referenciar apenas fatos reais da conversa.';
 }
 
 function normalizeHistoryText(message: any, attachmentUrl: string | null): string {
@@ -3545,6 +3581,25 @@ Deno.serve(async (req) => {
             stageConfig = fallback;
         }
 
+        // FOLLOW-UP V2: Load real stage protocol for context injection
+        let realStageProtocol = '';
+        if (isFollowUpTrigger && currentStage && currentStage !== 'follow_up') {
+            try {
+                const { data: realStageConfig } = await supabase
+                    .from('ai_stage_config')
+                    .select('prompt_override, default_prompt, is_active')
+                    .eq('org_id', leadOrgId)
+                    .eq('pipeline_stage', currentStage)
+                    .maybeSingle();
+                if (realStageConfig?.is_active !== false) {
+                    const fullRealPrompt = String(realStageConfig?.prompt_override || realStageConfig?.default_prompt || '').trim();
+                    realStageProtocol = extractStageCoreSections(fullRealPrompt);
+                }
+            } catch (realStageErr: any) {
+                console.warn(`[${runId}] realStageProtocol lookup failed (non-blocking):`, realStageErr?.message || realStageErr);
+            }
+        }
+
         // FIX: Stage Inactive → use fallback prompt instead of skipping
         let stagePromptText = '';
         if (!stageConfig?.is_active) {
@@ -4307,6 +4362,7 @@ INSTRUCOES:
                 : '';
 
             const followUpStageGoal = FOLLOW_UP_STAGE_GOALS[currentStage] || FOLLOW_UP_STAGE_GOAL_FALLBACK;
+            const followUpProhibitions = getFollowUpProhibitions(currentStage);
 
             const followUpContextBlock = isFollowUpTrigger
                 ? `
@@ -4316,7 +4372,14 @@ OBJETIVO_DA_ETAPA: ${followUpStageGoal}
 O lead nao responde ha ${followUpElapsedText}.
 Este e o follow-up ${followUpStep || '?'} de 5.
 
-O CTA deste follow-up DEVE estar alinhado com o OBJETIVO_DA_ETAPA acima.
+PROIBICOES DESTA ETAPA (OBRIGATORIO):
+${followUpProhibitions}
+${realStageProtocol ? `
+PROTOCOLO DA ETAPA REAL (PRIORIDADE MAXIMA — o follow-up deve respeitar estas regras):
+${realStageProtocol}
+` : ''}
+REGRA CRITICA: O CTA deste follow-up DEVE estar alinhado com o OBJETIVO_DA_ETAPA acima.
+O follow-up NAO pode inventar contexto. Se o historico nao mostra que algo foi enviado/feito, NAO referencie como se tivesse sido.
 Se o objetivo e agendar chamada, o follow-up deve puxar para chamada.
 Se o objetivo e agendar visita, o follow-up deve puxar para visita.
 Se o objetivo e negociar proposta, o follow-up deve puxar para apresentacao (nunca envio por WhatsApp).
@@ -4335,6 +4398,11 @@ OBRIGATORIO:
 - Nao repetir perguntas ja feitas.
 - NAO usar emojis. Zero emojis no follow-up.
 - NAO copiar prefixos de formato do historico (ex: icones, marcadores de audio, anexo).
+- NUNCA afirmar que algo foi enviado, feito ou combinado se isso NAO aparece EXPLICITAMENTE no historico.
+- Se o historico nao mostrar que proposta foi enviada, NAO perguntar sobre proposta.
+- Se o historico nao mostrar que visita foi realizada, NAO perguntar sobre visita.
+- Se o historico nao mostrar que chamada aconteceu, NAO perguntar sobre chamada.
+- Na duvida, retomar com pergunta aberta curta baseada no ultimo ponto REAL da conversa.
 === FIM DO FOLLOW UP ===
 `
                 : '';
