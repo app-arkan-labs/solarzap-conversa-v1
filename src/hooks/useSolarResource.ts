@@ -189,7 +189,92 @@ function buildLocationRequestKey(params: {
   return [normalizedUf, normalizedCity, normalizedAddress, normalizedCep, normalizedLat, normalizedLon].join('|');
 }
 
+// ── Ensure fresh session before edge-function call ──
+
+async function ensureFreshSession(): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return false;
+    const expiresAt = session.expires_at ?? 0;
+    const nowSec = Math.floor(Date.now() / 1000);
+    // Refresh if token expires within 60 seconds
+    if (expiresAt - nowSec < 60) {
+      console.info('[solar-resource] session near-expiry, refreshing...');
+      const { error } = await supabase.auth.refreshSession();
+      if (error) {
+        console.warn('[solar-resource] session refresh failed:', error.message);
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Core invocation (pure function, no React deps) ──
+
+async function callEdgeFunction(params: {
+  city?: string | null;
+  uf?: string | null;
+  addressLine?: string | null;
+  zip?: string | null;
+  lat?: number;
+  lon?: number;
+}): Promise<{ data: unknown; error: Error | null; rawErrorCode?: SolarResourceErrorCode; rawDebug?: SolarResourceDebug; rawRequestId?: string }> {
+  const geocodingApiKey =
+    String((import.meta as any)?.env?.VITE_GOOGLE_GEOCODING_API_KEY || '').trim() || undefined;
+
+  const { data, error } = await supabase.functions.invoke('solar-resource', {
+    body: {
+      city: params.city || undefined,
+      uf: params.uf || undefined,
+      addressLine: params.addressLine || undefined,
+      zip: params.zip || undefined,
+      lat: params.lat,
+      lon: params.lon,
+      strictPvgisOnly: true,
+      geocodingApiKey,
+    },
+  });
+
+  if (!error) return { data, error: null };
+
+  // Extract error code from the response body
+  const ctx = (error as any)?.context;
+  let rawBodyText = '(no body)';
+  try {
+    if (ctx && typeof ctx.clone === 'function') {
+      rawBodyText = await ctx.clone().text();
+    }
+  } catch { /* consumed or unavailable */ }
+
+  console.error('[solar-resource] invoke error:', {
+    name: error?.name,
+    message: error?.message,
+    status: ctx?.status,
+    rawBody: rawBodyText,
+  });
+
+  const parsedError = await parseSolarResourceErrorPayload(error);
+
+  // Fallback: try to extract errorCode directly from rawBodyText
+  let fallbackCode = parsedError?.errorCode ?? null;
+  if (!fallbackCode && typeof rawBodyText === 'string' && rawBodyText.includes('"errorCode"')) {
+    try {
+      const bodyJson = JSON.parse(rawBodyText);
+      fallbackCode = normalizeSolarResourceErrorCode(bodyJson?.errorCode ?? bodyJson?.error) ?? null;
+    } catch { /* not valid JSON */ }
+  }
+
+  return {
+    data: null,
+    error,
+    rawErrorCode: fallbackCode ?? 'unexpected_error',
+    rawDebug: parsedError?.debug,
+    rawRequestId: parsedError?.requestId,
+  };
+}
 
 async function invokeSolarResource(params: {
   city?: string | null;
@@ -200,54 +285,38 @@ async function invokeSolarResource(params: {
   lon?: number;
 }): Promise<InflightResult> {
   try {
-    const geocodingApiKey =
-      String((import.meta as any)?.env?.VITE_GOOGLE_GEOCODING_API_KEY || '').trim() || undefined;
+    // Proactively refresh the session if near-expiry to avoid 401
+    await ensureFreshSession();
 
-    const { data, error } = await supabase.functions.invoke('solar-resource', {
-      body: {
-        city: params.city || undefined,
-        uf: params.uf || undefined,
-        addressLine: params.addressLine || undefined,
-        zip: params.zip || undefined,
-        lat: params.lat,
-        lon: params.lon,
-        strictPvgisOnly: true,
-        geocodingApiKey,
-      },
-    });
+    let result = await callEdgeFunction(params);
 
-    if (error) {
-      // Diagnostic logging: capture everything for debugging
-      const ctx = (error as any)?.context;
-      let rawBodyText = '(no body)';
-      try {
-        if (ctx && typeof ctx.clone === 'function') {
-          rawBodyText = await ctx.clone().text();
-        }
-      } catch { /* consumed or unavailable */ }
-      console.error('[solar-resource] invoke error:', {
-        name: error?.name,
-        message: error?.message,
-        status: ctx?.status,
-        statusText: ctx?.statusText,
-        rawBody: rawBodyText,
-      });
-      const parsedError = await parseSolarResourceErrorPayload(error);
-      console.error('[solar-resource] parsed error:', parsedError);
+    // Auto-retry ONCE on 401 (expired JWT race condition)
+    if (result.error && result.rawErrorCode === 'unauthorized') {
+      console.warn('[solar-resource] got 401, refreshing session and retrying...');
+      const { error: refreshErr } = await supabase.auth.refreshSession();
+      if (!refreshErr) {
+        result = await callEdgeFunction(params);
+      } else {
+        console.error('[solar-resource] session refresh for retry failed:', refreshErr.message);
+      }
+    }
+
+    if (result.error) {
+      console.error('[solar-resource] final error code:', result.rawErrorCode);
       return {
         resource: null,
-        errorCode: parsedError?.errorCode ?? 'unexpected_error',
-        debug: parsedError?.debug,
-        requestId: parsedError?.requestId,
+        errorCode: result.rawErrorCode ?? 'unexpected_error',
+        debug: result.rawDebug,
+        requestId: result.rawRequestId,
       };
     }
 
-    if (!data || typeof data !== 'object') {
-      console.error('[solar-resource] empty or non-object data:', data);
+    if (!result.data || typeof result.data !== 'object') {
+      console.error('[solar-resource] empty or non-object data:', result.data);
       return { resource: null, errorCode: 'unexpected_error' };
     }
 
-    const payload = data as Record<string, unknown>;
+    const payload = result.data as Record<string, unknown>;
     console.info('[solar-resource] response payload keys:', Object.keys(payload), 'source:', payload.source, 'errorCode:', payload.errorCode);
     const payloadErrorCode = normalizeSolarResourceErrorCode(
       payload.errorCode ?? payload.error,
@@ -335,8 +404,8 @@ export function useSolarResource(): UseSolarResourceReturn {
 
       if (code === 'unauthorized') {
         toast({
-          title: 'Sessão invalida',
-          description: `Sua sessão expirou. Faca login novamente para calcular irradiancia.${requestSuffix}`,
+          title: 'Sessao invalida',
+          description: `Sua sessao expirou. Faca login novamente para calcular irradiancia.${requestSuffix}`,
           variant: 'destructive',
         });
         return;
@@ -344,8 +413,8 @@ export function useSolarResource(): UseSolarResourceReturn {
 
       if (code === 'geocode_provider_unavailable') {
         toast({
-          title: 'Geocodificação indisponivel',
-          description: `Servico de geocodificação indisponivel. Verifique a chave Google e tente novamente.${requestSuffix}`,
+          title: 'Geocodificacao indisponivel',
+          description: `Servico de geocodificacao indisponivel. Verifique a chave Google e tente novamente.${requestSuffix}`,
           variant: 'destructive',
         });
         return;
@@ -353,8 +422,8 @@ export function useSolarResource(): UseSolarResourceReturn {
 
       if (code === 'geocode_low_confidence') {
         toast({
-          title: 'Endereço com baixa confiança',
-          description: `Não foi possível validar coordenadas com confiança para esse CEP/endereço.${requestSuffix}`,
+          title: 'Endereco com baixa confianca',
+          description: `Nao foi possivel validar coordenadas com confianca para esse CEP/endereco.${requestSuffix}`,
           variant: 'destructive',
         });
         return;
@@ -362,8 +431,8 @@ export function useSolarResource(): UseSolarResourceReturn {
 
       if (code === 'geocode_failed') {
         toast({
-          title: 'Falha na geocodificação',
-          description: `Não foi possível converter a localização em coordenadas válidas.${requestSuffix}`,
+          title: 'Falha na geocodificacao',
+          description: `Nao foi possivel converter a localizacao em coordenadas validas.${requestSuffix}`,
           variant: 'destructive',
         });
         return;
@@ -513,7 +582,7 @@ export function useSolarResource(): UseSolarResourceReturn {
       if (isStrictPvgisSource(contactData.irradianceSource)) {
         setStatus('resolved');
         // We don't have full monthly data from contact storage,
-        // but mark as resolved só the generate guard allows proceeding.
+        // but mark as resolved so the generate guard allows proceeding.
         // The full data will be populated after resolve() is called.
       }
     },
@@ -522,6 +591,3 @@ export function useSolarResource(): UseSolarResourceReturn {
 
   return { status, data, loading, errorCode, resolve, reset, restoreFromContact };
 }
-
-
-

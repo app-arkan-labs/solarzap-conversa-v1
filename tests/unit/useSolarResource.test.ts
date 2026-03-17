@@ -10,8 +10,16 @@ import { renderHook, act } from '@testing-library/react';
 // ---- Mocks ----
 
 const mockInvoke = vi.fn();
+const mockGetSession = vi.fn().mockResolvedValue({ data: { session: { expires_at: Math.floor(Date.now() / 1000) + 3600 } }, error: null });
+const mockRefreshSession = vi.fn().mockResolvedValue({ error: null });
 vi.mock('@/lib/supabase', () => ({
-  supabase: { functions: { invoke: (...args: unknown[]) => mockInvoke(...args) } },
+  supabase: {
+    functions: { invoke: (...args: unknown[]) => mockInvoke(...args) },
+    auth: {
+      getSession: () => mockGetSession(),
+      refreshSession: () => mockRefreshSession(),
+    },
+  },
 }));
 
 const mockToast = vi.fn();
@@ -158,7 +166,7 @@ describe('useSolarResource', () => {
 
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Endereço com baixa confiança',
+        title: 'Endereco com baixa confianca',
         variant: 'destructive',
       }),
     );
@@ -174,7 +182,7 @@ describe('useSolarResource', () => {
     });
 
     expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Sessão invalida' }),
+      expect.objectContaining({ title: 'Sessao invalida' }),
     );
   });
 
