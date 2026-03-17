@@ -110,10 +110,12 @@ export function MeuPlanoView() {
   const billingQuery = useOrgBillingInfo(Boolean(user));
   const billing = billingQuery.data;
 
-  const planKey = (billing?.plan_key || 'free').toLowerCase();
+  const rawPlanKey = (billing?.plan_key || 'free').toLowerCase();
+  const status = billing?.subscription_status || 'none';
+  // Se pending_checkout, tratar como sem plano — plano só é confirmado após checkout concluído
+  const planKey = status === 'pending_checkout' ? 'free' : rawPlanKey;
   const meta = PLAN_META[planKey] || PLAN_META.free;
   const PlanIcon = meta.icon;
-  const status = billing?.subscription_status || 'none';
   const statusInfo = STATUS_MAP[status] || STATUS_MAP.none;
   const isAdminOrOwner = role === 'owner' || role === 'admin';
   const hasActiveSubscription = status === 'active' || status === 'trialing' || status === 'past_due';

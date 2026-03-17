@@ -145,7 +145,10 @@ export default function Pricing() {
 
   const billingQuery = useOrgBillingInfo(true);
   const billing = billingQuery.data;
-  const currentPlan = String(billing?.plan_key || '').trim() || null;
+  const rawPlan = String(billing?.plan_key || '').trim() || null;
+  const billingStatus = String(billing?.subscription_status || '').toLowerCase();
+  // Plano só é considerado "atual" se a subscription foi de fato confirmada (não pending_checkout)
+  const currentPlan = billingStatus === 'pending_checkout' ? null : rawPlan;
   const checkoutState = String(searchParams.get('checkout') || '').trim();
   const intent = (searchParams.get('intent') === 'reactivate' ? 'reactivate' : 'upgrade') as BillingIntent;
   const targetPlan = normalizePlanQuery(searchParams.get('target'));
@@ -331,6 +334,7 @@ export default function Pricing() {
               <p className="mt-1 text-sm text-muted-foreground">
                 Você escolhe o plano que quiser e usa <span className="font-medium text-foreground">todos os recursos sem restrição</span> durante o trial.
                 Quanto maior o plano, mais você pode testar. Só cobramos após os 7 dias.
+                {' '}<span className="font-medium text-foreground">Cancele a qualquer momento, sem multa e sem burocracia.</span>
               </p>
             </div>
             <div className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary sm:flex-shrink-0">
@@ -339,6 +343,15 @@ export default function Pricing() {
             </div>
           </div>
         </div>
+
+        {/* Trust reassurance — visible only for new signups */}
+        {isNoPlan && (
+          <div className="mb-10 flex flex-wrap justify-center gap-6 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5 text-primary" /> Seus dados de cartão ficam com a Stripe — não armazenamos nada</span>
+            <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-primary" /> Nenhuma cobrança durante os 7 dias de trial</span>
+            <span className="flex items-center gap-1.5"><X className="h-3.5 w-3.5 text-primary" /> Cancele a qualquer momento em 2 cliques</span>
+          </div>
+        )}
 
         {/* Plan Cards */}
         <div className="grid gap-6 lg:grid-cols-3">

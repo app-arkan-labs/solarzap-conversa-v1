@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
         .insert({
           name: orgName,
           owner_id: user.id,
-          plan: planKey,
+          // NÃO seta plan aqui — plan só é confirmado pelo webhook após checkout concluído
           subscription_status: 'pending_checkout',
           onboarding_state: 'pending_checkout',
         })
@@ -214,7 +214,7 @@ Deno.serve(async (req) => {
     await serviceClient
       .from('organizations')
       .update({
-        plan: planKey,
+        // NÃO seta plan aqui — plan só deve ser atualizado pelo webhook após checkout concluído
         subscription_status: 'pending_checkout',
         stripe_checkout_session_id: session.id,
         onboarding_state: 'pending_checkout',

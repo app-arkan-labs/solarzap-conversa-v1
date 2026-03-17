@@ -1,48 +1,53 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { ArrowLeft, Eye, EyeOff, KeyRound, Loader2, Lock, ShieldCheck } from 'lucide-react';
+
+import AuthContextBadge from '@/components/auth/AuthContextBadge';
+import AuthPortalShell from '@/components/auth/AuthPortalShell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sun, Lock, Loader2, ArrowLeft, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabase';
 
-const UpdatePassword = () => {
+const FIELD_CLASS_NAME = 'h-12 rounded-2xl border-border bg-background/82 pl-12 pr-12 text-foreground shadow-sm transition-all focus:border-primary focus:ring-primary/15';
+
+export default function UpdatePassword() {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isSessionReady, setIsSessionReady] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const navigate = useNavigate();
     const { toast } = useToast();
 
     useEffect(() => {
-        // Check if we have a hash token, which happens on password reset redirect
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session) {
                 setIsSessionReady(true);
-            } else {
-                // Wait a bit for the session to be established by the URL hash interceptor
-                setTimeout(async () => {
-                    const { data } = await supabase.auth.getSession();
-                    if (data.session) {
-                        setIsSessionReady(true);
-                    } else {
-                        toast({
-                            title: 'Erro de Sessão',
-                            description: 'O link de recuperação parece ser inválido ou expirou.',
-                            variant: 'destructive',
-                        });
-                        navigate('/login');
-                    }
-                }, 1500);
+                return;
             }
+
+            setTimeout(async () => {
+                const { data } = await supabase.auth.getSession();
+                if (data.session) {
+                    setIsSessionReady(true);
+                    return;
+                }
+
+                toast({
+                    title: 'Erro de sessao',
+                    description: 'O link de recuperacao parece invalido ou expirado.',
+                    variant: 'destructive',
+                });
+                navigate('/login');
+            }, 1500);
         });
 
         const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'PASSWORD_RECOVERY') {
-                setIsSessionReady(true);
-            } else if (session) {
+            if (event === 'PASSWORD_RECOVERY' || session) {
                 setIsSessionReady(true);
             }
         });
@@ -52,21 +57,22 @@ const UpdatePassword = () => {
         };
     }, [navigate, toast]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (event: FormEvent) => {
+        event.preventDefault();
+
         if (password !== confirmPassword) {
             toast({
-                title: 'As senhas não coincidem',
-                description: 'Por favor, certifique-se de que ambas as senhas são iguais.',
+                title: 'As senhas nao coincidem',
+                description: 'Revise os campos e tente novamente.',
                 variant: 'destructive',
             });
             return;
         }
 
-if (password.length < 8) {
-    toast({
-        title: 'Senha muito curta',
-        description: 'A senha deve ter pelo menos 8 caracteres.',
+        if (password.length < 8) {
+            toast({
+                title: 'Senha muito curta',
+                description: 'A senha deve ter pelo menos 8 caracteres.',
                 variant: 'destructive',
             });
             return;
@@ -77,10 +83,7 @@ if (password.length < 8) {
             const { data: currentUserData } = await supabase.auth.getUser();
             const recoveryEmail = currentUserData.user?.email?.trim().toLowerCase() || null;
 
-            const { error } = await supabase.auth.updateUser({
-                password: password,
-            });
-
+            const { error } = await supabase.auth.updateUser({ password });
             if (error) throw error;
 
             if (recoveryEmail) {
@@ -91,27 +94,24 @@ if (password.length < 8) {
 
                 if (!reAuthError) {
                     toast({
-                        title: 'Senha atualizada!',
+                        title: 'Senha atualizada',
                         description: 'Senha redefinida com sucesso. Entrando automaticamente...',
                     });
                     navigate('/onboarding');
                     return;
                 }
-
-                console.warn('Automatic sign-in after password reset failed', reAuthError);
             }
 
             toast({
-                title: 'Senha atualizada!',
-                description: 'Sua senha foi redefinida com sucesso. Faça login.',
+                title: 'Senha atualizada',
+                description: 'Sua senha foi redefinida com sucesso. Faca login.',
             });
-
             await supabase.auth.signOut();
             navigate('/login');
-        } catch (err: any) {
+        } catch (error: unknown) {
             toast({
-                title: 'Erro',
-                description: err.message || 'Ocorreu um erro ao atualizar a senha.',
+                title: 'Erro ao atualizar senha',
+                description: (error as { message?: string })?.message || 'Ocorreu um erro inesperado.',
                 variant: 'destructive',
             });
         } finally {
@@ -119,105 +119,121 @@ if (password.length < 8) {
         }
     };
 
+    const rail = (
+        <div className="space-y-6">
+            <div className="space-y-4">
+                <div className="brand-logo-disc h-14 w-14">
+                    <img src="/logo.png" alt="SolarZap" className="brand-logo-image" />
+                </div>
+                <div className="space-y-3">
+                    <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary/90">Seguranca do acesso</p>
+                    <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+                        Redefina sua senha sem sair do <span className="brand-gradient-text">fluxo premium</span> do portal.
+                    </h1>
+                    <p className="max-w-lg text-base leading-7 text-muted-foreground sm:text-lg">
+                        A recuperacao agora segue a mesma linguagem visual do acesso principal, com foco em seguranca e continuidade da jornada.
+                    </p>
+                </div>
+            </div>
+
+            <div className="auth-portal-info-card">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(145deg,hsl(var(--primary)/0.18),hsl(var(--secondary)/0.16))] text-primary shadow-[0_18px_36px_-24px_hsl(var(--primary)/0.4)]">
+                    <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div className="space-y-1">
+                    <p className="text-sm font-semibold text-foreground">Acesso restaurado com contexto</p>
+                    <p className="text-sm leading-6 text-muted-foreground">Depois de redefinir a senha, o usuario retorna para o app sem sensacao de ruptura entre etapas.</p>
+                </div>
+            </div>
+        </div>
+    );
+
     if (!isSessionReady) {
         return (
-            <div className="auth-shell min-h-screen w-full flex items-center justify-center">
-                <Loader2 className="h-8 w-8 text-primary animate-spin" />
+            <div className="auth-portal-shell flex min-h-screen items-center justify-center px-4">
+                <div className="auth-portal-form-surface flex w-full max-w-sm items-center justify-center gap-3 py-10 text-sm text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    Validando sessao de recuperacao...
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="auth-shell min-h-screen w-full flex relative overflow-hidden font-sans">
+        <AuthPortalShell
+            badge={<AuthContextBadge icon={KeyRound} label="Redefinicao segura" />}
+            title="Crie uma nova senha"
+            description="A recuperacao foi redesenhada para manter o usuario no mesmo sistema visual do portal principal."
+            rail={rail}
+            footer={
+                <div className="flex items-center justify-between gap-3 text-xs">
+                    <span>SolarZap CRM © {new Date().getFullYear()}</span>
+                    <button type="button" className="font-medium transition-colors hover:text-foreground" onClick={() => navigate('/login')}>
+                        Voltar ao login
+                    </button>
+                </div>
+            }
+        >
+            <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="space-y-2 text-left">
+                    <Label htmlFor="password" className="ml-1 text-sm font-medium text-foreground">Nova senha</Label>
+                    <div className="group relative">
+                        <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                        <Input
+                            id="password"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Digite sua nova senha"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                            className={FIELD_CLASS_NAME}
+                            required
+                        />
+                        <button type="button" tabIndex={-1} onClick={() => setShowPassword((currentValue) => !currentValue)} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground">
+                            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        </button>
+                    </div>
+                </div>
 
-            <div className="w-full h-full min-h-screen flex items-center justify-center p-4 sm:p-8 relative z-10">
-                <Card className="auth-card w-full max-w-md overflow-hidden relative">
+                <div className="space-y-2 text-left">
+                    <Label htmlFor="confirm-password" className="ml-1 text-sm font-medium text-foreground">Confirmar nova senha</Label>
+                    <div className="group relative">
+                        <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                        <Input
+                            id="confirm-password"
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            placeholder="Repita a senha"
+                            value={confirmPassword}
+                            onChange={(event) => setConfirmPassword(event.target.value)}
+                            className={FIELD_CLASS_NAME}
+                            required
+                        />
+                        <button type="button" tabIndex={-1} onClick={() => setShowConfirmPassword((currentValue) => !currentValue)} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground">
+                            {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        </button>
+                    </div>
+                </div>
 
-                    <CardHeader className="text-center space-y-6 pt-10 pb-4 relative z-10">
-                        <div className="brand-logo-disc mx-auto h-24 w-24 transform transition-all duration-300 hover:scale-105">
-                            <img src="/logo.png" alt="SolarZap Logo" className="brand-logo-image" />
-                        </div>
-                        <div className="space-y-2">
-                            <CardTitle className="text-3xl font-bold tracking-tight text-foreground drop-shadow-sm">
-                                Redefinir Senha
-                            </CardTitle>
-                            <CardDescription className="text-muted-foreground text-base font-medium">
-                                Por favor, crie uma nova senha para sua conta
-                            </CardDescription>
-                        </div>
-                    </CardHeader>
+                <div className="rounded-2xl border border-border/70 bg-muted/35 px-4 py-3 text-sm leading-6 text-muted-foreground">
+                    Use uma senha forte com pelo menos 8 caracteres para concluir a recuperacao com seguranca.
+                </div>
 
-                    <CardContent className="relative z-10 pb-10 px-6 sm:px-8">
-                        <form onSubmit={handleSubmit} className="space-y-5">
-                            <div className="space-y-2 text-left animate-in fade-in slide-in-from-bottom-2 duration-500">
-                                <Label htmlFor="password" className="text-foreground font-medium ml-1">Nova Senha</Label>
-                                <div className="relative group">
-                                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                                    <Input
-                                        id="password"
-                                        type="password"
-                                        placeholder="••••••••"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        className="pl-12 bg-background/85 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-12 rounded-xl transition-all shadow-sm"
-                                        required
-                                    />
-                                </div>
-                            </div>
+                <Button type="submit" className="h-12 w-full text-base font-semibold" disabled={isLoading}>
+                    {isLoading ? (
+                        <span className="inline-flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Salvando...
+                        </span>
+                    ) : (
+                        'Salvar nova senha'
+                    )}
+                </Button>
 
-                            <div className="space-y-2 text-left animate-in fade-in slide-in-from-bottom-3 duration-500 delay-75">
-                                <Label htmlFor="confirm-password" className="text-foreground font-medium ml-1">Confirmar Nova Senha</Label>
-                                <div className="relative group">
-                                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                                    <Input
-                                        id="confirm-password"
-                                        type="password"
-                                        placeholder="••••••••"
-                                        value={confirmPassword}
-                                        onChange={(e) => setConfirmPassword(e.target.value)}
-                                        className="pl-12 bg-background/85 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-12 rounded-xl transition-all shadow-sm"
-                                        required
-                                    />
-                                </div>
-                            </div>
-
-                            <Button
-                                type="submit"
-                                className="brand-gradient-button w-full h-12 rounded-xl text-white font-semibold text-lg shadow-[0_20px_48px_-22px_hsl(var(--primary)/0.6)] transition-all ease-in-out duration-300 mt-6 animate-in fade-in slide-in-from-bottom-4 delay-150"
-                                disabled={isLoading}
-                            >
-                                {isLoading ? (
-                                    <span className="flex items-center gap-2">
-                                        <Loader2 className="h-5 w-5 animate-spin" />
-                                        Salvando...
-                                    </span>
-                                ) : (
-                                    'Salvar Nova Senha'
-                                )}
-                            </Button>
-                        </form>
-
-                        <div className="mt-8 text-center animate-in fade-in slide-in-from-bottom-5 duration-500 delay-200">
-                            <button
-                                type="button"
-                                onClick={() => navigate('/login')}
-                                className="inline-flex items-center justify-center text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group focus:outline-none"
-                            >
-                                <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
-                                Voltar para o login
-                            </button>
-                        </div>
-
-                        <div className="mt-8 pt-6 border-t border-border flex justify-center items-center text-muted-foreground text-xs gap-1.5">
-                            <Zap className="w-3 h-3 text-primary" />
-                            <span>SolarZap CRM &copy; {new Date().getFullYear()}</span>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        </div>
+                <Button type="button" variant="ghost" className="w-full text-sm text-muted-foreground" onClick={() => navigate('/login')}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Voltar para o login
+                </Button>
+            </form>
+        </AuthPortalShell>
     );
-};
-
-export default UpdatePassword;
+}
 
