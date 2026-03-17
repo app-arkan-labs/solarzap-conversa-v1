@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -92,6 +92,16 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   }
 
   if (!orgId) {
+    if (orgResolutionStatus === 'idle' || orgResolutionStatus === 'resolving') {
+      return (
+        <div className="min-h-screen flex items-center justify-center auth-shell">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <p className="text-foreground/80">Carregando organização...</p>
+          </div>
+        </div>
+      );
+    }
     if (orgResolutionStatus !== 'error') return <Navigate to="/pricing" replace />;
 
     const errorKind = orgResolutionError?.kind ?? 'transient';
