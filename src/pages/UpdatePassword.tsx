@@ -128,10 +128,10 @@ export default function UpdatePassword() {
                 <div className="space-y-3">
                     <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary/90">Seguranca do acesso</p>
                     <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-                        Redefina sua senha sem sair do <span className="brand-gradient-text">fluxo premium</span> do portal.
+                        Redefina a senha da sua conta.
                     </h1>
                     <p className="max-w-lg text-base leading-7 text-muted-foreground sm:text-lg">
-                        A recuperacao agora segue a mesma linguagem visual do acesso principal, com foco em seguranca e continuidade da jornada.
+                        Defina uma nova senha para concluir a recuperacao e voltar ao login.
                     </p>
                 </div>
             </div>
@@ -141,8 +141,8 @@ export default function UpdatePassword() {
                     <ShieldCheck className="h-5 w-5" />
                 </div>
                 <div className="space-y-1">
-                    <p className="text-sm font-semibold text-foreground">Acesso restaurado com contexto</p>
-                    <p className="text-sm leading-6 text-muted-foreground">Depois de redefinir a senha, o usuario retorna para o app sem sensacao de ruptura entre etapas.</p>
+                    <p className="text-sm font-semibold text-foreground">Link temporario</p>
+                    <p className="text-sm leading-6 text-muted-foreground">Se este link expirar, solicite uma nova recuperacao na tela de login.</p>
                 </div>
             </div>
         </div>
@@ -163,7 +163,7 @@ export default function UpdatePassword() {
         <AuthPortalShell
             badge={<AuthContextBadge icon={KeyRound} label="Redefinicao segura" />}
             title="Crie uma nova senha"
-            description="A recuperacao foi redesenhada para manter o usuario no mesmo sistema visual do portal principal."
+            description="Preencha os dois campos abaixo para atualizar a senha da sua conta."
             rail={rail}
             footer={
                 <div className="flex items-center justify-between gap-3 text-xs">

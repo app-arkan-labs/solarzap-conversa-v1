@@ -37,7 +37,7 @@ export default function VerifyEmailState({
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Email da conta</p>
         <p className="mt-2 break-all text-base font-semibold text-foreground">{email}</p>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Abra o email de confirmacao, clique no link e retorne para continuar seu acesso ao app.
+          Abra o email de confirmacao, clique no link e depois volte para fazer login.
         </p>
       </div>
 

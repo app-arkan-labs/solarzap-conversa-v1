@@ -242,16 +242,16 @@ export default function Pricing() {
 
   const journeyHighlights = [
     {
-      title: 'Portal de acesso',
-      description: 'O usuario entra pelo mesmo idioma visual premium do auth.',
+      title: 'Escolha um plano',
+      description: 'Selecione Start, Pro ou Scale conforme o tamanho da sua operacao.',
     },
     {
-      title: 'Onboarding guiado',
-      description: 'Configuracao inicial em etapas, sem mudar a atmosfera do produto.',
+      title: 'Teste por 7 dias',
+      description: 'O trial libera o uso do plano escolhido antes da cobranca mensal.',
     },
     {
-      title: 'Billing com contexto',
-      description: 'Plano, trial e upgrade apresentados como continuidade da jornada.',
+      title: 'Gerencie quando quiser',
+      description: 'Upgrade, downgrade e cancelamento podem ser feitos depois no painel da conta.',
     },
   ];
 
@@ -299,7 +299,7 @@ export default function Pricing() {
                 </h1>
                 <p className="mt-4 max-w-3xl text-lg text-muted-foreground">
                   Comece a fechar mais negócios com automação via WhatsApp, IA embarcada e CRM solar completo.
-                  A passagem do portal de entrada para billing agora segue a mesma linguagem do produto.
+                  Escolha o plano que faz sentido para sua operacao e teste sem cobranca durante os 7 primeiros dias.
                 </p>
               </>
             ) : (
@@ -337,7 +337,7 @@ export default function Pricing() {
               ) : !user ? (
                 <Button variant="outline" className="gap-2" onClick={() => navigate('/login')}>
                   <ArrowLeft className="h-4 w-4" />
-                  Voltar ao portal
+                  Voltar ao login
                 </Button>
               ) : null}
 
@@ -356,10 +356,10 @@ export default function Pricing() {
                 <img src="/logo.png" alt="SolarZap" className="brand-logo-image" />
               </div>
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Continuidade da jornada</p>
-                <h2 className="text-2xl font-semibold text-foreground">Billing alinhado ao novo portal de acesso.</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Como funciona</p>
+                <h2 className="text-2xl font-semibold text-foreground">Veja o que acontece depois de escolher o plano.</h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  O plano deixa de parecer uma etapa isolada e passa a funcionar como continuacao natural da entrada e ativacao do app.
+                  O checkout libera o trial do plano escolhido. Depois disso, a assinatura pode ser administrada pela propria conta.
                 </p>
               </div>
             </div>
@@ -383,7 +383,7 @@ export default function Pricing() {
               <div className="mt-2 space-y-1 text-sm">
                 <p className="font-semibold text-foreground">{currentPlan && currentPlan !== 'free' ? `Plano ${currentPlan}` : 'Sem plano ativo'}</p>
                 <p className="text-muted-foreground">
-                  {isNoPlan ? 'Ideal para novos usuarios que vieram do portal e seguem para ativacao guiada.' : 'Sua assinatura pode ser ajustada sem perder a continuidade da experiencia.'}
+                  {isNoPlan ? 'Escolha um plano para iniciar o trial ou conclua a contratacao pendente.' : 'Sua assinatura pode ser ajustada ou administrada quando necessario.'}
                 </p>
               </div>
             </div>

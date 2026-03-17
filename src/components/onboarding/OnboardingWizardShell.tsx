@@ -60,11 +60,11 @@ export default function OnboardingWizardShell({
               <div className="space-y-3">
                 <div className="inline-flex items-center gap-2 rounded-full border border-primary/18 bg-primary/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                   <Sparkles className="h-3.5 w-3.5" />
-                  Onboarding guiado
+                  Configuracao inicial
                 </div>
-                <h2 className="text-3xl font-semibold tracking-tight text-foreground">Ative sua operacao com a mesma linguagem do portal.</h2>
+                <h2 className="text-3xl font-semibold tracking-tight text-foreground">Configure sua conta antes de entrar no app.</h2>
                 <p className="text-sm leading-7 text-muted-foreground">
-                  Cada etapa do onboarding prepara o ambiente para que a entrada no app e a passagem por billing parecam parte da mesma experiencia.
+                  Preencha os dados principais da empresa, conecte os recursos iniciais e conclua a configuracao obrigatoria.
                 </p>
               </div>
             </div>
@@ -99,7 +99,7 @@ export default function OnboardingWizardShell({
                     <div>
                       <p className="text-sm font-semibold text-foreground">{nextStep?.title || 'Entrada no app'}</p>
                       <p className="text-sm text-muted-foreground">
-                        {nextStep ? 'Ao concluir, a jornada avanca sem troca brusca de contexto.' : 'Concluindo aqui, o usuario entra no app com tudo preparado.'}
+                        {nextStep ? 'Ao concluir esta etapa, o onboarding avanca para a proxima configuracao.' : 'Ao concluir esta etapa, o acesso ao app sera liberado.'}
                       </p>
                     </div>
                     <ArrowRight className="h-4 w-4 flex-shrink-0 text-primary" />

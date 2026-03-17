@@ -42,15 +42,15 @@ const FIELD_CLASS_NAME = 'h-12 rounded-2xl border-border bg-background/82 pl-12 
 const PLAN_META: Record<PlanHint, { label: string; description: string }> = {
   start: {
     label: 'Plano Start',
-    description: 'Entrada orientada para operacoes que estao estruturando o processo comercial.',
+    description: 'A selecao fica salva para voce continuar a contratacao depois do acesso.',
   },
   pro: {
     label: 'Plano Pro',
-    description: 'Contexto preservado para equipes em crescimento que seguem para ativacao guiada.',
+    description: 'A selecao fica salva para voce continuar a contratacao depois do acesso.',
   },
   scale: {
     label: 'Plano Scale',
-    description: 'Fluxo premium alinhado a operacoes de maior volume e ativacao completa.',
+    description: 'A selecao fica salva para voce continuar a contratacao depois do acesso.',
   },
 };
 
@@ -61,26 +61,26 @@ const normalizePlanHint = (value: string | null) => {
 
 const loginViewCopy = {
   login: {
-    title: 'Entre no seu portal SolarZap',
-    description: 'Acesse sua operacao com a mesma linguagem visual que acompanha onboarding e billing.',
+    title: 'Entrar no SolarZap',
+    description: 'Use o email e a senha da sua conta para acessar o sistema.',
     badgeIcon: LogIn,
-    badgeLabel: 'Acesso ao app',
+    badgeLabel: 'Entrar',
   },
   signup: {
-    title: 'Crie sua conta e siga para a ativacao',
-    description: 'Abra seu acesso no proprio portal e mantenha a continuidade da jornada ate o setup do produto.',
+    title: 'Criar conta',
+    description: 'Cadastre seu email e senha para iniciar o acesso ao sistema.',
     badgeIcon: UserPlus,
-    badgeLabel: 'Criacao de conta',
+    badgeLabel: 'Novo cadastro',
   },
   forgot: {
-    title: 'Recupere o acesso com seguranca',
-    description: 'Enviaremos um link de redefinicao sem tirar o usuario do fluxo principal do produto.',
+    title: 'Recuperar senha',
+    description: 'Informe o email da conta para receber o link de redefinicao.',
     badgeIcon: KeyRound,
-    badgeLabel: 'Recuperacao',
+    badgeLabel: 'Recuperar senha',
   },
   verify: {
-    title: 'Confirme seu email para continuar',
-    description: 'A verificacao virou uma etapa explicita do portal para reduzir quebra de contexto.',
+    title: 'Confirme seu email',
+    description: 'Sua conta precisa ser confirmada antes do primeiro login.',
     badgeIcon: Sparkles,
     badgeLabel: 'Confirmacao',
   },
@@ -196,8 +196,8 @@ export default function Login() {
       title: nextState?.title || 'Confirme seu email para continuar',
       description: nextState?.description || `Enviamos a confirmacao para ${targetEmail}. Abra a caixa de entrada, spam e lixeira.`,
       hint: nextState?.hint || (activePlanMeta
-        ? `${activePlanMeta.label} segue reservado. Depois da confirmacao, voce continua no fluxo de ativacao sem perder contexto.`
-        : 'Depois da confirmacao, voce segue para a proxima etapa do produto sem trocar de linguagem visual.'),
+        ? `${activePlanMeta.label} continua selecionado para quando voce voltar a contratacao.`
+        : 'Depois da confirmacao, faca login normalmente com este mesmo email.'),
     });
   };
 
@@ -297,7 +297,7 @@ export default function Login() {
         if (!resendError) {
           openVerifyState(normalizedEmail, {
             title: 'Confirme seu email para entrar',
-            description: `Reenviamos a confirmacao para ${normalizedEmail}. Depois disso, voce volta ao fluxo principal do produto.`,
+            description: `Reenviamos a confirmacao para ${normalizedEmail}. Depois disso, faca login normalmente.`,
           });
         } else {
           const resendCode = (resendError as { code?: string }).code;
@@ -347,7 +347,7 @@ export default function Login() {
         setPassword('');
         openVerifyState(normalizedEmail, {
           title: 'Conta criada. Agora confirme seu email',
-          description: `Enviamos o link de confirmacao para ${normalizedEmail}. Assim que confirmar, o fluxo continua com a mesma experiencia do portal.`,
+          description: `Enviamos o link de confirmacao para ${normalizedEmail}. Depois de confirmar, voce ja pode entrar na conta.`,
         });
         toast({
           title: 'Conta criada',
@@ -554,7 +554,7 @@ export default function Login() {
         <form onSubmit={handleForgotPassword} className="space-y-5">
           {renderEmailField('forgot-email', 'Email da conta')}
           <div className="rounded-2xl border border-border/70 bg-muted/35 px-4 py-3 text-sm leading-6 text-muted-foreground">
-            Voce recebera um link para criar uma nova senha mantendo o fluxo seguro da sua conta.
+            O link de redefinicao sera enviado para o email informado.
           </div>
           <Button type="submit" className="h-12 w-full text-base font-semibold" disabled={isLoading}>
             {isLoading ? (
@@ -577,12 +577,12 @@ export default function Login() {
           {renderPasswordField('signup-password', 'Senha', 'Minimo de 8 caracteres')}
           <div className="grid gap-3 rounded-[1.5rem] border border-border/70 bg-muted/30 p-4 sm:grid-cols-2">
             <div>
-              <p className="text-sm font-semibold text-foreground">Conta criada no portal</p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">Sem trocar de tela, o usuario segue para a confirmacao e depois para a ativacao.</p>
+              <p className="text-sm font-semibold text-foreground">Confirmacao por email</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">Depois do cadastro, voce vai precisar abrir o link enviado para o seu email.</p>
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground">Continuacao ate billing</p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">Se houver plano selecionado, o contexto continua preservado no proximo passo.</p>
+              <p className="text-sm font-semibold text-foreground">Plano selecionado</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">Se voce veio da tela de planos, a selecao continua salva para o proximo passo.</p>
             </div>
           </div>
           <Button type="submit" className="h-12 w-full text-base font-semibold" disabled={isLoading}>
@@ -647,7 +647,7 @@ export default function Login() {
           )}
         </Button>
         <div className="rounded-2xl border border-border/70 bg-background/72 px-4 py-3 text-sm leading-6 text-muted-foreground">
-          A autenticacao agora funciona como a entrada oficial do app, com continuidade visual ate onboarding e plano.
+          Use o mesmo email cadastrado para acessar conversas, propostas, automacoes e configuracoes da sua conta.
         </div>
       </form>
     );
