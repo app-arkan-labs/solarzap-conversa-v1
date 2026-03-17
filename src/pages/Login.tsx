@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Mail, Lock, Loader2, ArrowLeft, Zap, Eye, EyeOff } from 'lucide-react';
+import { RotatingHeadline } from '@/components/auth/RotatingHeadline';
 import { useToast } from '@/hooks/use-toast';
 
 type ViewMode = 'login' | 'signup' | 'forgot';
@@ -292,7 +293,7 @@ const Login = () => {
     }
   };
 
-  const title = view === 'login' ? 'Bem-vindo de volta' : view === 'signup' ? 'Criar sua conta' : 'Esqueceu sua senha?';
+  const staticTitle = view === 'signup' ? 'Criar sua conta' : view === 'forgot' ? 'Esqueceu sua senha?' : null;
   const subtitle = view === 'login'
     ? 'Acesse sua conta SolarZap'
     : view === 'signup'
@@ -301,18 +302,24 @@ const Login = () => {
 
   return (
     <div className="auth-shell min-h-screen w-full flex relative overflow-hidden font-sans">
+      {/* Ambient glow orbs */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <div className="auth-orb auth-orb-1" />
+        <div className="auth-orb auth-orb-2" />
+        <div className="auth-orb auth-orb-3" />
+      </div>
 
       <div className="w-full h-full min-h-screen flex items-center justify-center p-4 sm:p-8 relative z-10">
         <Card className="auth-card w-full max-w-md overflow-hidden relative">
-          <CardHeader className="text-center space-y-6 pt-10 pb-4 relative z-10">
-            <div className="brand-logo-disc mx-auto h-24 w-24 transform transition-all duration-300 hover:scale-105">
+          <CardHeader className="text-center space-y-5 pt-10 pb-2 relative z-10">
+            <div className="brand-logo-disc mx-auto h-20 w-20 transform transition-all duration-300 hover:scale-105 hover:shadow-[0_0_32px_-6px_hsl(var(--primary)/0.45)]">
               <img src="/logo.png" alt="SolarZap Logo" className="brand-logo-image" />
             </div>
-            <div className="space-y-2">
-              <CardTitle className="text-3xl font-bold tracking-tight text-foreground drop-shadow-sm">
-                {title}
+            <div className="space-y-1.5">
+              <CardTitle className="text-2xl font-bold tracking-tight text-foreground drop-shadow-sm min-h-[2rem]">
+                {view === 'login' ? <RotatingHeadline /> : staticTitle}
               </CardTitle>
-              <CardDescription className="text-muted-foreground text-base font-medium">
+              <CardDescription className="text-muted-foreground/80 text-sm font-medium">
                 {subtitle}
               </CardDescription>
             </div>
@@ -520,8 +527,8 @@ const Login = () => {
             )}
 
             {/* Footer */}
-            <div className="mt-8 pt-6 border-t border-border flex justify-center items-center text-muted-foreground text-xs gap-1.5">
-              <Zap className="w-3 h-3 text-primary" />
+            <div className="mt-8 pt-5 border-t border-border/50 flex justify-center items-center text-muted-foreground/60 text-[11px] gap-1.5 tracking-wide">
+              <Zap className="w-3 h-3 text-primary/60" />
               <span>SolarZap CRM &copy; {new Date().getFullYear()}</span>
             </div>
           </CardContent>
