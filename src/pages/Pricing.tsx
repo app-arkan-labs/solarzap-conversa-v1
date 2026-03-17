@@ -14,6 +14,7 @@ import {
 } from '@/hooks/useOrgBilling';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { isUnlimitedBillingBypass } from '@/lib/billingBlocker';
 
 /* ── constants ──────────────────────────────────────────────────── */
 
@@ -145,6 +146,14 @@ export default function Pricing() {
 
   const billingQuery = useOrgBillingInfo(true);
   const billing = billingQuery.data;
+
+  // Unlimited plan users should never stay on the pricing page
+  useEffect(() => {
+    if (!billingQuery.isLoading && isUnlimitedBillingBypass(billing)) {
+      navigate('/', { replace: true });
+    }
+  }, [billingQuery.isLoading, billing, navigate]);
+
   const rawPlan = String(billing?.plan_key || '').trim() || null;
   const billingStatus = String(billing?.subscription_status || '').toLowerCase();
   // Plano só é considerado "atual" se a subscription foi de fato confirmada (não pending_checkout)
