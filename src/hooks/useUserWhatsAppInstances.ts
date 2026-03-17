@@ -396,10 +396,10 @@ export function useUserWhatsAppInstances() {
   }, [isOrgManager, orgId, user]);
 
   // Check instance status
-  const checkStatus = useCallback(async (instanceName: string): Promise<void> => {
+  const checkStatus = useCallback(async (instanceName: string): Promise<InstanceConnectionStatus | null> => {
     try {
-      if (!orgId) return;
-      if (!isOrgManager && !user?.id) return;
+      if (!orgId) return null;
+      if (!isOrgManager && !user?.id) return null;
 
       setActionLoading(instanceName);
       const response = await evolutionApi.getInstanceStatus(instanceName);
@@ -424,7 +424,7 @@ export function useUserWhatsAppInstances() {
           setInstances(prev => prev.map(inst =>
             inst.instance_name === instanceName ? { ...inst, status: 'disconnected' } : inst
           ));
-          return;
+          return 'disconnected';
         }
         throw new Error(response.error || 'Falha ao verificar status');
       }
@@ -473,6 +473,7 @@ export function useUserWhatsAppInstances() {
       ));
 
       // toast.success(`Status da instância: ${newStatus === 'connected' ? 'Conectado' : 'Desconectado'}`);
+      return newStatus;
     } catch (error) {
       console.error('Error checking status:', error);
       // If network error, we don't change status to avoid flapping
@@ -493,7 +494,9 @@ export function useUserWhatsAppInstances() {
         setInstances(prev => prev.map(inst =>
           inst.instance_name === instanceName ? { ...inst, status: 'disconnected' } : inst
         ));
+        return 'disconnected';
       }
+      return null;
     } finally {
       setActionLoading(null);
     }

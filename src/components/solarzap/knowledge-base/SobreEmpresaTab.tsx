@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { BRAZIL_STATES } from '@/constants/solarIrradiance';
 
 interface CompanyProfile {
     company_name: string;
@@ -352,15 +353,30 @@ export function SobreEmpresaTab() {
                     isSaved={savedFields.has('headquarters_city')}
                 />
 
-                <QuestionCard
-                    question="Estado (UF) da sede"
-                    hint="Informe a UF principal da empresa"
-                    placeholder="Ex: PR"
-                    value={profile.headquarters_state}
-                    onChange={(v) => handleChange('headquarters_state', v)}
-                    maxLength={10}
-                    isSaved={savedFields.has('headquarters_state')}
-                />
+                <div className="rounded-xl border bg-card p-4">
+                    <p className="text-sm font-medium">Estado (UF) da sede</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                        Selecione a UF principal da empresa.
+                    </p>
+                    <div className="mt-3">
+                        <Select
+                            value={profile.headquarters_state || '__none'}
+                            onValueChange={(value) => handleChange('headquarters_state', value === '__none' ? '' : value)}
+                        >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Selecione a UF" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="__none">Selecione</SelectItem>
+                                {BRAZIL_STATES.map((state) => (
+                                    <SelectItem key={state.uf} value={state.uf}>
+                                        {state.uf} - {state.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
 
                 <QuestionCard
                     question="Endereco principal da empresa"
@@ -419,7 +435,7 @@ export function SobreEmpresaTab() {
                 <QuestionCard
                     question="WhatsApp publico"
                     hint="Canal principal de contato da empresa"
-                    placeholder="Ex: (44) 98888-8888"
+                    placeholder="Ex: 44988888888"
                     value={profile.public_whatsapp}
                     onChange={(v) => handleChange('public_whatsapp', v)}
                     maxLength={40}

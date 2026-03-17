@@ -147,7 +147,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
     if (result.invalid.length > 0) {
       toast({
         title: "Numero WhatsApp invalido",
-        description: "Use formato E.164 com DDI (10 a 15 digitos).",
+        description: "Use DDD + numero (10 ou 11 digitos), sem + ou espacos.",
         variant: "destructive",
       });
     }
@@ -362,7 +362,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                           className="h-9 text-sm"
                           value={whatsappInput}
                           data-testid="notification-whatsapp-input"
-                          placeholder="5511999999999"
+                          placeholder="11999999999"
                           onChange={(e) => setWhatsappInput(e.target.value)}
                           onKeyDown={(event) => {
                             if (event.key === "Enter") {
@@ -414,8 +414,8 @@ export function NotificationConfigPanel({ onClose }: Props) {
                         )}
                       </div>
                       <p className="text-[10px] text-muted-foreground/70 mt-1">
-                        Use formato E.164 com DDI. Aceita colagem de múltiplos
-                        números (vírgula, ; ou quebra de linha).
+                        Use DDD + numero. Aceita colagem de multiplos numeros
+                        (virgula, ; ou quebra de linha).
                       </p>
                       <p className="text-[10px] text-muted-foreground/70 mt-1">
                         Envio somente para os números listados acima (sem
