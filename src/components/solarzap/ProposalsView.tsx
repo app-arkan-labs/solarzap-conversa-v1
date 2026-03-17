@@ -37,7 +37,6 @@ import { prefetchCoverImage, prefetchCoverImages } from '@/hooks/useProposalCove
 import { resolveProposalLinks } from '@/utils/proposalLinks';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -89,26 +88,6 @@ interface LeadFilterOption {
   phone: string;
 }
 
-const STATUS_OPTIONS = ['draft', 'ready', 'sent', 'accepted', 'rejected', 'archived'];
-
-const STATUS_TRANSLATIONS: Record<string, string> = {
-  draft: 'Rascunho',
-  ready: 'Pronta',
-  sent: 'Enviada',
-  accepted: 'Aceita',
-  rejected: 'Recusada',
-  archived: 'Arquivada'
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-slate-100 text-slate-700 border-slate-200',
-  ready: 'bg-blue-100 text-blue-700 border-blue-200',
-  sent: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-  accepted: 'bg-green-100 text-green-700 border-green-200',
-  rejected: 'bg-red-100 text-red-700 border-red-200',
-  archived: 'bg-gray-100 text-gray-700 border-gray-200'
-};
-
 export function ProposalsView() {
   const isMobileViewport = useMobileViewport();
   const { orgId } = useAuth();
@@ -126,7 +105,6 @@ export function ProposalsView() {
   const [leadFilterOpen, setLeadFilterOpen] = useState(false);
 
   const [selectedLeadId, setSelectedLeadId] = useState<string>('all');
-  const [status, setStatus] = useState<string>('all');
   const [stage, setStage] = useState<string>('all');
   const [owner, setOwner] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState('');
@@ -147,7 +125,6 @@ export function ProposalsView() {
       .order('created_at', { ascending: false })
       .limit(500);
 
-    if (status !== 'all') query = query.eq('status', status);
     if (dateFrom) query = query.gte('created_at', `${dateFrom}T00:00:00`);
     if (dateTo) query = query.lte('created_at', `${dateTo}T23:59:59`);
 
@@ -230,7 +207,7 @@ export function ProposalsView() {
     }
 
     return mapped.slice(0, PAGE_SIZE);
-  }, [orgId, status, dateFrom, dateTo, stage, owner, selectedLeadId]);
+  }, [orgId, dateFrom, dateTo, stage, owner, selectedLeadId]);
 
   const fetchOwners = useCallback(async () => {
     if (!orgId) return;
@@ -276,7 +253,7 @@ export function ProposalsView() {
       const { data, error } = await supabase.rpc('list_proposals', {
         p_org_id: orgId,
         p_search: null,
-        p_status: status === 'all' ? null : status,
+        p_status: null,
         p_stage: stage === 'all' ? null : stage,
         p_owner: owner === 'all' ? null : owner,
         p_date_from: dateFrom || null,
@@ -377,7 +354,7 @@ export function ProposalsView() {
     } finally {
       setLoading(false);
     }
-  }, [orgId, status, stage, owner, dateFrom, dateTo, selectedLeadId, page, toast, fetchProposalsFallback]);
+  }, [orgId, stage, owner, dateFrom, dateTo, selectedLeadId, page, toast, fetchProposalsFallback]);
 
   useEffect(() => {
     fetchOwners();
@@ -394,7 +371,7 @@ export function ProposalsView() {
   // Reset to first page when filters change
   useEffect(() => {
     setPage(0);
-  }, [status, stage, owner, dateFrom, dateTo, selectedLeadId]);
+  }, [stage, owner, dateFrom, dateTo, selectedLeadId]);
 
   useEffect(() => {
     const persistedLeadId = localStorage.getItem('solarzap_proposals_filter_lead_id');
@@ -671,7 +648,7 @@ export function ProposalsView() {
             <CollapsibleTrigger asChild>
             <CardHeader className="cursor-pointer">
               <CardTitle className="flex items-center justify-between">Filtros <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform [[data-state=open]_&]:rotate-180" /></CardTitle>
-              <CardDescription>Lead, período, vendedor, etapa e status</CardDescription>
+              <CardDescription>Lead, período, vendedor e etapa</CardDescription>
             </CardHeader>
             </CollapsibleTrigger>
             <CollapsibleContent>
@@ -741,21 +718,6 @@ export function ProposalsView() {
                     </Command>
                   </PopoverContent>
                 </Popover>
-              </div>
-
-              <div className="space-y-1">
-                <Label>Status</Label>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {STATUS_OPTIONS.map((value) => (
-                      <SelectItem key={value} value={value}>{STATUS_TRANSLATIONS[value] || value}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
 
               <div className="space-y-1">
@@ -830,14 +792,11 @@ export function ProposalsView() {
                           }
                         }}
                       >
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
                           <div className="min-w-0">
                             <p className="font-semibold text-foreground truncate">{row.lead_name || `Lead ${row.lead_id}`}</p>
                             <p className="text-sm text-muted-foreground truncate">{row.lead_phone || '-'}</p>
                           </div>
-                          <Badge variant="outline" className={STATUS_COLORS[row.status] || 'bg-slate-100 text-slate-700 border-slate-200'}>
-                            {STATUS_TRANSLATIONS[row.status] || row.status}
-                          </Badge>
                         </div>
 
                         <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -914,7 +873,6 @@ export function ProposalsView() {
                     <th className="py-2 pr-3">Versão</th>
                     <th className="py-2 pr-3">Criada em</th>
                     <th className="py-2 pr-3">Valor</th>
-                    <th className="py-2 pr-3">Status</th>
                     <th className="py-2 pr-3">Ações</th>
                   </tr>
                 </thead>
@@ -938,11 +896,6 @@ export function ProposalsView() {
                           {typeof row.valor_projeto === 'number'
                             ? row.valor_projeto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                             : '-'}
-                        </td>
-                        <td className="py-2 pr-3">
-                          <Badge variant="outline" className={STATUS_COLORS[row.status] || 'bg-slate-100 text-slate-700 border-slate-200'}>
-                            {STATUS_TRANSLATIONS[row.status] || row.status}
-                          </Badge>
                         </td>
                         <td className="py-2 pr-3">
                           <div className="flex items-center gap-2">
@@ -1036,12 +989,6 @@ export function ProposalsView() {
                 <div>
                   <p className="text-muted-foreground">Versão</p>
                   <p className="font-medium">V{selectedRow.version_no}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Status</p>
-                  <Badge variant="outline" className={STATUS_COLORS[selectedRow.status] || 'bg-slate-100 text-slate-700 border-slate-200'}>
-                    {STATUS_TRANSLATIONS[selectedRow.status] || selectedRow.status}
-                  </Badge>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Criada em</p>
