@@ -240,6 +240,21 @@ export default function Pricing() {
     }
   };
 
+  const journeyHighlights = [
+    {
+      title: 'Portal de acesso',
+      description: 'O usuario entra pelo mesmo idioma visual premium do auth.',
+    },
+    {
+      title: 'Onboarding guiado',
+      description: 'Configuracao inicial em etapas, sem mudar a atmosfera do produto.',
+    },
+    {
+      title: 'Billing com contexto',
+      description: 'Plano, trial e upgrade apresentados como continuidade da jornada.',
+    },
+  ];
+
   return (
     <div className="app-shell-bg min-h-screen text-foreground overflow-y-auto">
       {/* Decorative blurs */}
@@ -267,58 +282,112 @@ export default function Pricing() {
         )}
 
         {/* Hero */}
-        <div className="mb-12 text-center">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-xs font-medium text-primary">
-            <Sparkles className="h-3.5 w-3.5" />
-            {intent === 'reactivate' ? heroBadgeLabel : '7 dias grátis em qualquer plano'}
+        <div className="mb-12 grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_360px] lg:items-stretch">
+          <div className="auth-portal-form-surface">
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-xs font-medium text-primary">
+              <Sparkles className="h-3.5 w-3.5" />
+              {intent === 'reactivate' ? heroBadgeLabel : '7 dias grátis em qualquer plano'}
+            </div>
+
+            {isNoPlan && intent !== 'reactivate' ? (
+              <>
+                <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
+                  Escolha o plano ideal para{' '}
+                  <span className="brand-gradient-text">
+                    escalar suas vendas
+                  </span>
+                </h1>
+                <p className="mt-4 max-w-3xl text-lg text-muted-foreground">
+                  Comece a fechar mais negócios com automação via WhatsApp, IA embarcada e CRM solar completo.
+                  A passagem do portal de entrada para billing agora segue a mesma linguagem do produto.
+                </p>
+              </>
+            ) : (
+              <>
+                <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
+                  {heroTitle}{' '}
+                  <span className="brand-gradient-text">
+                    SolarZap
+                  </span>
+                </h1>
+                <p className="mt-4 max-w-3xl text-lg text-muted-foreground">
+                  {heroDescription}
+                </p>
+              </>
+            )}
+
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              {currentPlan && currentPlan !== 'free' ? (
+                <div className="public-hero-surface inline-flex items-center gap-3 rounded-full px-5 py-2 text-sm">
+                  <span className="text-muted-foreground">Plano atual:</span>
+                  <Badge className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/15">
+                    {currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={handleOpenPortal}
+                    disabled={openingPortal}
+                  >
+                    <CreditCard className="mr-1.5 h-3.5 w-3.5" />
+                    {openingPortal ? 'Abrindo...' : 'Gerenciar assinatura'}
+                  </Button>
+                </div>
+              ) : !user ? (
+                <Button variant="outline" className="gap-2" onClick={() => navigate('/login')}>
+                  <ArrowLeft className="h-4 w-4" />
+                  Voltar ao portal
+                </Button>
+              ) : null}
+
+              {sourceLabel && (
+                <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-4 py-2 text-sm text-muted-foreground">
+                  <Star className="h-4 w-4 text-primary" />
+                  Origem: {sourceLabel}
+                </div>
+              )}
+            </div>
           </div>
 
-          {isNoPlan && intent !== 'reactivate' ? (
-            <>
-              <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
-                Escolha o plano ideal para{' '}
-                <span className="brand-gradient-text">
-                  escalar suas vendas
-                </span>
-              </h1>
-              <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-                Comece a fechar mais negócios hoje com automação via WhatsApp, IA embarcada e CRM solar completo.
-                Teste qualquer plano grátis por 7 dias.
-              </p>
-            </>
-          ) : (
-            <>
-              <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
-                {heroTitle}{' '}
-                <span className="brand-gradient-text">
-                  SolarZap
-                </span>
-              </h1>
-              <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-                {heroDescription}
-              </p>
-            </>
-          )}
-
-          {/* Current plan pill */}
-          {currentPlan && currentPlan !== 'free' && (
-            <div className="public-hero-surface mt-6 inline-flex items-center gap-3 rounded-full px-5 py-2 text-sm">
-              <span className="text-muted-foreground">Plano atual:</span>
-              <Badge className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/15">
-                {currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}
-              </Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs text-muted-foreground hover:text-foreground"
-                onClick={handleOpenPortal}
-                disabled={openingPortal}
-              >
-                <CreditCard className="mr-1.5 h-3.5 w-3.5" />
-                {openingPortal ? 'Abrindo...' : 'Gerenciar assinatura'}
-              </Button>
+          <aside className="auth-portal-aside">
+            <div className="space-y-4">
+              <div className="brand-logo-disc h-14 w-14">
+                <img src="/logo.png" alt="SolarZap" className="brand-logo-image" />
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Continuidade da jornada</p>
+                <h2 className="text-2xl font-semibold text-foreground">Billing alinhado ao novo portal de acesso.</h2>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  O plano deixa de parecer uma etapa isolada e passa a funcionar como continuacao natural da entrada e ativacao do app.
+                </p>
+              </div>
             </div>
-          )}
+
+            <div className="grid gap-3">
+              {journeyHighlights.map((item) => (
+                <div key={item.title} className="auth-portal-info-card">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[linear-gradient(145deg,hsl(var(--primary)/0.18),hsl(var(--secondary)/0.16))] text-primary shadow-[0_18px_36px_-24px_hsl(var(--primary)/0.4)]">
+                    <Check className="h-4 w-4" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                    <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-2xl border border-border/70 bg-background/72 px-4 py-3 shadow-[0_18px_50px_-38px_rgba(15,23,42,0.42)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Contexto atual</p>
+              <div className="mt-2 space-y-1 text-sm">
+                <p className="font-semibold text-foreground">{currentPlan && currentPlan !== 'free' ? `Plano ${currentPlan}` : 'Sem plano ativo'}</p>
+                <p className="text-muted-foreground">
+                  {isNoPlan ? 'Ideal para novos usuarios que vieram do portal e seguem para ativacao guiada.' : 'Sua assinatura pode ser ajustada sem perder a continuidade da experiencia.'}
+                </p>
+              </div>
+            </div>
+          </aside>
         </div>
 
         {/* Trial highlight banner */}
