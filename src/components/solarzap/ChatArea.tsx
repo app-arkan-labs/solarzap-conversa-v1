@@ -178,6 +178,14 @@ export function ChatArea({
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
+
+  // Reset message selection mode when details panel opens
+  useEffect(() => {
+    if (isDetailsOpen) {
+      setIsSelectionMode(false);
+      setSelectedMessages(new Set());
+    }
+  }, [isDetailsOpen]);
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [showAudioDeviceModal, setShowAudioDeviceModal] = useState(false);
@@ -1169,6 +1177,7 @@ export function ChatArea({
               >
                 <Search className="w-5 h-5" />
               </button>
+              <div className="w-px h-5 bg-border mx-1 self-center" />
               <button
                 onClick={() => handleMenuAction('select_messages')}
                 className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"

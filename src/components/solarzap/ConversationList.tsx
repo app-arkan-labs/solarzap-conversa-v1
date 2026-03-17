@@ -66,6 +66,7 @@ interface ConversationListProps {
   leadScopeMembers?: MemberDto[];
   leadScopeLoading?: boolean;
   currentUserId?: string | null;
+  isDetailsPanelOpen?: boolean;
 }
 
 // Get stage options for filter
@@ -99,6 +100,7 @@ export function ConversationList({
   leadScopeMembers = [],
   leadScopeLoading = false,
   currentUserId = null,
+  isDetailsPanelOpen = false,
 }: ConversationListProps) {
   const { toast } = useToast();
   const isMobileViewport = useMobileViewport();
@@ -276,6 +278,19 @@ export function ConversationList({
     if (!isSelectionMode || !canBulkAssign) return;
     void loadBulkAssignMembers();
   }, [canBulkAssign, isSelectionMode, loadBulkAssignMembers]);
+
+  // Reset selection mode when details panel opens or conversation changes
+  useEffect(() => {
+    if (isDetailsPanelOpen) {
+      setIsSelectionMode(false);
+      setSelectedLeadIds(new Set());
+    }
+  }, [isDetailsPanelOpen]);
+
+  useEffect(() => {
+    setIsSelectionMode(false);
+    setSelectedLeadIds(new Set());
+  }, [selectedId]);
 
   const toggleSelectionMode = () => {
     if (isSelectionMode) {

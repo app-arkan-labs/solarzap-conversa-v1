@@ -1525,6 +1525,7 @@ export function SolarZapLayout() {
                 onStageFilterChange={setStageFilter}
                 onImportContacts={importContacts}
                 onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
+                isDetailsPanelOpen={isDetailsPanelOpen}
               />
             </Suspense>
               {!isMobileViewport && (
