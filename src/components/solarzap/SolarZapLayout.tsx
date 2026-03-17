@@ -1349,7 +1349,21 @@ export function SolarZapLayout() {
     minha_conta: sellerPerms.tab_minha_conta,
     meu_plano: canAccessAdmin,
   }), [canAccessAdmin, sellerPerms]);
-  const guidedTour = useGuidedTour(activeTab, Boolean(user));
+  const ensureTourConversationReady = useCallback(() => {
+    if (activeTab !== 'conversas') return;
+    if (selectedConversation) return;
+
+    const firstConversation = filteredConversations[0] || conversations[0];
+    if (!firstConversation) return;
+
+    setSelectedConversation(firstConversation);
+    markAsRead(firstConversation.id);
+    setIsDetailsPanelOpen(false);
+  }, [activeTab, selectedConversation, filteredConversations, conversations, markAsRead]);
+
+  const guidedTour = useGuidedTour(activeTab, Boolean(user), {
+    onBeforeStart: ensureTourConversationReady,
+  });
 
   useEffect(() => {
     if (!showMobileBottomBar) {
@@ -1389,7 +1403,9 @@ export function SolarZapLayout() {
           userDisplayName={userDisplayName}
           tabPermissions={tabPermissions}
           currentPlanKey={billing?.plan_key ?? null}
-          onHelpClick={() => guidedTour.startTour()}
+          onHelpClick={() => {
+            void guidedTour.startTour();
+          }}
         />
       ) : null}
 
@@ -1482,9 +1498,11 @@ export function SolarZapLayout() {
           running={guidedTour.running}
           steps={guidedTour.steps}
           stepIndex={guidedTour.stepIndex}
-          welcomeTitle="Bem-vindo ao novo SolarZap"
-          welcomeDescription="Preparamos um tour rapido para apresentar os principais atalhos e fluxos."
-          onStart={() => guidedTour.startTour()}
+          welcomeTitle={guidedTour.welcomeTitle}
+          welcomeDescription={guidedTour.welcomeDescription}
+          onStart={() => {
+            void guidedTour.startTour();
+          }}
           onSkip={() => {
             void guidedTour.closeTour(false);
           }}

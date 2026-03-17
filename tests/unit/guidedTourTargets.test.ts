@@ -7,11 +7,17 @@ import {
 } from '@/lib/guidedTourTargets';
 import type { GuidedTourStep } from '@/components/onboarding/tourSteps';
 
-const buildStep = (overrides: Partial<GuidedTourStep> = {}): GuidedTourStep => ({
+type CompatGuidedTourStep = GuidedTourStep & {
+  target?: string;
+  fallbackSelector?: string;
+  waitForMs?: number;
+};
+
+const buildStep = (overrides: Partial<CompatGuidedTourStep> = {}): CompatGuidedTourStep => ({
   id: 'step-1',
-  tab: 'conversas',
   title: 'Step',
-  content: 'Content',
+  description: 'Content',
+  selector: '[data-testid="primary"]',
   target: '[data-testid="primary"]',
   ...overrides,
 });
