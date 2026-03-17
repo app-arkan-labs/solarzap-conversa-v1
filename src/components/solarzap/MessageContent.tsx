@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Play, Pause, Download, FileText, Image as ImageIcon, Film, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
