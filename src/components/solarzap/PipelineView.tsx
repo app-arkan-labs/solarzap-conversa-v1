@@ -272,6 +272,11 @@ export function PipelineView({
     }
   };
 
+  const requestMarkLeadAsLost = useCallback((contact: Contact) => {
+    setLostContact(contact);
+    setLostModalOpen(true);
+  }, []);
+
   // Quick action handlers
   const handleQuickAction = (action: string, contact: Contact, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -302,8 +307,7 @@ export function PipelineView({
         setCommentsModalOpen(true);
         break;
       case 'mark_lost':
-        setLostContact(contact);
-        setLostModalOpen(true);
+        requestMarkLeadAsLost(contact);
         break;
       case 'delete':
         setContactToDelete(contact);
@@ -479,6 +483,11 @@ export function PipelineView({
       return;
     }
 
+    if (targetStage === 'perdido') {
+      requestMarkLeadAsLost(contact);
+      return;
+    }
+
     const stageInfo = PIPELINE_STAGES[targetStage];
     await moveLeadAndToast(
       contact,
@@ -486,7 +495,7 @@ export function PipelineView({
       'Lead movido!',
       `${contact.name} movido para "${stageInfo.title}"`,
     );
-  }, [moveLeadAndToast]);
+  }, [moveLeadAndToast, requestMarkLeadAsLost]);
 
   const handleNextActionClick = async (contact: Contact, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -668,6 +677,12 @@ export function PipelineView({
     }
 
     if (contactToMove && contactToMove.pipelineStage !== targetStage) {
+      if (targetStage === 'perdido') {
+        requestMarkLeadAsLost(contactToMove);
+        setDraggedContact(null);
+        return;
+      }
+
       const stageInfo = PIPELINE_STAGES[targetStage];
       const previousStage = contactToMove.pipelineStage;
 
