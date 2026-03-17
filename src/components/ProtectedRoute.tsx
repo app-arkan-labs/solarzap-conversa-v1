@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+﻿import { useEffect, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,7 +7,7 @@ import { type OrgRole } from '@/lib/orgAdminClient';
 import { Button } from '@/components/ui/button';
 import OrgSuspendedScreen from '@/components/admin/OrgSuspendedScreen';
 import { useOrgBillingInfo } from '@/hooks/useOrgBilling';
-import BillingSetupWizard from '@/components/billing/BillingSetupWizard';
+// BillingSetupWizard removido — todos os fluxos de billing redirecionam para /pricing
 import { BillingBlockerProvider } from '@/contexts/BillingBlockerContext';
 import { useOnboardingProgress } from '@/hooks/useOnboardingProgress';
 import SubscriptionRequiredScreen from '@/components/billing/SubscriptionRequiredScreen';
@@ -88,11 +88,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
     if (organizations.length > 1) {
       return <Navigate to="/select-organization" replace />;
     }
-    return <BillingSetupWizard />;
+    return <Navigate to="/pricing" replace />;
   }
 
   if (!orgId) {
-    if (orgResolutionStatus !== 'error') return <BillingSetupWizard />;
+    if (orgResolutionStatus !== 'error') return <Navigate to="/pricing" replace />;
 
     const errorKind = orgResolutionError?.kind ?? 'transient';
     const errorTitle = ORG_ERROR_TITLE_BY_KIND[errorKind];
@@ -157,7 +157,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   const isBillingRoute = location.pathname === '/pricing' || location.pathname === '/billing';
   const isOnboardingRoute = location.pathname === '/onboarding';
   if (!billingQuery.isLoading && !isUnlimited && subscriptionStatus === 'pending_checkout' && !isBillingRoute) {
-    return <BillingSetupWizard />;
+    return <Navigate to="/pricing" replace />;
   }
 
   if (!billingQuery.isLoading && !isUnlimited && accessState === 'blocked' && !isBillingRoute) {
