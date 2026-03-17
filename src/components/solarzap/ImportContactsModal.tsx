@@ -21,13 +21,15 @@ import { Upload, FileSpreadsheet, Check, AlertCircle, Loader2, X, RefreshCw } fr
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { CHANNEL_INFO, type ClientType } from '@/types/solarzap';
+import { CHANNEL_INFO, PIPELINE_STAGES, type ClientType, type PipelineStage } from '@/types/solarzap';
 import { resolveImportedPipelineStage } from '@/lib/leadStageNormalization';
 import { resolveImportedClientType } from '@/utils/importClientType';
 import type { ImportLeadsSummary } from '@/lib/importLeadsSummary';
 import { useAuth } from '@/contexts/AuthContext';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
+import { getRoundRobinAssigneeForIndex, normalizeAssigneeIds } from '@/lib/assigneeDistribution';
+import { MultiAssigneeSelector } from './MultiAssigneeSelector';
 
 interface ImportContactsModalProps {
   isOpen: boolean;
@@ -55,6 +57,7 @@ export interface ImportedContact {
   cpf_cnpj?: string;
   assigned_to_user_id?: string;
   tipo_cliente_default?: ClientType;
+  status_pipeline_default?: PipelineStage;
 }
 
 // Database columns that can be mapped - labels must match ExportContactsModal exactly
@@ -101,7 +104,8 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
   const [isImporting, setIsImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<ImportLeadsSummary | null>(null);
   const [selectedSource, setSelectedSource] = useState<string>('cold_list'); // Default for imports
-  const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>('');
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
+  const [defaultPipelineStage, setDefaultPipelineStage] = useState<PipelineStage>('novo_lead');
   const [defaultClientType, setDefaultClientType] = useState<ClientType>('residencial');
   const [members, setMembers] = useState<MemberDto[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
@@ -112,13 +116,16 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
   const fallbackAssigneeId = user?.id || '';
 
   const selectedAssigneeLabel = useMemo(() => {
-    const selectedMember = members.find((member) => member.user_id === selectedAssigneeId);
-    if (selectedMember) return getMemberDisplayName(selectedMember);
-    if (selectedAssigneeId && selectedAssigneeId === user?.id) {
-      return user?.email || 'Usuário atual';
-    }
-    return 'Não definido';
-  }, [members, selectedAssigneeId, user?.email, user?.id]);
+    const normalized = normalizeAssigneeIds(selectedAssigneeIds);
+    if (normalized.length < 1) return 'Não definido';
+    const labels = normalized.map((id) => {
+      const selectedMember = members.find((member) => member.user_id === id);
+      if (selectedMember) return getMemberDisplayName(selectedMember);
+      if (id === user?.id) return user?.email || 'Usuário atual';
+      return id;
+    });
+    return labels.slice(0, 2).join(' • ') + (labels.length > 2 ? ` • +${labels.length - 2}` : '');
+  }, [members, selectedAssigneeIds, user?.email, user?.id]);
 
   const resetState = useCallback(() => {
     setStep('upload');
@@ -129,7 +136,8 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
     setIsImporting(false);
     setImportSummary(null);
     setSelectedSource('cold_list');
-    setSelectedAssigneeId(fallbackAssigneeId);
+    setSelectedAssigneeIds(fallbackAssigneeId ? [fallbackAssigneeId] : []);
+    setDefaultPipelineStage('novo_lead');
     setDefaultClientType('residencial');
     setMembers([]);
     setIsLoadingMembers(false);
@@ -178,22 +186,27 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
       setMembers(nextMembers);
 
       if (nextMembers.length < 1) {
-        setSelectedAssigneeId(fallbackAssigneeId);
+        setSelectedAssigneeIds(fallbackAssigneeId ? [fallbackAssigneeId] : []);
         setMembersLoadError('Nenhum membro encontrado para esta organização.');
         return;
       }
 
       const preferred = nextMembers.find((member) => member.user_id === user?.id);
-      setSelectedAssigneeId((current) => {
-        if (current && nextMembers.some((member) => member.user_id === current)) return current;
-        return preferred?.user_id || nextMembers[0].user_id;
+      setSelectedAssigneeIds((current) => {
+        const normalizedCurrent = normalizeAssigneeIds(current);
+        const validCurrent = normalizedCurrent.filter((id) => nextMembers.some((member) => member.user_id === id));
+        if (validCurrent.length > 0) return validCurrent;
+        if (fallbackAssigneeId && nextMembers.some((member) => member.user_id === fallbackAssigneeId)) {
+          return [fallbackAssigneeId];
+        }
+        return [preferred?.user_id || nextMembers[0].user_id];
       });
     } catch (error) {
       console.warn('Failed to load members for contact import:', error);
       if (membersRequestRef.current !== currentRequestId) return;
 
       setMembers([]);
-      setSelectedAssigneeId(fallbackAssigneeId);
+      setSelectedAssigneeIds(fallbackAssigneeId ? [fallbackAssigneeId] : []);
       setMembersLoadError('Não foi possível carregar os membros agora.');
     } finally {
       if (membersRequestRef.current === currentRequestId) {
@@ -382,10 +395,16 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
 
       // Apply the global source selected by the user
       contact['canal'] = selectedSource;
-      contact['status_pipeline'] = resolveImportedPipelineStage({
-        statusPipeline: contact.status_pipeline,
-        statusPipelineCode: contact.status_pipeline_code,
-      });
+      const hasStageInRow = Boolean(
+        String(contact.status_pipeline || '').trim() || String(contact.status_pipeline_code || '').trim(),
+      );
+      contact['status_pipeline'] = hasStageInRow
+        ? resolveImportedPipelineStage({
+          statusPipeline: contact.status_pipeline,
+          statusPipelineCode: contact.status_pipeline_code,
+        })
+        : defaultPipelineStage;
+      contact['status_pipeline_default'] = defaultPipelineStage;
       contact['tipo_cliente_default'] = defaultClientType;
 
       const resolvedClientType = resolveImportedClientType({
@@ -398,23 +417,34 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
         delete contact['tipo_cliente'];
       }
 
-      const assigneeId = (selectedAssigneeId || fallbackAssigneeId).trim();
-      if (assigneeId) {
-        contact['assigned_to_user_id'] = assigneeId;
-      }
-
       return contact as ImportedContact;
     }).filter((contact): contact is ImportedContact => Boolean(contact));
 
     // Deduplicate by phone number within the import file
     const seen = new Set<string>();
-    return mapped.filter(c => {
+    const deduped = mapped.filter(c => {
       const phone = String(c.telefone || '').replace(/\D/g, '');
       if (!phone) return true;
       if (seen.has(phone)) return false;
       seen.add(phone);
       return true;
     });
+
+    const normalizedAssigneeIds = normalizeAssigneeIds([
+      ...selectedAssigneeIds,
+      fallbackAssigneeId,
+    ]);
+
+    if (normalizedAssigneeIds.length > 0) {
+      deduped.forEach((contact, index) => {
+        const assigneeId = getRoundRobinAssigneeForIndex(normalizedAssigneeIds, index);
+        if (assigneeId) {
+          contact.assigned_to_user_id = assigneeId;
+        }
+      });
+    }
+
+    return deduped;
   };
 
   const requiredFieldsMapped = () => {
@@ -557,36 +587,38 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
                         )}
                       </Button>
                     </div>
+                    <MultiAssigneeSelector
+                      members={members}
+                      selectedIds={selectedAssigneeIds}
+                      onChange={setSelectedAssigneeIds}
+                      isLoading={isLoadingMembers && members.length < 1 && !fallbackAssigneeId}
+                      fallbackId={fallbackAssigneeId}
+                      fallbackLabel={user?.email || 'Usuário atual'}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Atribuição proporcional automática entre os responsáveis selecionados.
+                    </p>
+                  </div>
 
+                  <div className="space-y-2">
+                    <Label htmlFor="import-stage">Etapa da pipeline (padrão)</Label>
                     <Select
-                      value={selectedAssigneeId}
-                      onValueChange={setSelectedAssigneeId}
-                      disabled={isLoadingMembers && members.length < 1 && !fallbackAssigneeId}
+                      value={defaultPipelineStage}
+                      onValueChange={(value) => setDefaultPipelineStage(value as PipelineStage)}
                     >
-                      <SelectTrigger id="import-assignee">
-                        <SelectValue
-                          placeholder={
-                            isLoadingMembers
-                              ? 'Carregando membros...'
-                              : 'Selecione o responsável'
-                          }
-                        />
+                      <SelectTrigger id="import-stage">
+                        <SelectValue placeholder="Selecione a etapa padrão" />
                       </SelectTrigger>
                       <SelectContent>
-                        {members.map((member) => (
-                          <SelectItem key={member.user_id} value={member.user_id}>
-                            {getMemberDisplayName(member)}
+                        {(Object.entries(PIPELINE_STAGES) as [PipelineStage, { title: string; icon: string }][]).map(([value, info]) => (
+                          <SelectItem key={value} value={value}>
+                            {info.icon} {info.title}
                           </SelectItem>
                         ))}
-                        {members.length < 1 && fallbackAssigneeId && (
-                          <SelectItem value={fallbackAssigneeId}>
-                            {user?.email || 'Usuário atual'}
-                          </SelectItem>
-                        )}
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      Leads novos e existentes terão o responsável sobrescrito.
+                      Será usada quando a planilha não trouxer etapa para a linha.
                     </p>
                   </div>
 
@@ -622,6 +654,7 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="secondary">Origem: {CHANNEL_INFO[selectedSource]?.label || selectedSource}</Badge>
                   <Badge variant="secondary">Responsável: {selectedAssigneeLabel}</Badge>
+                  <Badge variant="secondary">Etapa: {PIPELINE_STAGES[defaultPipelineStage]?.title || defaultPipelineStage}</Badge>
                   <Badge variant="secondary">
                     Tipo de projeto: {CLIENT_TYPE_OPTIONS.find((option) => option.value === defaultClientType)?.label || 'Residencial'}
                   </Badge>

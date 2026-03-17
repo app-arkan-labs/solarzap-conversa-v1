@@ -25,7 +25,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import type { BroadcastCampaignInput, BroadcastRecipientInput } from '@/hooks/useBroadcasts';
 import type { UserWhatsAppInstance } from '@/hooks/useUserWhatsAppInstances';
-import { CHANNEL_INFO, type Channel, type ClientType } from '@/types/solarzap';
+import { CHANNEL_INFO, PIPELINE_STAGES, type Channel, type ClientType, type PipelineStage } from '@/types/solarzap';
 import { parseContactsFile, type ImportedContactRow } from '@/utils/contactsImport';
 import {
   BROADCAST_MIN_TIMER_SECONDS,
@@ -37,7 +37,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
 import { isBillingInterruptionError } from '@/lib/billingBlocker';
+import { getRoundRobinAssigneeForIndex, normalizeAssigneeIds } from '@/lib/assigneeDistribution';
 import { BroadcastLeadSelector } from './BroadcastLeadSelector';
+import { MultiAssigneeSelector } from './MultiAssigneeSelector';
 
 interface BroadcastCampaignModalProps {
   isOpen: boolean;
@@ -74,7 +76,8 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
   const [campaignName, setCampaignName] = useState('');
   const [instanceName, setInstanceName] = useState('');
   const [sourceChannel, setSourceChannel] = useState<Channel>('cold_list');
-  const [assignedToUserId, setAssignedToUserId] = useState('');
+  const [assignedToUserIds, setAssignedToUserIds] = useState<string[]>([]);
+  const [pipelineStage, setPipelineStage] = useState<PipelineStage>('novo_lead');
   const [leadClientType, setLeadClientType] = useState<ClientType>('residencial');
   const [messages, setMessages] = useState<string[]>(DEFAULT_MESSAGES);
   const [timerSeconds, setTimerSeconds] = useState(15);
@@ -142,25 +145,27 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
       setMembers(nextMembers);
 
       if (nextMembers.length < 1) {
-        setAssignedToUserId(fallbackAssigneeId);
+        setAssignedToUserIds(fallbackAssigneeId ? [fallbackAssigneeId] : []);
         setMembersLoadError('Nenhum membro encontrado para esta organização.');
         return;
       }
 
       const preferred = nextMembers.find((member) => member.user_id === user?.id);
-      setAssignedToUserId((current) => {
-        if (current && nextMembers.some((member) => member.user_id === current)) return current;
+      setAssignedToUserIds((current) => {
+        const normalizedCurrent = normalizeAssigneeIds(current);
+        const validCurrent = normalizedCurrent.filter((id) => nextMembers.some((member) => member.user_id === id));
+        if (validCurrent.length > 0) return validCurrent;
         if (fallbackAssigneeId && nextMembers.some((member) => member.user_id === fallbackAssigneeId)) {
-          return fallbackAssigneeId;
+          return [fallbackAssigneeId];
         }
-        return preferred?.user_id || nextMembers[0].user_id;
+        return [preferred?.user_id || nextMembers[0].user_id];
       });
     } catch (error) {
       console.warn('Failed to load members for broadcast campaign:', error);
       if (membersRequestRef.current !== currentRequestId) return;
 
       setMembers([]);
-      setAssignedToUserId(fallbackAssigneeId);
+      setAssignedToUserIds(fallbackAssigneeId ? [fallbackAssigneeId] : []);
       setMembersLoadError('Não foi possível carregar os membros agora.');
     } finally {
       if (membersRequestRef.current === currentRequestId) {
@@ -180,7 +185,8 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
     setCampaignName('');
     setInstanceName('');
     setSourceChannel('cold_list');
-    setAssignedToUserId(fallbackAssigneeId);
+    setAssignedToUserIds(fallbackAssigneeId ? [fallbackAssigneeId] : []);
+    setPipelineStage('novo_lead');
     setLeadClientType('residencial');
     setMessages(DEFAULT_MESSAGES);
     setTimerSeconds(15);
@@ -218,7 +224,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
         toast({ title: 'Selecione uma instancia de WhatsApp', variant: 'destructive' });
         return false;
       }
-      if (!assignedToUserId.trim()) {
+      if (normalizeAssigneeIds(assignedToUserIds).length < 1) {
         toast({ title: 'Selecione o responsavel da campanha', variant: 'destructive' });
         return false;
       }
@@ -316,11 +322,14 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
       return;
     }
 
-    const recipients: BroadcastRecipientInput[] = contacts.map((contact) => ({
+    const normalizedAssigneeIds = normalizeAssigneeIds(assignedToUserIds);
+    const recipients: BroadcastRecipientInput[] = contacts.map((contact, index) => ({
       name: contact.name,
       phone: contact.phone,
       email: contact.email,
+      assigned_to_user_id: getRoundRobinAssigneeForIndex(normalizedAssigneeIds, index) || undefined,
     }));
+    const primaryAssigneeId = normalizedAssigneeIds[0] || user?.id || undefined;
 
     setIsSubmitting(true);
 
@@ -330,11 +339,12 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
           name: campaignName.trim(),
           instance_name: instanceName,
           source_channel: sourceChannel,
-          assigned_to_user_id: assignedToUserId || user?.id || undefined,
+          assigned_to_user_id: primaryAssigneeId,
+          assigned_to_user_ids: normalizedAssigneeIds,
           lead_client_type: leadClientType,
           messages: normalizedMessages,
           interval_seconds: clampBroadcastTimerSeconds(timerSeconds),
-          pipeline_stage: 'novo_lead',
+          pipeline_stage: pipelineStage,
           ai_enabled: true,
           recipients,
         },
@@ -356,10 +366,17 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
   const normalizedTimerSeconds = clampBroadcastTimerSeconds(timerSeconds);
   const previewContacts = contacts.slice(0, PREVIEW_CONTACTS_LIMIT);
   const completedSteps = step - 1;
-  const selectedAssignee = members.find((member) => member.user_id === assignedToUserId);
-  const selectedAssigneeLabel = selectedAssignee
-    ? getMemberDisplayName(selectedAssignee)
-    : (assignedToUserId === fallbackAssigneeId ? (user?.email || 'Usuário atual') : '-');
+  const selectedAssigneeLabel = useMemo(() => {
+    const normalized = normalizeAssigneeIds(assignedToUserIds);
+    if (normalized.length < 1) return '-';
+    const labels = normalized.map((id) => {
+      const selected = members.find((member) => member.user_id === id);
+      if (selected) return getMemberDisplayName(selected);
+      if (id === fallbackAssigneeId) return user?.email || 'Usuário atual';
+      return id;
+    });
+    return labels.slice(0, 2).join(' • ') + (labels.length > 2 ? ` • +${labels.length - 2}` : '');
+  }, [assignedToUserIds, fallbackAssigneeId, members, user?.email]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -417,20 +434,38 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Origem dos leads</Label>
-                <Select value={sourceChannel} onValueChange={(value) => setSourceChannel(value as Channel)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a origem" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(CHANNEL_INFO).map(([value, info]) => (
-                      <SelectItem key={value} value={value}>
-                        {info.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Origem dos leads</Label>
+                  <Select value={sourceChannel} onValueChange={(value) => setSourceChannel(value as Channel)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a origem" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(CHANNEL_INFO).map(([value, info]) => (
+                        <SelectItem key={value} value={value}>
+                          {info.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Etapa da pipeline</Label>
+                  <Select value={pipelineStage} onValueChange={(value) => setPipelineStage(value as PipelineStage)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a etapa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.entries(PIPELINE_STAGES) as [PipelineStage, { title: string; icon: string }][]).map(([value, info]) => (
+                        <SelectItem key={value} value={value}>
+                          {info.icon} {info.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -457,27 +492,14 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                     )}
                   </Button>
                 </div>
-                <Select
-                  value={assignedToUserId}
-                  onValueChange={setAssignedToUserId}
-                  disabled={isLoadingMembers && members.length < 1 && !fallbackAssigneeId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={isLoadingMembers ? 'Carregando membros...' : 'Selecione o responsavel'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {members.map((member) => (
-                      <SelectItem key={member.user_id} value={member.user_id}>
-                        {getMemberDisplayName(member)}
-                      </SelectItem>
-                    ))}
-                    {members.length < 1 && fallbackAssigneeId && (
-                      <SelectItem value={fallbackAssigneeId}>
-                        {user?.email || 'Usuário atual'}
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                <MultiAssigneeSelector
+                  members={members}
+                  selectedIds={assignedToUserIds}
+                  onChange={setAssignedToUserIds}
+                  isLoading={isLoadingMembers && members.length < 1 && !fallbackAssigneeId}
+                  fallbackId={fallbackAssigneeId}
+                  fallbackLabel={user?.email || 'Usuário atual'}
+                />
                 {membersLoadError && (
                   <p className="text-xs text-amber-600">{membersLoadError}</p>
                 )}
@@ -724,7 +746,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
 
           {step === 5 && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Campanha</p>
                   <p className="font-semibold">{campaignName || '-'}</p>
@@ -751,6 +773,10 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Responsavel</p>
                   <p className="font-semibold">{selectedAssigneeLabel}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Etapa da pipeline</p>
+                  <p className="font-semibold">{PIPELINE_STAGES[pipelineStage]?.title || pipelineStage}</p>
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Tipo de cliente</p>

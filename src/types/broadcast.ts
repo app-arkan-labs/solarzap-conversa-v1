@@ -7,6 +7,7 @@ export interface BroadcastCampaign {
   org_id: string;
   user_id: string;
   assigned_to_user_id: string | null;
+  assigned_to_user_ids: string[];
   lead_client_type: 'residencial' | 'comercial' | 'industrial' | 'rural' | 'usina';
   name: string;
   messages: string[];
@@ -29,6 +30,7 @@ export interface BroadcastRecipient {
   id: string;
   campaign_id: string;
   lead_id: number | null;
+  assigned_to_user_id?: string | null;
   name: string;
   phone: string;
   email?: string | null;
