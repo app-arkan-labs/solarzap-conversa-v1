@@ -23,6 +23,8 @@ const ROLE_LEVEL: Record<SystemRole, number> = {
 const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   whoami: { minRole: 'read_only', requireMfa: true },
   list_orgs: { minRole: 'read_only', requireMfa: true },
+  list_orphan_users: { minRole: 'support', requireMfa: true },
+  check_user_org_status: { minRole: 'support', requireMfa: true },
   get_org_details: { minRole: 'support', requireMfa: true },
   list_org_members: { minRole: 'support', requireMfa: true },
   get_system_metrics: { minRole: 'ops', requireMfa: true },
@@ -35,6 +37,7 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   set_org_feature: { minRole: 'ops', requireMfa: true },
   delete_org: { minRole: 'super_admin', requireMfa: true },
   bulk_delete_orgs: { minRole: 'super_admin', requireMfa: true },
+  create_org_with_user: { minRole: 'super_admin', requireMfa: true },
   list_subscription_plans: { minRole: 'read_only', requireMfa: true },
   get_financial_summary: { minRole: 'billing', requireMfa: true },
 };
@@ -109,6 +112,113 @@ function toTrimmedString(value: unknown): string | null {
 function toReason(value: unknown): string | null {
   const normalized = toTrimmedString(value);
   return normalized && normalized.length > 0 ? normalized : null;
+}
+
+function normalizeEmail(value: unknown): string | null {
+  const raw = toTrimmedString(value);
+  if (!raw) return null;
+  const email = raw.toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return null;
+  }
+  return email;
+}
+
+function generateTempPassword() {
+  const randomPart = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+  return `Tmp!${randomPart}Aa1`;
+}
+
+async function findAuthUserByEmail(
+  adminClient: ReturnType<typeof createClient>,
+  email: string,
+) {
+  const perPage = 200;
+  for (let page = 1; page <= 100; page += 1) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      throw { status: 500, code: 'users_list_failed' };
+    }
+    const users = data.users ?? [];
+    const found = users.find((user) => (user.email || '').toLowerCase() === email);
+    if (found) return found;
+    if (users.length < perPage) break;
+  }
+  return null;
+}
+
+async function resolveUserLinkedOrg(
+  adminClient: ReturnType<typeof createClient>,
+  userId: string,
+) {
+  const { data: ownerOrg, error: ownerError } = await adminClient
+    .from('organizations')
+    .select('id, name')
+    .eq('owner_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (ownerError) {
+    throw { status: 500, code: 'user_org_lookup_failed' };
+  }
+  if (ownerOrg?.id) {
+    return {
+      org_id: String(ownerOrg.id),
+      org_name: typeof ownerOrg.name === 'string' ? ownerOrg.name : null,
+    };
+  }
+
+  const { data: membership, error: membershipError } = await adminClient
+    .from('organization_members')
+    .select('org_id')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (membershipError) {
+    throw { status: 500, code: 'user_membership_lookup_failed' };
+  }
+
+  if (!membership?.org_id) {
+    return null;
+  }
+
+  const orgId = String(membership.org_id);
+  const { data: orgData } = await adminClient
+    .from('organizations')
+    .select('name')
+    .eq('id', orgId)
+    .maybeSingle();
+
+  return {
+    org_id: orgId,
+    org_name: typeof orgData?.name === 'string' ? orgData.name : null,
+  };
+}
+
+async function getPlanLimitsByKey(
+  adminClient: ReturnType<typeof createClient>,
+  planKey: string,
+) {
+  const normalizedPlan = planKey === 'starter' ? 'start' : planKey === 'business' ? 'scale' : planKey;
+  const { data, error } = await adminClient
+    .from('_admin_subscription_plans')
+    .select('plan_key, limits')
+    .eq('plan_key', normalizedPlan)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error) {
+    throw { status: 500, code: 'plan_lookup_failed' };
+  }
+  if (!data || typeof data.limits !== 'object' || data.limits === null || Array.isArray(data.limits)) {
+    throw { status: 400, code: 'invalid_plan' };
+  }
+
+  return {
+    plan: String(data.plan_key),
+    limits: data.limits,
+  };
 }
 
 function json(
@@ -609,6 +719,275 @@ async function handleGetOrgDetails(
       timeline_per_page: timelinePerPage,
       credit_balances: creditBalances,
     },
+  };
+}
+
+async function handleCheckUserOrgStatus(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const email = normalizeEmail(payload.email);
+  if (!email) throw { status: 400, code: 'invalid_email' };
+
+  const user = await findAuthUserByEmail(adminClient, email);
+  if (!user || !user.id) {
+    return {
+      ok: true,
+      email,
+      exists: false,
+      has_org: false,
+      user_id: null,
+      org_id: null,
+      org_name: null,
+    };
+  }
+
+  const linkedOrg = await resolveUserLinkedOrg(adminClient, user.id);
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'check_user_org_status',
+    {
+      target_type: 'read',
+      target_id: email,
+      org_id: linkedOrg?.org_id ?? null,
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    email,
+    exists: true,
+    has_org: Boolean(linkedOrg?.org_id),
+    user_id: user.id,
+    org_id: linkedOrg?.org_id ?? null,
+    org_name: linkedOrg?.org_name ?? null,
+  };
+}
+
+async function handleListOrphanUsers(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const { page, perPage } = parsePagination(payload, { page: 1, perPage: 20, maxPerPage: 50 });
+  const search = toTrimmedString(payload.search)?.toLowerCase() ?? null;
+
+  const allUsers: Array<{ id: string; email: string | null; created_at: string | null }> = [];
+  const usersPerPage = 1000;
+
+  for (let usersPage = 1; usersPage <= 100; usersPage += 1) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page: usersPage, perPage: usersPerPage });
+    if (error) {
+      throw { status: 500, code: 'users_list_failed' };
+    }
+    const users = data.users ?? [];
+    for (const user of users) {
+      const email = user.email ?? null;
+      if (search && !(email || '').toLowerCase().includes(search)) {
+        continue;
+      }
+      allUsers.push({
+        id: user.id,
+        email,
+        created_at: user.created_at ?? null,
+      });
+    }
+    if (users.length < usersPerPage) break;
+  }
+
+  const [{ data: memberships, error: membershipError }, { data: ownedOrgs, error: ownerError }] = await Promise.all([
+    adminClient.from('organization_members').select('user_id'),
+    adminClient.from('organizations').select('owner_id'),
+  ]);
+
+  if (membershipError || ownerError) {
+    throw { status: 500, code: 'orphan_users_lookup_failed' };
+  }
+
+  const linkedUserIds = new Set<string>();
+  for (const row of memberships ?? []) {
+    if (typeof row.user_id === 'string' && row.user_id) {
+      linkedUserIds.add(row.user_id);
+    }
+  }
+  for (const row of ownedOrgs ?? []) {
+    if (typeof row.owner_id === 'string' && row.owner_id) {
+      linkedUserIds.add(row.owner_id);
+    }
+  }
+
+  const orphanUsers = allUsers
+    .filter((user) => !linkedUserIds.has(user.id))
+    .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '') * -1);
+
+  const from = (page - 1) * perPage;
+  const to = from + perPage;
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'list_orphan_users',
+    {
+      target_type: 'read',
+      target_id: 'orphan_users',
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    users: orphanUsers.slice(from, to),
+    total: orphanUsers.length,
+    page,
+    per_page: perPage,
+  };
+}
+
+async function handleCreateOrgWithUser(
+  adminClient: ReturnType<typeof createClient>,
+  admin: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const email = normalizeEmail(payload.email);
+  if (!email) throw { status: 400, code: 'invalid_email' };
+
+  const passwordInput = toTrimmedString(payload.password);
+  const orgNameInput = toTrimmedString(payload.org_name);
+  const requestedPlan = toTrimmedString(payload.plan);
+  const startTrial = payload.start_trial === true;
+
+  let user = await findAuthUserByEmail(adminClient, email);
+  let tempPassword: string | null = null;
+  let userCreated = false;
+
+  if (user?.id) {
+    const linkedOrg = await resolveUserLinkedOrg(adminClient, user.id);
+    if (linkedOrg?.org_id) {
+      throw { status: 409, code: 'user_already_has_org' };
+    }
+  } else {
+    const generatedPassword = passwordInput || generateTempPassword();
+    const { data: createData, error: createError } = await adminClient.auth.admin.createUser({
+      email,
+      password: generatedPassword,
+      email_confirm: true,
+    });
+
+    if (createError || !createData.user?.id) {
+      throw { status: 500, code: 'create_user_failed' };
+    }
+
+    user = createData.user;
+    userCreated = true;
+    tempPassword = passwordInput ? null : generatedPassword;
+  }
+
+  if (!user?.id) {
+    throw { status: 500, code: 'user_resolution_failed' };
+  }
+
+  const fallbackName = `Organizacao de ${email}`;
+  const orgName = orgNameInput || fallbackName;
+  const nowIso = new Date().toISOString();
+  const trialEndsAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const orgInsertPayload: Record<string, unknown> = {
+    name: orgName,
+    owner_id: user.id,
+    status: 'active',
+    onboarding_state: 'pending_checkout',
+    subscription_status: startTrial ? 'trialing' : 'pending_checkout',
+    trial_days: 7,
+    trial_started_at: startTrial ? nowIso : null,
+    trial_ends_at: startTrial ? trialEndsAtIso : null,
+  };
+
+  const { data: insertedOrg, error: orgInsertError } = await adminClient
+    .from('organizations')
+    .insert(orgInsertPayload)
+    .select('id, name, owner_id, plan, plan_limits, subscription_status, trial_ends_at')
+    .single();
+
+  if (orgInsertError || !insertedOrg?.id) {
+    throw { status: 500, code: 'create_org_failed' };
+  }
+
+  const orgId = String(insertedOrg.id);
+
+  const { error: membershipError } = await adminClient
+    .from('organization_members')
+    .upsert(
+      {
+        org_id: orgId,
+        user_id: user.id,
+        role: 'owner',
+        can_view_team_leads: true,
+      },
+      { onConflict: 'org_id,user_id' },
+    );
+
+  if (membershipError) {
+    throw { status: 500, code: 'owner_membership_failed' };
+  }
+
+  let appliedPlan: string | null = null;
+  if (requestedPlan) {
+    const resolvedPlan = await getPlanLimitsByKey(adminClient, requestedPlan);
+    const planUpdatePayload: Record<string, unknown> = {
+      plan: resolvedPlan.plan,
+      plan_limits: resolvedPlan.limits,
+    };
+    if (resolvedPlan.plan === 'unlimited') {
+      planUpdatePayload.subscription_status = 'active';
+    }
+
+    const { error: planUpdateError } = await adminClient
+      .from('organizations')
+      .update(planUpdatePayload)
+      .eq('id', orgId);
+
+    if (planUpdateError) {
+      throw { status: 500, code: 'apply_plan_failed' };
+    }
+    appliedPlan = resolvedPlan.plan;
+  }
+
+  await writeAuditLog(
+    adminClient,
+    admin,
+    'create_org_with_user',
+    {
+      target_type: 'organization',
+      target_id: orgId,
+      org_id: orgId,
+      after: {
+        org_id: orgId,
+        user_id: user.id,
+        user_email: email,
+        user_created: userCreated,
+        plan: appliedPlan,
+        start_trial: startTrial,
+      },
+      reason: 'Admin create org with user',
+    },
+    req,
+  );
+
+  return {
+    ok: true,
+    org_id: orgId,
+    user_id: user.id,
+    user_email: email,
+    user_created: userCreated,
+    temp_password: tempPassword,
+    plan: appliedPlan,
   };
 }
 
@@ -1378,6 +1757,10 @@ async function dispatchAction(
       return await handleWhoAmI(adminClient, admin, aal, req);
     case 'list_orgs':
       return await handleListOrgs(adminClient, admin, payload, req);
+    case 'list_orphan_users':
+      return await handleListOrphanUsers(adminClient, admin, payload, req);
+    case 'check_user_org_status':
+      return await handleCheckUserOrgStatus(adminClient, admin, payload, req);
     case 'get_org_details':
       return await handleGetOrgDetails(adminClient, admin, payload, req);
     case 'list_org_members':
@@ -1402,6 +1785,8 @@ async function dispatchAction(
       return await handleDeleteOrg(adminClient, admin, payload, req);
     case 'bulk_delete_orgs':
       return await handleBulkDeleteOrgs(adminClient, admin, payload, req);
+    case 'create_org_with_user':
+      return await handleCreateOrgWithUser(adminClient, admin, payload, req);
     case 'list_subscription_plans':
       return await handleListSubscriptionPlans(adminClient, admin, req);
     case 'get_financial_summary':

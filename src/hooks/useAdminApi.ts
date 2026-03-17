@@ -6,6 +6,8 @@ export type SystemRole = 'super_admin' | 'ops' | 'support' | 'billing' | 'read_o
 export type AdminApiAction =
   | 'whoami'
   | 'list_orgs'
+  | 'list_orphan_users'
+  | 'check_user_org_status'
   | 'get_org_details'
   | 'list_org_members'
   | 'get_system_metrics'
@@ -18,6 +20,7 @@ export type AdminApiAction =
   | 'set_org_feature'
   | 'delete_org'
   | 'bulk_delete_orgs'
+  | 'create_org_with_user'
   | 'list_subscription_plans'
   | 'get_financial_summary';
 
@@ -208,6 +211,40 @@ export type AdminFinancialSummary = {
 export type AdminFinancialSummaryResponse = {
   ok: true;
   summary: AdminFinancialSummary;
+};
+
+export type AdminUserOrgStatusResponse = {
+  ok: true;
+  email: string;
+  exists: boolean;
+  has_org: boolean;
+  user_id: string | null;
+  org_id: string | null;
+  org_name: string | null;
+};
+
+export type AdminOrphanUser = {
+  id: string;
+  email: string | null;
+  created_at: string | null;
+};
+
+export type AdminOrphanUsersResponse = {
+  ok: true;
+  users: AdminOrphanUser[];
+  total: number;
+  page: number;
+  per_page: number;
+};
+
+export type AdminCreateOrgWithUserResponse = {
+  ok: true;
+  org_id: string;
+  user_id: string;
+  user_email: string;
+  user_created: boolean;
+  temp_password: string | null;
+  plan: string | null;
 };
 
 export type AdminApiError = Error & {
@@ -566,6 +603,7 @@ export const adminQueryKeys = {
   all: ['admin'] as const,
   whoami: () => ['admin', 'whoami'] as const,
   orgs: (params: Record<string, unknown>) => ['admin', 'orgs', params] as const,
+  orphanUsers: (params: Record<string, unknown>) => ['admin', 'orphan-users', params] as const,
   orgDetails: (orgId: string) => ['admin', 'org-details', orgId] as const,
   orgMembers: (orgId: string) => ['admin', 'org-members', orgId] as const,
   systemMetrics: () => ['admin', 'system-metrics'] as const,
@@ -597,6 +635,18 @@ export function useAdminOrgs(params: {
   return useQuery({
     queryKey: adminQueryKeys.orgs(params),
     queryFn: () => invokeAdminApi<AdminListOrgsResponse>({ action: 'list_orgs', ...params }),
+  });
+}
+
+export function useAdminOrphanUsers(params?: {
+  page?: number;
+  per_page?: number;
+  search?: string;
+}) {
+  const effectiveParams = params || {};
+  return useQuery({
+    queryKey: adminQueryKeys.orphanUsers(effectiveParams),
+    queryFn: () => invokeAdminApi<AdminOrphanUsersResponse>({ action: 'list_orphan_users', ...effectiveParams }),
   });
 }
 

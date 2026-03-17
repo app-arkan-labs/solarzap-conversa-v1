@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { adminQueryKeys, isAdminApiError, useAdminMutation, useAdminOrgs } from '@/hooks/useAdminApi';
+import CreateOrgDialog from '@/components/admin/CreateOrgDialog';
 
 const PER_PAGE = 20;
 
@@ -200,9 +201,12 @@ export default function OrgsList() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Organizações</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{total} organizações cadastradas</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Organizações</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{total} organizações cadastradas</p>
+        </div>
+        <CreateOrgDialog />
       </div>
 
       {/* Filters */}
