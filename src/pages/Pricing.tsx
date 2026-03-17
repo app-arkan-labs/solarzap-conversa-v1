@@ -30,7 +30,7 @@ const PLAN_DISPLAY: Record<string, {
     description: 'Para quem está começando a escalar vendas com WhatsApp',
     icon: Zap,
     gradient: 'from-slate-500 to-slate-700',
-    buttonGradient: 'brand-gradient-button',
+    buttonGradient: 'bg-gradient-to-r from-slate-600 to-slate-800 hover:from-slate-700 hover:to-slate-900',
     tagline: 'Essencial',
   },
   pro: {
@@ -38,15 +38,15 @@ const PLAN_DISPLAY: Record<string, {
     description: 'Ideal para operações em crescimento acelerado',
     icon: Crown,
     gradient: 'from-primary to-secondary',
-    buttonGradient: 'brand-gradient-button',
+    buttonGradient: 'bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--secondary)))] hover:opacity-95',
     tagline: 'Mais popular',
   },
   scale: {
     label: 'Scale',
     description: 'Para times grandes com volume de alta escala',
     icon: Sparkles,
-    gradient: 'from-secondary to-primary',
-    buttonGradient: 'brand-gradient-button',
+    gradient: 'from-violet-500 to-purple-700',
+    buttonGradient: 'bg-gradient-to-r from-violet-500 to-purple-700 hover:from-violet-600 hover:to-purple-800',
     tagline: 'Máximo poder',
   },
 };
@@ -77,17 +77,17 @@ const CARD_HIGHLIGHTS: Record<string, string[]> = {
 };
 
 const SOURCE_LABELS: Record<string, string> = {
-  tracking: 'Tracking avançado',
-  integracoes: 'Integrações',
+  tracking: 'Tracking avancado',
+  integracoes: 'Integracoes',
   calendario: 'Agendamentos',
   ia_agentes: 'IA Agentes',
   broadcasts: 'Disparos',
-  broadcast_credits: 'Créditos de disparo',
-  ai_credits: 'Créditos de IA',
+  broadcast_credits: 'Creditos de disparo',
+  ai_credits: 'Creditos de IA',
   proposal_ai: 'Propostas com IA',
-  whatsapp_instances: 'Instâncias de WhatsApp',
+  whatsapp_instances: 'Instancias de WhatsApp',
   propostas: 'Propostas',
-  automacoes: 'Automações',
+  automacoes: 'Automacoes',
 };
 
 type PlanRow = {
@@ -119,7 +119,7 @@ function getPlanActionLabel(targetPlan: string, currentPlan: string | null, inte
   if (targetPlan === currentPlan) return 'Plano atual';
   const currentRank = PLAN_RANK[currentPlan ?? 'free'] ?? 0;
   const targetRank = PLAN_RANK[targetPlan] ?? 0;
-  if (!currentPlan || currentPlan === 'free') return 'Testar grátis por 7 dias';
+  if (!currentPlan || currentPlan === 'free') return 'Testar gratis por 7 dias';
   if (targetRank > currentRank) return 'Fazer upgrade';
   if (targetRank < currentRank) return 'Fazer downgrade';
   return 'Selecionar plano';
@@ -155,12 +155,12 @@ export default function Pricing() {
   const source = String(searchParams.get('source') || '').trim().toLowerCase();
   const sourceLabel = SOURCE_LABELS[source] || null;
   const isNoPlan = !currentPlan || currentPlan === 'free';
-  const heroBadgeLabel = intent === 'reactivate' ? 'Reativação guiada' : 'Upgrade guiado';
+  const heroBadgeLabel = intent === 'reactivate' ? 'Reativacao guiada' : 'Upgrade guiado';
   const heroTitle = intent === 'reactivate'
     ? 'Retome seu plano e desbloqueie o acesso completo'
-    : 'Escolha o plano ideal para destravar a próxima etapa';
+    : 'Escolha o plano ideal para destravar a proxima etapa';
   const heroDescription = intent === 'reactivate'
-    ? `Regularize a assinatura${sourceLabel ? ` para voltar a usar ${sourceLabel}` : ''} sem fricção.`
+    ? `Regularize a assinatura${sourceLabel ? ` para voltar a usar ${sourceLabel}` : ''} sem friccao.`
     : sourceLabel
       ? `Chegue ao recurso de ${sourceLabel} com o plano mais aderente ao seu uso atual.`
       : 'Compare os planos e siga para o upgrade mais aderente ao seu momento.';
@@ -240,21 +240,6 @@ export default function Pricing() {
     }
   };
 
-  const journeyHighlights = [
-    {
-      title: 'Escolha um plano',
-      description: 'Selecione Start, Pro ou Scale conforme o tamanho da sua operacao.',
-    },
-    {
-      title: 'Teste por 7 dias',
-      description: 'O trial libera o uso do plano escolhido antes da cobranca mensal.',
-    },
-    {
-      title: 'Gerencie quando quiser',
-      description: 'Upgrade, downgrade e cancelamento podem ser feitos depois no painel da conta.',
-    },
-  ];
-
   return (
     <div className="app-shell-bg min-h-screen text-foreground overflow-y-auto">
       {/* Decorative blurs */}
@@ -282,112 +267,58 @@ export default function Pricing() {
         )}
 
         {/* Hero */}
-        <div className="mb-12 grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_360px] lg:items-stretch">
-          <div className="auth-portal-form-surface">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-xs font-medium text-primary">
-              <Sparkles className="h-3.5 w-3.5" />
-              {intent === 'reactivate' ? heroBadgeLabel : '7 dias grátis em qualquer plano'}
-            </div>
-
-            {isNoPlan && intent !== 'reactivate' ? (
-              <>
-                <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
-                  Escolha o plano ideal para{' '}
-                  <span className="brand-gradient-text">
-                    escalar suas vendas
-                  </span>
-                </h1>
-                <p className="mt-4 max-w-3xl text-lg text-muted-foreground">
-                  Comece a fechar mais negócios com automação via WhatsApp, IA embarcada e CRM solar completo.
-                  Escolha o plano que faz sentido para sua operacao e teste sem cobranca durante os 7 primeiros dias.
-                </p>
-              </>
-            ) : (
-              <>
-                <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
-                  {heroTitle}{' '}
-                  <span className="brand-gradient-text">
-                    SolarZap
-                  </span>
-                </h1>
-                <p className="mt-4 max-w-3xl text-lg text-muted-foreground">
-                  {heroDescription}
-                </p>
-              </>
-            )}
-
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              {currentPlan && currentPlan !== 'free' ? (
-                <div className="public-hero-surface inline-flex items-center gap-3 rounded-full px-5 py-2 text-sm">
-                  <span className="text-muted-foreground">Plano atual:</span>
-                  <Badge className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/15">
-                    {currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}
-                  </Badge>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={handleOpenPortal}
-                    disabled={openingPortal}
-                  >
-                    <CreditCard className="mr-1.5 h-3.5 w-3.5" />
-                    {openingPortal ? 'Abrindo...' : 'Gerenciar assinatura'}
-                  </Button>
-                </div>
-              ) : !user ? (
-                <Button variant="outline" className="gap-2" onClick={() => navigate('/login')}>
-                  <ArrowLeft className="h-4 w-4" />
-                  Voltar ao login
-                </Button>
-              ) : null}
-
-              {sourceLabel && (
-                <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-4 py-2 text-sm text-muted-foreground">
-                  <Star className="h-4 w-4 text-primary" />
-                  Origem: {sourceLabel}
-                </div>
-              )}
-            </div>
+        <div className="mb-12 text-center">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-xs font-medium text-primary">
+            <Sparkles className="h-3.5 w-3.5" />
+            {intent === 'reactivate' ? heroBadgeLabel : '7 dias gratis em qualquer plano'}
           </div>
 
-          <aside className="auth-portal-aside">
-            <div className="space-y-4">
-              <div className="brand-logo-disc h-14 w-14">
-                <img src="/logo.png" alt="SolarZap" className="brand-logo-image" />
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Como funciona</p>
-                <h2 className="text-2xl font-semibold text-foreground">Veja o que acontece depois de escolher o plano.</h2>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  O checkout libera o trial do plano escolhido. Depois disso, a assinatura pode ser administrada pela propria conta.
-                </p>
-              </div>
-            </div>
+          {isNoPlan && intent !== 'reactivate' ? (
+            <>
+              <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
+                Escolha o plano ideal para{' '}
+                <span className="brand-gradient-text">
+                  escalar suas vendas
+                </span>
+              </h1>
+              <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+                Comece a fechar mais negocios hoje com automacao via WhatsApp, IA embarcada e CRM solar completo.
+                Teste qualquer plano gratis por 7 dias.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
+                {heroTitle}{' '}
+                <span className="brand-gradient-text">
+                  SolarZap
+                </span>
+              </h1>
+              <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+                {heroDescription}
+              </p>
+            </>
+          )}
 
-            <div className="grid gap-3">
-              {journeyHighlights.map((item) => (
-                <div key={item.title} className="auth-portal-info-card">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[linear-gradient(145deg,hsl(var(--primary)/0.18),hsl(var(--secondary)/0.16))] text-primary shadow-[0_18px_36px_-24px_hsl(var(--primary)/0.4)]">
-                    <Check className="h-4 w-4" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold text-foreground">{item.title}</p>
-                    <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
-                  </div>
-                </div>
-              ))}
+          {/* Current plan pill */}
+          {currentPlan && currentPlan !== 'free' && (
+            <div className="public-hero-surface mt-6 inline-flex items-center gap-3 rounded-full px-5 py-2 text-sm">
+              <span className="text-muted-foreground">Plano atual:</span>
+              <Badge className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/15">
+                {currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                onClick={handleOpenPortal}
+                disabled={openingPortal}
+              >
+                <CreditCard className="mr-1.5 h-3.5 w-3.5" />
+                {openingPortal ? 'Abrindo...' : 'Gerenciar assinatura'}
+              </Button>
             </div>
-
-            <div className="rounded-2xl border border-border/70 bg-background/72 px-4 py-3 shadow-[0_18px_50px_-38px_rgba(15,23,42,0.42)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Contexto atual</p>
-              <div className="mt-2 space-y-1 text-sm">
-                <p className="font-semibold text-foreground">{currentPlan && currentPlan !== 'free' ? `Plano ${currentPlan}` : 'Sem plano ativo'}</p>
-                <p className="text-muted-foreground">
-                  {isNoPlan ? 'Escolha um plano para iniciar o trial ou conclua a contratacao pendente.' : 'Sua assinatura pode ser ajustada ou administrada quando necessario.'}
-                </p>
-              </div>
-            </div>
-          </aside>
+          )}
         </div>
 
         {/* Trial highlight banner */}
@@ -403,7 +334,6 @@ export default function Pricing() {
               <p className="mt-1 text-sm text-muted-foreground">
                 Você escolhe o plano que quiser e usa <span className="font-medium text-foreground">todos os recursos sem restrição</span> durante o trial.
                 Quanto maior o plano, mais você pode testar. Só cobramos após os 7 dias.
-                {' '}<span className="font-medium text-foreground">Cancele a qualquer momento, sem multa e sem burocracia.</span>
               </p>
             </div>
             <div className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary sm:flex-shrink-0">
@@ -412,15 +342,6 @@ export default function Pricing() {
             </div>
           </div>
         </div>
-
-        {/* Trust reassurance — visible only for new signups */}
-        {isNoPlan && (
-          <div className="mb-10 flex flex-wrap justify-center gap-6 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5 text-primary" /> Seus dados de cartão ficam com a Stripe — não armazenamos nada</span>
-            <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-primary" /> Nenhuma cobrança durante os 7 dias de trial</span>
-            <span className="flex items-center gap-1.5"><X className="h-3.5 w-3.5 text-primary" /> Cancele a qualquer momento em 2 cliques</span>
-          </div>
-        )}
 
         {/* Plan Cards */}
         <div className="grid gap-6 lg:grid-cols-3">
@@ -539,7 +460,7 @@ export default function Pricing() {
                     ) : isDisabled ? (
                       <span className="flex items-center gap-2">
                         <Check className="h-4 w-4" />
-                        {intent === 'reactivate' && isCurrent ? 'Plano atual para reativação' : 'Plano atual'}
+                        {intent === 'reactivate' && isCurrent ? 'Plano atual para reativacao' : 'Plano atual'}
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">
