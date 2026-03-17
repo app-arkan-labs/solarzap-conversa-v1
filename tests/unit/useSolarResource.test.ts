@@ -150,7 +150,7 @@ describe('useSolarResource', () => {
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({
         variant: 'destructive',
-        title: 'PVGIS indisponivel',
+        title: 'PVGIS indisponível',
       }),
     );
   });
@@ -166,7 +166,7 @@ describe('useSolarResource', () => {
 
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Endereco com baixa confianca',
+        title: 'Endereço com baixa confiança',
         variant: 'destructive',
       }),
     );
@@ -182,7 +182,7 @@ describe('useSolarResource', () => {
     });
 
     expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Sessao invalida' }),
+      expect.objectContaining({ title: 'Sessão inválida' }),
     );
   });
 
@@ -331,7 +331,7 @@ describe('useSolarResource', () => {
 
     expect(result.current.errorCode).toBe('upstream_timeout');
     expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'PVGIS indisponivel' }),
+      expect.objectContaining({ title: 'PVGIS indisponível' }),
     );
   });
 });

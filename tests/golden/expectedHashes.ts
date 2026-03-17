@@ -1,15 +1,15 @@
 export const EXPECTED_PROPOSAL_PDF_HASHES = {
-  residencialA: '147f7966ec4c3d4949b649da9baa25a27a8a2504794246c049d517b38f7c75f2',
-  usinaB: 'f9511f1af26b2a24576aac615f7a5023949d51356e8517312c089efba644af32',
-  residencialCashDiscount: '14e7b0e0bcc5e38d58292eb9ff092ec6b7f58b6e6379cd2d0855fb9f66506149',
+  residencialA: 'bdb60dc91f0fc3638f26397c8baeaec0039b8c4c71b90035ee6facd3b2ce7d77',
+  usinaB: '8b9f313d727912052b4c39ccb6a3337a52492de3fe904564a446313bac6d946f',
+  residencialCashDiscount: '89d806109237c8039f463b641f0be3eded7789bbe95411c18f56b6e2cd8ef41b',
 } as const;
 
 export const EXPECTED_PROPOSAL_PDF_HASHES_ADVANCED_FLAGS = {
-  residencialA: 'da02fff1f57e43ba8ff66e4e300fcf625713d73afc847be8f6b50265fe7d15e0',
-  usinaB: '7c3652af398dc8cc12a8598b372006d0b4168bed7d3a073c7c68fc4a140c1934',
+  residencialA: 'dafa2900be50c33d34f256e6f33df6ccba619bf67c59436c2125198930b93596',
+  usinaB: '18c2609584874144942272d487f65ce6dc0c9b81dda3f3407dbdfacb778a4115',
 } as const;
 
 export const EXPECTED_PROPOSAL_PDF_HASHES_CHART_FIXED_PROFILE = {
-  flatProfileOff: '12c15bc9054379eea8c6b0ec717cb3400a3c9ff7cf9a7877db71c425590517d1',
-  flatProfileOn: '12c15bc9054379eea8c6b0ec717cb3400a3c9ff7cf9a7877db71c425590517d1',
+  flatProfileOff: '2acd6ca709efb7e573da8c4076ad73be4c569c2f7324d7d53a0e4034bfed4c6a',
+  flatProfileOn: '2acd6ca709efb7e573da8c4076ad73be4c569c2f7324d7d53a0e4034bfed4c6a',
 } as const;
