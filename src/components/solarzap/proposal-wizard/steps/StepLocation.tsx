@@ -42,6 +42,13 @@ export function StepLocation({ form }: StepLocationProps) {
     const cepDigits = String(cepValue || '').replace(/\D/g, '');
     if (cepDigits.length !== 8) return;
     if (cepAutofillRef.current === cepDigits) return;
+    if (form.locationLoading) return;
+
+    // Avoid duplicate recalculation on step open when we already have strict PVGIS + coordinates.
+    if (form.formData.irradianceSource === 'pvgis' && hasCoordinates) {
+      cepAutofillRef.current = cepDigits;
+      return;
+    }
 
     const timer = window.setTimeout(() => {
       cepAutofillRef.current = cepDigits;
@@ -52,7 +59,14 @@ export function StepLocation({ form }: StepLocationProps) {
     }, 350);
 
     return () => window.clearTimeout(timer);
-  }, [autofillAddressByCep, cepValue, resolvePreciseLocation]);
+  }, [
+    autofillAddressByCep,
+    cepValue,
+    form.formData.irradianceSource,
+    form.locationLoading,
+    hasCoordinates,
+    resolvePreciseLocation,
+  ]);
 
   return (
     <div className="space-y-4">

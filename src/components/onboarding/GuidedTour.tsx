@@ -162,7 +162,7 @@ export default function GuidedTour({
               Tour guiado {stepIndex + 1}/{steps.length}
             </p>
             <h3 className="mt-1 text-base font-semibold text-foreground">{step.title}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{step.content}</p>
             {isTargetMissing ? (
               <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-800 dark:text-amber-200">
                 Nao encontramos este elemento agora. Voce pode avancar e continuar o tour normalmente.

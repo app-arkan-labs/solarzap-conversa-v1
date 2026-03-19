@@ -116,6 +116,8 @@ type SolarResourcePayload = {
   referenceYear: number | null;
   cached: boolean;
   degraded?: boolean;
+  pvgisBaseUsed?: string;
+  pvgisAttempts?: number;
   errorCode?: SolarResourceErrorCode;
   debug?: SolarResourceDebug;
 };
@@ -162,6 +164,7 @@ type PvgisFetchResult =
     totalAttempts: number;
     latencyMs: number;
     pvgisBaseTried: string[];
+    pvgisBaseUsed: string;
   }
   | {
     ok: false;
@@ -532,19 +535,25 @@ type PvgisBasePlan = {
 
 const buildPvgisBasePlans = (lat: number, lon: number): PvgisBasePlan[] => {
   if (isAmericasCoordinate(lat, lon)) {
+    // Keep PVGIS-only flow, but prioritize databases with wider coverage in Brazil/Americas.
     return [
       {
         baseUrl: "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
         label: "v5_2/PVcalc",
-        raddatabase: "PVGIS-NSRDB",
+        raddatabase: "PVGIS-ERA5",
       },
       {
-        baseUrl: "https://re.jrc.ec.europa.eu/api/v5_3/PVcalc",
-        label: "v5_3/PVcalc",
+        baseUrl: "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
+        label: "v5_2/PVcalc",
+        raddatabase: "PVGIS-SARAH2",
       },
       {
         baseUrl: "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
         label: "v5_2/PVcalc_default_db",
+      },
+      {
+        baseUrl: "https://re.jrc.ec.europa.eu/api/v5_3/PVcalc",
+        label: "v5_3/PVcalc",
       },
     ];
   }
@@ -579,6 +588,7 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
   let sawHttpError = false;
   let upstreamStatus: number | null = null;
   let lastMessage = "";
+  let pvgisBaseUsed: string | null = null;
 
   for (const basePlan of pvgisBasePlans) {
     const planLabel = basePlan.raddatabase
@@ -623,12 +633,18 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
         } else {
           lastMessage = fetchError ? String(fetchError) : "network_error";
         }
+        console.warn(
+          `[solar-resource] PVGIS_FETCH_ERR base=${planLabel} attempt=${attempt + 1} totalAttempts=${totalAttempts} message=${lastMessage}`,
+        );
         await sleep(computeRetryDelayMs(attempt));
         continue;
       }
 
       if (!response.ok) {
         upstreamStatus = response.status;
+        console.warn(
+          `[solar-resource] PVGIS_HTTP_ERR base=${planLabel} attempt=${attempt + 1} status=${response.status}`,
+        );
         if (response.status === 429 || response.status === 529 || response.status >= 500) {
           if (response.status === 429 || response.status === 529) {
             sawRateLimit = true;
@@ -651,6 +667,7 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
         : [];
       if (monthlyRows.length > 0) {
         data = candidate;
+        pvgisBaseUsed = planLabel;
         break;
       }
 
@@ -739,6 +756,7 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
     totalAttempts,
     latencyMs,
     pvgisBaseTried,
+    pvgisBaseUsed: pvgisBaseUsed || pvgisBaseTried[pvgisBaseTried.length - 1] || "unknown",
   };
 }
 
@@ -988,6 +1006,8 @@ Deno.serve(async (req) => {
       monthlyGenerationFactors: factors.map((factor) => Number(factor.toFixed(6))),
       referenceYear: pvgis.referenceYear,
       cached: false,
+      pvgisBaseUsed: pvgis.pvgisBaseUsed,
+      pvgisAttempts: pvgis.totalAttempts,
     };
 
     await serviceClient.from("solar_resource_cache").upsert({
@@ -1016,15 +1036,19 @@ Deno.serve(async (req) => {
       uf: uf || null,
       lat: latRounded,
       lon: lonRounded,
-      pvgisBase: pvgis.pvgisBaseTried.join(" -> ") || null,
+      pvgisBase: pvgis.pvgisBaseUsed || null,
       upstreamStatus: null,
       latencyMs: pvgis.latencyMs,
     });
 
     console.log(
-      `[solar-resource] PVGIS_OK requestId=${requestId} lat=${latRounded} lon=${lonRounded} annual=${pvgis.annual} attempts=${pvgis.totalAttempts} latencyMs=${pvgis.latencyMs}`,
+      `[solar-resource] PVGIS_OK requestId=${requestId} lat=${latRounded} lon=${lonRounded} annual=${pvgis.annual} base=${pvgis.pvgisBaseUsed} attempts=${pvgis.totalAttempts} latencyMs=${pvgis.latencyMs}`,
     );
-    return jsonResponse(payload, 200, { "X-Solar-Source": "pvgis" });
+    return jsonResponse(payload, 200, {
+      "X-Solar-Source": "pvgis",
+      "X-PVGIS-Base": pvgis.pvgisBaseUsed,
+      "X-PVGIS-Attempts": String(pvgis.totalAttempts),
+    });
   } catch (error) {
     return errorResponse(500, "unexpected_error", {
       phase: "unexpected",

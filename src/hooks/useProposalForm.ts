@@ -1729,14 +1729,22 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       { preserveValorTotal: preserveInitialValor },
     ));
 
-    void resolvePreciseLocation({
-      estado: uf || undefined,
-      cidade: currentContact.city || undefined,
-      endereco: currentContact.address || undefined,
-      cep: currentContact.zip || undefined,
-      latitude: toFiniteOrUndefined(currentContact.latitude),
-      longitude: toFiniteOrUndefined(currentContact.longitude),
-    });
+    const leadLatitude = toFiniteOrUndefined(currentContact.latitude);
+    const leadLongitude = toFiniteOrUndefined(currentContact.longitude);
+    const hasStrictPvgisCoordinates = isStrictPvgisSource(currentContact.irradianceSource)
+      && leadLatitude !== undefined
+      && leadLongitude !== undefined;
+
+    if (!hasStrictPvgisCoordinates) {
+      void resolvePreciseLocation({
+        estado: uf || undefined,
+        cidade: currentContact.city || undefined,
+        endereco: currentContact.address || undefined,
+        cep: currentContact.zip || undefined,
+        latitude: leadLatitude,
+        longitude: leadLongitude,
+      });
+    }
   }, [contact?.id, isOpen, recalculateSizing, resolvePreciseLocation]);
 
   const isUsina = formData.tipo_cliente === 'usina';

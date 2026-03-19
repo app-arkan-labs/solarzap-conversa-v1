@@ -23,6 +23,7 @@ export interface BroadcastRecipientInput {
   name: string;
   phone: string;
   email?: string;
+  assigned_to_user_id?: string;
 }
 
 export interface BroadcastCampaignInput {
@@ -30,6 +31,7 @@ export interface BroadcastCampaignInput {
   messages: string[];
   instance_name: string;
   assigned_to_user_id?: string;
+  assigned_to_user_ids?: string[];
   lead_client_type?: ClientType;
   interval_seconds?: number;
   source_channel?: string;
@@ -71,6 +73,20 @@ const sanitizeMessages = (messages: unknown): string[] => {
     .filter((entry) => entry.length > 0);
 };
 
+const normalizeAssigneeIds = (value: unknown, fallback?: string | null): string[] => {
+  const values = Array.isArray(value) ? value : [];
+  const normalized = values
+    .map((entry) => String(entry ?? '').trim())
+    .filter((entry) => entry.length > 0);
+
+  if (normalized.length === 0 && fallback) {
+    const fallbackId = String(fallback).trim();
+    if (fallbackId.length > 0) normalized.push(fallbackId);
+  }
+
+  return Array.from(new Set(normalized));
+};
+
 const normalizeCampaignClientType = (value: unknown): ClientType => (
   normalizeImportedClientType(value) || 'residencial'
 );
@@ -80,6 +96,7 @@ const toBroadcastCampaign = (row: CampaignRow): BroadcastCampaign => ({
   org_id: String(row.org_id),
   user_id: String(row.user_id || ''),
   assigned_to_user_id: row.assigned_to_user_id == null ? null : String(row.assigned_to_user_id),
+  assigned_to_user_ids: normalizeAssigneeIds(row.assigned_to_user_ids, row.assigned_to_user_id == null ? null : String(row.assigned_to_user_id)),
   lead_client_type: normalizeCampaignClientType(row.lead_client_type),
   name: String(row.name || ''),
   messages: sanitizeMessages(row.messages),
@@ -343,10 +360,17 @@ export function useBroadcasts() {
       }
     }
 
+    const normalizedAssigneeIds = normalizeAssigneeIds(
+      input.assigned_to_user_ids,
+      input.assigned_to_user_id || user.id,
+    );
+    const primaryAssigneeId = normalizedAssigneeIds[0] || user.id;
+
     const campaignPayload = {
       org_id: orgId,
       user_id: user.id,
-      assigned_to_user_id: input.assigned_to_user_id || user.id,
+      assigned_to_user_id: primaryAssigneeId,
+      assigned_to_user_ids: normalizedAssigneeIds,
       lead_client_type: normalizeCampaignClientType(input.lead_client_type),
       name: String(input.name || '').trim(),
       messages,

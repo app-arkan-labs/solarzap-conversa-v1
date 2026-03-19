@@ -81,6 +81,7 @@ export interface ProposalPDFData {
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
+  descontoAvistaPercentual?: number;
   descontoAvistaValor?: number;
   valorAvistaLiquido?: number;
   investimentoBaseMetricas?: number;
@@ -153,6 +154,7 @@ export interface SellerScriptPDFData {
   potenciaSistema: number;
   quantidadePaineis: number;
   valorTotal: number;
+  descontoAvistaPercentual?: number;
   descontoAvistaValor?: number;
   valorAvistaLiquido?: number;
   investimentoBaseMetricas?: number;

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import {
     Dialog,
@@ -23,13 +23,16 @@ import { useLeads } from '@/hooks/domain/useLeads';
 import { useToast } from '@/hooks/use-toast';
 import { Appointment, AppointmentType, Contact } from '@/types/solarzap';
 import { addMinutes, format, isValid } from 'date-fns';
-import { CalendarIcon, Clock, MapPin, Search, Trash2 } from 'lucide-react';
+import { CalendarIcon, MapPin, Trash2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 import { ptBR } from 'date-fns/locale';
 import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { buildTabBlocker } from '@/lib/billingBlocker';
+import { useAuth } from '@/contexts/AuthContext';
+import { getAuthUserDisplayName, getMemberDisplayName } from '@/lib/memberDisplayName';
+import { listMembers } from '@/lib/orgAdminClient';
 
 interface AppointmentModalProps {
     isOpen: boolean;
@@ -46,6 +49,7 @@ interface AppointmentModalProps {
 type FormData = {
     title: string;
     lead_id: string; // Form uses string for Select value
+    responsible_user_id: string;
     type: AppointmentType;
     date: Date;
     time: string; // HH:mm
@@ -58,6 +62,13 @@ const TYPE_FALLBACK: AppointmentType = 'chamada';
 const TYPE_OPTIONS = new Set<AppointmentType>(['chamada', 'visita', 'reuniao', 'instalacao', 'other']);
 
 const toSafeLeadId = (value: unknown): string => {
+    if (value === null || value === undefined) return '';
+    const id = String(value).trim();
+    if (!id || id === 'undefined' || id === 'null') return '';
+    return id;
+};
+
+const toSafeUserId = (value: unknown): string => {
     if (value === null || value === undefined) return '';
     const id = String(value).trim();
     if (!id || id === 'undefined' || id === 'null') return '';
@@ -86,11 +97,24 @@ export function AppointmentModal({
     onSuccess
 }: AppointmentModalProps) {
     const { createAppointment, updateAppointment, deleteAppointment } = useAppointments();
+    const { user, role, orgId } = useAuth();
     const { billing, openBillingBlocker } = useBillingBlocker();
     const { contacts: hookContacts } = useLeads();
     const contacts = providedContacts ?? hookContacts;
     const { toast } = useToast();
     const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+    const [responsibleOptions, setResponsibleOptions] = useState<Array<{ id: string; label: string }>>([]);
+    const [isLoadingResponsibleOptions, setIsLoadingResponsibleOptions] = useState(false);
+    const isAdminOrOwner = role === 'owner' || role === 'admin';
+    const currentUserId = toSafeUserId(user?.id);
+    const currentUserLabel = useMemo(() => {
+        const displayName = getAuthUserDisplayName(user);
+        if (displayName.trim().length > 0) return displayName;
+
+        const email = typeof user?.email === 'string' ? user.email.trim() : '';
+        if (email.length > 0) return email;
+        return 'Conta ativa';
+    }, [user]);
     const contactsSignature = useMemo(
         () => contacts.map(contact => toSafeLeadId(contact.id)).join('|'),
         [contacts]
@@ -123,18 +147,117 @@ export function AppointmentModal({
         () => leadOptions.map(option => option.id).join('|'),
         [leadOptions]
     );
-    const leadOptionIds = useMemo(() => new Set(leadOptions.map(option => option.id)), [leadOptionSignature]);
+    const leadOptionIds = useMemo(() => new Set(leadOptions.map(option => option.id)), [leadOptions]);
+    const responsibleOptionSignature = useMemo(
+        () => responsibleOptions.map(option => option.id).join('|'),
+        [responsibleOptions]
+    );
+    const responsibleOptionIds = useMemo(() => new Set(responsibleOptions.map(option => option.id)), [responsibleOptions]);
 
     const { control, register, handleSubmit, reset, setValue, watch, getValues, formState: { errors, isSubmitting } } = useForm<FormData>({
         defaultValues: {
             type: initialType || 'chamada',
             duration: '30',
             location: '',
-            notes: ''
+            notes: '',
+            responsible_user_id: currentUserId
         }
     });
 
     const selectedLeadId = watch('lead_id');
+
+    const resolveLeadDefaultResponsibleId = useCallback((leadIdValue: unknown): string => {
+        if (!isAdminOrOwner) return currentUserId;
+
+        const leadId = toSafeLeadId(leadIdValue);
+        if (leadId) {
+            const lead = preselectedContact && toSafeLeadId(preselectedContact.id) === leadId
+                ? preselectedContact
+                : contacts.find((contact) => toSafeLeadId(contact.id) === leadId);
+            const assignedId = toSafeUserId(lead?.assignedToUserId);
+            if (assignedId && responsibleOptionIds.has(assignedId)) {
+                return assignedId;
+            }
+        }
+
+        if (currentUserId && (responsibleOptionIds.size === 0 || responsibleOptionIds.has(currentUserId))) {
+            return currentUserId;
+        }
+
+        if (responsibleOptions.length > 0) {
+            return responsibleOptions[0].id;
+        }
+
+        return currentUserId;
+    }, [contacts, currentUserId, isAdminOrOwner, preselectedContact, responsibleOptionIds, responsibleOptions]);
+
+    const resolveRequestedResponsibleId = useCallback((requestedUserId: unknown, fallbackLeadId: unknown): string => {
+        if (!isAdminOrOwner) return currentUserId;
+
+        const requestedId = toSafeUserId(requestedUserId);
+        if (requestedId && responsibleOptionIds.has(requestedId)) {
+            return requestedId;
+        }
+
+        if (currentUserId) {
+            return currentUserId;
+        }
+
+        return resolveLeadDefaultResponsibleId(fallbackLeadId);
+    }, [currentUserId, isAdminOrOwner, resolveLeadDefaultResponsibleId, responsibleOptionIds]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+
+        let active = true;
+        const fallbackOptions = currentUserId
+            ? [{ id: currentUserId, label: currentUserLabel }]
+            : [];
+
+        if (!isAdminOrOwner || !orgId) {
+            setResponsibleOptions(fallbackOptions);
+            setIsLoadingResponsibleOptions(false);
+            return;
+        }
+
+        const loadResponsibleOptions = async () => {
+            setIsLoadingResponsibleOptions(true);
+            try {
+                const response = await listMembers(orgId);
+                if (!active) return;
+
+                const optionsById = new Map<string, { id: string; label: string }>();
+                if (currentUserId) {
+                    optionsById.set(currentUserId, { id: currentUserId, label: currentUserLabel });
+                }
+
+                for (const member of response.members || []) {
+                    const id = toSafeUserId(member.user_id);
+                    if (!id || optionsById.has(id)) continue;
+                    optionsById.set(id, {
+                        id,
+                        label: getMemberDisplayName(member)
+                    });
+                }
+
+                const nextOptions = Array.from(optionsById.values());
+                setResponsibleOptions(nextOptions.length > 0 ? nextOptions : fallbackOptions);
+            } catch (error) {
+                if (!active) return;
+                console.warn('[appointment-modal] failed to load responsible options', error);
+                setResponsibleOptions(fallbackOptions);
+            } finally {
+                if (active) {
+                    setIsLoadingResponsibleOptions(false);
+                }
+            }
+        };
+
+        void loadResponsibleOptions();
+        return () => {
+            active = false;
+        };
+    }, [currentUserId, currentUserLabel, isAdminOrOwner, isOpen, orgId]);
 
     // Reset/Init form
     useEffect(() => {
@@ -160,10 +283,12 @@ export function AppointmentModal({
                 const leadExists = leadOptionIds.has(requestedLeadId);
                 const safeLeadId = leadExists ? requestedLeadId : '';
                 const safeType = normalizeAppointmentType(initialData.type, normalizeAppointmentType(initialType));
+                const safeResponsibleId = resolveRequestedResponsibleId(initialData.user_id, initialData.lead_id);
 
                 reset({
                     title: initialData.title || '',
                     lead_id: safeLeadId,
+                    responsible_user_id: safeResponsibleId,
                     type: safeType,
                     date: start,
                     time: format(start, 'HH:mm'),
@@ -198,10 +323,12 @@ export function AppointmentModal({
                     ? (defaultDate instanceof Date ? defaultDate : new Date(defaultDate))
                     : null;
                 const safeDefaultDate = parsedDefaultDate && isValid(parsedDefaultDate) ? parsedDefaultDate : new Date();
+                const safeResponsibleId = resolveLeadDefaultResponsibleId(safeLeadId || preselectedLeadId);
 
                 reset({
                     title: initialTitle,
                     lead_id: safeLeadId,
+                    responsible_user_id: safeResponsibleId,
                     type: currentType,
                     date: safeDefaultDate,
                     time: format(safeDefaultDate, 'HH:mm'),
@@ -233,7 +360,11 @@ export function AppointmentModal({
         preselectedLeadId,
         preselectedContact?.id,
         defaultDate,
-        leadOptionSignature
+        leadOptionSignature,
+        responsibleOptionSignature,
+        currentUserId,
+        resolveLeadDefaultResponsibleId,
+        resolveRequestedResponsibleId
     ]);
 
     // Update Title dynamically if new (not editing existing title manually) - ONLY if lead changes and TITLE IS EMPTY or DEFAULT
@@ -262,6 +393,31 @@ export function AppointmentModal({
         setValue
     ]);
 
+    useEffect(() => {
+        if (!isOpen || initialData?.id) return;
+        if (!currentUserId) return;
+
+        if (!isAdminOrOwner) {
+            setValue('responsible_user_id', currentUserId);
+            return;
+        }
+
+        const leadCandidate = selectedLeadId || preselectedLeadId;
+        const resolvedResponsibleId = resolveLeadDefaultResponsibleId(leadCandidate);
+        if (resolvedResponsibleId) {
+            setValue('responsible_user_id', resolvedResponsibleId);
+        }
+    }, [
+        currentUserId,
+        initialData?.id,
+        isAdminOrOwner,
+        isOpen,
+        preselectedLeadId,
+        resolveLeadDefaultResponsibleId,
+        selectedLeadId,
+        setValue
+    ]);
+
 
     const onSubmit = async (data: FormData) => {
         const blocker = buildTabBlocker('calendario', billing);
@@ -273,6 +429,15 @@ export function AppointmentModal({
         try {
             const [hours, minutes] = data.time.split(':').map(Number);
             const leadId = Number(data.lead_id);
+            if (!currentUserId) {
+                toast({
+                    title: 'Usuario invalido',
+                    description: 'Nao foi possivel identificar o usuario atual.',
+                    variant: 'destructive',
+                });
+                return;
+            }
+
             if (
                 !Number.isFinite(leadId) ||
                 leadId <= 0 ||
@@ -324,11 +489,29 @@ export function AppointmentModal({
 
             const durationMinutes = parseInt(data.duration, 10);
             const endAt = addMinutes(startAt, Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 30);
+            const requestedResponsibleId = toSafeUserId(data.responsible_user_id);
+            const responsibleUserId = isAdminOrOwner
+                ? (
+                    requestedResponsibleId && responsibleOptionIds.has(requestedResponsibleId)
+                        ? requestedResponsibleId
+                        : currentUserId
+                )
+                : currentUserId;
+
+            if (!responsibleUserId) {
+                toast({
+                    title: 'Responsavel invalido',
+                    description: 'Selecione um vendedor responsavel para continuar.',
+                    variant: 'destructive',
+                });
+                return;
+            }
 
             if (initialData?.id) {
                 await updateAppointment({
                     id: initialData.id,
                     data: {
+                        user_id: responsibleUserId,
                         title: data.title,
                         lead_id: leadId,
                         type: data.type,
@@ -340,6 +523,7 @@ export function AppointmentModal({
                 });
             } else {
                 const newAppt = await createAppointment({
+                    user_id: responsibleUserId,
                     title: data.title,
                     lead_id: leadId,
                     type: data.type,
@@ -397,6 +581,49 @@ export function AppointmentModal({
                             )}
                         />
                         {errors.lead_id && <span className="text-xs text-destructive">{errors.lead_id.message}</span>}
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Vendedor Responsavel</Label>
+                        <Controller
+                            control={control}
+                            name="responsible_user_id"
+                            rules={{ required: 'Selecione um responsavel' }}
+                            render={({ field }) => (
+                                <Select
+                                    onValueChange={field.onChange}
+                                    value={(() => {
+                                        const currentResponsibleValue = toSafeUserId(field.value);
+                                        return responsibleOptionIds.has(currentResponsibleValue) ? currentResponsibleValue : '';
+                                    })()}
+                                    disabled={!isAdminOrOwner || isLoadingResponsibleOptions}
+                                >
+                                    <SelectTrigger className={cn(errors.responsible_user_id && 'border-destructive')}>
+                                        <SelectValue placeholder={isLoadingResponsibleOptions ? 'Carregando membros...' : 'Selecione um vendedor...'} />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-[200px]">
+                                        {responsibleOptions.map((option) => (
+                                            <SelectItem key={option.id} value={option.id}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                        {isLoadingResponsibleOptions ? (
+                                            <SelectItem value="loading-responsible" disabled>
+                                                Carregando membros...
+                                            </SelectItem>
+                                        ) : null}
+                                        {!isLoadingResponsibleOptions && responsibleOptions.length < 1 ? (
+                                            <SelectItem value="no-members-found" disabled>
+                                                Nenhum membro disponivel
+                                            </SelectItem>
+                                        ) : null}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        />
+                        {errors.responsible_user_id ? (
+                            <span className="text-xs text-destructive">{errors.responsible_user_id.message}</span>
+                        ) : null}
                     </div>
 
                     <div className="space-y-2">

@@ -1361,7 +1361,8 @@ export function SolarZapLayout() {
     setIsDetailsPanelOpen(false);
   }, [activeTab, selectedConversation, filteredConversations, conversations, markAsRead]);
 
-  const guidedTour = useGuidedTour(activeTab, Boolean(user), {
+  const guidedTour = useGuidedTour(activeTab, handleTabChange, {
+    enabled: Boolean(user),
     onBeforeStart: ensureTourConversationReady,
   });
 
@@ -1404,7 +1405,7 @@ export function SolarZapLayout() {
           tabPermissions={tabPermissions}
           currentPlanKey={billing?.plan_key ?? null}
           onHelpClick={() => {
-            void guidedTour.startTour();
+            void guidedTour.startTour('manual');
           }}
         />
       ) : null}
@@ -1504,10 +1505,10 @@ export function SolarZapLayout() {
             void guidedTour.startTour();
           }}
           onSkip={() => {
-            void guidedTour.closeTour(false);
+            void guidedTour.closeTour('skip');
           }}
           onClose={() => {
-            void guidedTour.closeTour();
+            void guidedTour.closeTour('close');
           }}
           onNext={() => {
             void guidedTour.nextStep();

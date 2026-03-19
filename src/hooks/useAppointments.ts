@@ -6,6 +6,7 @@ import { Appointment, AppointmentStatus, AppointmentType } from '@/types/solarza
 import { toast } from 'sonner';
 
 export type CreateAppointmentData = {
+    user_id?: string;
     lead_id: number;
     title: string;
     type: AppointmentType;
@@ -87,12 +88,16 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
         mutationFn: async (data: CreateAppointmentData) => {
             if (!user) throw new Error('User not authenticated');
             if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            const responsibleUserId =
+                typeof data.user_id === 'string' && data.user_id.trim().length > 0
+                    ? data.user_id.trim()
+                    : user.id;
 
             const { data: newEvent, error } = await supabase
                 .from('appointments')
                 .insert({
                     org_id: orgId,
-                    user_id: user.id,
+                    user_id: responsibleUserId,
                     lead_id: data.lead_id,
                     title: data.title,
                     type: data.type,
@@ -134,6 +139,7 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
             if (data.notes !== undefined) payload.notes = data.notes;
             if (data.lead_id !== undefined) payload.lead_id = data.lead_id;
             if (data.outcome !== undefined) payload.outcome = data.outcome;
+            if (data.user_id !== undefined) payload.user_id = data.user_id;
 
             const { error } = await supabase
                 .from('appointments')
