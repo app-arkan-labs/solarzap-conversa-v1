@@ -200,6 +200,23 @@ describe('useSolarResource', () => {
     );
   });
 
+  it('shows network/CORS toast when invoke fails to fetch', async () => {
+    const fetchError = new Error('Failed to send a request to the Edge Function');
+    (fetchError as any).name = 'FunctionsFetchError';
+    (fetchError as any).context = { message: 'TypeError: Failed to fetch' };
+    mockInvoke.mockResolvedValueOnce({ data: null, error: fetchError });
+
+    const { result } = renderHook(() => useSolarResource());
+
+    await act(async () => {
+      await result.current.resolve(defaultLocationParams);
+    });
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Erro de rede/CORS' }),
+    );
+  });
+
   it('rejects non-pvgis source as pvgis_unavailable', async () => {
     mockInvoke.mockResolvedValueOnce(
       buildSuccessResponse({ source: 'cache_local' }),

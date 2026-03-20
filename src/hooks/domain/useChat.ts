@@ -9,6 +9,7 @@ import {
 import { upsertOwnReaction } from '@/lib/reactions';
 import { useAuth } from '@/contexts/AuthContext';
 import { Contact, Conversation, Message } from '@/types/solarzap';
+import { normalizePhoneE164, onlyPhoneDigits } from '@/lib/phoneUtils';
 
 const vendedorTypes = [
     'mensagem_vendedor',
@@ -67,9 +68,13 @@ const parseMessageNumericId = (value: string | number | null | undefined): numbe
 const buildFallbackRemoteJid = (phone: string): string => `${phone}@s.whatsapp.net`;
 
 const normalizeOutboundPhone = (phone: string): string => {
-    const cleaned = String(phone || '').replace(/\D/g, '');
-    if (cleaned.length === 10 || cleaned.length === 11) return `55${cleaned}`;
-    return cleaned;
+    return normalizePhoneE164(phone) || onlyPhoneDigits(phone);
+};
+
+const resolveLeadOutboundPhone = (lead: { telefone?: string | null; phone_e164?: string | null }): string => {
+    const preferred = normalizeOutboundPhone(lead.telefone || '');
+    if (preferred) return preferred;
+    return normalizeOutboundPhone(lead.phone_e164 || '');
 };
 
 const buildReplyPreviewFromType = (tipo: string | undefined, mensagem: string | undefined | null): string => {
@@ -579,35 +584,32 @@ export function useChat(contacts: Contact[] = []) {
             if (trimmedContent.length > MAX_MESSAGE_LENGTH) throw new Error(`Mensagem excede o limite de ${MAX_MESSAGE_LENGTH} caracteres`);
             const sanitizedContent = trimmedContent;
 
-            // 1. Resolve target phone (prefer UI context to avoid roundtrip)
-            let formattedPhone = normalizeOutboundPhone(contactPhoneE164 || contactPhone || '');
-            let finalPhoneE164 = normalizeOutboundPhone(contactPhoneE164 || '');
+            // 1. Resolve target phone from DB (source of truth to avoid stale UI values)
+            const leadLookupStart = toPerfNow();
+            const { data: lead, error: leadError } = await supabase
+                .from('leads')
+                .select('telefone, phone_e164')
+                .eq('id', conversationId)
+                .eq('org_id', orgId)
+                .single();
+            perf.leadLookup = Math.round(toPerfNow() - leadLookupStart);
+            import.meta.env.DEV && console.log('[CHAT_LATENCY] lead_lookup_ms', { traceId, ms: perf.leadLookup });
 
+            if (leadError || !lead) throw new Error('Lead not found');
+
+            // Prefer updated "telefone"; fallback to legacy phone_e164 only when needed.
+            let formattedPhone = resolveLeadOutboundPhone(lead);
             if (!formattedPhone) {
-                const leadLookupStart = toPerfNow();
-                const { data: lead, error: leadError } = await supabase
-                    .from('leads')
-                    .select('telefone, phone_e164')
-                    .eq('id', conversationId)
-                    .eq('org_id', orgId)
-                    .single();
-                perf.leadLookup = Math.round(toPerfNow() - leadLookupStart);
-                import.meta.env.DEV && console.log('[CHAT_LATENCY] lead_lookup_ms', { traceId, ms: perf.leadLookup });
-
-                if (leadError || !lead) throw new Error('Lead not found');
-                formattedPhone = normalizeOutboundPhone(lead.phone_e164 || lead.telefone);
-                finalPhoneE164 = normalizeOutboundPhone(lead.phone_e164 || formattedPhone);
+                // Defensive fallback for transient cache mismatch windows.
+                formattedPhone = normalizeOutboundPhone(contactPhoneE164 || contactPhone || '');
             }
 
-            if (!formattedPhone) {
+            const finalPhoneE164 = formattedPhone;
+            if (!finalPhoneE164) {
                 throw new Error('Telefone do lead não encontrado');
             }
 
-            if (!finalPhoneE164) {
-                finalPhoneE164 = formattedPhone;
-            }
-
-            const fallbackRemoteJid = buildFallbackRemoteJid(formattedPhone);
+            const fallbackRemoteJid = buildFallbackRemoteJid(finalPhoneE164);
 
             // 2. Fetch Reply Details (Early) - needed for Instance selection and Preview
             let quotedPayload: any = undefined;
@@ -1055,14 +1057,11 @@ export function useChat(contacts: Contact[] = []) {
 
             // 4. Send via Evolution API
             const { evolutionApi } = await import('@/lib/evolutionApi');
-            const formatPhoneNumber = (phone: string) => {
-                const cleaned = phone.replace(/\D/g, '');
-                if (cleaned.length === 10 || cleaned.length === 11) return `55${cleaned}`;
-                return cleaned;
-            };
-
-            const formattedPhone = formatPhoneNumber(lead.telefone);
-            const finalPhoneE164 = (lead as any).phone_e164 || formattedPhone;
+            const formattedPhone = resolveLeadOutboundPhone(lead);
+            const finalPhoneE164 = formattedPhone;
+            if (!formattedPhone) {
+                throw new Error('Telefone do lead não encontrado');
+            }
             const fallbackRemoteJid = `${formattedPhone}@s.whatsapp.net`;
             let response;
             let currentSendMode = sendMode;
@@ -1301,14 +1300,11 @@ export function useChat(contacts: Contact[] = []) {
 
             // 4. Send via Evolution API
             const { evolutionApi } = await import('@/lib/evolutionApi');
-            const formatPhoneNumber = (phone: string) => {
-                const cleaned = phone.replace(/\D/g, '');
-                if (cleaned.length === 10 || cleaned.length === 11) return `55${cleaned}`;
-                return cleaned;
-            };
-
-            const formattedPhone = formatPhoneNumber(lead.telefone);
-            const finalPhoneE164 = (lead as any).phone_e164 || formattedPhone;
+            const formattedPhone = resolveLeadOutboundPhone(lead);
+            const finalPhoneE164 = formattedPhone;
+            if (!formattedPhone) {
+                throw new Error('Telefone do lead não encontrado');
+            }
             const fallbackRemoteJid = `${formattedPhone}@s.whatsapp.net`;
             import.meta.env.DEV && console.log('Sending audio via Evolution API:', sendUrl);
 
@@ -1610,5 +1606,3 @@ export function useChat(contacts: Contact[] = []) {
         markAsRead: markConversationAsRead,
     };
 }
-
-

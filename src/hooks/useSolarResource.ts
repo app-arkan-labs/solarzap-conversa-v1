@@ -92,6 +92,26 @@ const toFiniteOrUndefined = (value: unknown): number | undefined => {
 };
 
 const normalizeCep = (value: string) => value.replace(/\D/g, '').slice(0, 8);
+const NETWORK_OR_CORS_DEBUG_MESSAGE = 'network_or_cors_invoke_error';
+
+const isNetworkOrCorsInvokeError = (rawError: unknown): boolean => {
+  const error = rawError as Record<string, unknown> | null;
+  const name = String(error?.name || '').toLowerCase();
+  const message = String(error?.message || '').toLowerCase();
+  const context = (error?.context || null) as Record<string, unknown> | null;
+  const contextMessage = String(context?.message || '').toLowerCase();
+
+  return (
+    name.includes('functionsfetcherror') ||
+    message.includes('failed to fetch') ||
+    message.includes('failed to send a request') ||
+    message.includes('networkerror') ||
+    message.includes('cors') ||
+    contextMessage.includes('failed to fetch') ||
+    contextMessage.includes('networkerror') ||
+    contextMessage.includes('cors')
+  );
+};
 
 // ── Error payload parsing ──
 
@@ -271,7 +291,10 @@ async function callEdgeFunction(params: {
     data: null,
     error,
     rawErrorCode: fallbackCode ?? 'unexpected_error',
-    rawDebug: parsedError?.debug,
+    rawDebug: parsedError?.debug
+      ?? (isNetworkOrCorsInvokeError(error)
+        ? { phase: 'unexpected', message: NETWORK_OR_CORS_DEBUG_MESSAGE }
+        : undefined),
     rawRequestId: parsedError?.requestId,
   };
 }
@@ -380,7 +403,10 @@ async function invokeSolarResource(params: {
     return {
       resource: null,
       errorCode: parsedError?.errorCode ?? 'unexpected_error',
-      debug: parsedError?.debug,
+      debug: parsedError?.debug
+        ?? (isNetworkOrCorsInvokeError(err)
+          ? { phase: 'unexpected', message: NETWORK_OR_CORS_DEBUG_MESSAGE }
+          : undefined),
       requestId: parsedError?.requestId,
     };
   }
@@ -450,6 +476,23 @@ export function useSolarResource(): UseSolarResourceReturn {
         toast({
           title: 'PVGIS indisponível',
           description: `PVGIS indisponível no momento${statusHint}. Tente novamente em alguns segundos.${requestSuffix}`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const debugMessage = String(debug?.message || '').toLowerCase();
+      const networkOrCorsError = code === 'unexpected_error' && (
+        debugMessage.includes('network_or_cors')
+        || debugMessage.includes('failed to fetch')
+        || debugMessage.includes('failed to send a request')
+        || debugMessage.includes('networkerror')
+        || debugMessage.includes('cors')
+      );
+      if (networkOrCorsError) {
+        toast({
+          title: 'Erro de rede/CORS',
+          description: `A chamada da irradiância foi bloqueada por rede/CORS no navegador. Verifique a origem permitida e tente novamente.${requestSuffix}`,
           variant: 'destructive',
         });
         return;
@@ -552,7 +595,12 @@ export function useSolarResource(): UseSolarResourceReturn {
           console.error('useSolarResource.resolve error:', err);
           setStatus('error');
           setErrorCode('unexpected_error');
-          showErrorToast('unexpected_error');
+          showErrorToast(
+            'unexpected_error',
+            isNetworkOrCorsInvokeError(err)
+              ? { phase: 'unexpected', message: NETWORK_OR_CORS_DEBUG_MESSAGE }
+              : undefined,
+          );
         }
         return null;
       } finally {

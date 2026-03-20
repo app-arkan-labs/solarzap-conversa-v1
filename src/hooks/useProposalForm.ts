@@ -205,20 +205,20 @@ export const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'usina', label: 'Usina Solar' },
 ];
 
-// â”€â”€ PMT calc â€” uses shared utility â”€â”€
+// PMT calc - uses shared utility
 
 export const RATE_SHORTCUTS = [
   { label: 'Otimista 1,30%', rate: 1.3 },
-  { label: 'PadrÃ£o 1,50%', rate: 1.5 },
+  { label: 'Padrão 1,50%', rate: 1.5 },
   { label: 'Conservador 1,90%', rate: 1.9 },
 ];
 
 export type TipoLigacao = 'monofasico' | 'bifasico' | 'trifasico';
 
 export const TIPOS_LIGACAO: { value: TipoLigacao; label: string }[] = [
-  { value: 'monofasico', label: 'MonofÃ¡sico (30 kWh)' },
-  { value: 'bifasico', label: 'BifÃ¡sico (50 kWh)' },
-  { value: 'trifasico', label: 'TrifÃ¡sico (100 kWh)' },
+  { value: 'monofasico', label: 'Monofásico (30 kWh)' },
+  { value: 'bifasico', label: 'Bifásico (50 kWh)' },
+  { value: 'trifasico', label: 'Trifásico (100 kWh)' },
 ];
 
 export const CUSTO_DISPONIBILIDADE_POR_LIGACAO: Record<TipoLigacao, number> = {
@@ -386,7 +386,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     valorTotalManuallyEditedRef.current = valorTotalManuallyEdited;
   }, [valorTotalManuallyEdited]);
 
-  // â”€â”€ Storage Upload (best-effort) â”€â”€
+  // Storage upload (best-effort)
   const uploadPdfToStorage = async (blob: Blob, leadId: string, fileName: string): Promise<{ bucket: string; path: string } | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('proposal-storage-intent', {
@@ -399,7 +399,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     } catch { return null; }
   };
 
-  // â”€â”€ Share Link (best-effort) â”€â”€
+  // Share link (best-effort)
   const generateShareLink = async (versionId: string): Promise<{ url: string; token: string; exp: number } | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('proposal-share-link', { body: { proposalVersionId: versionId } });
@@ -408,7 +408,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     } catch { return null; }
   };
 
-  // â”€â”€ Track Download (best-effort) â”€â”€
+  // Track download (best-effort)
   const trackDownloadEvent = async (versionId: string, propostaId: number, leadId: number, kind: string) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -782,7 +782,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     }
   }, [patchAndRecalculate, toast]);
 
-  // â”€â”€ Auto-calculate system for ALL types using Kit equipment data â”€â”€
+  // Auto-calculate system for ALL types using kit equipment data
 
 
   const calculateSystem = useCallback((consumoInput: number) => {
@@ -1094,7 +1094,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-  // â”€â”€ Fetch context (shared between AI and generation) â”€â”€
+  // Fetch context (shared between AI and generation)
   const fetchContext = async (): Promise<Record<string, unknown> | null> => {
     if (!contact) return null;
     try {
@@ -1106,7 +1106,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     return null;
   };
 
-  // â”€â”€ Build heuristic content â”€â”€
+  // Build heuristic content
   const buildHeuristic = (contextData: Record<string, unknown> | null): PremiumProposalContent => {
     const metrics: ProposalMetrics = {
       consumoMensal: formData.consumoMensal,
@@ -1126,7 +1126,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     });
   };
 
-  // â•â•â•â•â•â•â•â•â•â• AI PERSONALIZATION â•â•â•â•â•â•â•â•â•â•
+  // AI personalization
   const handleAiPersonalize = async () => {
     if (!contact) return;
     setAiLoading(true);
@@ -1207,21 +1207,21 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
       setAiContent(content);
       setAiHeadline(content.headline);
-      toast({ title: 'âœ¨ IA aplicada', description: 'Proposta personalizada com base no contexto do cliente.' });
+      toast({ title: 'IA aplicada', description: 'Proposta personalizada com base no contexto do cliente.' });
     } catch (err) {
-      console.error('AI personalizaÃ§Ã£o falhou, usando heurÃ­stica:', err);
+      console.error('AI personalização falhou, usando heurística:', err);
       // Fallback to heuristic
       const contextData = await fetchContext();
       const heuristic = buildHeuristic(contextData);
       setAiContent(heuristic);
       setAiHeadline(heuristic.headline);
-      toast({ title: 'PersonalizaÃ§Ã£o aplicada', description: 'HeurÃ­stica local utilizada (IA indisponÃ­vel).' });
+      toast({ title: 'Personalização aplicada', description: 'Heurística local utilizada (IA indisponível).' });
     } finally {
       setAiLoading(false);
     }
   };
 
-  // â•â•â•â•â•â•â•â•â•â• SINGLE GENERATION FLOW â•â•â•â•â•â•â•â•â•â•
+  // Single generation flow
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contact) return;
@@ -1237,12 +1237,12 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     // Sprint 10: block generation when critical numeric values are zero/negative
     if (formData.consumoMensal <= 0 || formData.potenciaSistema <= 0 || formData.quantidadePaineis <= 0 || formData.valorTotal <= 0) {
-      toast({ title: 'Dados incompletos', description: formData.tipo_cliente === 'usina' ? 'GeraÃ§Ã£o estimada, potÃªncia, mÃ³dulos e investimento total devem ser maiores que zero.' : 'Consumo, potÃªncia, painÃ©is e valor total devem ser maiores que zero.', variant: 'destructive' });
+      toast({ title: 'Dados incompletos', description: formData.tipo_cliente === 'usina' ? 'Geração estimada, potência, módulos e investimento total devem ser maiores que zero.' : 'Consumo, potência, painéis e valor total devem ser maiores que zero.', variant: 'destructive' });
       return;
     }
 
     if (!Array.isArray(formData.paymentConditions) || formData.paymentConditions.length === 0) {
-      toast({ title: 'CondiÃ§Ãµes de pagamento', description: 'Selecione pelo menos uma condiÃ§Ã£o de pagamento.', variant: 'destructive' });
+      toast({ title: 'Condições de pagamento', description: 'Selecione pelo menos uma condição de pagamento.', variant: 'destructive' });
       return;
     }
 
@@ -1263,8 +1263,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const showFinancingSimulation = hasFinancingSelected && Boolean(formData.showFinancingSimulation);
     if (showFinancingSimulation && normalizedFinancingConditions.length === 0) {
       toast({
-        title: 'CondiÃ§Ãµes de financiamento',
-        description: 'Para financiar, adicione ao menos 1 instituiÃ§Ã£o com taxa e parcelas.',
+        title: 'Condições de financiamento',
+        description: 'Para financiar, adicione ao menos 1 instituição com taxa e parcelas.',
         variant: 'destructive',
       });
       return;
@@ -1348,8 +1348,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       || await prefetchCoverImage(formData.tipo_cliente || 'residencial');
     if (logoUrl && !resolvedLogoDataUrl) {
       toast({
-        title: 'Logo indisponÃ­vel',
-        description: 'NÃ£o foi possÃ­vel carregar a logo da empresa para o PDF. Reenvie a logo e tente novamente.',
+        title: 'Logo indisponível',
+        description: 'Não foi possível carregar a logo da empresa para o PDF. Reenvie a logo e tente novamente.',
         variant: 'destructive',
       });
       return;
@@ -1622,7 +1622,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       }
       if (versionId && propostaId) await trackDownloadEvent(versionId, propostaId, Number(contact.id), 'client_proposal');
 
-      toast({ title: "Proposta gerada!", description: "PDF baixado. Baixe o Roteiro do Vendedor na prÃ³xima tela." });
+      toast({ title: "Proposta gerada!", description: "PDF baixado. Baixe o Roteiro do Vendedor na próxima tela." });
       onClose();
     } catch (error: any) {
       console.error('Error generating proposal:', error);
@@ -1633,8 +1633,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     }
   };
 
-  // â”€â”€ Computed financing preview â”€â”€
-  // â”€â”€ Reset on open â”€â”€
+  // Computed financing preview
+  // Reset on open
   React.useEffect(() => {
     const currentContact = contactRef.current;
     if (!currentContact || !isOpen) return;

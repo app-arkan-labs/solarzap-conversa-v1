@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Contact, PIPELINE_STAGES, PipelineStage, ClientType } from '@/types/solarzap';
-import { formatPhoneForDisplay } from '@/lib/phoneUtils';
+import { formatPhoneForDisplay, normalizePhoneForStorage } from '@/lib/phoneUtils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -391,13 +391,8 @@ export function ContactsView({
     try {
       // PREPARE DATA: Sanitize phone
       const dataToSave = { ...formData };
-      if (dataToSave.telefone) {
-        let cleanPhone = dataToSave.telefone.replace(/\D/g, '');
-        // Auto-prepend 55 if likely BR number (10 or 11 digits) and missing it
-        if ((cleanPhone.length === 10 || cleanPhone.length === 11) && !cleanPhone.startsWith('55')) {
-          cleanPhone = '55' + cleanPhone;
-        }
-        dataToSave.telefone = cleanPhone;
+      if (dataToSave.telefone !== undefined) {
+        dataToSave.telefone = normalizePhoneForStorage(dataToSave.telefone);
       }
 
       await onUpdateLead(selectedContact.id, dataToSave);

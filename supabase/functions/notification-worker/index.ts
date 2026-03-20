@@ -223,6 +223,22 @@ function toStringArray(value: unknown): string[] {
     .filter(Boolean)
 }
 
+function onlyPhoneDigits(value: unknown): string {
+  return String(value || '').replace(/\D/g, '')
+}
+
+function normalizePhoneE164(value: unknown): string | null {
+  const digits = onlyPhoneDigits(value)
+  if (!digits) return null
+  if (digits.length >= 10 && digits.length <= 11) return `55${digits}`
+  if (digits.length < 10 || digits.length > 15) return null
+  return digits
+}
+
+function resolveCanonicalLeadPhone(row: { telefone?: unknown; phone_e164?: unknown }): string | null {
+  return normalizePhoneE164(row.telefone) || normalizePhoneE164(row.phone_e164)
+}
+
 function normalizeNotificationSettingsRow(row: Record<string, unknown>): NotificationSettingsRow {
   return {
     org_id: String(row.org_id || ''),
@@ -301,7 +317,8 @@ function formatCurrencyBR(value: unknown): string {
 function buildMessage(event: NotificationEventRow, lead: { nome?: string | null; telefone?: string | null } | null) {
   const payload = event.payload || {}
   const leadName = String(payload.nome || lead?.nome || 'Lead').trim()
-  const leadPhone = String(payload.telefone || lead?.telefone || '').trim()
+  const payloadPhone = normalizePhoneE164(payload.telefone || payload.phone_e164 || payload.phone || null)
+  const leadPhone = String(lead?.telefone || payloadPhone || '').trim()
   const title = String(payload.title || '').trim()
   const startAt = formatDateTime(payload.start_at)
   const fromStage = String(payload.from_stage || '').trim()
@@ -539,7 +556,7 @@ async function resolveLead(
 
   return {
     nome: data.nome,
-    telefone: (data.phone_e164 || data.telefone || null) as string | null,
+    telefone: resolveCanonicalLeadPhone(data),
   }
 }
 

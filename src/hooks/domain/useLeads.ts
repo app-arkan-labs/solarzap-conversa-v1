@@ -8,6 +8,7 @@ import type { LeadStageData } from '@/types/ai';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { normalizeLeadStage } from '@/lib/leadStageNormalization';
 import { normalizeChannelValue } from '@/lib/channelNormalization';
+import { buildLeadPhoneSyncFields } from '@/lib/leadPhoneSync';
 import {
     buildImportLeadsSummary,
     type ImportLeadsSummary,
@@ -116,7 +117,7 @@ export const leadToContact = (lead: any): Contact => {
         id: String(lead.id),
         name: lead.nome || 'Sem nome',
         company: lead.empresa || undefined,
-        phone: lead.telefone || '',
+        phone: lead.telefone || lead.phone_e164 || '',
         email: lead.email || undefined,
         channel: mapChannel(lead.canal),
         pipelineStage: mapPipelineStage(lead.status_pipeline),
@@ -576,13 +577,15 @@ export function useLeads() {
         mutationFn: async (data: LeadPatch) => {
             if (!user) throw new Error('User not authenticated');
             if (!orgId) throw new Error('Organização não vinculada ao usuário');
+            const phoneSync = buildLeadPhoneSyncFields(data.telefone);
 
             const basePayload = {
                 org_id: orgId,
                 user_id: user.id,
                 assigned_to_user_id: user.id,
                 nome: data.nome,
-                telefone: data.telefone,
+                telefone: phoneSync.telefone,
+                phone_e164: phoneSync.phone_e164,
                 email: data.email || null,
                 empresa: data.empresa || null,
                 canal: data.canal || 'whatsapp',
@@ -633,7 +636,11 @@ export function useLeads() {
                 basePayload.name_manually_changed = true;
                 basePayload.name_source = 'manual';
             }
-            if (data.telefone !== undefined) basePayload.telefone = data.telefone;
+            if (data.telefone !== undefined) {
+                const phoneSync = buildLeadPhoneSyncFields(data.telefone);
+                basePayload.telefone = phoneSync.telefone;
+                basePayload.phone_e164 = phoneSync.phone_e164;
+            }
             if (data.email !== undefined) basePayload.email = data.email || null;
             if (data.empresa !== undefined) basePayload.empresa = data.empresa || null;
             if (data.consumo_kwh !== undefined) basePayload.consumo_kwh = normalizeConsumokwhForDb(data.consumo_kwh);
@@ -678,6 +685,29 @@ export function useLeads() {
                 await markLeadChannelAsManual(Number(contactId), data.canal);
             }
             return { contactId, ...data };
+        },
+        onMutate: async ({ contactId, data }) => {
+            const snapshot = queryClient.getQueriesData({ queryKey: ['leads', orgId] });
+            const phoneSync = data.telefone !== undefined ? buildLeadPhoneSyncFields(data.telefone) : null;
+
+            queryClient.setQueriesData({ queryKey: ['leads', orgId] }, (oldData: unknown) => {
+                if (!Array.isArray(oldData)) return oldData;
+                return oldData.map((item: any) => {
+                    if (String(item?.id) !== String(contactId)) return item;
+                    return {
+                        ...item,
+                        phone: phoneSync ? (phoneSync.telefone || '') : item.phone,
+                        phoneE164: phoneSync ? (phoneSync.phone_e164 || undefined) : item.phoneE164,
+                    };
+                });
+            });
+
+            return { snapshot };
+        },
+        onError: (_error, _vars, context) => {
+            context?.snapshot?.forEach(([key, data]) => {
+                queryClient.setQueryData(key, data);
+            });
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['leads', orgId] });

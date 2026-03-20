@@ -1,16 +1,36 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const ALLOWED_ORIGIN = (Deno.env.get("ALLOWED_ORIGIN") || "").trim();
+const CORS_ALLOW_HEADERS = "authorization, x-client-info, apikey, content-type";
+const CORS_ALLOW_METHODS = "POST, OPTIONS";
+
+const normalizeOrigin = (value: string): string => String(value || "").trim().replace(/\/+$/, "");
+
+const parseAllowedOrigins = (): string[] => {
+  const allowedOriginsCsv = String(Deno.env.get("ALLOWED_ORIGINS") || "");
+  const legacyAllowedOrigin = String(Deno.env.get("ALLOWED_ORIGIN") || "");
+
+  const parsed = [...allowedOriginsCsv.split(","), legacyAllowedOrigin]
+    .map((item) => normalizeOrigin(item))
+    .filter((item) => item.length > 0);
+
+  return Array.from(new Set(parsed));
+};
+
+const ALLOWED_ORIGINS = parseAllowedOrigins();
+
+const resolveCorsOrigin = (req: Request): string => {
+  if (ALLOWED_ORIGINS.length === 0) return "*";
+  const origin = normalizeOrigin(req.headers.get("Origin") || "");
+  if (origin && ALLOWED_ORIGINS.includes(origin)) return origin;
+  return ALLOWED_ORIGINS[0];
+};
 
 const buildCorsHeaders = (req: Request) => {
-  const origin = req.headers.get("Origin") || "";
-  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-  const allowed = !ALLOWED_ORIGIN
-    ? "*"
-    : (origin === ALLOWED_ORIGIN || isLocalhost) ? origin : ALLOWED_ORIGIN;
   return {
-    "Access-Control-Allow-Origin": allowed,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Origin": resolveCorsOrigin(req),
+    "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS,
+    "Access-Control-Allow-Methods": CORS_ALLOW_METHODS,
+    "Vary": "Origin",
   };
 };
 

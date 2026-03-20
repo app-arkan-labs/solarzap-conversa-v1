@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { formatPhoneForDisplay } from '@/lib/phoneUtils';
+import { formatPhoneForDisplay, normalizePhoneForStorage } from '@/lib/phoneUtils';
 import { useToast } from '@/hooks/use-toast';
 import { PipelineStage, ClientType, Channel, PIPELINE_STAGES, CHANNEL_INFO } from '@/types/solarzap';
 import {
@@ -107,11 +107,7 @@ export function CreateLeadModal({ isOpen, onClose, onSave }: CreateLeadModalProp
       const dataToSave = { ...formData };
 
       // Sanitize Phone
-      let cleanPhone = dataToSave.telefone.replace(/\D/g, '');
-      if ((cleanPhone.length === 10 || cleanPhone.length === 11) && !cleanPhone.startsWith('55')) {
-        cleanPhone = '55' + cleanPhone;
-      }
-      dataToSave.telefone = cleanPhone;
+      dataToSave.telefone = normalizePhoneForStorage(dataToSave.telefone);
 
       await onSave(dataToSave);
       setFormData(initialFormData);
