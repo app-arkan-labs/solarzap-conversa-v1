@@ -150,7 +150,7 @@ export async function createBillingPortalSession(orgId?: string | null) {
   });
 
   if (error) {
-    const message = await resolveSupabaseFunctionErrorMessage(error, 'Falha ao abrir portal de cobranca');
+    const message = await resolveSupabaseFunctionErrorMessage(error, 'Falha ao abrir portal de cobrança');
     throw new Error(message);
   }
 

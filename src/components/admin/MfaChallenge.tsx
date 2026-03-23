@@ -82,13 +82,13 @@ export default function MfaChallenge() {
 
       toast({
         title: 'MFA validado',
-        description: 'Sessao elevada para AAL2.',
+        description: 'Sessão elevada para AAL2.',
       });
       navigate('/admin', { replace: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Codigo MFA invalido';
+      const message = error instanceof Error ? error.message : 'Código MFA inválido';
       toast({
-        title: 'Falha na verificacao',
+        title: 'Falha na verificação',
         description: message,
         variant: 'destructive',
       });
@@ -106,7 +106,7 @@ export default function MfaChallenge() {
           </div>
           <CardTitle>Confirmar MFA para /admin</CardTitle>
           <CardDescription>
-            Sua sessao atual esta em AAL1. Informe o codigo TOTP para continuar.
+            Sua sessão atual está em AAL1. Informe o código TOTP para continuar.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -118,7 +118,7 @@ export default function MfaChallenge() {
           ) : !factorId ? (
             <>
               <p className="text-sm text-muted-foreground">
-                Nenhum fator MFA encontrado para seu usuario.
+                Nenhum fator MFA encontrado para seu usuário.
               </p>
               <Button className="w-full" onClick={() => navigate('/admin/mfa-setup', { replace: true })}>
                 Configurar MFA

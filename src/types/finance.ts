@@ -1,4 +1,4 @@
-﻿export type SaleInstallmentStatus = 'scheduled' | 'awaiting_confirmation' | 'paid' | 'canceled';
+export type SaleInstallmentStatus = 'scheduled' | 'awaiting_confirmation' | 'paid' | 'canceled';
 
 export type PaymentMethod =
   | 'pix'
@@ -28,9 +28,9 @@ export const PAYMENT_METHOD_ORDER: PaymentMethod[] = [
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   pix: 'Pix',
   boleto: 'Boleto',
-  credit_card: 'Cartao de credito',
-  debit_card: 'Cartao de debito',
-  bank_transfer: 'Transferencia bancaria',
+  credit_card: 'Cartão de crédito',
+  debit_card: 'Cartão de débito',
+  bank_transfer: 'Transferência bancária',
   financing: 'Financiamento',
   cash: 'Dinheiro',
   check: 'Cheque',
@@ -44,16 +44,16 @@ export const PAYMENT_METHOD_GROUPS: Array<{
 }> = [
   {
     title: 'Pagamento direto',
-    description: 'Liquida na hora ou por cobranca simples.',
+    description: 'Liquida na hora ou por cobrança simples.',
     methods: ['pix', 'boleto', 'cash', 'check'],
   },
   {
-    title: 'Cartao',
-    description: 'Recebimento em credito ou debito.',
+    title: 'Cartão',
+    description: 'Recebimento em crédito ou débito.',
     methods: ['credit_card', 'debit_card'],
   },
   {
-    title: 'Bancario',
+    title: 'Bancário',
     description: 'Fluxos ligados ao banco do cliente.',
     methods: ['bank_transfer', 'financing'],
   },

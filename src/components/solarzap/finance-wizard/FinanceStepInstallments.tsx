@@ -57,7 +57,7 @@ function InstallmentCard({
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle className="text-base">{title}</CardTitle>
-            <CardDescription>Valor, vencimento, modalidade e observacoes.</CardDescription>
+            <CardDescription>Valor, vencimento, modalidade e observações.</CardDescription>
           </div>
           {onRemove ? (
             <Button type="button" variant="ghost" size="icon" disabled={!canRemove || disabled} onClick={onRemove}>
@@ -189,8 +189,8 @@ export function FinanceStepInstallments({
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">
-              Pagamento simples detectado. O wizard preenche uma parcela unica com o valor total e voce pode ajustar se
-              necessario.
+              Pagamento simples detectado. O wizard preenche uma parcela única com o valor total e você pode ajustar se
+              necessário.
             </p>
           </CardContent>
         </Card>
@@ -241,7 +241,7 @@ export function FinanceStepInstallments({
             <div>
               <CardTitle className="text-base">Parcelas</CardTitle>
               <CardDescription>
-                Monte a estrutura de cobranca. Apenas as modalidades escolhidas na etapa anterior ficam disponiveis.
+                Monte a estrutura de cobrança. Apenas as modalidades escolhidas na etapa anterior ficam disponíveis.
               </CardDescription>
             </div>
             <Button type="button" variant="outline" disabled={disabled} onClick={onAddInstallment}>

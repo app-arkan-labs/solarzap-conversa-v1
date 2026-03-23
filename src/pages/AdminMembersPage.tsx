@@ -267,7 +267,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
       await removeMember(member.user_id, orgId ?? undefined);
       toast({
         title: 'Membro removido',
-        description: `${fallbackMemberLabel(member)} removido da organizacao.`,
+        description: `${fallbackMemberLabel(member)} removido da organização.`,
       });
       await loadMembers(true);
     } catch (error) {

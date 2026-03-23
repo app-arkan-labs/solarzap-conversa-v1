@@ -19,7 +19,7 @@ const Index = () => {
           data-testid="crm-feature-flag-banner"
           className="fixed bottom-3 right-3 z-50 rounded-xl border border-primary/25 bg-background/95 px-3 py-2 text-xs text-foreground shadow-[0_16px_40px_-30px_rgba(15,23,42,0.45)] backdrop-blur-sm"
         >
-          Feature flag `crm_feature_flag_banner` ativa para esta organizacao.
+          Feature flag `crm_feature_flag_banner` ativa para esta organização.
         </div>
       ) : null}
       <Suspense
@@ -27,7 +27,7 @@ const Index = () => {
           <div className="h-screen w-full flex items-center justify-center bg-background">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
-              <span className="text-sm">Carregando area principal...</span>
+              <span className="text-sm">Carregando área principal...</span>
             </div>
           </div>
         }

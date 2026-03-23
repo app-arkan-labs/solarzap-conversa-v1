@@ -17,9 +17,9 @@ export default function OrgSuspendedScreen({ reason }: OrgSuspendedScreenProps) 
             <AlertTriangle className="h-5 w-5" />
           </div>
           <div className="space-y-3">
-            <h1 className="text-xl font-semibold text-foreground">Sua organizacao foi suspensa</h1>
+            <h1 className="text-xl font-semibold text-foreground">Sua organização foi suspensa</h1>
             <p className="text-sm text-foreground/80">
-              O acesso ao CRM esta temporariamente bloqueado. Seus dados estao preservados e a conta pode ser reativada a qualquer momento.
+              O acesso ao CRM está temporariamente bloqueado. Seus dados estão preservados e a conta pode ser reativada a qualquer momento.
             </p>
             {reason ? (
               <p className="text-sm text-foreground/84">

@@ -21,7 +21,7 @@ export function StepEquipment({ form }: StepEquipmentProps) {
 
       <Tabs defaultValue="modulo" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="modulo">Modulo</TabsTrigger>
+          <TabsTrigger value="modulo">Módulo</TabsTrigger>
           <TabsTrigger value="inversor">Inversor</TabsTrigger>
         </TabsList>
 

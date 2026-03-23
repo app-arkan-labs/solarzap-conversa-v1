@@ -106,7 +106,7 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
             </p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Modulo</p>
+            <p className="text-xs text-muted-foreground">Módulo</p>
             <p className="font-medium">{form.formData.moduloMarca || '-'} {form.formData.moduloNome || ''}</p>
           </div>
           <div>
@@ -114,7 +114,7 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
             <p className="font-medium">{form.formData.inversorMarca || '-'} {form.formData.inversorNome || ''}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Localizacao tecnica</p>
+            <p className="text-xs text-muted-foreground">Localização técnica</p>
             <p className="font-medium">
               {Number.isFinite(Number(form.formData.latitude)) && Number.isFinite(Number(form.formData.longitude))
                 ? `${Number(form.formData.latitude).toFixed(5)}, ${Number(form.formData.longitude).toFixed(5)}`

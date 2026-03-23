@@ -44,7 +44,7 @@ export default function OrganizationSelect() {
         navigate('/', { replace: true });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Falha ao selecionar organizacao.';
+      const message = error instanceof Error ? error.message : 'Falha ao selecionar organização.';
       toast({
         title: 'Erro ao trocar empresa',
         description: message,

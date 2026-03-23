@@ -870,7 +870,7 @@ export function ChatArea({
     if (!orgId) {
       toast({
         title: "Erro ao registrar",
-        description: "Organizacao nao vinculada ao usuario.",
+        description: "Organização não vinculada ao usuário.",
         variant: "destructive"
       });
       return;

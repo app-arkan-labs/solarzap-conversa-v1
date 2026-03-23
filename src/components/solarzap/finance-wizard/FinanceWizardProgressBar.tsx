@@ -4,9 +4,9 @@ import { FinanceWizardStep } from '@/types/finance';
 
 const STEP_LABELS: Array<{ step: FinanceWizardStep; title: string; subtitle: string }> = [
   { step: 1, title: 'Valores', subtitle: 'Venda, custo e notas' },
-  { step: 2, title: 'Pagamento', subtitle: 'Modalidades padrao' },
+  { step: 2, title: 'Pagamento', subtitle: 'Modalidades padrão' },
   { step: 3, title: 'Parcelas', subtitle: 'Entrada e vencimentos' },
-  { step: 4, title: 'Revisao', subtitle: 'Conferencia final' },
+  { step: 4, title: 'Revisão', subtitle: 'Conferência final' },
 ];
 
 interface FinanceWizardProgressBarProps {

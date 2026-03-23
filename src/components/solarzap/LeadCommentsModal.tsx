@@ -135,7 +135,7 @@ export function LeadCommentsModal({ isOpen, onClose, leadId, leadName }: LeadCom
     if (!orgId) {
       toast({
         title: "Erro ao adicionar",
-        description: "Organizacao nao vinculada ao usuario.",
+        description: "Organização não vinculada ao usuário.",
         variant: "destructive",
       });
       return;

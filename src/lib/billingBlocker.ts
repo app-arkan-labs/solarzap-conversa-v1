@@ -201,7 +201,7 @@ export const buildSubscriptionIssueBlocker = (input: {
       title: input.title || 'Atualize o pagamento para continuar',
       description:
         input.description ||
-        'Seu acesso esta limitado por uma cobranca pendente. Atualize a forma de pagamento para liberar a funcionalidade.',
+        'Seu acesso está limitado por uma cobrança pendente. Atualize a forma de pagamento para liberar a funcionalidade.',
       primaryLabel: 'Atualizar pagamento',
       primaryAction: 'billing_portal',
       targetPlan: currentPlan,

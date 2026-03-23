@@ -165,7 +165,7 @@ export default function GuidedTour({
             <p className="mt-1 text-sm text-muted-foreground">{step.content}</p>
             {isTargetMissing ? (
               <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-800 dark:text-amber-200">
-                Nao encontramos este elemento agora. Voce pode avancar e continuar o tour normalmente.
+                Não encontramos este elemento agora. Você pode avançar e continuar o tour normalmente.
               </p>
             ) : null}
             <div className="mt-4 flex items-center justify-between">

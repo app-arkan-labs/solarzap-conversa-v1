@@ -291,8 +291,8 @@ export default function Pricing() {
                 </span>
               </h1>
               <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-                Comece a fechar mais negocios hoje com automacao via WhatsApp, IA embarcada e CRM solar completo.
-                Teste qualquer plano gratis por 7 dias.
+                Comece a fechar mais negócios hoje com automação via WhatsApp, IA embarcada e CRM solar completo.
+                Teste qualquer plano grátis por 7 dias.
               </p>
             </>
           ) : (

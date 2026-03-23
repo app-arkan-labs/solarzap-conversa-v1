@@ -44,7 +44,7 @@ export default function MfaSetup() {
 
       const qrCode = data.totp?.uri || data.totp?.qr_code || '';
       if (!qrCode) {
-        throw new Error('QR Code nao retornado pelo Supabase');
+        throw new Error('QR Code não retornado pelo Supabase');
       }
 
       setEnrollment({
@@ -74,7 +74,7 @@ export default function MfaSetup() {
         factorId: enrollment.factorId,
       });
       if (challengeError || !challengeData?.id) {
-        throw challengeError || new Error('Nao foi possivel iniciar challenge MFA');
+        throw challengeError || new Error('Não foi possível iniciar challenge MFA');
       }
 
       const { error: verifyError } = await supabase.auth.mfa.verify({
@@ -88,13 +88,13 @@ export default function MfaSetup() {
 
       toast({
         title: 'MFA configurado',
-        description: 'Sessao elevada para AAL2. Acesso admin liberado.',
+        description: 'Sessão elevada para AAL2. Acesso admin liberado.',
       });
       navigate('/admin', { replace: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Codigo MFA invalido';
+      const message = error instanceof Error ? error.message : 'Código MFA inválido';
       toast({
-        title: 'Falha na verificacao',
+        title: 'Falha na verificação',
         description: message,
         variant: 'destructive',
       });
@@ -118,7 +118,7 @@ export default function MfaSetup() {
       await navigator.clipboard.writeText(enrollment.secret);
       toast({
         title: 'Chave copiada',
-        description: 'A chave manual foi copiada para a area de transferencia.',
+        description: 'A chave manual foi copiada para a área de transferência.',
       });
     } catch {
       toast({
@@ -140,7 +140,7 @@ export default function MfaSetup() {
           </div>
           <CardTitle>Configurar MFA para /admin</CardTitle>
           <CardDescription>
-            O painel admin exige autenticacao reforcada (AAL2). Escaneie o QR no app autenticador.
+            O painel admin exige autenticação reforçada (AAL2). Escaneie o QR no app autenticador.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -156,7 +156,7 @@ export default function MfaSetup() {
               {enrollment.secret ? (
                 <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
                   <p className="text-xs text-muted-foreground">
-                    Chave manual TOTP (oculta por padrao para reduzir exposicao em tela).
+                    Chave manual TOTP (oculta por padrão para reduzir exposição em tela).
                   </p>
                   <div className="flex items-center gap-2">
                     <p className="flex-1 text-xs font-mono break-all text-slate-700">

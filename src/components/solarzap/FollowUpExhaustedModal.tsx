@@ -36,11 +36,11 @@ interface FollowUpExhaustedModalProps {
 }
 
 const LOST_REASON_OPTIONS: Array<{ value: FollowUpLostReasonKey; label: string }> = [
-  { value: 'sem_resposta', label: 'Nao respondeu' },
+  { value: 'sem_resposta', label: 'Não respondeu' },
   { value: 'sem_interesse', label: 'Sem interesse' },
   { value: 'concorrente', label: 'Fechou com concorrente' },
-  { value: 'timing', label: 'Nao e o momento' },
-  { value: 'financeiro', label: 'Sem condicao financeira' },
+  { value: 'timing', label: 'Não é o momento' },
+  { value: 'financeiro', label: 'Sem condição financeira' },
   { value: 'outro', label: 'Outro' },
 ];
 
@@ -76,7 +76,7 @@ export function FollowUpExhaustedModal({
         <DialogHeader>
           <DialogTitle>Follow-up exaurido</DialogTitle>
           <DialogDescription>
-            O lead <strong>{leadName || 'Selecionado'}</strong> nao respondeu aos ultimos 5 follow-ups.
+            O lead <strong>{leadName || 'Selecionado'}</strong> não respondeu aos últimos 5 follow-ups.
           </DialogDescription>
         </DialogHeader>
 

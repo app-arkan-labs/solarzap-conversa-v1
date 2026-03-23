@@ -443,9 +443,9 @@ export function SobreEmpresaTab() {
                 />
 
                 <div className="rounded-xl border bg-card p-4">
-                    <p className="text-sm font-medium">A visita tecnica e gratuita?</p>
+                    <p className="text-sm font-medium">A visita técnica é gratuita?</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                        Essa resposta evita informacoes contraditorias no atendimento.
+                        Essa resposta evita informações contraditórias no atendimento.
                     </p>
                     <div className="mt-3">
                         <Select
@@ -471,9 +471,9 @@ export function SobreEmpresaTab() {
                 </div>
 
                 <QuestionCard
-                    question="Observacoes sobre custo de visita"
+                    question="Observações sobre custo de visita"
                     hint="Exemplo: gratuita em raio de 30km, fora disso consultar taxa"
-                    placeholder="Ex: Visita tecnica gratuita para cidades atendidas"
+                    placeholder="Ex: Visita técnica gratuita para cidades atendidas"
                     value={profile.technical_visit_fee_notes}
                     onChange={(v) => handleChange('technical_visit_fee_notes', v)}
                     multiline

@@ -101,17 +101,17 @@ export function FinanceStepValues({
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Observacoes financeiras</CardTitle>
+          <CardTitle className="text-base">Observações financeiras</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <Label htmlFor="finance-notes">Observacoes internas</Label>
+          <Label htmlFor="finance-notes">Observações internas</Label>
           <Textarea
             id="finance-notes"
             value={notes}
             rows={4}
             disabled={disabled}
             onChange={(event) => onNotesChange(event.target.value)}
-            placeholder="Ex.: condicoes comerciais, acordos de entrada, taxas adicionais ou observacoes do fechamento."
+            placeholder="Ex.: condições comerciais, acordos de entrada, taxas adicionais ou observações do fechamento."
           />
         </CardContent>
       </Card>

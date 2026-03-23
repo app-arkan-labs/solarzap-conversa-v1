@@ -619,7 +619,7 @@ export function ProjectPaidFinanceModal({
 
   const saveFinancePlanFallback = useCallback(async (leadId: number) => {
     if (!orgId) {
-      throw new Error('Organizacao nao encontrada para salvar o plano financeiro.');
+      throw new Error('Organização não encontrada para salvar o plano financeiro.');
     }
 
     const actorUserId = user?.id || null;

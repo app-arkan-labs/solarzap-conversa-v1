@@ -65,7 +65,7 @@ export function LossAnalyticsModal({ open, onOpenChange, ownerUserId = null }: L
               setFrom(formatDateInput(subDays(new Date(), 30)));
               setTo(formatDateInput(new Date()));
             }}>
-              Ultimos 30 dias
+              Últimos 30 dias
             </Button>
           </div>
         </div>

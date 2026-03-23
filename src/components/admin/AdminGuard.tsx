@@ -121,7 +121,7 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
       deniedToastShownRef.current = true;
       toast({
         title: 'Acesso restrito',
-        description: 'Seu usuario nao possui permissao de system admin para acessar /admin.',
+        description: 'Seu usuário não possui permissão de system admin para acessar /admin.',
         variant: 'destructive',
       });
     }
@@ -165,7 +165,7 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
   const errorRequestId = adminError?.requestId ?? null;
 
   if (guardState === 'checking_access') {
-    return <LoadingScreen label="Validando sessao..." />;
+    return <LoadingScreen label="Validando sessão..." />;
   }
 
   if (guardState === 'unauthenticated') {

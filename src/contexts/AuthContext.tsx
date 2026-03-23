@@ -180,7 +180,7 @@ const toFallbackOrgOption = (membership: MembershipQueryRow): UserOrganizationOp
   joined_at: membership.created_at ?? new Date(0).toISOString(),
   company_name: null,
   organization_name: null,
-  display_name: `Organizacao ${membership.org_id.slice(0, 8)}`,
+  display_name: `Organização ${membership.org_id.slice(0, 8)}`,
 });
 
 const sortOrgOptions = (orgs: UserOrganizationOption[]) =>
@@ -708,7 +708,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               joined_at: new Date(0).toISOString(),
               company_name: null,
               organization_name: null,
-              display_name: `Organizacao ${persistedMembership.orgId.slice(0, 8)}`,
+              display_name: `Organização ${persistedMembership.orgId.slice(0, 8)}`,
             },
           ]));
           setMembershipState(persistedMembership);
@@ -727,7 +727,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               joined_at: new Date(0).toISOString(),
               company_name: null,
               organization_name: null,
-              display_name: `Organizacao ${storedOrgFallback.orgId.slice(0, 8)}`,
+              display_name: `Organização ${storedOrgFallback.orgId.slice(0, 8)}`,
             },
           ]));
           setMembershipState(storedOrgFallback);
@@ -746,7 +746,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               joined_at: new Date(0).toISOString(),
               company_name: null,
               organization_name: null,
-              display_name: `Organizacao ${cachedMembership.orgId.slice(0, 8)}`,
+              display_name: `Organização ${cachedMembership.orgId.slice(0, 8)}`,
             },
           ]));
           markOrgReady();
@@ -785,7 +785,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               joined_at: new Date(0).toISOString(),
               company_name: null,
               organization_name: null,
-              display_name: `Organizacao ${persistedMembership.orgId.slice(0, 8)}`,
+              display_name: `Organização ${persistedMembership.orgId.slice(0, 8)}`,
             },
           ]));
           setMembershipState(persistedMembership);
@@ -804,7 +804,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               joined_at: new Date(0).toISOString(),
               company_name: null,
               organization_name: null,
-              display_name: `Organizacao ${storedOrgFallback.orgId.slice(0, 8)}`,
+              display_name: `Organização ${storedOrgFallback.orgId.slice(0, 8)}`,
             },
           ]));
           setMembershipState(storedOrgFallback);
@@ -822,7 +822,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       markOrgError({
         kind: 'transient',
-        message: 'Falha ao resolver organizacao para a sessao atual.',
+        message: 'Falha ao resolver organização para a sessão atual.',
       });
     };
 
@@ -924,7 +924,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const selectOrganization = async (nextOrgId: string, opts?: SelectOrganizationOptions) => {
     const option = organizations.find((item) => item.org_id === nextOrgId);
     if (!option) {
-      throw new Error('Organizacao selecionada nao encontrada no contexto atual.');
+      throw new Error('Organização selecionada não encontrada no contexto atual.');
     }
 
     const membership = toMembershipState(option);

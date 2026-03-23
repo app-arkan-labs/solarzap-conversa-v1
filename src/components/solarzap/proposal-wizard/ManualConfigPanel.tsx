@@ -196,18 +196,18 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
       </div>
 
       <div className="space-y-3">
-        <h4 className="text-sm font-semibold">Kit (modulo, inversor e estrutura)</h4>
+        <h4 className="text-sm font-semibold">Kit (módulo, inversor e estrutura)</h4>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="space-y-1">
-            <Label>Modulo nome/modelo</Label>
+            <Label>Módulo nome/modelo</Label>
             <Input value={form.formData.moduloNome} onChange={(e) => form.handleChange('moduloNome', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Modulo marca</Label>
+            <Label>Módulo marca</Label>
             <Input value={form.formData.moduloMarca} onChange={(e) => form.handleChange('moduloMarca', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Modulo tipo</Label>
+            <Label>Módulo tipo</Label>
             <Select value={form.formData.moduloTipo || 'Monocristalino'} onValueChange={(value) => form.handleChange('moduloTipo', value)}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent className="bg-popover">
@@ -218,7 +218,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>Modulo potencia (W)</Label>
+            <Label>Módulo potência (W)</Label>
             <Input
               type="number"
               min={0}
@@ -227,7 +227,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             />
           </div>
           <div className="space-y-1">
-            <Label>Modulo garantia (anos)</Label>
+            <Label>Módulo garantia (anos)</Label>
             <Input
               type="number"
               min={0}
@@ -382,7 +382,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             />
           </div>
           <div className="space-y-1">
-            <Label>Degradacao modulo (%)</Label>
+            <Label>Degradação módulo (%)</Label>
             <Input
               type="number"
               step="0.1"

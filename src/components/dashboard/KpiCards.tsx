@@ -100,11 +100,11 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
                 {formatPercent(profitDelta)}
               </div>
             </div>
-            <p className="text-base text-muted-foreground">{formatCurrency(data.profit.value)} de lucro realizado no periodo</p>
+            <p className="text-base text-muted-foreground">{formatCurrency(data.profit.value)} de lucro realizado no período</p>
           </div>
 
           <div className="space-y-1 text-left lg:text-right">
-            <p className="text-sm text-muted-foreground">Leitura principal do negocio</p>
+            <p className="text-sm text-muted-foreground">Leitura principal do negócio</p>
             <p className="text-lg font-semibold text-foreground">{heroHeadline}</p>
             <p className="text-sm text-muted-foreground">Use os indicadores abaixo para entender margem, faturamento, ticket e velocidade de fechamento.</p>
           </div>

@@ -81,7 +81,7 @@ export function DashboardView({
     const memberNameById = new Map(
       leadScopeMembers.map((member) => [
         member.user_id,
-        member.display_name?.trim() || member.email?.trim() || `Usuario ${member.user_id.slice(0, 8)}`,
+        member.display_name?.trim() || member.email?.trim() || `Usuário ${member.user_id.slice(0, 8)}`,
       ]),
     );
 

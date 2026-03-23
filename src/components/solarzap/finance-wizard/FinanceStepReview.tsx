@@ -80,7 +80,7 @@ export function FinanceStepReview({
         <CardHeader>
           <EditCardHeader
             title="Pagamento"
-            description="Modalidades selecionadas como padrao."
+            description="Modalidades selecionadas como padrão."
             onEdit={() => onEditStep(2)}
           />
         </CardHeader>
@@ -130,14 +130,14 @@ export function FinanceStepReview({
       <Card>
         <CardHeader>
           <EditCardHeader
-            title="Observacoes"
+            title="Observações"
             description="Notas internas vinculadas ao fechamento."
             onEdit={() => onEditStep(1)}
           />
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            {notes.trim() || 'Nenhuma observacao financeira registrada.'}
+            {notes.trim() || 'Nenhuma observação financeira registrada.'}
           </p>
         </CardContent>
       </Card>

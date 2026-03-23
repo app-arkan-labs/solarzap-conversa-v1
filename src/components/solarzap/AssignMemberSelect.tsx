@@ -98,7 +98,7 @@ export function AssignMemberSelect({ contactId, currentAssigneeId, className, tr
             toast({
                 variant: "destructive",
                 title: "Erro ao atribuir",
-                description: err.message || "Nao foi possivel atribuir o contato.",
+                description: err.message || "Não foi possível atribuir o contato.",
             });
         } finally {
             setIsUpdating(false);
@@ -132,7 +132,7 @@ export function AssignMemberSelect({ contactId, currentAssigneeId, className, tr
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value="unassigned" className="text-muted-foreground italic">
-                        Nao atribuido
+                        Não atribuído
                     </SelectItem>
                     {members.map((member) => (
                         <SelectItem

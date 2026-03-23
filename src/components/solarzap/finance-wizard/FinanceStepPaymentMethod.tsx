@@ -4,15 +4,15 @@ import { PAYMENT_METHOD_GROUPS, PAYMENT_METHOD_LABELS, PaymentMethod } from '@/t
 import { cn } from '@/lib/utils';
 
 const PAYMENT_METHOD_HINTS: Record<PaymentMethod, string> = {
-  pix: 'Liquidacao instantanea.',
-  boleto: 'Cobranca com vencimento definido.',
-  credit_card: 'Parcelamento e captura por credito.',
-  debit_card: 'Recebimento no debito.',
-  bank_transfer: 'TED, DOC ou transferencia interna.',
+  pix: 'Liquidação instantânea.',
+  boleto: 'Cobrança com vencimento definido.',
+  credit_card: 'Parcelamento e captura por crédito.',
+  debit_card: 'Recebimento no débito.',
+  bank_transfer: 'TED, DOC ou transferência interna.',
   financing: 'Contrato com banco ou financeira.',
   cash: 'Recebimento em dinheiro.',
   check: 'Pagamento por cheque.',
-  other: 'Caso especial ou combinado fora do padrao.',
+  other: 'Caso especial ou combinado fora do padrão.',
 };
 
 interface FinanceStepPaymentMethodProps {
@@ -31,8 +31,8 @@ export function FinanceStepPaymentMethod({
       <Card className="border-primary/20 bg-primary/5">
         <CardContent className="pt-6">
           <p className="text-sm text-muted-foreground">
-            Escolha as modalidades padrao do negocio. Elas definem quais formas de pagamento ficam disponiveis na
-            etapa de parcelas e podem ser ajustadas por parcela dentro dessa selecao.
+            Escolha as modalidades padrão do negócio. Elas definem quais formas de pagamento ficam disponíveis na
+            etapa de parcelas e podem ser ajustadas por parcela dentro dessa seleção.
           </p>
         </CardContent>
       </Card>

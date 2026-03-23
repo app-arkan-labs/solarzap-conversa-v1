@@ -212,8 +212,8 @@ export function NotificationsPanel({
     if (!rescheduleTarget?.installmentId || !onRescheduleInstallment) return;
     if (!rescheduleDate) {
       toast({
-        title: 'Nova data obrigatoria',
-        description: 'Informe a nova data para reagendar a cobranca.',
+        title: 'Nova data obrigatória',
+        description: 'Informe a nova data para reagendar a cobrança.',
         variant: 'destructive',
       });
       return;
@@ -225,7 +225,7 @@ export function NotificationsPanel({
       onMarkAsRead(rescheduleTarget.id);
       toast({
         title: 'Parcela reagendada',
-        description: 'Novo ciclo de cobranca criado com sucesso.',
+        description: 'Novo ciclo de cobrança criado com sucesso.',
       });
       setRescheduleTarget(null);
       setRescheduleDate('');
@@ -378,12 +378,12 @@ export function NotificationsPanel({
           <DialogHeader>
             <DialogTitle>Reagendar parcela</DialogTitle>
             <DialogDescription>
-              Informe a nova data de cobranca para manter o ciclo de confirmacao ativo.
+              Informe a nova data de cobrança para manter o ciclo de confirmação ativo.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-2">
-            <Label htmlFor="reschedule-date">Nova data (obrigatoria)</Label>
+            <Label htmlFor="reschedule-date">Nova data (obrigatória)</Label>
             <Input
               id="reschedule-date"
               type="date"

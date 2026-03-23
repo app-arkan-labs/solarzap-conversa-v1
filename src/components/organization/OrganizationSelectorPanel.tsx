@@ -32,7 +32,7 @@ export function OrganizationSelectorPanel({
   onSignOut,
   showSignOut = true,
   title = 'Escolha a empresa para conectar',
-  description = 'Seu usuario possui acesso a mais de uma empresa. Selecione o contexto para continuar.',
+  description = 'Seu usuário possui acesso a mais de uma empresa. Selecione o contexto para continuar.',
   connectLabel = 'Conectar nesta empresa',
   rootTestId = 'org-selector-panel',
 }: OrganizationSelectorPanelProps) {

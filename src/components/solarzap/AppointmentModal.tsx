@@ -431,8 +431,8 @@ export function AppointmentModal({
             const leadId = Number(data.lead_id);
             if (!currentUserId) {
                 toast({
-                    title: 'Usuario invalido',
-                    description: 'Nao foi possivel identificar o usuario atual.',
+                    title: 'Usuário inválido',
+                    description: 'Não foi possível identificar o usuário atual.',
                     variant: 'destructive',
                 });
                 return;
@@ -470,8 +470,8 @@ export function AppointmentModal({
                     time: data.time
                 });
                 toast({
-                    title: 'Data ou hora invalida',
-                    description: 'Nao foi possivel montar a data/hora do agendamento.',
+                    title: 'Data ou hora inválida',
+                    description: 'Não foi possível montar a data/hora do agendamento.',
                     variant: 'destructive',
                 });
                 return;
@@ -614,7 +614,7 @@ export function AppointmentModal({
                                         ) : null}
                                         {!isLoadingResponsibleOptions && responsibleOptions.length < 1 ? (
                                             <SelectItem value="no-members-found" disabled>
-                                                Nenhum membro disponivel
+                                                Nenhum membro disponível
                                             </SelectItem>
                                         ) : null}
                                     </SelectContent>

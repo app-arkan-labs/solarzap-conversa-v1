@@ -280,8 +280,8 @@ const Login = () => {
             scheduleAutomaticResend(normalizedEmail, SIGNUP_AUTO_RESEND_DEFAULT_DELAY_MS, 1);
           }
           toast({
-            title: 'Conta ainda nao confirmada',
-            description: `Reenviamos o email de confirmacao para ${normalizedEmail}. Depois de confirmar, use o fluxo de esqueci a senha novamente.`,
+            title: 'Conta ainda não confirmada',
+            description: `Reenviamos o email de confirmação para ${normalizedEmail}. Depois de confirmar, use o fluxo de esqueci a senha novamente.`,
           });
           setView('login');
           return;

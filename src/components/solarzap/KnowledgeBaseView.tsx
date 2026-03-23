@@ -261,7 +261,7 @@ export function KnowledgeBaseView() {
     } catch (error) {
       toast({
         title: 'Falha ao reprocessar',
-        description: error instanceof Error ? error.message : 'Nao foi possivel reprocessar o documento.',
+        description: error instanceof Error ? error.message : 'Não foi possível reprocessar o documento.',
         variant: 'destructive',
       });
     } finally {

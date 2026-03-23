@@ -16,14 +16,14 @@ type AdminAccessErrorScreenProps = {
 
 const COPY_BY_MODE = {
   session_error: {
-    title: 'Sessao admin inconsistente',
+    title: 'Sessão admin inconsistente',
     description:
-      'O acesso ao admin falhou por autenticacao ou renovacao de sessao. O fluxo nao sera redirecionado silenciosamente.',
+      'O acesso ao admin falhou por autenticação ou renovação de sessão. O fluxo não será redirecionado silenciosamente.',
   },
   origin_error: {
-    title: 'Origem nao autorizada',
+    title: 'Origem não autorizada',
     description:
-      'A origem atual nao esta autorizada a chamar o admin-api. Corrija a allowlist da Edge Function.',
+      'A origem atual não está autorizada a chamar o admin-api. Corrija a allowlist da Edge Function.',
   },
   admin_api_error: {
     title: 'Falha ao validar acesso admin',

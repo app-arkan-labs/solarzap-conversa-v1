@@ -83,7 +83,7 @@ export function MarkAsLostModal({
       setIsReasonEditorOpen(false);
       toast({
         title: 'Motivo adicionado',
-        description: 'O novo motivo ja esta disponivel para uso no dropdown.',
+        description: 'O novo motivo já está disponível para uso no dropdown.',
       });
     } catch (error) {
       toast({
@@ -223,7 +223,7 @@ export function MarkAsLostModal({
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Os motivos adicionados ficam disponiveis para toda a organizacao neste dropdown.
+                Os motivos adicionados ficam disponíveis para toda a organização neste dropdown.
               </p>
             </div>
           ) : null}

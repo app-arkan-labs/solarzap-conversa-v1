@@ -72,7 +72,7 @@ export function ForwardMessageModal({
       } catch (error) {
         if (!active) return;
         const message =
-          error instanceof Error ? error.message : 'Nao foi possivel carregar membros da equipe.';
+          error instanceof Error ? error.message : 'Não foi possível carregar membros da equipe.';
         setTeamLoadError(message);
         setTeamMembers([]);
       } finally {
