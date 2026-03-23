@@ -19,10 +19,18 @@ import type {
 } from './types';
 
 /** Extract the real error key from a supabase.functions.invoke result.
- *  FunctionsHttpError stores the parsed response body in `.context`,
- *  so `error.message` is always a generic string — the actual key lives in `context.error`. */
-function extractInvokeError(error: any, data: any, fallback: string): string {
-  if (error?.context?.error) return String(error.context.error);
+ *  FunctionsHttpError.context is a raw Response object whose body contains
+ *  the JSON with the `error` field. We read it async, falling back gracefully. */
+async function extractInvokeError(error: any, data: any, fallback: string): Promise<string> {
+  // FunctionsHttpError → context is the raw Response
+  if (error?.context && typeof error.context.json === 'function') {
+    try {
+      const body = await error.context.json();
+      if (body?.error) return String(body.error);
+    } catch { /* body already consumed or not JSON */ }
+  }
+  // FunctionsFetchError (network / CORS failure)
+  if (error?.name === 'FunctionsFetchError') return 'network_error';
   if (error?.message && error.message !== 'Edge Function returned a non-2xx status code') return error.message;
   if (data?.error) return String(data.error);
   return fallback;
@@ -223,7 +231,7 @@ export function useTrackingData() {
       const { data, error } = await supabase.functions.invoke('google-ads-oauth', {
         body: { org_id: orgId },
       });
-      if (error || !data?.authUrl) throw new Error(extractInvokeError(error, data, 'failed_to_get_auth_url'));
+      if (error || !data?.authUrl) throw new Error(await extractInvokeError(error, data, 'failed_to_get_auth_url'));
       window.location.href = String(data.authUrl);
     } catch (error: any) {
       console.error(error);
@@ -233,6 +241,9 @@ export function useTrackingData() {
         forbidden: 'Seu usuário não possui acesso a esta organização.',
         missing_org_id: 'Organização não identificada para iniciar OAuth.',
         missing_global_google_config: 'Configuração de Google Ads ausente no Supabase (CLIENT_ID/SECRET).',
+        missing_allowed_origin: 'Configuração CORS ausente na Edge Function. Configure ALLOWED_ORIGIN.',
+        origin_not_allowed: 'Origem não permitida pelo CORS. Verifique ALLOWED_ORIGIN ou ALLOW_LOCALHOST_CORS.',
+        network_error: 'Erro de rede ao conectar. Verifique CORS (ALLOW_LOCALHOST_CORS) e se a Edge Function está ativa.',
       };
       toast.error(errorMap[msg] || 'Falha ao iniciar conexão com Google Ads. Verifique OAuth, permissões e secrets do Supabase.');
       setGoogleAdsConnecting(false);
@@ -246,7 +257,7 @@ export function useTrackingData() {
       const { data, error } = await supabase.functions.invoke('tracking-credentials', {
         body: { action: 'disconnect_google_ads', org_id: orgId },
       });
-      if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'disconnect_failed'));
+      if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'disconnect_failed'));
       setGoogleAdsConnected(false);
       setGoogleAdsEmail(null);
       setMccList([]);
@@ -271,7 +282,7 @@ export function useTrackingData() {
       const { data, error } = await supabase.functions.invoke('tracking-credentials', {
         body: { action: 'list_accessible_customers', org_id: orgId },
       });
-      if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'list_accessible_failed'));
+      if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'list_accessible_failed'));
       const names = Array.isArray(data?.data?.resourceNames)
         ? data.data.resourceNames.map((resourceName: string) => {
             const customerId = String(resourceName || '').replace('customers/', '');
@@ -295,7 +306,7 @@ export function useTrackingData() {
         const { data, error } = await supabase.functions.invoke('tracking-credentials', {
           body: { action: 'account_hierarchy', org_id: orgId, login_customer_id: loginCustomerId },
         });
-        if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'account_hierarchy_failed'));
+        if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'account_hierarchy_failed'));
         setCustomerList(Array.isArray(data?.data?.customers) ? data.data.customers : []);
       } catch (error) {
         console.error(error);
@@ -320,7 +331,7 @@ export function useTrackingData() {
             login_customer_id: loginCustomerId,
           },
         });
-        if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'list_conversion_actions_failed'));
+        if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'list_conversion_actions_failed'));
         const actions = Array.isArray(data?.data?.conversionActions)
           ? data.data.conversionActions.map((action: any) => ({
               id: String(action.id || ''),
@@ -351,7 +362,7 @@ export function useTrackingData() {
           conversion_action_id: forms.google_ads.google_conversion_action_id,
         },
       });
-      if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'save_ads_selection_failed'));
+      if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'save_ads_selection_failed'));
       toast.success('Seleção salva com sucesso.');
       void loadPanel(true);
     } catch (error) {
@@ -490,7 +501,7 @@ export function useTrackingData() {
         const { data, error } = await supabase.functions.invoke('tracking-credentials', {
           body: { action: 'upsert_platform_credentials', org_id: orgId, platform, enabled: forms[platform].enabled, metadata, secrets },
         });
-        if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'platform_save_failed'));
+        if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'platform_save_failed'));
 
         const settingsPatch =
           platform === 'meta'
@@ -524,7 +535,7 @@ export function useTrackingData() {
         const { data, error } = await supabase.functions.invoke('tracking-credentials', {
           body: { action: 'test_platform_connection', org_id: orgId, platform, validate_only: settings.google_validate_only },
         });
-        if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'test_failed'));
+        if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'test_failed'));
         toast.success(`Conexão de ${formatPlatform(platform)} validada.`);
       } catch (error) {
         console.error(error);

@@ -1,11 +1,5 @@
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
-
-const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim();
-const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true';
-if (!ALLOWED_ORIGIN && !ALLOW_WILDCARD_CORS) {
-  throw new Error('Missing ALLOWED_ORIGIN env (or set ALLOW_WILDCARD_CORS=true)');
-}
+import { resolveRequestCors } from '../_shared/cors.ts';
 
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').trim();
 const SUPABASE_ANON_KEY = (Deno.env.get('SUPABASE_ANON_KEY') || '').trim();
@@ -20,11 +14,12 @@ if (!GOOGLE_ADS_CLIENT_ID) {
 
 const callbackUrl = `${SUPABASE_URL}/functions/v1/google-ads-callback`;
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-};
+const createJsonResponse = (corsHeaders: Record<string, string>) =>
+  (status: number, body: Record<string, unknown>) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
 function cleanString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -35,16 +30,6 @@ function cleanString(value: unknown): string | null {
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
-}
-
-function jsonResponse(status: number, body: Record<string, unknown>): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      ...corsHeaders,
-      'Content-Type': 'application/json',
-    },
-  });
 }
 
 function resolveRedirectOrigin(req: Request): string {
@@ -60,12 +45,22 @@ function resolveRedirectOrigin(req: Request): string {
     }
   }
 
-  return cleanString(Deno.env.get('SITE_URL')) || 'http://localhost:5173';
+  return cleanString(Deno.env.get('SITE_URL')) || 'http://localhost:8080';
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
+  const cors = resolveRequestCors(req, { allowMethods: 'POST, GET, OPTIONS' });
+  const corsHeaders = cors.corsHeaders;
+  const jsonResponse = createJsonResponse(corsHeaders);
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    if (cors.missingAllowedOriginConfig) {
+      return jsonResponse(500, { success: false, error: 'missing_allowed_origin' });
+    }
+    if (!cors.originAllowed) {
+      return jsonResponse(403, { success: false, error: 'origin_not_allowed' });
+    }
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   if (req.method !== 'POST' && req.method !== 'GET') {

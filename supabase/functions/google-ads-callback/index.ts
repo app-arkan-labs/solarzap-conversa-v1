@@ -19,7 +19,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function createRedirectResponse(status: 'success' | 'error', message: string, baseUrl?: string): Response {
-  const fallbackUrl = cleanString(Deno.env.get('SITE_URL')) || 'http://localhost:5173';
+  const fallbackUrl = cleanString(Deno.env.get('SITE_URL')) || 'http://localhost:8080';
   const redirectBase = cleanString(baseUrl) || fallbackUrl;
   const url = `${redirectBase}/?google_ads_status=${status}&message=${encodeURIComponent(message)}`;
 
