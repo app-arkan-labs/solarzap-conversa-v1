@@ -102,7 +102,7 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [fileName, setFileName] = useState('');
   const [isImporting, setIsImporting] = useState(false);
-  const [importSummary, setImportSummary] = useState<ImportLeadsSummary | null>(null);
+  const [importProgress, setImportProgress] = useState('');  const [importSummary, setImportSummary] = useState<ImportLeadsSummary | null>(null);
   const [selectedSource, setSelectedSource] = useState<string>('cold_list'); // Default for imports
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
   const [defaultPipelineStage, setDefaultPipelineStage] = useState<PipelineStage>('novo_lead');
@@ -226,7 +226,6 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
   };
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-  const MAX_ROWS = 1000;
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -263,15 +262,6 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
 
         const fileHeaders = jsonData[0].map(h => String(h || '').trim());
         const rows = jsonData.slice(1).filter(row => row.some(cell => cell !== undefined && cell !== ''));
-
-        if (rows.length > MAX_ROWS) {
-          toast({
-            title: 'Arquivo com muitas linhas',
-            description: `O arquivo tem ${rows.length} linhas. O limite é de ${MAX_ROWS} registros por importação.`,
-            variant: 'destructive',
-          });
-          return;
-        }
 
         setHeaders(fileHeaders);
         setFileData(rows);
@@ -486,25 +476,42 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
     setStep('importing');
 
     try {
-      const summary = coerceImportSummary(await onImport(contacts));
-      setImportSummary(summary);
+      const CHUNK_SIZE = 500;
+      const totalChunks = Math.ceil(contacts.length / CHUNK_SIZE);
+      const aggregated: ImportLeadsSummary = { inserted_count: 0, updated_count: 0, failed_count: 0, failures: [] };
+
+      for (let i = 0; i < contacts.length; i += CHUNK_SIZE) {
+        const chunkIndex = Math.floor(i / CHUNK_SIZE) + 1;
+        if (totalChunks > 1) {
+          setImportProgress(`Importando lote ${chunkIndex} de ${totalChunks}...`);
+        }
+        const chunk = contacts.slice(i, i + CHUNK_SIZE);
+        const result = coerceImportSummary(await onImport(chunk));
+        aggregated.inserted_count += result.inserted_count;
+        aggregated.updated_count += result.updated_count;
+        aggregated.failed_count += result.failed_count;
+        aggregated.failures.push(...result.failures.map(f => ({ ...f, row_index: f.row_index + i })));
+      }
+
+      setImportProgress('');
+      setImportSummary(aggregated);
       setStep('result');
 
-      if (summary.failed_count > 0 && (summary.inserted_count + summary.updated_count) > 0) {
+      if (aggregated.failed_count > 0 && (aggregated.inserted_count + aggregated.updated_count) > 0) {
         toast({
           title: 'Importação concluída com ressalvas',
-          description: `${summary.inserted_count} inserido(s), ${summary.updated_count} atualizado(s), ${summary.failed_count} falha(s).`,
+          description: `${aggregated.inserted_count} inserido(s), ${aggregated.updated_count} atualizado(s), ${aggregated.failed_count} falha(s).`,
         });
-      } else if (summary.failed_count > 0) {
+      } else if (aggregated.failed_count > 0) {
         toast({
           title: 'Importação finalizada sem sucesso',
-          description: `${summary.failed_count} linha(s) falharam. Veja o relatório no modal.`,
+          description: `${aggregated.failed_count} linha(s) falharam. Veja o relatório no modal.`,
           variant: 'destructive',
         });
       } else {
         toast({
           title: 'Importação concluída!',
-          description: `${summary.inserted_count} inserido(s) e ${summary.updated_count} atualizado(s).`,
+          description: `${aggregated.inserted_count} inserido(s) e ${aggregated.updated_count} atualizado(s).`,
         });
       }
     } catch (error) {
@@ -793,6 +800,7 @@ export function ImportContactsModal({ isOpen, onClose, onImport }: ImportContact
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
               <p className="text-lg font-medium">Importando contatos...</p>
+              {importProgress && <p className="text-sm font-medium text-primary mt-1">{importProgress}</p>}
               <p className="text-sm text-muted-foreground">Aguarde enquanto processamos seus dados.</p>
             </div>
           )}
