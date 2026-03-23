@@ -18,6 +18,16 @@ import type {
   ConversionActionOption,
 } from './types';
 
+/** Extract the real error key from a supabase.functions.invoke result.
+ *  FunctionsHttpError stores the parsed response body in `.context`,
+ *  so `error.message` is always a generic string — the actual key lives in `context.error`. */
+function extractInvokeError(error: any, data: any, fallback: string): string {
+  if (error?.context?.error) return String(error.context.error);
+  if (error?.message && error.message !== 'Edge Function returned a non-2xx status code') return error.message;
+  if (data?.error) return String(data.error);
+  return fallback;
+}
+
 export function useTrackingData() {
   const { orgId } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -213,7 +223,7 @@ export function useTrackingData() {
       const { data, error } = await supabase.functions.invoke('google-ads-oauth', {
         body: { org_id: orgId },
       });
-      if (error || !data?.authUrl) throw new Error(error?.message || data?.error || 'failed_to_get_auth_url');
+      if (error || !data?.authUrl) throw new Error(extractInvokeError(error, data, 'failed_to_get_auth_url'));
       window.location.href = String(data.authUrl);
     } catch (error: any) {
       console.error(error);
@@ -236,7 +246,7 @@ export function useTrackingData() {
       const { data, error } = await supabase.functions.invoke('tracking-credentials', {
         body: { action: 'disconnect_google_ads', org_id: orgId },
       });
-      if (error || !data?.success) throw new Error(error?.message || data?.error || 'disconnect_failed');
+      if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'disconnect_failed'));
       setGoogleAdsConnected(false);
       setGoogleAdsEmail(null);
       setMccList([]);
@@ -261,7 +271,7 @@ export function useTrackingData() {
       const { data, error } = await supabase.functions.invoke('tracking-credentials', {
         body: { action: 'list_accessible_customers', org_id: orgId },
       });
-      if (error || !data?.success) throw new Error(error?.message || data?.error || 'list_accessible_failed');
+      if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'list_accessible_failed'));
       const names = Array.isArray(data?.data?.resourceNames)
         ? data.data.resourceNames.map((resourceName: string) => {
             const customerId = String(resourceName || '').replace('customers/', '');
@@ -285,7 +295,7 @@ export function useTrackingData() {
         const { data, error } = await supabase.functions.invoke('tracking-credentials', {
           body: { action: 'account_hierarchy', org_id: orgId, login_customer_id: loginCustomerId },
         });
-        if (error || !data?.success) throw new Error(error?.message || data?.error || 'account_hierarchy_failed');
+        if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'account_hierarchy_failed'));
         setCustomerList(Array.isArray(data?.data?.customers) ? data.data.customers : []);
       } catch (error) {
         console.error(error);
@@ -310,7 +320,7 @@ export function useTrackingData() {
             login_customer_id: loginCustomerId,
           },
         });
-        if (error || !data?.success) throw new Error(error?.message || data?.error || 'list_conversion_actions_failed');
+        if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'list_conversion_actions_failed'));
         const actions = Array.isArray(data?.data?.conversionActions)
           ? data.data.conversionActions.map((action: any) => ({
               id: String(action.id || ''),
@@ -341,7 +351,7 @@ export function useTrackingData() {
           conversion_action_id: forms.google_ads.google_conversion_action_id,
         },
       });
-      if (error || !data?.success) throw new Error(error?.message || data?.error || 'save_ads_selection_failed');
+      if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'save_ads_selection_failed'));
       toast.success('Seleção salva com sucesso.');
       void loadPanel(true);
     } catch (error) {
@@ -480,7 +490,7 @@ export function useTrackingData() {
         const { data, error } = await supabase.functions.invoke('tracking-credentials', {
           body: { action: 'upsert_platform_credentials', org_id: orgId, platform, enabled: forms[platform].enabled, metadata, secrets },
         });
-        if (error || !data?.success) throw new Error(error?.message || data?.error || 'platform_save_failed');
+        if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'platform_save_failed'));
 
         const settingsPatch =
           platform === 'meta'
@@ -514,7 +524,7 @@ export function useTrackingData() {
         const { data, error } = await supabase.functions.invoke('tracking-credentials', {
           body: { action: 'test_platform_connection', org_id: orgId, platform, validate_only: settings.google_validate_only },
         });
-        if (error || !data?.success) throw new Error(error?.message || data?.error || 'test_failed');
+        if (error || !data?.success) throw new Error(extractInvokeError(error, data, 'test_failed'));
         toast.success(`Conexão de ${formatPlatform(platform)} validada.`);
       } catch (error) {
         console.error(error);
