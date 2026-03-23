@@ -63,6 +63,13 @@ Deno.serve(async (req) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  if (cors.missingAllowedOriginConfig) {
+    return jsonResponse(500, { success: false, error: 'missing_allowed_origin' });
+  }
+  if (!cors.originAllowed) {
+    return jsonResponse(403, { success: false, error: 'origin_not_allowed' });
+  }
+
   if (req.method !== 'POST' && req.method !== 'GET') {
     return jsonResponse(405, { success: false, error: 'method_not_allowed' });
   }

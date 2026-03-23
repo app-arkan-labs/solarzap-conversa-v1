@@ -238,12 +238,15 @@ export function useTrackingData() {
       const msg = String(error?.message || '');
       const errorMap: Record<string, string> = {
         missing_authorization: 'Sessão expirada. Faça login novamente e tente conectar.',
+        unauthenticated: 'Token de sessão inválido ou expirado. Faça logout e login novamente.',
         forbidden: 'Seu usuário não possui acesso a esta organização.',
         missing_org_id: 'Organização não identificada para iniciar OAuth.',
         missing_global_google_config: 'Configuração de Google Ads ausente no Supabase (CLIENT_ID/SECRET).',
         missing_allowed_origin: 'Configuração CORS ausente na Edge Function. Configure ALLOWED_ORIGIN.',
         origin_not_allowed: 'Origem não permitida pelo CORS. Verifique ALLOWED_ORIGIN ou ALLOW_LOCALHOST_CORS.',
         network_error: 'Erro de rede ao conectar. Verifique CORS (ALLOW_LOCALHOST_CORS) e se a Edge Function está ativa.',
+        method_not_allowed: 'Método HTTP não permitido pela Edge Function.',
+        failed_to_get_auth_url: 'Falha ao gerar URL de autorização do Google.',
       };
       toast.error(errorMap[msg] || 'Falha ao iniciar conexão com Google Ads. Verifique OAuth, permissões e secrets do Supabase.');
       setGoogleAdsConnecting(false);
