@@ -914,7 +914,7 @@ export function SolarZapLayout() {
     switch (newStage) {
       case 'chamada_realizada':
         // When moved to "Chamada Realizada", ask if should move to "Aguardando Proposta"
-        if (!options.skipMoveToProposalModal) {
+        if (isDragDropEnabled(newStage, oldStage) && !options.skipMoveToProposalModal) {
           setActionContact(contact);
           setMoveToProposalOpen(true);
         }
@@ -922,7 +922,7 @@ export function SolarZapLayout() {
 
       case 'aguardando_proposta':
         // When moved to "Aguardando Proposta", ask to generate proposal after delay
-        if (!options.skipGenerateProposalPromptModal) {
+        if (isDragDropEnabled(newStage, oldStage) && !options.skipGenerateProposalPromptModal) {
           setActionContact(contact);
           setTimeout(() => {
             setGenerateProposalPromptOpen(true);

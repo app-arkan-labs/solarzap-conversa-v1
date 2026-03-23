@@ -149,11 +149,11 @@ export function useGoogleIntegration() {
   // For now we keep them as placeholder or move them to Edge Functions later.
   // ... (Keeping the interface compatible but warning about implementation)
 
-  const createCalendarEvent = useCallback(async (event: any): Promise<GoogleCalendarEvent> => {
+  const createCalendarEvent = useCallback(async (event: any): Promise<GoogleCalendarEvent | null> => {
     // TODO: Call Edge Function 'google-calendar-create'
     console.warn('createCalendarEvent not fully implemented yet - requires backend function');
     toast.info('Funcionalidade sendo implementada no backend...');
-    throw new Error('Not implemented');
+    return null;
   }, []);
 
   const sendEmail = useCallback(async (params: any): Promise<boolean> => {

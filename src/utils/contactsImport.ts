@@ -1,4 +1,4 @@
-﻿import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx';
 
 export interface ImportedContactRow {
   name: string;
@@ -14,7 +14,6 @@ export interface ParsedContactsResult {
 }
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const MAX_ROWS = 5000;
 
 const normalizePhone = (value: unknown): string => {
   const digits = String(value || '').replace(/\D/g, '');
@@ -61,10 +60,6 @@ const parseRows = (rows: string[][]): { contacts: ImportedContactRow[]; invalidR
   const dataRows = rows
     .slice(1)
     .filter((row) => row.some((cell) => String(cell || '').trim().length > 0));
-
-  if (dataRows.length > MAX_ROWS) {
-    throw new Error(`O limite por arquivo é de ${MAX_ROWS} linhas`);
-  }
 
   const nameIndex = findHeaderIndex(headers, ['nome', 'name', 'cliente', 'contato']);
   const phoneIndex = findHeaderIndex(headers, ['telefone', 'phone', 'celular', 'whatsapp', 'fone']);

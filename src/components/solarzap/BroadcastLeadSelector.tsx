@@ -35,7 +35,7 @@ interface BroadcastLeadSelectorProps {
   onSelectionChange: (contacts: ImportedContactRow[]) => void;
 }
 
-const LEADS_QUERY_LIMIT = 500;
+const LEADS_QUERY_LIMIT = 5000;
 const ALL_FILTER = '__all__';
 
 export function BroadcastLeadSelector({

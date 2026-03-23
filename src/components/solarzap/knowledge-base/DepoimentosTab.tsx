@@ -51,11 +51,11 @@ const STEPS = [
 ];
 
 const MEDIA_TYPES = [
-    { type: 'text', icon: MessageSquareQuote, label: 'Só Texto', color: 'brand', accept: '', description: 'Nenhuma mídia' },
-    { type: 'image', icon: ImageIcon, label: 'Foto', color: 'brand', accept: 'image/*', description: 'JPG, PNG, WebP' },
-    { type: 'video', icon: Video, label: 'Vídeo', color: 'brand', accept: 'video/*', description: 'MP4, MOV, WebM' },
-    { type: 'audio', icon: Mic, label: 'Áudio', color: 'brand', accept: 'audio/*', description: 'MP3, WAV, M4A' },
-    { type: 'pdf', icon: FileText, label: 'Print', color: 'brand', accept: 'image/*,.pdf', description: 'Print ou PDF' },
+    { type: 'text', icon: MessageSquareQuote, label: 'Só Texto', color: 'blue', accept: '', description: 'Nenhuma mídia' },
+    { type: 'image', icon: ImageIcon, label: 'Foto', color: 'green', accept: 'image/*', description: 'JPG, PNG, WebP' },
+    { type: 'video', icon: Video, label: 'Vídeo', color: 'purple', accept: 'video/*', description: 'MP4, MOV, WebM' },
+    { type: 'audio', icon: Mic, label: 'Áudio', color: 'orange', accept: 'audio/*', description: 'MP3, WAV, M4A' },
+    { type: 'pdf', icon: FileText, label: 'Print', color: 'blue', accept: 'image/*,.pdf', description: 'Print ou PDF' },
 ];
 
 export function DepoimentosTab() {
@@ -475,21 +475,21 @@ export function DepoimentosTab() {
                                             className={cn(
                                                 "flex flex-col items-center p-3 rounded-lg border-2 transition-all",
                                                 formData.mediaType === type
-                                                    ? color === 'green' ? "border-green-500 bg-green-50" :
-                                                        color === 'purple' ? "border-purple-500 bg-purple-50" :
-                                                            color === 'blue' ? "border-blue-500 bg-blue-50" :
-                                                                color === 'orange' ? "border-orange-500 bg-orange-50" :
-                                                                    "border-red-500 bg-red-50"
+                                                    ? color === 'green' ? "border-green-500 bg-green-50 dark:bg-green-950/30" :
+                                                        color === 'purple' ? "border-purple-500 bg-purple-50 dark:bg-purple-950/30" :
+                                                            color === 'blue' ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30" :
+                                                                color === 'orange' ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30" :
+                                                                    "border-primary bg-primary/10"
                                                     : "border-muted hover:border-muted-foreground/30"
                                             )}
                                         >
                                             <Icon className={cn(
                                                 "w-5 h-5 mb-1",
-                                                color === 'green' ? "text-green-500" :
-                                                    color === 'purple' ? "text-purple-500" :
-                                                        color === 'blue' ? "text-blue-500" :
-                                                            color === 'orange' ? "text-orange-500" :
-                                                                "text-red-500"
+                                                color === 'green' ? "text-green-600 dark:text-green-400" :
+                                                    color === 'purple' ? "text-purple-600 dark:text-purple-400" :
+                                                        color === 'blue' ? "text-blue-600 dark:text-blue-400" :
+                                                            color === 'orange' ? "text-orange-600 dark:text-orange-400" :
+                                                                "text-primary"
                                             )} />
                                             <span className="text-xs">{label}</span>
                                         </button>

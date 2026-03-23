@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Contact, ClientType } from '@/types/solarzap';
 import { generateProposalPDF } from '@/utils/generateProposalPDF';
 import { useToast } from '@/hooks/use-toast';
@@ -396,7 +396,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       const resp = await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: blob });
       if (!resp.ok) return null;
       return { bucket: data.bucket, path: data.path };
-    } catch { return null; }
+    } catch (err) { console.warn('uploadToScoped failed (non-blocking):', err); return null; }
   };
 
   // Share link (best-effort)
@@ -405,7 +405,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       const { data, error } = await supabase.functions.invoke('proposal-share-link', { body: { proposalVersionId: versionId } });
       if (error || !data?.url) return null;
       return { url: data.url, token: data.token, exp: data.exp };
-    } catch { return null; }
+    } catch (err) { console.warn('generateShareLink failed (non-blocking):', err); return null; }
   };
 
   // Track download (best-effort)
@@ -417,7 +417,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         proposal_version_id: versionId, proposta_id: propostaId, lead_id: leadId,
         user_id: user.id, channel: 'pdf_download', event_type: 'downloaded', metadata: { kind },
       });
-    } catch { /* non-blocking */ }
+    } catch (err) { console.warn('trackDownloadEvent failed (non-blocking):', err); }
   };
 
 
@@ -1102,7 +1102,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         body: { leadId: Number(contact.id), limitInteractions: 18, limitComments: 8, limitDocuments: 4, orgId },
       });
       if (!error && data) return data;
-    } catch { /* fallback */ }
+    } catch (err) { console.warn('fetchContext failed (non-blocking):', err); }
     return null;
   };
 
@@ -1617,7 +1617,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
               (supabase.from('proposal_versions').update({ premium_payload: { ...((ver?.premium_payload as Record<string, unknown>) || {}), share } })) as any,
               { proposalVersionId: String(versionId), orgId },
             );
-          } catch { /* non-blocking */ }
+          } catch (err) { console.warn('share-link update failed (non-blocking):', err); }
         }
       }
       if (versionId && propostaId) await trackDownloadEvent(versionId, propostaId, Number(contact.id), 'client_proposal');
