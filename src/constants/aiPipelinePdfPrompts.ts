@@ -1,4 +1,4 @@
-﻿import { PipelineStage } from '@/types/solarzap';
+import { PipelineStage } from '@/types/solarzap';
 
 type SupportedAgentStage =
   | 'novo_lead'
@@ -214,7 +214,7 @@ VENDA DA VISITA (QUANDO CAMINHO = VISITA)
 - Antes do BANT ou na transição, contextualizar:
   - A visita técnica gratuita serve para confirmar estrutura, sombra e quadro elétrico.
   - A partir dela sai projeto/proposta do caso real (sem chute).
-- Objetivo: dar permissão para qualificar e agendar sem parecer insistencia.
+- Objetivo: dar permissão para qualificar e agendar sem parecer insistência.
 
 FECHAMENTO - CHAMADA_AGENDADA
 - Confirmar data/hora.
@@ -615,9 +615,9 @@ NÃO FAZER:
 - Não repetir apresentação institucional.
 - Não refazer BANT completo.
 - Não abrir mais de 1 CTA na mesma mensagem.
-- Não perguntar varias coisas de uma vez.
+- Não perguntar várias coisas de uma vez.
 - Não usar texto longo.
-- Não inventar informacoes ausentes no [Feedback Ligação].
+- Não inventar informações ausentes no [Feedback Ligação].
 - Não ignorar o feedback e mandar mensagem genérica.
 - Não prometer proposta pronta por WhatsApp.
 - Não enviar proposta em PDF, imagem, texto ou resumo comercial pelo WhatsApp.
@@ -641,9 +641,9 @@ PRIORIDADE DE ESPECIFICIDADE
   - visita
   - apresentação
   - conta de luz
-  - decisao com socio/conjuge
+  - decisão com sócio/cônjuge
   - prazo
-- Mas citar isso de forma natural, sem listar informacoes como formulário.
+- Mas citar isso de forma natural, sem listar informações como formulário.
 
 SE O PRÓXIMO PASSO FOR VISITA
 - Preferir CTA com 2 opções de horário, quando operacionalmente fizer sentido.
@@ -999,7 +999,7 @@ CONTEXTO_OPERACIONAL (SEMPRE ATIVO):
 - Este trigger e agendado; não e resposta inbound em tempo real.
 - O lead não respondeu ao último outbound elegivel.
 - O agente deve se comportar como um agente contínuo de pipeline, retomando a conversa exatamente de onde ela parou.
-- O step atual (1 a 5) define o grau de insistencia, o tom e o tipo de retomada.
+- O step atual (1 a 5) define o grau de insistência, o tom e o tipo de retomada.
 - O agente pode usar histórico recente da conversa, comentários do lead, FAQ, objeções, dados da empresa, dados do CRM e contexto da etapa atual para construir uma retomada coerente.
 - O agente deve considerar como contexto principal:
   1) a última troca relevante da conversa;
@@ -1300,9 +1300,9 @@ PROGRESSAO REAL DOS 5 TOQUES
 - O agente não deve inverter essa progressão sem motivo forte no contexto.
 
 DIFERENCIACAO ENTRE TOQUES
-- Se o último follow up usou beneficio, o próximo não deve reciclar o mesmo beneficio.
+- Se o último follow up usou benefício, o próximo não deve reciclar o mesmo benefício.
 - Se o último follow up foi pergunta aberta, o próximo pode usar CTA mais guiado.
-- Se o histórico estiver pobre, mudar o ângulo pelo tom, não pela invencao de fatos.
+- Se o histórico estiver pobre, mudar o ângulo pelo tom, não pela invenção de fatos.
 
 RESPEITO AO OBJETIVO ORIGINAL DA CONVERSA
 - O follow up deve sempre empurrar de volta para o objetivo que já estava em curso.
@@ -1398,7 +1398,7 @@ Antes de avançar para qualificação mais profunda, o agente deve entender em q
 - O lead não demonstra interesse atual ou o timing está ruim.
 - O agente não deve pressionar.
 - Pode fazer 1 tentativa curta de entendimento do timing ou principal trava.
-- Se ficar claro que não há fit agora, encerrar com elegância e sem insistencia.
+- Se ficar claro que não há fit agora, encerrar com elegância e sem insistência.
 
 4) PEDIDO DIRETO POR PREÇO / PROPOSTA / DETALHES IMEDIATOS
 - O agente não deve despejar informação solta.
@@ -1485,7 +1485,7 @@ VENDA DA VISITA (QUANDO CAMINHO = VISITA_AGENDADA)
 - Antes do BANT ou na transição, contextualizar:
   - A visita técnica serve para validar estrutura, sombra e quadro elétrico.
   - A partir dela sai o caso real, sem chute.
-- Objetivo: dar permissão para qualificar e agendar sem parecer insistencia.
+- Objetivo: dar permissão para qualificar e agendar sem parecer insistência.
 
 TRATAMENTO DE CENÁRIOS ESPECIAIS:
 
@@ -1819,9 +1819,9 @@ NÃO FAZER:
 - Não agir como novo lead se o caso já estiver em andamento.
 - Não responder de forma genérica ignorando o histórico.
 - Não usar "como posso ajudar?" se o lead já trouxe contexto suficiente.
-- Não inventar informacoes não presentes na conversa, CRM ou KB.
+- Não inventar informações não presentes na conversa, CRM ou KB.
 - Não mandar textão.
-- Não fazer varias perguntas na mesma mensagem.
+- Não fazer várias perguntas na mesma mensagem.
 - Não empurrar proposta por WhatsApp.
 - Não soar como suporte frio ou chatbot genérico.
 - Não encerrar de forma passiva, sem direcionamento.

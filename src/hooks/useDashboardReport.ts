@@ -1,4 +1,4 @@
-﻿import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { DashboardPayload } from "@/types/dashboard";
 
@@ -172,7 +172,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
             }
             if (orgId) openDealsQ = openDealsQ.eq('org_id', orgId);
 
-            // Stale leads â€” exclude terminal stages
+            // Stale leads — exclude terminal stages
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
             let staleLeadsQ = supabase

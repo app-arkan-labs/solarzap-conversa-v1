@@ -223,13 +223,13 @@ function clamp255(value: number): number {
 
 //  Tarifa e custo de disponibilidade (ANEEL) 
 
-/** Custo de disponibilidade em kWh por tipo de conexao/cliente (ANEEL REN 1.000/2021) */
+/** Custo de disponibilidade em kWh por tipo de conexão/cliente (ANEEL REN 1.000/2021) */
 function getCustoDisponibilidadeFallback(tipoCliente?: string): number {
   switch (tipoCliente?.toLowerCase()) {
-    case 'residencial': return 50;   // bifasico (padrao residencial)
-    case 'comercial': return 100;  // trifasico
-    case 'industrial': return 100;  // trifasico
-    case 'rural': return 30;   // monofasico
+    case 'residencial': return 50;   // bifásico (padrão residencial)
+    case 'comercial': return 100;  // trifásico
+    case 'industrial': return 100;  // trifásico
+    case 'rural': return 30;   // monofásico
     default: return 50;
   }
 }
@@ -961,7 +961,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   };
 
 // ---
-  // PAGE 0  COVER (clean modern layout â€” white bg, brand stripe, partial photo)
+  // PAGE 0  COVER (clean modern layout — white bg, brand stripe, partial photo)
 // ---
   const coverImageSrc = data.coverImageDataUrl || null;
   const coverImageList = Array.isArray(data.coverImageDataUrls)
@@ -1062,7 +1062,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   doc.setLineWidth(0.6);
   doc.line(txL, 66, txL + 35, 66);
 
-  // 8. Title block â€” strong typographic hierarchy
+  // 8. Title block — strong typographic hierarchy
   doc.setTextColor(35, 35, 35);
   doc.setFontSize(30);
   doc.setFont('helvetica', 'bold');
@@ -1106,7 +1106,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     doc.text(data.contact.city, txL, 252);
   }
 
-  // Segment label â€” pure typography, no badge
+  // Segment label — pure typography, no badge
   doc.setTextColor(C.header[0], C.header[1], C.header[2]);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
@@ -1385,14 +1385,14 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
     const retPerReal = investimentoBaseMetricas > 0 ? retornoPorReal.toFixed(1) : '-';
     doc.text(
-      `Para cada R$ 1,00 investido, voce recupera R$ ${retPerReal} ao longo de 25 anos.`,
+      `Para cada R$ 1,00 investido, você recupera R$ ${retPerReal} ao longo de 25 anos.`,
       W / 2, y, { align: 'center' }
     );
     y += 8;
   }
 
 // ---
-  // PAGE 3  TCNICO + EQUIPAMENTOS + AMBIENTAL
+  // PAGE 3  TÉCNICO + EQUIPAMENTOS + AMBIENTAL
 // ---
   doc.addPage();
   y = drawCompactHeader('Dimensionamento Técnico e Equipamentos');
@@ -1442,7 +1442,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   autoTable(doc, {
     startY: y,
-    head: [['Componente', 'Especificacao', 'Qtd.']],
+    head: [['Componente', 'Especificação', 'Qtd.']],
     body: kitBody,
     theme: 'striped',
     headStyles: { fillColor: C.header, textColor: 255, fontStyle: 'bold', fontSize: 9 },
