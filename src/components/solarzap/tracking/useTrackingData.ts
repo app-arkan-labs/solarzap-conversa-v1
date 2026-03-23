@@ -36,6 +36,12 @@ async function extractInvokeError(error: any, data: any, fallback: string): Prom
   return fallback;
 }
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('missing_authorization');
+  return { Authorization: `Bearer ${session.access_token}` };
+}
+
 export function useTrackingData() {
   const { orgId } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -228,7 +234,9 @@ export function useTrackingData() {
     if (!orgId) return;
     setGoogleAdsConnecting(true);
     try {
+      const headers = await getAuthHeaders();
       const { data, error } = await supabase.functions.invoke('google-ads-oauth', {
+        headers,
         body: { org_id: orgId },
       });
       if (error || !data?.authUrl) throw new Error(await extractInvokeError(error, data, 'failed_to_get_auth_url'));
@@ -257,7 +265,9 @@ export function useTrackingData() {
     if (!orgId) return;
     setGoogleAdsDisconnecting(true);
     try {
+      const headers = await getAuthHeaders();
       const { data, error } = await supabase.functions.invoke('tracking-credentials', {
+        headers,
         body: { action: 'disconnect_google_ads', org_id: orgId },
       });
       if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'disconnect_failed'));
@@ -282,7 +292,9 @@ export function useTrackingData() {
     if (!orgId) return;
     setLoadingMcc(true);
     try {
+      const headers = await getAuthHeaders();
       const { data, error } = await supabase.functions.invoke('tracking-credentials', {
+        headers,
         body: { action: 'list_accessible_customers', org_id: orgId },
       });
       if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'list_accessible_failed'));
@@ -306,7 +318,9 @@ export function useTrackingData() {
       if (!orgId) return;
       setLoadingCustomers(true);
       try {
+        const headers = await getAuthHeaders();
         const { data, error } = await supabase.functions.invoke('tracking-credentials', {
+          headers,
           body: { action: 'account_hierarchy', org_id: orgId, login_customer_id: loginCustomerId },
         });
         if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'account_hierarchy_failed'));
@@ -326,7 +340,9 @@ export function useTrackingData() {
       if (!orgId) return;
       setLoadingConversions(true);
       try {
+        const headers = await getAuthHeaders();
         const { data, error } = await supabase.functions.invoke('tracking-credentials', {
+          headers,
           body: {
             action: 'list_conversion_actions',
             org_id: orgId,
@@ -356,7 +372,9 @@ export function useTrackingData() {
     if (!orgId) return;
     setSavingSelection(true);
     try {
+      const headers = await getAuthHeaders();
       const { data, error } = await supabase.functions.invoke('tracking-credentials', {
+        headers,
         body: {
           action: 'save_ads_selection',
           org_id: orgId,
@@ -501,7 +519,9 @@ export function useTrackingData() {
           delete metadata.ga4_api_secret;
         }
 
+        const headers = await getAuthHeaders();
         const { data, error } = await supabase.functions.invoke('tracking-credentials', {
+          headers,
           body: { action: 'upsert_platform_credentials', org_id: orgId, platform, enabled: forms[platform].enabled, metadata, secrets },
         });
         if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'platform_save_failed'));
@@ -535,7 +555,9 @@ export function useTrackingData() {
       if (!orgId) return;
       setTestingPlatform(platform);
       try {
+        const headers = await getAuthHeaders();
         const { data, error } = await supabase.functions.invoke('tracking-credentials', {
+          headers,
           body: { action: 'test_platform_connection', org_id: orgId, platform, validate_only: settings.google_validate_only },
         });
         if (error || !data?.success) throw new Error(await extractInvokeError(error, data, 'test_failed'));
