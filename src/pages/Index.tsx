@@ -1,11 +1,13 @@
-import { Suspense, lazy } from 'react';
+import { Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useOrgFeatureFlags } from '@/hooks/useOrgFeatureFlags';
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
 
-const SolarZapLayout = lazy(() =>
+const SolarZapLayout = lazyWithRetry(() =>
   import('@/components/solarzap/SolarZapLayout').then((module) => ({
     default: module.SolarZapLayout,
   })),
+  'page:index:solarzap-layout',
 );
 
 const Index = () => {

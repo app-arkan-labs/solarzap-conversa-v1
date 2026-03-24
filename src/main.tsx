@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { isLikelyDynamicImportError } from '@/lib/lazyWithRetry';
 
 type FatalState = {
 	error: Error | null;
@@ -18,6 +19,31 @@ class AppErrorBoundary extends React.Component<React.PropsWithChildren, FatalSta
 	}
 
 	componentDidCatch(error: Error) {
+		if (typeof window !== 'undefined' && isLikelyDynamicImportError(error)) {
+			const retryKey = 'szap:fatal-lazy-import-retry';
+			let hasRetried = false;
+			try {
+				hasRetried = window.sessionStorage.getItem(retryKey) === '1';
+			} catch {
+				hasRetried = false;
+			}
+
+			if (!hasRetried) {
+				try {
+					window.sessionStorage.setItem(retryKey, '1');
+				} catch {
+					// ignore storage errors
+				}
+				window.location.reload();
+				return;
+			}
+
+			try {
+				window.sessionStorage.removeItem(retryKey);
+			} catch {
+				// ignore storage errors
+			}
+		}
 		console.error('[APP_FATAL_RENDER]', error);
 	}
 

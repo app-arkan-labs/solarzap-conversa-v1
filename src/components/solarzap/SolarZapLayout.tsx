@@ -1,4 +1,4 @@
-import { Component, ReactNode, Suspense, lazy, useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { Component, ReactNode, Suspense, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLeads } from '@/hooks/domain/useLeads';
@@ -43,6 +43,7 @@ import { cn } from '@/lib/utils';
 import { useGuidedTour } from '@/hooks/useGuidedTour';
 import GuidedTour from '@/components/onboarding/GuidedTour';
 import { isMobileMoreTabActive, type SolarZapTabPermissions } from './mobileNavConfig';
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -102,24 +103,24 @@ const shouldBlockBillingGovernedInteraction = (target: EventTarget | null): bool
   return target.closest(BILLING_USAGE_TARGET_SELECTOR) !== null;
 };
 
-const PipelineView = lazy(() => import('./PipelineView').then((module) => ({ default: module.PipelineView })));
-const CalendarView = lazy(() => import('./CalendarView').then((module) => ({ default: module.CalendarView })));
-const ContactsView = lazy(() => import('./ContactsView').then((module) => ({ default: module.ContactsView })));
-const DashboardView = lazy(() => import('./DashboardView').then((module) => ({ default: module.DashboardView })));
-const IntegrationsView = lazy(() => import('./IntegrationsView').then((module) => ({ default: module.IntegrationsView })));
-const TrackingView = lazy(() => import('./TrackingView').then((module) => ({ default: module.TrackingView })));
-const AutomationsView = lazy(() => import('./AutomationsView').then((module) => ({ default: module.AutomationsView })));
-const AIAgentsView = lazy(() => import('./AIAgentsView').then((module) => ({ default: module.AIAgentsView })));
-const KnowledgeBaseView = lazy(() => import('./KnowledgeBaseView').then((module) => ({ default: module.KnowledgeBaseView })));
-const ProposalsView = lazy(() => import('./ProposalsView').then((module) => ({ default: module.ProposalsView })));
-const BroadcastView = lazy(() => import('./BroadcastView').then((module) => ({ default: module.BroadcastView })));
-const ConfiguracoesContaView = lazy(() => import('./ConfiguracoesContaView').then((module) => ({ default: module.ConfiguracoesContaView })));
-const MeuPlanoView = lazy(() => import('./MeuPlanoView').then((module) => ({ default: module.MeuPlanoView })));
-const AdminMembersPage = lazy(() => import('@/pages/AdminMembersPage'));
-const ConversationList = lazy(() => import('./ConversationList').then((module) => ({ default: module.ConversationList })));
-const ChatArea = lazy(() => import('./ChatArea').then((module) => ({ default: module.ChatArea })));
-const ActionsPanel = lazy(() => import('./ActionsPanel').then((module) => ({ default: module.ActionsPanel })));
-const NotificationsPanel = lazy(() => import('./NotificationsPanel').then((module) => ({ default: module.NotificationsPanel })));
+const PipelineView = lazyWithRetry(() => import('./PipelineView').then((module) => ({ default: module.PipelineView })), 'solarzap:pipeline-view');
+const CalendarView = lazyWithRetry(() => import('./CalendarView').then((module) => ({ default: module.CalendarView })), 'solarzap:calendar-view');
+const ContactsView = lazyWithRetry(() => import('./ContactsView').then((module) => ({ default: module.ContactsView })), 'solarzap:contacts-view');
+const DashboardView = lazyWithRetry(() => import('./DashboardView').then((module) => ({ default: module.DashboardView })), 'solarzap:dashboard-view');
+const IntegrationsView = lazyWithRetry(() => import('./IntegrationsView').then((module) => ({ default: module.IntegrationsView })), 'solarzap:integrations-view');
+const TrackingView = lazyWithRetry(() => import('./TrackingView').then((module) => ({ default: module.TrackingView })), 'solarzap:tracking-view');
+const AutomationsView = lazyWithRetry(() => import('./AutomationsView').then((module) => ({ default: module.AutomationsView })), 'solarzap:automations-view');
+const AIAgentsView = lazyWithRetry(() => import('./AIAgentsView').then((module) => ({ default: module.AIAgentsView })), 'solarzap:ai-agents-view');
+const KnowledgeBaseView = lazyWithRetry(() => import('./KnowledgeBaseView').then((module) => ({ default: module.KnowledgeBaseView })), 'solarzap:knowledge-base-view');
+const ProposalsView = lazyWithRetry(() => import('./ProposalsView').then((module) => ({ default: module.ProposalsView })), 'solarzap:proposals-view');
+const BroadcastView = lazyWithRetry(() => import('./BroadcastView').then((module) => ({ default: module.BroadcastView })), 'solarzap:broadcast-view');
+const ConfiguracoesContaView = lazyWithRetry(() => import('./ConfiguracoesContaView').then((module) => ({ default: module.ConfiguracoesContaView })), 'solarzap:account-view');
+const MeuPlanoView = lazyWithRetry(() => import('./MeuPlanoView').then((module) => ({ default: module.MeuPlanoView })), 'solarzap:plan-view');
+const AdminMembersPage = lazyWithRetry(() => import('@/pages/AdminMembersPage'), 'solarzap:admin-members-page');
+const ConversationList = lazyWithRetry(() => import('./ConversationList').then((module) => ({ default: module.ConversationList })), 'solarzap:conversation-list');
+const ChatArea = lazyWithRetry(() => import('./ChatArea').then((module) => ({ default: module.ChatArea })), 'solarzap:chat-area');
+const ActionsPanel = lazyWithRetry(() => import('./ActionsPanel').then((module) => ({ default: module.ActionsPanel })), 'solarzap:actions-panel');
+const NotificationsPanel = lazyWithRetry(() => import('./NotificationsPanel').then((module) => ({ default: module.NotificationsPanel })), 'solarzap:notifications-panel');
 
 function TabLoadingFallback({ label }: { label: string }) {
   return (

@@ -1,4 +1,4 @@
-import { Suspense, lazy } from "react";
+import { Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,18 +15,19 @@ import { supabase } from "@/lib/supabase";
 import { extractAuthErrorMetadata, shouldAttemptAuthRecovery } from "@/lib/authSessionGuard";
 import { getPasswordRecoveryRedirectTarget } from "@/lib/passwordRecoveryRedirect";
 import { AdminGuard } from "@/components/admin/AdminGuard";
+import { lazyWithRetry } from "@/lib/lazyWithRetry";
 
-const Index = lazy(() => import("./pages/Index"));
-const Login = lazy(() => import("./pages/Login"));
-const UpdatePassword = lazy(() => import("./pages/UpdatePassword"));
-const OrganizationSelect = lazy(() => import("./pages/OrganizationSelect"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const CallQrRedirect = lazy(() => import("./pages/CallQrRedirect"));
-const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
-const TermsOfService = lazy(() => import("./pages/TermsOfService"));
-const Pricing = lazy(() => import("./pages/Pricing"));
-const Onboarding = lazy(() => import("./pages/Onboarding"));
-const Admin = lazy(() => import("./pages/Admin"));
+const Index = lazyWithRetry(() => import("./pages/Index"), "app:index");
+const Login = lazyWithRetry(() => import("./pages/Login"), "app:login");
+const UpdatePassword = lazyWithRetry(() => import("./pages/UpdatePassword"), "app:update-password");
+const OrganizationSelect = lazyWithRetry(() => import("./pages/OrganizationSelect"), "app:organization-select");
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"), "app:not-found");
+const CallQrRedirect = lazyWithRetry(() => import("./pages/CallQrRedirect"), "app:call-qr");
+const PrivacyPolicy = lazyWithRetry(() => import("./pages/PrivacyPolicy"), "app:privacy");
+const TermsOfService = lazyWithRetry(() => import("./pages/TermsOfService"), "app:terms");
+const Pricing = lazyWithRetry(() => import("./pages/Pricing"), "app:pricing");
+const Onboarding = lazyWithRetry(() => import("./pages/Onboarding"), "app:onboarding");
+const Admin = lazyWithRetry(() => import("./pages/Admin"), "app:admin");
 
 let authRecoveryInFlight: Promise<void> | null = null;
 
