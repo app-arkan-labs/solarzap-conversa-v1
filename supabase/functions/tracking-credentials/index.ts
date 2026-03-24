@@ -160,6 +160,7 @@ async function resolveAuthenticatedUser(req: Request): Promise<{ userId: string 
     return { userId: null, error: 'missing_authorization' };
   }
 
+  const token = authHeader.replace(/^Bearer\s+/i, '');
   const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: {
       headers: {
@@ -171,7 +172,7 @@ async function resolveAuthenticatedUser(req: Request): Promise<{ userId: string 
   const {
     data: { user },
     error,
-  } = await authClient.auth.getUser();
+  } = await authClient.auth.getUser(token);
 
   if (error || !user?.id) {
     return { userId: null, error: 'unauthenticated' };

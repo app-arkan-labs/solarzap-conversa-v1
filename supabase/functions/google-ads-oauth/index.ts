@@ -80,6 +80,7 @@ Deno.serve(async (req) => {
       return jsonResponse(401, { success: false, error: 'missing_authorization' });
     }
 
+    const token = authHeader.replace(/^Bearer\s+/i, '');
     const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: {
         headers: {
@@ -91,7 +92,7 @@ Deno.serve(async (req) => {
     const {
       data: { user },
       error: userError,
-    } = await authClient.auth.getUser();
+    } = await authClient.auth.getUser(token);
 
     if (userError || !user?.id) {
       return jsonResponse(401, { success: false, error: 'unauthenticated' });
