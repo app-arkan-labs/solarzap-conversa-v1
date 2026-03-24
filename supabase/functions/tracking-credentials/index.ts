@@ -389,7 +389,7 @@ async function testPlatformConnection(params: {
     }
 
     const accessToken = String(tokenJson.access_token);
-    const response = await fetch('https://googleads.googleapis.com/v18/customers:listAccessibleCustomers', {
+    const response = await fetch('https://googleads.googleapis.com/v19/customers:listAccessibleCustomers', {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -523,7 +523,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      const response = await fetch('https://googleads.googleapis.com/v18/customers:listAccessibleCustomers', {
+      const response = await fetch('https://googleads.googleapis.com/v19/customers:listAccessibleCustomers', {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${authContext.accessToken}`,
@@ -561,7 +561,7 @@ Deno.serve(async (req) => {
       const query =
         "SELECT customer_client.client_customer, customer_client.level, customer_client.manager, customer_client.descriptive_name, customer_client.id, customer_client.status FROM customer_client WHERE customer_client.status = 'ENABLED'";
       const response = await fetch(
-        `https://googleads.googleapis.com/v18/customers/${normalizedLoginCustomerId}/googleAds:search`,
+        `https://googleads.googleapis.com/v19/customers/${normalizedLoginCustomerId}/googleAds:search`,
         {
           method: 'POST',
           headers: {
@@ -630,7 +630,7 @@ Deno.serve(async (req) => {
       }
 
       const response = await fetch(
-        `https://googleads.googleapis.com/v18/customers/${normalizedCustomerId}/googleAds:search`,
+        `https://googleads.googleapis.com/v19/customers/${normalizedCustomerId}/googleAds:search`,
         {
           method: 'POST',
           headers,

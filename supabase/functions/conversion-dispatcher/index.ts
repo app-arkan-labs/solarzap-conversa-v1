@@ -386,7 +386,7 @@ async function dispatchGoogleAds(params: {
     headers['login-customer-id'] = loginCustomerId;
   }
 
-  const response = await fetch(`https://googleads.googleapis.com/v18/customers/${customerId}:uploadClickConversions`, {
+  const response = await fetch(`https://googleads.googleapis.com/v19/customers/${customerId}:uploadClickConversions`, {
     method: 'POST',
     headers,
     body: JSON.stringify(requestPayload),
