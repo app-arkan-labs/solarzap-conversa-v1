@@ -36,6 +36,10 @@ build_error*.txt
 build_output*.txt
 *.tsbuildinfo
 debug_*.cjs
+_*.cjs
+tmp*.txt
+tmp-dev-server-*.err
+tsc_check.txt
 tsc_errors*.txt
 diff_*.txt
 dupes.txt
