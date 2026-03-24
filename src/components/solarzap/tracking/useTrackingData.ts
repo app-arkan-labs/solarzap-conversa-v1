@@ -104,8 +104,10 @@ export function useTrackingData() {
       if (typeof navigator === 'undefined' || !navigator.clipboard) throw new Error('clipboard_unavailable');
       await navigator.clipboard.writeText(value);
       toast.success(message);
+      return true;
     } catch {
-      toast.error('Falha ao copiar.');
+      toast.error('Não foi possível copiar. Tente novamente.');
+      return false;
     }
   }, []);
 
@@ -637,10 +639,10 @@ export function useTrackingData() {
         .upsert({ org_id: orgId, webhook_public_key: key }, { onConflict: 'org_id' });
       if (saveError) throw saveError;
       setSettings((current) => ({ ...current, webhook_public_key: key }));
-      toast.success('Chave gerada.');
+      toast.success('Chave gerada com sucesso');
     } catch (error) {
       console.error(error);
-      toast.error('Falha ao gerar chave.');
+      toast.error('Não foi possível gerar a chave. Tente novamente.');
     } finally {
       setGeneratingKey(false);
     }
@@ -655,10 +657,10 @@ export function useTrackingData() {
         .upsert({ org_id: orgId, webhook_public_key: null }, { onConflict: 'org_id' });
       if (error) throw error;
       setSettings((current) => ({ ...current, webhook_public_key: null }));
-      toast.success('Chave revogada.');
+      toast.success('Chave revogada com sucesso');
     } catch (error) {
       console.error(error);
-      toast.error('Falha ao revogar chave.');
+      toast.error('Não foi possível revogar a chave. Tente novamente.');
     } finally {
       setRevokingKey(false);
     }

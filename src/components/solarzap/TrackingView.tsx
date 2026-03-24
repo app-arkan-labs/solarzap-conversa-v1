@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import {
   AlertCircle,
   Activity,
   BarChart3,
+  ChevronDown,
+  ChevronUp,
   CheckCircle2,
   Clock3,
   Copy,
@@ -26,6 +29,19 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useTrackingData } from './tracking/useTrackingData';
 import { SecretField } from './tracking/SecretField';
 import {
@@ -60,6 +76,41 @@ export function TrackingView() {
     updateStageMapField, saveStageMap, restoreDefaultStageMap, toggleSecretField,
     setCustomerList, setConversionActions,
   } = useTrackingData();
+
+  const [scriptVisible, setScriptVisible] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [confirmRevokeOpen, setConfirmRevokeOpen] = useState(false);
+  const [activationChecklist, setActivationChecklist] = useState({
+    endpointCopied: false,
+    scriptInstalled: false,
+    formConnected: false,
+    headerSent: false,
+  });
+
+  const hasPublicKey = Boolean(settings.webhook_public_key);
+  const quickChecklistDoneCount = [
+    hasPublicKey,
+    activationChecklist.endpointCopied,
+    activationChecklist.formConnected,
+    activationChecklist.headerSent,
+  ].filter(Boolean).length;
+
+  const setChecklistItem = (
+    key: 'endpointCopied' | 'scriptInstalled' | 'formConnected' | 'headerSent',
+    value: boolean,
+  ) => {
+    setActivationChecklist((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleCopyEndpoint = async () => {
+    const copied = await copy(webhookEndpoint, 'Endpoint copiado');
+    if (copied) setChecklistItem('endpointCopied', true);
+  };
+
+  const handleCopyScript = async () => {
+    const copied = await copy(snippet, 'Script copiado');
+    if (copied) setScriptVisible(true);
+  };
 
   if (!orgId) return null;
 
@@ -457,87 +508,219 @@ export function TrackingView() {
                 </CardContent>
               </Card>
 
-              {/* Seção 3: Integração com Site (ex-aba Webhook & Snippet) */}
+              {/* Seção 3: Integração com Site */}
               <Card className="border-0 shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-lg">Integração com Site</CardTitle>
-                  <CardDescription>Conecte seu site ao sistema de atribuição da SolarZap seguindo os passos abaixo.</CardDescription>
+                  <CardDescription>Organize a integração em etapas claras para receber leads do seu formulário ou CRM.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Fluxo resumido */}
-                  <div className="rounded-xl border bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
-                    <p className="font-semibold text-foreground mb-1">Como funciona</p>
-                    <p>Visitante acessa com UTM → snippet captura dados e guarda na sessão → formulário envia campos ocultos → webhook aplica atribuição → dispatcher envia conversões para as plataformas.</p>
+                <CardContent className="space-y-4">
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+                    <p className="mb-2 text-sm font-semibold text-foreground">Integração simples (Recomendada)</p>
+                    <p className="text-xs text-muted-foreground">
+                      Se seu formulário ou CRM já envia webhook, você só precisa apontar esse envio para o endpoint do SolarZap
+                      e incluir a chave no header.
+                    </p>
+                    <div className="mt-3 rounded-lg border bg-background px-3 py-2 text-xs font-medium text-foreground">
+                      Formulário/CRM -&gt; Webhook SolarZap -&gt; Lead recebido e atribuído
+                    </div>
                   </div>
 
-                  {/* Passo 1 */}
-                  <div className="space-y-3">
+                  <div className="space-y-3 rounded-xl border bg-background p-4">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">1</span>
-                      <h4 className="text-sm font-semibold">Gere uma chave pública</h4>
+                      <h4 className="text-sm font-semibold">Gerar chave de integração</h4>
                     </div>
-                    <p className="text-xs text-muted-foreground">Use esta chave quando o seu formulário ou backend enviar dados diretamente para o webhook da SolarZap.</p>
-                    <Input value={settings.webhook_public_key || 'Nenhuma chave gerada'} readOnly className="font-mono text-xs" />
+                    <p className="text-xs text-muted-foreground">Essa chave autoriza o envio dos dados do seu sistema para o SolarZap.</p>
+                    {hasPublicKey ? (
+                      <>
+                        <Badge variant="outline" className="w-fit border-emerald-500/40 bg-emerald-500/10 text-emerald-700">
+                          Chave ativa
+                        </Badge>
+                        <Input value={settings.webhook_public_key || ''} readOnly className="font-mono text-xs" />
+                        <p className="text-xs text-muted-foreground">Use essa chave no header da requisição.</p>
+                      </>
+                    ) : (
+                      <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                        <p className="text-sm font-medium text-foreground">Nenhuma chave gerada</p>
+                        <p className="text-xs text-muted-foreground">Gere uma chave para habilitar o recebimento de leads.</p>
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       <Button type="button" variant="outline" className="gap-2" onClick={() => void generatePublicKey()} disabled={generatingKey}>
                         {generatingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
                         Gerar chave
                       </Button>
-                      <Button type="button" variant="outline" className="gap-2" onClick={() => void revokePublicKey()} disabled={revokingKey}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2 text-destructive hover:text-destructive"
+                        onClick={() => setConfirmRevokeOpen(true)}
+                        disabled={!hasPublicKey || revokingKey}
+                      >
                         {revokingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                         Revogar chave
                       </Button>
                     </div>
+                    {(generatingKey || revokingKey) && (
+                      <p className="text-xs text-muted-foreground">Atualizando chave de integração...</p>
+                    )}
                   </div>
 
-                  {/* Passo 2 */}
-                  <div className="space-y-3">
+                  <div className="space-y-3 rounded-xl border bg-background p-4">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">2</span>
-                      <h4 className="text-sm font-semibold">Endpoint do webhook</h4>
+                      <h4 className="text-sm font-semibold">Copiar endpoint do SolarZap</h4>
                     </div>
-                    <p className="text-xs text-muted-foreground">Esta URL recebe os dados de atribuição. Use no POST do seu formulário ou integração server-to-server.</p>
+                    <p className="text-xs text-muted-foreground">
+                      Copie este endpoint e cole no campo de webhook de saída do seu CRM ou formulário.
+                    </p>
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <Input value={webhookEndpoint} readOnly className="font-mono text-xs" />
-                      <Button type="button" variant="outline" className="gap-2 sm:self-start" onClick={() => void copy(webhookEndpoint, 'Endpoint copiado.')}>
+                      <Button type="button" variant="outline" className="gap-2 sm:self-start" onClick={() => void handleCopyEndpoint()}>
                         <Copy className="h-4 w-4" />
-                        Copiar
+                        Copiar endpoint
                       </Button>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Procure no seu sistema por campos como: <strong>Webhook URL</strong>, <strong>URL de destino</strong> ou <strong>POST URL</strong>.
+                    </p>
                   </div>
 
-                  {/* Passo 3 */}
-                  <div className="space-y-3">
+                  <div className="space-y-3 rounded-xl border bg-background p-4">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">3</span>
-                      <h4 className="text-sm font-semibold">Instale o snippet no site</h4>
+                      <h4 className="text-sm font-semibold">Configurar envio no CRM/Formulário</h4>
                     </div>
-                    <p className="text-xs text-muted-foreground">Cole este código antes de <code className="px-1 bg-muted rounded">&lt;/body&gt;</code>. Ele captura UTMs e click IDs, guarda na sessão e injeta campos ocultos nos formulários da página.</p>
-                    <Textarea value={snippet} readOnly className="min-h-[220px] font-mono text-[11px]" />
-                    <Button type="button" variant="outline" className="gap-2" onClick={() => void copy(snippet, 'Snippet copiado.')}>
-                      <Copy className="h-4 w-4" />
-                      Copiar snippet
-                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      No webhook de saída, envie os dados do lead para o endpoint acima.
+                    </p>
+                    <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                      <li>Campos do lead: nome, telefone e e-mail.</li>
+                      <li>Header obrigatório de autenticação.</li>
+                    </ul>
+                    <div className="rounded-lg border bg-muted/30 px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Header obrigatório</p>
+                      <code className="mt-1 inline-block rounded bg-background px-2 py-1 font-mono text-xs">x-szap-org-key</code>
+                      <p className="mt-2 text-xs text-muted-foreground">Sem esse header, o SolarZap não aceita a requisição.</p>
+                    </div>
+                    <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-700">
+                      <AlertCircle className="h-4 w-4 !text-amber-600" />
+                      <AlertDescription className="text-xs">
+                        Formulários HTML nativos não enviam headers customizados. Para isso, use fetch, XHR ou um backend intermediário.
+                      </AlertDescription>
+                    </Alert>
+                    <label className="flex items-center gap-3 rounded-lg border px-3 py-2">
+                      <Checkbox
+                        checked={activationChecklist.formConnected}
+                        onCheckedChange={(checked) => setChecklistItem('formConnected', checked === true)}
+                      />
+                      <span className="text-xs text-foreground">Webhook de saída configurado no meu CRM/Formulário</span>
+                    </label>
+                    <label className="flex items-center gap-3 rounded-lg border px-3 py-2">
+                      <Checkbox
+                        checked={activationChecklist.headerSent}
+                        onCheckedChange={(checked) => setChecklistItem('headerSent', checked === true)}
+                      />
+                      <span className="text-xs text-foreground">Header x-szap-org-key configurado no envio</span>
+                    </label>
                   </div>
 
-                  {/* Passo 4 */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">4</span>
-                      <h4 className="text-sm font-semibold">Conecte o envio do formulário</h4>
+                  <div className="space-y-3 rounded-xl border bg-background p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="text-sm font-semibold">Checklist rápido de ativação</h4>
+                      <Badge variant="outline" className="text-xs">{quickChecklistDoneCount}/4 concluído</Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground">O snippet sozinho <strong>não faz POST</strong> para o webhook. Ele prepara os dados para que o seu formulário ou integração envie esses campos para a SolarZap.</p>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-3 rounded-lg border px-3 py-2">
+                        <Checkbox checked={hasPublicKey} disabled />
+                        <span className="text-xs text-foreground">Chave gerada</span>
+                      </label>
+                      <label className="flex items-center gap-3 rounded-lg border px-3 py-2">
+                        <Checkbox
+                          checked={activationChecklist.endpointCopied}
+                          onCheckedChange={(checked) => setChecklistItem('endpointCopied', checked === true)}
+                        />
+                        <span className="text-xs text-foreground">Endpoint copiado</span>
+                      </label>
+                      <label className="flex items-center gap-3 rounded-lg border px-3 py-2">
+                        <Checkbox checked={activationChecklist.formConnected} disabled />
+                        <span className="text-xs text-foreground">Webhook de saída configurado</span>
+                      </label>
+                      <label className="flex items-center gap-3 rounded-lg border px-3 py-2">
+                        <Checkbox checked={activationChecklist.headerSent} disabled />
+                        <span className="text-xs text-foreground">Header x-szap-org-key configurado</span>
+                      </label>
+                    </div>
                   </div>
 
-                  {/* Passo 5 */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">5</span>
-                      <h4 className="text-sm font-semibold">Envie a chave no header</h4>
+                  <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="rounded-xl border bg-background p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Atribuição avançada (Opcional)</p>
+                        <p className="text-xs text-muted-foreground">
+                          Use esta etapa só se você quer capturar UTMs e click IDs direto no site antes do envio do formulário.
+                        </p>
+                      </div>
+                      <CollapsibleTrigger asChild>
+                        <Button type="button" variant="outline" className="gap-2">
+                          {advancedOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          {advancedOpen ? 'Ocultar avançado' : 'Mostrar avançado'}
+                        </Button>
+                      </CollapsibleTrigger>
                     </div>
-                    <p className="text-xs text-muted-foreground">Inclua o header <code className="px-1 bg-muted rounded">x-szap-org-key</code> na requisição ao webhook. Sem este header o webhook retorna erro.</p>
-                    <p className="text-[11px] text-amber-600 bg-amber-500/10 rounded-lg px-3 py-2">Formulário HTML nativo não permite enviar headers customizados. Use <code className="px-1 bg-amber-100 rounded">fetch</code>/XHR ou backend próprio para enviar a chave.</p>
-                  </div>
+                    <CollapsibleContent className="mt-3 space-y-3">
+                      <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-700">
+                        <AlertCircle className="h-4 w-4 !text-amber-600" />
+                        <AlertTitle>Importante</AlertTitle>
+                        <AlertDescription className="text-xs">
+                          O script de captura não envia os dados sozinho. Ele só prepara as informações para o formulário enviar.
+                        </AlertDescription>
+                      </Alert>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" className="gap-2" onClick={() => void handleCopyScript()}>
+                          <Copy className="h-4 w-4" />
+                          Copiar script
+                        </Button>
+                        <Button type="button" variant="outline" className="gap-2" onClick={() => setScriptVisible((current) => !current)}>
+                          {scriptVisible ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          {scriptVisible ? 'Ocultar script' : 'Ver script'}
+                        </Button>
+                      </div>
+                      {scriptVisible && <Textarea value={snippet} readOnly className="min-h-[220px] font-mono text-[11px]" />}
+                      <label className="flex items-center gap-3 rounded-lg border px-3 py-2">
+                        <Checkbox
+                          checked={activationChecklist.scriptInstalled}
+                          onCheckedChange={(checked) => setChecklistItem('scriptInstalled', checked === true)}
+                        />
+                        <span className="text-xs text-foreground">Script instalado no site (opcional)</span>
+                      </label>
+                    </CollapsibleContent>
+                  </Collapsible>
+
+                  <AlertDialog open={confirmRevokeOpen} onOpenChange={setConfirmRevokeOpen}>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Revogar chave de integração?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Isso pode interromper o envio de leads do seu site. Deseja continuar?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel disabled={revokingKey}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          disabled={revokingKey}
+                          onClick={() => {
+                            setConfirmRevokeOpen(false);
+                            void revokePublicKey();
+                          }}
+                        >
+                          {revokingKey ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          Revogar chave
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </CardContent>
               </Card>
             </TabsContent>
