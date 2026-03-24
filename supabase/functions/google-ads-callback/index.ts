@@ -117,18 +117,15 @@ Deno.serve(async (req) => {
       .eq('platform', 'google_ads')
       .maybeSingle();
 
-    const { data: vaultRow, error: vaultError } = await admin
+    const { data: vaultId, error: vaultError } = await admin
       .schema('vault')
-      .from('secrets')
-      .insert({
-        name: `google_ads_refresh_token_${stateData.org_id}_${Date.now()}`,
-        secret: refreshToken,
-        description: 'Google Ads OAuth refresh token',
-      })
-      .select('id')
-      .single();
+      .rpc('create_secret', {
+        new_secret: refreshToken,
+        new_name: `google_ads_refresh_token_${stateData.org_id}_${Date.now()}`,
+        new_description: 'Google Ads OAuth refresh token',
+      });
 
-    if (vaultError || !vaultRow?.id) {
+    if (vaultError || !vaultId) {
       return createRedirectResponse('error', 'Failed to store refresh token', stateData.redirect_url);
     }
 
@@ -148,7 +145,7 @@ Deno.serve(async (req) => {
       {
         org_id: stateData.org_id,
         platform: 'google_ads',
-        google_refresh_token_vault_id: String(vaultRow.id),
+        google_refresh_token_vault_id: String(vaultId),
         google_ads_connected_at: new Date().toISOString(),
         google_ads_account_email: accountEmail,
       },
@@ -160,7 +157,7 @@ Deno.serve(async (req) => {
     }
 
     const previousVaultId = cleanString(existing?.google_refresh_token_vault_id);
-    if (previousVaultId && previousVaultId !== String(vaultRow.id)) {
+    if (previousVaultId && previousVaultId !== String(vaultId)) {
       await admin.schema('vault').from('secrets').delete().eq('id', previousVaultId).catch(() => null);
     }
 

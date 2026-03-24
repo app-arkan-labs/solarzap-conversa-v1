@@ -39,9 +39,9 @@ function asPlatform(value: unknown): TrackingPlatform | null {
 async function fetchVaultSecret(admin: ReturnType<typeof createClient>, vaultId: string | null | undefined) {
   const id = cleanString(vaultId);
   if (!id) return null;
-  const { data, error } = await admin.schema('vault').from('decrypted_secrets').select('secret').eq('id', id).maybeSingle();
-  if (error || !data?.secret) return null;
-  return String(data.secret);
+  const { data, error } = await admin.schema('vault').from('decrypted_secrets').select('decrypted_secret').eq('id', id).maybeSingle();
+  if (error || !data?.decrypted_secret) return null;
+  return String(data.decrypted_secret);
 }
 
 async function parseJsonResponse(response: Response): Promise<unknown> {
@@ -138,20 +138,17 @@ async function createVaultSecret(params: {
   const secretName = `tracking_${params.platform}_${params.field}_${params.orgId}_${Date.now()}`;
   const { data, error } = await params.admin
     .schema('vault')
-    .from('secrets')
-    .insert({
-      name: secretName,
-      secret: secretValue,
-      description: `Tracking ${params.platform} credential (${params.field})`,
-    })
-    .select('id')
-    .single();
+    .rpc('create_secret', {
+      new_secret: secretValue,
+      new_name: secretName,
+      new_description: `Tracking ${params.platform} credential (${params.field})`,
+    });
 
-  if (error || !data?.id) {
+  if (error || !data) {
     throw new Error(`vault_insert_failed:${error?.message || 'unknown'}`);
   }
 
-  return String(data.id);
+  return String(data);
 }
 
 async function resolveAuthenticatedUser(req: Request): Promise<{ userId: string | null; error?: string }> {
