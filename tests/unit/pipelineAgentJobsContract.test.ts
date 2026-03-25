@@ -104,5 +104,10 @@ describe('pipeline agent jobs contract', () => {
     expect(webhook).toContain('normalizeAgentInvokeResult');
     expect(webhook).toContain('buildInvokeFailureEnvelope');
     expect(webhook).toContain('agent_invoke_outcome');
+    expect(webhook).toContain('novoLeadFirstResponseToRespondeuEnabled');
+    expect(webhook).toContain("update({ status_pipeline: 'respondeu' })");
+    expect(webhook).toContain('first_response_stage_automation');
+    expect(webhook).toContain('skipped:disabled');
+    expect(webhook).toContain('isNovoLeadStage');
   });
 });

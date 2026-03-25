@@ -129,6 +129,29 @@ type AutoSchedulePolicy = {
     visitMinDays: number;
 };
 
+type AppointmentAssigneeContext = {
+    callAssignToUserId?: string | null;
+    visitAssignToUserId?: string | null;
+    leadAssignedToUserId?: string | null;
+    leadOwnerUserId?: string | null;
+};
+
+type LeadHandoffTargetType = 'seller' | 'instance';
+type LeadHandoffCandidate = {
+    targetType: LeadHandoffTargetType;
+    userId?: string | null;
+    instanceName?: string | null;
+    reason?: string | null;
+};
+
+type LeadHandoffResult = {
+    applied: boolean;
+    targetType: LeadHandoffTargetType | null;
+    assignedToUserId: string | null;
+    assignedToInstanceName: string | null;
+    skippedReason: string | null;
+};
+
 const DEFAULT_AUTO_SCHEDULE_POLICY: AutoSchedulePolicy = {
     mode: 'both_on',
     callEnabled: true,
@@ -711,6 +734,31 @@ function isMissingOrgIdColumnError(error: any): boolean {
     const code = String(error.code || '');
     if (code === '42703' || code === 'PGRST204') return true;
     return String(error.message || '').toLowerCase().includes('org_id');
+}
+
+function isSchemaMismatchError(error: any): boolean {
+    if (!error) return false;
+    const code = String(error?.code || '');
+    return code === '42703' || code === 'PGRST204';
+}
+
+function normalizeOptionalText(raw: any): string | null {
+    const value = String(raw ?? '').trim();
+    return value.length > 0 ? value : null;
+}
+
+function normalizeOptionalUuidLike(raw: any): string | null {
+    const value = String(raw ?? '').trim();
+    if (!value) return null;
+    return value;
+}
+
+function resolveAppointmentWindowTypeFromRaw(raw: any): AppointmentWindowType {
+    const rawType = String(raw || '').toLowerCase();
+    if (rawType.includes('visit') || rawType.includes('visita')) return 'visit';
+    if (rawType.includes('meet') || rawType.includes('reunia')) return 'meeting';
+    if (rawType.includes('instal')) return 'installation';
+    return 'call';
 }
 
 async function tableHasOrgIdColumn(supabase: any, table: string): Promise<boolean> {
@@ -2732,6 +2780,8 @@ Deno.serve(async (req) => {
         };
         let scheduleBusyCount = 0;
         let appointmentPrecheckBlockedReason: string | null = null;
+        let appointmentAssigneeUserIdResolved: string | null = null;
+        let appointmentAssigneeSource: string | null = null;
         let stageGateBlockReason: string | null = null;
         let implicitConfirmationUsed = false;
         let lastAssistantMessageText = '';
@@ -2739,6 +2789,21 @@ Deno.serve(async (req) => {
         let slotSelectionStartAt: string | null = null;
         let slotSelectionType: AppointmentWindowType | null = null;
         let companyProfileFacts: CompanyProfileFacts | null = null;
+        let effectiveAssistantIdentityName = 'Consultor Solar';
+        let assistantIdentitySource: 'instance' | 'global' | 'default' = 'default';
+        let instanceAssistantPromptOverrideText = '';
+        let instanceAssistantPromptOverrideVersion = 0;
+        let instanceAssistantPromptApplied = false;
+        let autoScheduleCallAssignToUserId: string | null = null;
+        let autoScheduleVisitAssignToUserId: string | null = null;
+        let handoffApplied = false;
+        let handoffTargetType: LeadHandoffTargetType | null = null;
+        let handoffAssignedToUserId: string | null = null;
+        let handoffAssignedToInstanceName: string | null = null;
+        let handoffSkippedReason: string | null = null;
+        let handoffTargetsCatalogText = '';
+        let handoffAvailableSellerCount = 0;
+        let handoffAvailableInstanceCount = 0;
 
         // 1. STRICT INSTANCE CHECK
         leadId = payload?.leadId ?? null;
@@ -2901,11 +2966,41 @@ Deno.serve(async (req) => {
         };
 
         // 2. CHECK IF AI IS ENABLED FOR THIS INSTANCE
-        const { data: instanceData, error: instError } = await supabase
-            .from('whatsapp_instances')
-            .select('ai_enabled')
-            .eq('instance_name', instanceName)
-            .maybeSingle();
+        const instanceSelectExtended = [
+            'ai_enabled',
+            'assistant_identity_name',
+            'assistant_prompt_override',
+            'assistant_prompt_override_version',
+        ].join(', ');
+
+        let instanceData: any = null;
+        let instError: any = null;
+        {
+            const initialResp = await supabase
+                .from('whatsapp_instances')
+                .select(instanceSelectExtended)
+                .eq('instance_name', instanceName)
+                .maybeSingle();
+            instanceData = initialResp.data;
+            instError = initialResp.error;
+
+            if (instError && isSchemaMismatchError(instError)) {
+                const fallbackResp = await supabase
+                    .from('whatsapp_instances')
+                    .select('ai_enabled')
+                    .eq('instance_name', instanceName)
+                    .maybeSingle();
+                instanceData = fallbackResp.data
+                    ? {
+                        ...fallbackResp.data,
+                        assistant_identity_name: null,
+                        assistant_prompt_override: null,
+                        assistant_prompt_override_version: 0,
+                    }
+                    : fallbackResp.data;
+                instError = fallbackResp.error;
+            }
+        }
 
         if (instError || !instanceData || !instanceData.ai_enabled) {
             console.log(`🛑 AI disabled for instance: ${instanceName} (or instance not found)`);
@@ -2980,6 +3075,65 @@ Deno.serve(async (req) => {
 
         if (!settings?.is_active) {
             return respondNoSend({ skipped: "System Inactive" }, 'system_inactive');
+        }
+
+        const globalAssistantName = normalizeOptionalText(settings?.assistant_identity_name);
+        const instanceAssistantName = normalizeOptionalText(instanceData?.assistant_identity_name);
+        if (instanceAssistantName) {
+            effectiveAssistantIdentityName = instanceAssistantName;
+            assistantIdentitySource = 'instance';
+        } else if (globalAssistantName) {
+            effectiveAssistantIdentityName = globalAssistantName;
+            assistantIdentitySource = 'global';
+        } else {
+            effectiveAssistantIdentityName = 'Consultor Solar';
+            assistantIdentitySource = 'default';
+        }
+
+        instanceAssistantPromptOverrideText = normalizeOptionalText(instanceData?.assistant_prompt_override) || '';
+        instanceAssistantPromptOverrideVersion = Math.max(
+            0,
+            Number.parseInt(String(instanceData?.assistant_prompt_override_version ?? '0'), 10) || 0
+        );
+        instanceAssistantPromptApplied = instanceAssistantPromptOverrideText.length > 0;
+
+        autoScheduleCallAssignToUserId = normalizeOptionalUuidLike((settings as any)?.auto_schedule_call_assign_to_user_id);
+        autoScheduleVisitAssignToUserId = normalizeOptionalUuidLike((settings as any)?.auto_schedule_visit_assign_to_user_id);
+
+        const configuredAssigneeIds = Array.from(
+            new Set(
+                [autoScheduleCallAssignToUserId, autoScheduleVisitAssignToUserId]
+                    .filter((id): id is string => Boolean(id))
+            )
+        );
+        if (configuredAssigneeIds.length > 0) {
+            try {
+                const { data: orgMembersForAssignee, error: assigneeOrgErr } = await supabase
+                    .from('organization_members')
+                    .select('user_id')
+                    .eq('org_id', leadOrgId)
+                    .in('user_id', configuredAssigneeIds);
+
+                if (assigneeOrgErr) {
+                    console.warn(`⚠️ [${runId}] auto-schedule assignee org validation failed (non-blocking):`, assigneeOrgErr.message);
+                    autoScheduleCallAssignToUserId = null;
+                    autoScheduleVisitAssignToUserId = null;
+                } else {
+                    const allowedIds = new Set((orgMembersForAssignee || []).map((row: any) => String(row.user_id || '').trim()).filter(Boolean));
+                    if (autoScheduleCallAssignToUserId && !allowedIds.has(autoScheduleCallAssignToUserId)) {
+                        console.warn(`⚠️ [${runId}] auto_schedule_call_assign_to_user_id outside org scope. Falling back.`);
+                        autoScheduleCallAssignToUserId = null;
+                    }
+                    if (autoScheduleVisitAssignToUserId && !allowedIds.has(autoScheduleVisitAssignToUserId)) {
+                        console.warn(`⚠️ [${runId}] auto_schedule_visit_assign_to_user_id outside org scope. Falling back.`);
+                        autoScheduleVisitAssignToUserId = null;
+                    }
+                }
+            } catch (assigneeOrgEx: any) {
+                console.warn(`⚠️ [${runId}] auto-schedule assignee validation exception (non-blocking):`, assigneeOrgEx?.message || assigneeOrgEx);
+                autoScheduleCallAssignToUserId = null;
+                autoScheduleVisitAssignToUserId = null;
+            }
         }
 
         // 3a. Lead-level gate
@@ -3940,6 +4094,62 @@ Deno.serve(async (req) => {
         }
         scheduleCatalogText = buildSlotCatalogText(availableSlotsByType, scheduleTimezone, nowForSlots);
 
+        try {
+            const { data: handoffMembers, error: handoffMembersErr } = await supabase
+                .from('organization_members')
+                .select('user_id, role')
+                .eq('org_id', leadOrgId)
+                .limit(200);
+
+            const { data: handoffInstances, error: handoffInstancesErr } = await supabase
+                .from('whatsapp_instances')
+                .select('instance_name, display_name, is_active, ai_enabled, status')
+                .eq('org_id', leadOrgId)
+                .eq('is_active', true)
+                .eq('ai_enabled', true)
+                .order('created_at', { ascending: true })
+                .limit(100);
+
+            if (handoffMembersErr) {
+                console.warn(`⚠️ [${runId}] handoff members catalog load failed (non-blocking):`, handoffMembersErr.message);
+            }
+            if (handoffInstancesErr) {
+                console.warn(`⚠️ [${runId}] handoff instances catalog load failed (non-blocking):`, handoffInstancesErr.message);
+            }
+
+            const sellerCatalog = (handoffMembers || [])
+                .map((row: any) => {
+                    const userId = String(row?.user_id || '').trim();
+                    const roleName = String(row?.role || '').trim() || 'user';
+                    if (!userId) return null;
+                    return `- user_id=${userId} role=${roleName}`;
+                })
+                .filter(Boolean) as string[];
+
+            const instanceCatalog = (handoffInstances || [])
+                .map((row: any) => {
+                    const instanceRef = String(row?.instance_name || '').trim();
+                    if (!instanceRef) return null;
+                    const display = String(row?.display_name || '').trim() || instanceRef;
+                    const status = String(row?.status || '').trim() || 'unknown';
+                    return `- instance_name=${instanceRef} display_name="${display}" status=${status}`;
+                })
+                .filter(Boolean) as string[];
+
+            handoffAvailableSellerCount = sellerCatalog.length;
+            handoffAvailableInstanceCount = instanceCatalog.length;
+            handoffTargetsCatalogText = [
+                'VENDEDORES_DISPONIVEIS_PARA_ATRIBUICAO (use user_id exato):',
+                sellerCatalog.length > 0 ? sellerCatalog.join('\n') : '(nenhum vendedor disponível)',
+                '',
+                'INSTANCIAS_IA_DISPONIVEIS_PARA_HANDOFF (use instance_name exato):',
+                instanceCatalog.length > 0 ? instanceCatalog.join('\n') : '(nenhuma instância IA disponível)',
+            ].join('\n');
+        } catch (handoffCatalogErr: any) {
+            console.warn(`⚠️ [${runId}] handoff catalog exception (non-blocking):`, handoffCatalogErr?.message || handoffCatalogErr);
+            handoffTargetsCatalogText = '';
+        }
+
         const openAIApiKey = Deno.env.get('OPENAI_API_KEY') || '';
         const openai = openAIApiKey ? new OpenAI({ apiKey: openAIApiKey }) : null;
 
@@ -4411,13 +4621,29 @@ OBRIGATORIO:
 `
                 : '';
 
+            const instancePromptContextBlock = instanceAssistantPromptApplied
+                ? `
+PERSONALIZACAO_DA_INSTANCIA (prioridade abaixo de compliance e protocolo de etapa):
+- Fonte: whatsapp_instances.assistant_prompt_override
+- Versao: ${instanceAssistantPromptOverrideVersion}
+- Regras: aplique estas instrucoes para estilo/persona/roteamento desta instancia, sem violar politicas de seguranca, compliance e protocolo da etapa.
+${instanceAssistantPromptOverrideText}
+`
+                : `
+PERSONALIZACAO_DA_INSTANCIA:
+- Sem prompt personalizado para esta instancia. Use apenas identidade efetiva + protocolo da etapa.
+`;
+
             systemPrompt = `
-IDENTIDADE: ${settings.assistant_identity_name || 'Consultor Solar'}. Consultor de energia solar no Brasil.
-Ao se apresentar, use explicitamente o nome "${settings.assistant_identity_name || 'Consultor Solar'}". Evite apresentações genéricas como "assistente da empresa".
+IDENTIDADE: ${effectiveAssistantIdentityName}. Consultor de energia solar no Brasil.
+IDENTIDADE_FONTE: ${assistantIdentitySource}
+Ao se apresentar, use explicitamente o nome "${effectiveAssistantIdentityName}". Evite apresentações genéricas como "assistente da empresa".
 TIMEZONE_OPERACIONAL: ${scheduleTimezone}
 AGORA_UTC_ISO: ${new Date().toISOString()}
 
 ${buildSchedulePolicyPromptBlock(autoSchedulePolicy, isAfterHoursForCall)}
+
+${instancePromptContextBlock}
 
 ${SOLAR_BR_PACK}
 
@@ -4521,8 +4747,18 @@ COMENTÁRIOS INTERNOS E FOLLOW-UPS (V7):
 - Nunca crie tarefas/comentários duplicados no mesmo contexto; um por burst/âncora.
 - Você pode combinar: action="send_message" + "comment":{"text":"...","type":"next_step"} para responder E registrar comentário ao mesmo tempo.
 
+HANDOFF / ATRIBUICAO DE CONTATO (OBRIGATORIO QUANDO APLICAVEL):
+- Quando identificar necessidade de transferir atendimento, inclua "handoff" no JSON.
+- target_type="seller": use assign_to_user_id com user_id exato de VENDEDORES_DISPONIVEIS_PARA_ATRIBUICAO.
+- target_type="instance": use assign_to_instance_name com instance_name exato de INSTANCIAS_IA_DISPONIVEIS_PARA_HANDOFF.
+- Nunca invente IDs ou instance_name. Se nao houver alvo valido no catalogo, omita handoff.
+- Exemplo: Joao (vendas) pode encaminhar para Maria (pos-vendas) com handoff target_type="seller".
+- Exemplo: transferir para outra IA/instancia com handoff target_type="instance".
+
+${handoffTargetsCatalogText || 'CATALOGO_HANDOFF_INDISPONIVEL: sem alvos carregados neste momento.'}
+
 FORMATO DE SAÍDA (JSON ESTRITO, sem markdown, sem explicação fora do JSON):
-{"action": "send_message"|"move_stage"|"update_lead_fields"|"add_comment"|"create_followup"|"create_appointment"|"none", "content": "Texto humano aqui...", "target_stage": "next_stage_id", "fields": {"campo": {"value": "...", "confidence": "high"|"medium"|"low", "source": "user"|"inferred"|"confirmed"}}, "stage_data": {"campo_ou_namespace": "valor"}, "comment": {"text": "Resumo/nota interna", "type": "summary|note|next_step"}, "task": {"title": "Título do follow-up", "notes": "Detalhes", "due_at": "ISO", "priority": "low|medium|high", "channel": "whatsapp|call|email"}, "appointment": {"type": "call|visit|meeting|installation", "title": "Título curto", "start_at": "ISO", "end_at": "ISO opcional", "location": "Opcional", "notes": "Opcional"}}
+{"action": "send_message"|"move_stage"|"update_lead_fields"|"add_comment"|"create_followup"|"create_appointment"|"none", "content": "Texto humano aqui...", "target_stage": "next_stage_id", "fields": {"campo": {"value": "...", "confidence": "high"|"medium"|"low", "source": "user"|"inferred"|"confirmed"}}, "stage_data": {"campo_ou_namespace": "valor"}, "comment": {"text": "Resumo/nota interna", "type": "summary|note|next_step"}, "task": {"title": "Título do follow-up", "notes": "Detalhes", "due_at": "ISO", "priority": "low|medium|high", "channel": "whatsapp|call|email"}, "appointment": {"type": "call|visit|meeting|installation", "title": "Título curto", "start_at": "ISO", "end_at": "ISO opcional", "location": "Opcional", "notes": "Opcional"}, "handoff": {"target_type": "seller"|"instance", "assign_to_user_id": "uuid", "assign_to_instance_name": "instance_name", "reason": "opcional"}}
 
 Se action for "move_stage", DEVE incluir "target_stage".
 Se currentStage for "novo_lead" e action for "send_message", DEVE incluir "target_stage": "respondeu" (obrigatorio - lead respondeu pela primeira vez).
@@ -4534,6 +4770,7 @@ Você pode combinar: action="send_message" + "stage_data" para responder E salva
 Se action for "add_comment", inclua "content" com o texto do comentário.
 Se action for "create_followup", inclua "task" com título obrigatório.
 Se APENAS dados foram detectados e não há resposta necessária, use action="update_lead_fields" (sem content).
+Se houver transferência de responsável/instância, inclua "handoff" com target_type e alvo válido.
 `;
 
             let completion;
@@ -5133,13 +5370,66 @@ CORRECAO OBRIGATORIA:
             // Still do structured log and run log below, skip message sending
         }
 
+        // --- HANDOFF / ATRIBUICAO SIDE-EFFECT (non-blocking) ---
+        const handoffCandidate = extractLeadHandoffCandidate(aiRes);
+        if (handoffCandidate) {
+            try {
+                const handoffResult = await executeLeadHandoff(
+                    supabase,
+                    {
+                        leadId,
+                        orgId: leadOrgId,
+                        runId,
+                        currentLead: lead,
+                        candidate: handoffCandidate,
+                    }
+                );
+                handoffApplied = handoffResult.applied;
+                handoffTargetType = handoffResult.targetType;
+                handoffAssignedToUserId = handoffResult.assignedToUserId;
+                handoffAssignedToInstanceName = handoffResult.assignedToInstanceName;
+                handoffSkippedReason = handoffResult.skippedReason;
+
+                if (handoffResult.applied && handoffResult.assignedToUserId) {
+                    lead.assigned_to_user_id = handoffResult.assignedToUserId;
+                }
+                if (handoffResult.applied && handoffResult.assignedToInstanceName) {
+                    lead.instance_name = handoffResult.assignedToInstanceName;
+                }
+
+                try {
+                    await supabase.from('ai_action_logs').insert({
+                        org_id: leadOrgId,
+                        lead_id: Number(leadId),
+                        action_type: handoffResult.applied ? 'lead_handoff_applied' : 'lead_handoff_skipped',
+                        details: JSON.stringify({
+                            runId,
+                            target_type: handoffResult.targetType,
+                            assigned_to_user_id: handoffResult.assignedToUserId,
+                            assigned_to_instance_name: handoffResult.assignedToInstanceName,
+                            skipped_reason: handoffResult.skippedReason,
+                            interactionId: anchorInteractionId || null,
+                            handoff_reason: handoffCandidate.reason || null,
+                        }),
+                        success: handoffResult.applied,
+                    });
+                } catch (handoffLogErr) {
+                    console.warn(`[${runId}] lead_handoff log failed (non-blocking):`, handoffLogErr);
+                }
+            } catch (handoffErr: any) {
+                handoffApplied = false;
+                handoffSkippedReason = `exception:${handoffErr?.message || 'unknown'}`;
+                console.error(`⚠️ [${runId}] lead handoff side-effect failed (non-blocking):`, handoffErr?.message || handoffErr);
+            }
+        }
+
         // --- V7: COMMENT SIDE-EFFECT (non-blocking, runs alongside send_message/move_stage) ---
         const sideEffectComment = aiRes.comment && typeof aiRes.comment === 'object' && aiRes.comment.text;
         if (sideEffectComment) {
             try {
                 const v7Result = await executeAddComment(
                     supabase, leadId, aiRes.comment.text, aiRes.comment.type || 'note',
-                    settings.assistant_identity_name || 'IA', runId, anchorCreatedAt, anchorInteractionId
+                    effectiveAssistantIdentityName || 'IA', runId, anchorCreatedAt, anchorInteractionId
                 );
                 v7CommentWritten = v7Result.written;
                 v7CommentSkippedReason = v7Result.skippedReason;
@@ -5181,10 +5471,18 @@ CORRECAO OBRIGATORIA:
                 const apptData = aiRes.appointment || {};
                 const v9Result = await executeCreateAppointment(
                     supabase, leadId, apptData, runId, anchorCreatedAt, anchorInteractionId,
-                    leadOrgId, lead.user_id
+                    leadOrgId, lead.user_id,
+                    {
+                        callAssignToUserId: autoScheduleCallAssignToUserId,
+                        visitAssignToUserId: autoScheduleVisitAssignToUserId,
+                        leadAssignedToUserId: normalizeOptionalUuidLike(lead.assigned_to_user_id),
+                        leadOwnerUserId: normalizeOptionalUuidLike(lead.user_id),
+                    }
                 );
                 appointmentWritten = v9Result.written;
                 appointmentSkippedReason = v9Result.skippedReason;
+                appointmentAssigneeUserIdResolved = v9Result.assignedUserId;
+                appointmentAssigneeSource = v9Result.assignedUserSource;
             } catch (v9Err: any) {
                 appointmentError = v9Err?.message || String(v9Err);
                 console.error(`⚠️ [${runId}] V9: Appointment creation failed:`, appointmentError);
@@ -5222,7 +5520,7 @@ CORRECAO OBRIGATORIA:
             try {
                 const v7Result = await executeAddComment(
                     supabase, leadId, aiRes.content || '', aiRes.comment_type || 'note',
-                    settings.assistant_identity_name || 'IA', runId, anchorCreatedAt, anchorInteractionId
+                    effectiveAssistantIdentityName || 'IA', runId, anchorCreatedAt, anchorInteractionId
                 );
                 v7CommentWritten = v7Result.written;
                 v7CommentSkippedReason = v7Result.skippedReason;
@@ -5699,10 +5997,18 @@ CORRECAO OBRIGATORIA:
             web_used: webUsed,
             web_results_count: webResultsCount,
             web_error: webError,
+            assistant_identity_effective: effectiveAssistantIdentityName,
+            assistant_identity_source: assistantIdentitySource,
+            instance_prompt_override_applied: instanceAssistantPromptApplied,
+            instance_prompt_override_version: instanceAssistantPromptOverrideVersion,
+            handoff_available_sellers: handoffAvailableSellerCount,
+            handoff_available_instances: handoffAvailableInstanceCount,
             schedule_timezone: scheduleTimezone,
             schedule_policy_mode: schedulePolicyMode,
             schedule_call_min_days: scheduleCallMinDays,
             schedule_visit_min_days: scheduleVisitMinDays,
+            schedule_call_assign_to_user_id: autoScheduleCallAssignToUserId,
+            schedule_visit_assign_to_user_id: autoScheduleVisitAssignToUserId,
             after_hours_for_call: isAfterHoursForCall,
             schedule_busy_count: scheduleBusyCount,
             schedule_slots_available_call: availableSlotsByType.call.length,
@@ -5749,9 +6055,16 @@ CORRECAO OBRIGATORIA:
             v9_appointment_written: appointmentWritten,
             v9_appointment_skipped_reason: appointmentSkippedReason,
             v9_appointment_error: appointmentError,
+            v9_assigned_user_id: appointmentAssigneeUserIdResolved,
+            v9_assigned_user_source: appointmentAssigneeSource,
             // V10
             v10_proposal_written: proposalWritten,
             v10_proposal_skipped_reason: proposalSkippedReason,
+            handoff_applied: handoffApplied,
+            handoff_target_type: handoffTargetType,
+            handoff_assigned_to_user_id: handoffAssignedToUserId,
+            handoff_assigned_to_instance_name: handoffAssignedToInstanceName,
+            handoff_skipped_reason: handoffSkippedReason,
         };
         console.log(`📊 [${runId}] STRUCTURED_LOG: ${JSON.stringify(structuredLog)}`);
 
@@ -5769,6 +6082,13 @@ CORRECAO OBRIGATORIA:
             no_outbound_fallback_used: noOutboundFallbackUsed,
             schedule_policy_mode: schedulePolicyMode,
             after_hours_call_blocked: afterHoursCallBlocked,
+            handoff_applied: handoffApplied,
+            handoff_target_type: handoffTargetType,
+            handoff_assigned_to_user_id: handoffAssignedToUserId,
+            handoff_assigned_to_instance_name: handoffAssignedToInstanceName,
+            handoff_skipped_reason: handoffSkippedReason,
+            appointment_assigned_user_id: appointmentAssigneeUserIdResolved,
+            appointment_assigned_user_source: appointmentAssigneeSource,
         };
         latestAiResponse = aiRes as any;
 
@@ -5835,6 +6155,260 @@ CORRECAO OBRIGATORIA:
     }
 });
 
+function extractLeadHandoffCandidate(aiRes: any): LeadHandoffCandidate | null {
+    if (!aiRes || typeof aiRes !== 'object') return null;
+
+    const root = aiRes as Record<string, any>;
+    const raw =
+        root.handoff && typeof root.handoff === 'object'
+            ? root.handoff
+            : root.assignment && typeof root.assignment === 'object'
+                ? root.assignment
+                : null;
+
+    const source = raw || root;
+    const targetTypeRaw = String(source?.target_type || source?.type || '').trim().toLowerCase();
+    const assignToUserId = normalizeOptionalUuidLike(
+        source?.assign_to_user_id
+        || source?.user_id
+        || source?.assigned_to_user_id
+        || source?.seller_user_id
+    );
+    const assignToInstanceName = normalizeOptionalText(
+        source?.assign_to_instance_name
+        || source?.instance_name
+        || source?.target_instance_name
+    );
+    const reason = normalizeOptionalText(source?.reason || source?.note || source?.summary);
+
+    let targetType: LeadHandoffTargetType | null = null;
+    if (targetTypeRaw === 'seller' || targetTypeRaw === 'vendedor' || targetTypeRaw === 'user') {
+        targetType = 'seller';
+    } else if (targetTypeRaw === 'instance' || targetTypeRaw === 'ia' || targetTypeRaw === 'instancia') {
+        targetType = 'instance';
+    } else if (assignToUserId && !assignToInstanceName) {
+        targetType = 'seller';
+    } else if (assignToInstanceName && !assignToUserId) {
+        targetType = 'instance';
+    }
+
+    if (!targetType) return null;
+
+    return {
+        targetType,
+        userId: assignToUserId,
+        instanceName: assignToInstanceName,
+        reason,
+    };
+}
+
+async function executeLeadHandoff(
+    supabase: any,
+    params: {
+        leadId: string | number;
+        orgId: string;
+        runId: string;
+        currentLead: any;
+        candidate: LeadHandoffCandidate;
+    }
+): Promise<LeadHandoffResult> {
+    const leadId = params.leadId;
+    const orgId = params.orgId;
+    const runId = params.runId;
+    const currentLead = params.currentLead || {};
+    const candidate = params.candidate;
+
+    if (!candidate) {
+        return {
+            applied: false,
+            targetType: null,
+            assignedToUserId: null,
+            assignedToInstanceName: null,
+            skippedReason: 'missing_candidate',
+        };
+    }
+
+    if (candidate.targetType === 'seller') {
+        const targetUserId = normalizeOptionalUuidLike(candidate.userId);
+        if (!targetUserId) {
+            return {
+                applied: false,
+                targetType: 'seller',
+                assignedToUserId: null,
+                assignedToInstanceName: null,
+                skippedReason: 'missing_assign_to_user_id',
+            };
+        }
+
+        try {
+            const { data: orgMember, error: orgMemberErr } = await supabase
+                .from('organization_members')
+                .select('user_id')
+                .eq('org_id', orgId)
+                .eq('user_id', targetUserId)
+                .limit(1)
+                .maybeSingle();
+
+            if (orgMemberErr) {
+                return {
+                    applied: false,
+                    targetType: 'seller',
+                    assignedToUserId: null,
+                    assignedToInstanceName: null,
+                    skippedReason: `org_member_lookup_error:${orgMemberErr.message}`,
+                };
+            }
+
+            if (!orgMember?.user_id) {
+                return {
+                    applied: false,
+                    targetType: 'seller',
+                    assignedToUserId: null,
+                    assignedToInstanceName: null,
+                    skippedReason: 'assign_to_user_not_in_org',
+                };
+            }
+
+            if (String(currentLead?.assigned_to_user_id || '') === targetUserId) {
+                return {
+                    applied: false,
+                    targetType: 'seller',
+                    assignedToUserId: targetUserId,
+                    assignedToInstanceName: null,
+                    skippedReason: 'already_assigned_to_user',
+                };
+            }
+
+            const { error: updateErr } = await supabase
+                .from('leads')
+                .update({ assigned_to_user_id: targetUserId })
+                .eq('id', Number(leadId))
+                .eq('org_id', orgId);
+
+            if (updateErr) {
+                return {
+                    applied: false,
+                    targetType: 'seller',
+                    assignedToUserId: null,
+                    assignedToInstanceName: null,
+                    skippedReason: `lead_update_error:${updateErr.message}`,
+                };
+            }
+
+            console.log(`🔁 [${runId}] Lead handoff applied to seller ${targetUserId}.`);
+            return {
+                applied: true,
+                targetType: 'seller',
+                assignedToUserId: targetUserId,
+                assignedToInstanceName: null,
+                skippedReason: null,
+            };
+        } catch (sellerErr: any) {
+            return {
+                applied: false,
+                targetType: 'seller',
+                assignedToUserId: null,
+                assignedToInstanceName: null,
+                skippedReason: `seller_handoff_exception:${sellerErr?.message || 'unknown'}`,
+            };
+        }
+    }
+
+    const targetInstanceName = normalizeOptionalText(candidate.instanceName);
+    if (!targetInstanceName) {
+        return {
+            applied: false,
+            targetType: 'instance',
+            assignedToUserId: null,
+            assignedToInstanceName: null,
+            skippedReason: 'missing_assign_to_instance_name',
+        };
+    }
+
+    try {
+        const { data: targetInstance, error: targetInstanceErr } = await supabase
+            .from('whatsapp_instances')
+            .select('instance_name, is_active, ai_enabled')
+            .eq('org_id', orgId)
+            .eq('instance_name', targetInstanceName)
+            .limit(1)
+            .maybeSingle();
+
+        if (targetInstanceErr) {
+            return {
+                applied: false,
+                targetType: 'instance',
+                assignedToUserId: null,
+                assignedToInstanceName: null,
+                skippedReason: `instance_lookup_error:${targetInstanceErr.message}`,
+            };
+        }
+
+        if (!targetInstance?.instance_name) {
+            return {
+                applied: false,
+                targetType: 'instance',
+                assignedToUserId: null,
+                assignedToInstanceName: null,
+                skippedReason: 'assign_to_instance_not_found',
+            };
+        }
+
+        if (targetInstance.is_active !== true || targetInstance.ai_enabled !== true) {
+            return {
+                applied: false,
+                targetType: 'instance',
+                assignedToUserId: null,
+                assignedToInstanceName: null,
+                skippedReason: 'assign_to_instance_not_active_or_ai_disabled',
+            };
+        }
+
+        if (String(currentLead?.instance_name || '') === targetInstanceName) {
+            return {
+                applied: false,
+                targetType: 'instance',
+                assignedToUserId: null,
+                assignedToInstanceName: targetInstanceName,
+                skippedReason: 'already_assigned_to_instance',
+            };
+        }
+
+        const { error: updateErr } = await supabase
+            .from('leads')
+            .update({ instance_name: targetInstanceName })
+            .eq('id', Number(leadId))
+            .eq('org_id', orgId);
+
+        if (updateErr) {
+            return {
+                applied: false,
+                targetType: 'instance',
+                assignedToUserId: null,
+                assignedToInstanceName: null,
+                skippedReason: `lead_update_error:${updateErr.message}`,
+            };
+        }
+
+        console.log(`🔁 [${runId}] Lead handoff applied to instance ${targetInstanceName}.`);
+        return {
+            applied: true,
+            targetType: 'instance',
+            assignedToUserId: null,
+            assignedToInstanceName: targetInstanceName,
+            skippedReason: null,
+        };
+    } catch (instanceErr: any) {
+        return {
+            applied: false,
+            targetType: 'instance',
+            assignedToUserId: null,
+            assignedToInstanceName: null,
+            skippedReason: `instance_handoff_exception:${instanceErr?.message || 'unknown'}`,
+        };
+    }
+}
+
 // --- V9: CREATE APPOINTMENT executor ---
 async function executeCreateAppointment(
     supabase: any,
@@ -5844,12 +6418,25 @@ async function executeCreateAppointment(
     anchorCreatedAt: string | null,
     anchorInteractionId: string | number | null,
     orgId: string,
-    userId: string
-): Promise<{ written: boolean; skippedReason: string | null; appointmentId: string | null }> {
+    userId: string,
+    assigneeContext?: AppointmentAssigneeContext
+): Promise<{
+    written: boolean;
+    skippedReason: string | null;
+    appointmentId: string | null;
+    assignedUserId: string | null;
+    assignedUserSource: string | null;
+}> {
     // Validate start_at
     if (!appointment?.start_at) {
         console.warn(`⚠️ [${runId}] V9: Appointment skipped (missing start_at)`);
-        return { written: false, skippedReason: 'missing_start_at', appointmentId: null };
+        return {
+            written: false,
+            skippedReason: 'missing_start_at',
+            appointmentId: null,
+            assignedUserId: null,
+            assignedUserSource: null,
+        };
     }
 
     let startAt: string;
@@ -5872,19 +6459,58 @@ async function executeCreateAppointment(
         }
     } catch (dErr) {
         console.warn(`⚠️ [${runId}] V9: Appointment skipped (invalid dates):`, dErr);
-        return { written: false, skippedReason: 'invalid_dates', appointmentId: null };
+        return {
+            written: false,
+            skippedReason: 'invalid_dates',
+            appointmentId: null,
+            assignedUserId: null,
+            assignedUserSource: null,
+        };
     }
 
     const title = (appointment.title || 'Agendamento').trim().substring(0, 200);
+    const appointmentWindowType = resolveAppointmentWindowTypeFromRaw(appointment.type);
     // Map to Portuguese types for safety (DB constraint might be strict)
     let type = 'chamada';
-    const rawType = (appointment.type || '').toLowerCase();
-    if (rawType.includes('visit') || rawType.includes('visita')) type = 'visita';
-    else if (rawType.includes('meet') || rawType.includes('reunia')) type = 'reuniao';
-    else if (rawType.includes('instal')) type = 'instalacao';
+    if (appointmentWindowType === 'visit') type = 'visita';
+    else if (appointmentWindowType === 'meeting') type = 'reuniao';
+    else if (appointmentWindowType === 'installation') type = 'instalacao';
 
     const notes = (appointment.notes || '').trim().substring(0, 1000) || null;
     const location = (appointment.location || '').trim().substring(0, 500) || null;
+
+    const callPolicyAssignee = normalizeOptionalUuidLike(assigneeContext?.callAssignToUserId);
+    const visitPolicyAssignee = normalizeOptionalUuidLike(assigneeContext?.visitAssignToUserId);
+    const leadAssignedUser = normalizeOptionalUuidLike(assigneeContext?.leadAssignedToUserId);
+    const leadOwnerUser = normalizeOptionalUuidLike(assigneeContext?.leadOwnerUserId);
+    const legacyUser = normalizeOptionalUuidLike(userId);
+
+    let assignedUserId = legacyUser;
+    let assignedUserSource: string | null = legacyUser ? 'legacy_user_id' : null;
+
+    if (appointmentWindowType === 'call' && callPolicyAssignee) {
+        assignedUserId = callPolicyAssignee;
+        assignedUserSource = 'policy_call_assign_to_user_id';
+    } else if (appointmentWindowType === 'visit' && visitPolicyAssignee) {
+        assignedUserId = visitPolicyAssignee;
+        assignedUserSource = 'policy_visit_assign_to_user_id';
+    } else if (leadAssignedUser) {
+        assignedUserId = leadAssignedUser;
+        assignedUserSource = 'lead_assigned_to_user_id';
+    } else if (leadOwnerUser) {
+        assignedUserId = leadOwnerUser;
+        assignedUserSource = 'lead_user_id';
+    }
+
+    if (!assignedUserId) {
+        return {
+            written: false,
+            skippedReason: 'missing_assigned_user_id',
+            appointmentId: null,
+            assignedUserId: null,
+            assignedUserSource,
+        };
+    }
 
     // Dedup check (Strict interactionId)
     // We store interactionId in ai_action_logs.details->>'interactionId'
@@ -5905,7 +6531,13 @@ async function executeCreateAppointment(
 
             if (existing) {
                 console.log(`⏭️ [${runId}] V9: Appointment skipped (duplicate for interaction ${interactionIdStr})`);
-                return { written: false, skippedReason: 'skipped_duplicate', appointmentId: null };
+                return {
+                    written: false,
+                    skippedReason: 'skipped_duplicate',
+                    appointmentId: null,
+                    assignedUserId,
+                    assignedUserSource,
+                };
             }
         } catch (dedupErr: any) {
             console.warn(`⚠️ [${runId}] V9: Dedup check failed:`, dedupErr?.message);
@@ -5916,7 +6548,7 @@ async function executeCreateAppointment(
         // Insert appointment (org-aware first; fallback only for legacy schema without org_id)
         const insertPayload: any = {
             org_id: orgId,
-            user_id: userId,
+            user_id: assignedUserId,
             lead_id: Number(leadId),
             title,
             type,
@@ -5947,7 +6579,13 @@ async function executeCreateAppointment(
 
         if (insertErr) {
             console.error(`❌ [${runId}] V9: appointments insert error:`, insertErr.message);
-            return { written: false, skippedReason: `db_error: ${insertErr.message}`, appointmentId: null };
+            return {
+                written: false,
+                skippedReason: `db_error: ${insertErr.message}`,
+                appointmentId: null,
+                assignedUserId,
+                assignedUserSource,
+            };
         }
 
         const appointmentId = inserted?.id || null;
@@ -5963,17 +6601,31 @@ async function executeCreateAppointment(
                 title,
                 start_at: startAt,
                 end_at: endAt,
-                type
+                type,
+                assigned_user_id: assignedUserId,
+                assigned_user_source: assignedUserSource,
             }),
             success: true
         });
 
-        console.log(`📅 [${runId}] V9: Appointment created (id=${appointmentId}, start=${startAt})`);
-        return { written: true, skippedReason: null, appointmentId };
+        console.log(`📅 [${runId}] V9: Appointment created (id=${appointmentId}, start=${startAt}, user=${assignedUserId})`);
+        return {
+            written: true,
+            skippedReason: null,
+            appointmentId,
+            assignedUserId,
+            assignedUserSource,
+        };
 
     } catch (err: any) {
         console.error(`❌ [${runId}] V9: executeCreateAppointment error:`, err?.message || err);
-        return { written: false, skippedReason: `exception: ${err?.message}`, appointmentId: null };
+        return {
+            written: false,
+            skippedReason: `exception: ${err?.message}`,
+            appointmentId: null,
+            assignedUserId,
+            assignedUserSource,
+        };
     }
 }
 

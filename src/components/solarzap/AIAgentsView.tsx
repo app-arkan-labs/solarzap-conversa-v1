@@ -41,6 +41,8 @@ import {
     type FollowUpStepKey,
     type FollowUpWindowConfig,
 } from '@/types/ai';
+import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
+import { getMemberDisplayName } from '@/lib/memberDisplayName';
 import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { getSupportedTimezones, normalizeSupportedTimezone } from '@/lib/timezones';
 
@@ -350,6 +352,8 @@ type AutoScheduleSettingsDraft = {
     auto_schedule_visit_enabled: boolean;
     auto_schedule_call_min_days: number;
     auto_schedule_visit_min_days: number;
+    auto_schedule_call_assign_to_user_id: string | null;
+    auto_schedule_visit_assign_to_user_id: string | null;
 };
 
 const AUTO_SCHEDULE_MIN_DAYS_MIN = 0;
@@ -360,6 +364,13 @@ const normalizeAutoScheduleMinDays = (raw: unknown, fallback: number): number =>
     if (!Number.isFinite(parsed)) return fallback;
     return Math.max(AUTO_SCHEDULE_MIN_DAYS_MIN, Math.min(AUTO_SCHEDULE_MIN_DAYS_MAX, Math.round(parsed)));
 };
+
+const normalizeOptionalAssigneeId = (raw: unknown): string | null => {
+    const value = String(raw ?? '').trim();
+    return value.length > 0 ? value : null;
+};
+
+const normalizeAssistantNameInput = (raw: unknown): string => String(raw ?? '').trim();
 
 const buildAutoScheduleDraftFromSettings = (settings: any): AutoScheduleSettingsDraft => ({
     timezone: normalizeSupportedTimezone(settings?.timezone, 'America/Sao_Paulo'),
@@ -373,11 +384,38 @@ const buildAutoScheduleDraftFromSettings = (settings: any): AutoScheduleSettings
         settings?.auto_schedule_visit_min_days,
         0
     ),
+    auto_schedule_call_assign_to_user_id: normalizeOptionalAssigneeId(settings?.auto_schedule_call_assign_to_user_id),
+    auto_schedule_visit_assign_to_user_id: normalizeOptionalAssigneeId(settings?.auto_schedule_visit_assign_to_user_id),
 });
+
+const hasAutoScheduleDraftChanges = (draft: AutoScheduleSettingsDraft, settings: any): boolean => {
+    const baseline = buildAutoScheduleDraftFromSettings(settings);
+    return (
+        normalizeSupportedTimezone(draft.timezone, 'America/Sao_Paulo')
+        !== normalizeSupportedTimezone(baseline.timezone, 'America/Sao_Paulo')
+        || Boolean(draft.auto_schedule_call_enabled) !== Boolean(baseline.auto_schedule_call_enabled)
+        || Boolean(draft.auto_schedule_visit_enabled) !== Boolean(baseline.auto_schedule_visit_enabled)
+        || normalizeAutoScheduleMinDays(draft.auto_schedule_call_min_days, 0)
+        !== normalizeAutoScheduleMinDays(baseline.auto_schedule_call_min_days, 0)
+        || normalizeAutoScheduleMinDays(draft.auto_schedule_visit_min_days, 0)
+        !== normalizeAutoScheduleMinDays(baseline.auto_schedule_visit_min_days, 0)
+        || normalizeOptionalAssigneeId(draft.auto_schedule_call_assign_to_user_id)
+        !== normalizeOptionalAssigneeId(baseline.auto_schedule_call_assign_to_user_id)
+        || normalizeOptionalAssigneeId(draft.auto_schedule_visit_assign_to_user_id)
+        !== normalizeOptionalAssigneeId(baseline.auto_schedule_visit_assign_to_user_id)
+    );
+};
 
 export function AIAgentsView() {
     const { settings, stageConfigs, updateGlobalSettings, updateStageConfig, loading, restoreDefaultPrompt } = useAISettings();
-    const { instances: whatsappInstances, setInstanceAiEnabled, activateAiForAllLeads } = useUserWhatsAppInstances();
+    const {
+        instances: whatsappInstances,
+        actionLoading: instanceActionLoading,
+        fetchInstances: fetchWhatsAppInstances,
+        setInstanceAiEnabled,
+        activateAiForAllLeads,
+        updateInstanceAssistantProfile,
+    } = useUserWhatsAppInstances();
     const { openPackPurchase } = useBillingBlocker();
     const { role, orgId } = useAuth();
     const canEdit = role === 'owner' || role === 'admin';
@@ -389,9 +427,26 @@ export function AIAgentsView() {
     const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
     const [tempPrompt, setTempPrompt] = useState('');
 
-    // Local state for Assistant Name to prevent auto-refresh/focus loss
-    const [localAssistantName, setLocalAssistantName] = useState('');
-    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [globalAssistantFallbackNameDraft, setGlobalAssistantFallbackNameDraft] = useState('');
+    const [globalAssistantFallbackDirty, setGlobalAssistantFallbackDirty] = useState(false);
+    const [members, setMembers] = useState<MemberDto[]>([]);
+    const [membersLoading, setMembersLoading] = useState(false);
+    const [instanceAssistantNameDrafts, setInstanceAssistantNameDrafts] = useState<Record<string, string>>({});
+    const [instancePromptDialog, setInstancePromptDialog] = useState<{
+        open: boolean;
+        instanceId: string | null;
+        instanceLabel: string;
+        prompt: string;
+        baseVersion: number;
+        saving: boolean;
+    }>({
+        open: false,
+        instanceId: null,
+        instanceLabel: '',
+        prompt: '',
+        baseVersion: 0,
+        saving: false,
+    });
     const [windowConfigDraft, setWindowConfigDraft] = useState<AppointmentWindowConfig>(
         cloneWindowConfig(DEFAULT_APPOINTMENT_WINDOW_CONFIG)
     );
@@ -408,13 +463,10 @@ export function AIAgentsView() {
     const [autoScheduleDraft, setAutoScheduleDraft] = useState<AutoScheduleSettingsDraft>(
         buildAutoScheduleDraftFromSettings(settings)
     );
-    const [autoScheduleDirty, setAutoScheduleDirty] = useState(false);
 
-    // Sync local state when settings load
     React.useEffect(() => {
-        if (settings?.assistant_identity_name) {
-            setLocalAssistantName(settings.assistant_identity_name);
-        }
+        setGlobalAssistantFallbackNameDraft(String(settings?.assistant_identity_name || ''));
+        setGlobalAssistantFallbackDirty(false);
     }, [settings?.assistant_identity_name]);
 
     React.useEffect(() => {
@@ -441,28 +493,161 @@ export function AIAgentsView() {
 
     React.useEffect(() => {
         setAutoScheduleDraft(buildAutoScheduleDraftFromSettings(settings));
-        setAutoScheduleDirty(false);
     }, [
         settings?.timezone,
         settings?.auto_schedule_call_enabled,
         settings?.auto_schedule_visit_enabled,
         settings?.auto_schedule_call_min_days,
         settings?.auto_schedule_visit_min_days,
+        settings?.auto_schedule_call_assign_to_user_id,
+        settings?.auto_schedule_visit_assign_to_user_id,
     ]);
 
-    const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setLocalAssistantName(e.target.value);
-        setHasUnsavedChanges(true);
+    React.useEffect(() => {
+        setInstanceAssistantNameDrafts((prev) => {
+            const next: Record<string, string> = {};
+            for (const inst of whatsappInstances) {
+                if (Object.prototype.hasOwnProperty.call(prev, inst.id)) {
+                    next[inst.id] = prev[inst.id];
+                } else {
+                    next[inst.id] = String(inst.assistant_identity_name || '');
+                }
+            }
+            return next;
+        });
+    }, [whatsappInstances]);
+
+    React.useEffect(() => {
+        let mounted = true;
+        const loadMembers = async () => {
+            if (!orgId || !canEdit) {
+                if (mounted) setMembers([]);
+                return;
+            }
+            setMembersLoading(true);
+            try {
+                const response = await listMembers(orgId);
+                if (!mounted) return;
+                setMembers(response.ok && Array.isArray(response.members) ? response.members : []);
+            } catch (error) {
+                console.error('Failed to load members for IA settings:', error);
+                if (mounted) setMembers([]);
+            } finally {
+                if (mounted) setMembersLoading(false);
+            }
+        };
+        void loadMembers();
+        return () => {
+            mounted = false;
+        };
+    }, [canEdit, orgId]);
+
+    const handleGlobalAssistantFallbackChange = (value: string) => {
+        setGlobalAssistantFallbackNameDraft(value);
+        setGlobalAssistantFallbackDirty(
+            normalizeAssistantNameInput(value) !== normalizeAssistantNameInput(settings?.assistant_identity_name || '')
+        );
     };
 
-    const handleCancelNameChange = () => {
-        setLocalAssistantName(settings?.assistant_identity_name || '');
-        setHasUnsavedChanges(false);
+    const handleGlobalAssistantFallbackCancel = () => {
+        setGlobalAssistantFallbackNameDraft(String(settings?.assistant_identity_name || ''));
+        setGlobalAssistantFallbackDirty(false);
     };
 
-    const handleSaveNameChange = async () => {
-        await updateGlobalSettings({ assistant_identity_name: localAssistantName });
-        setHasUnsavedChanges(false);
+    const handleGlobalAssistantFallbackSave = async () => {
+        await updateGlobalSettings({ assistant_identity_name: globalAssistantFallbackNameDraft });
+        setGlobalAssistantFallbackDirty(false);
+    };
+
+    const handleInstanceAssistantNameDraftChange = (instanceId: string, value: string) => {
+        setInstanceAssistantNameDrafts((prev) => ({
+            ...prev,
+            [instanceId]: value,
+        }));
+    };
+
+    const isInstanceAssistantNameDirty = (instanceId: string) => {
+        const instance = whatsappInstances.find((item) => item.id === instanceId);
+        if (!instance) return false;
+        const draft = normalizeAssistantNameInput(instanceAssistantNameDrafts[instanceId] || '');
+        const persisted = normalizeAssistantNameInput(instance.assistant_identity_name || '');
+        return draft !== persisted;
+    };
+
+    const handleInstanceAssistantNameReset = (instanceId: string) => {
+        const instance = whatsappInstances.find((item) => item.id === instanceId);
+        setInstanceAssistantNameDrafts((prev) => ({
+            ...prev,
+            [instanceId]: String(instance?.assistant_identity_name || ''),
+        }));
+    };
+
+    const handleInstanceAssistantNameSave = async (instanceId: string) => {
+        const draftValue = instanceAssistantNameDrafts[instanceId] || '';
+        const result = await updateInstanceAssistantProfile({
+            instanceId,
+            assistantIdentityName: draftValue,
+        });
+        if (result.ok) {
+            const persisted = String(result.instance?.assistant_identity_name || '');
+            setInstanceAssistantNameDrafts((prev) => ({
+                ...prev,
+                [instanceId]: persisted,
+            }));
+            toast.success('Nome do assistente por instância salvo.');
+        }
+    };
+
+    const openInstancePromptEditor = (instanceId: string) => {
+        const target = whatsappInstances.find((item) => item.id === instanceId);
+        if (!target) {
+            toast.error('Instância não encontrada.');
+            return;
+        }
+        setInstancePromptDialog({
+            open: true,
+            instanceId,
+            instanceLabel: target.display_name || target.instance_name,
+            prompt: String(target.assistant_prompt_override || ''),
+            baseVersion: Number(target.assistant_prompt_override_version || 0),
+            saving: false,
+        });
+    };
+
+    const closeInstancePromptEditor = () => {
+        setInstancePromptDialog({
+            open: false,
+            instanceId: null,
+            instanceLabel: '',
+            prompt: '',
+            baseVersion: 0,
+            saving: false,
+        });
+    };
+
+    const handleSaveInstancePrompt = async () => {
+        if (!instancePromptDialog.instanceId || instancePromptDialog.saving) return;
+        setInstancePromptDialog((prev) => ({ ...prev, saving: true }));
+        try {
+            const result = await updateInstanceAssistantProfile({
+                instanceId: instancePromptDialog.instanceId,
+                assistantPromptOverride: instancePromptDialog.prompt,
+                expectedPromptVersion: instancePromptDialog.baseVersion,
+            });
+
+            if (result.ok) {
+                toast.success('Personalização da instância salva.');
+                closeInstancePromptEditor();
+                return;
+            }
+
+            if (result.conflict) {
+                await fetchWhatsAppInstances();
+                return;
+            }
+        } finally {
+            setInstancePromptDialog((prev) => ({ ...prev, saving: false }));
+        }
     };
 
     const handleWindowConfigTimeChange = (
@@ -618,7 +803,6 @@ export function AIAgentsView() {
             ...prev,
             [field]: value,
         }));
-        setAutoScheduleDirty(true);
     };
 
     const handleAutoScheduleMinDaysChange = (
@@ -629,7 +813,6 @@ export function AIAgentsView() {
             ...prev,
             [field]: normalizeAutoScheduleMinDays(value, prev[field]),
         }));
-        setAutoScheduleDirty(true);
     };
 
     const handleAutoScheduleTimezoneChange = (value: string) => {
@@ -637,12 +820,20 @@ export function AIAgentsView() {
             ...prev,
             timezone: normalizeSupportedTimezone(value, prev.timezone || 'America/Sao_Paulo'),
         }));
-        setAutoScheduleDirty(true);
+    };
+
+    const handleAutoScheduleAssigneeChange = (
+        field: 'auto_schedule_call_assign_to_user_id' | 'auto_schedule_visit_assign_to_user_id',
+        value: string,
+    ) => {
+        setAutoScheduleDraft((prev) => ({
+            ...prev,
+            [field]: normalizeOptionalAssigneeId(value === 'unassigned' ? null : value),
+        }));
     };
 
     const handleAutoScheduleCancel = () => {
         setAutoScheduleDraft(buildAutoScheduleDraftFromSettings(settings));
-        setAutoScheduleDirty(false);
     };
 
     const handleAutoScheduleSave = async () => {
@@ -653,8 +844,9 @@ export function AIAgentsView() {
             auto_schedule_visit_enabled: autoScheduleDraft.auto_schedule_visit_enabled,
             auto_schedule_call_min_days: normalizeAutoScheduleMinDays(autoScheduleDraft.auto_schedule_call_min_days, 0),
             auto_schedule_visit_min_days: normalizeAutoScheduleMinDays(autoScheduleDraft.auto_schedule_visit_min_days, 0),
+            auto_schedule_call_assign_to_user_id: autoScheduleDraft.auto_schedule_call_assign_to_user_id,
+            auto_schedule_visit_assign_to_user_id: autoScheduleDraft.auto_schedule_visit_assign_to_user_id,
         });
-        setAutoScheduleDirty(false);
     };
 
     const handleEditClick = (agent: PipelineAgentDef, currentPrompt: string) => {
@@ -791,6 +983,16 @@ export function AIAgentsView() {
         tempPrompt && !/ETAPA:/i.test(tempPrompt) ? 'Aviso: sem "ETAPA:"' : null,
         tempPrompt && !/OBJETIVO:/i.test(tempPrompt) ? 'Aviso: sem "OBJETIVO:"' : null,
     ].filter(Boolean) as string[];
+    const currentInstancePromptVersion = Number(
+        whatsappInstances.find((inst) => inst.id === instancePromptDialog.instanceId)?.assistant_prompt_override_version
+        || instancePromptDialog.baseVersion
+        || 0
+    );
+    const instancePromptLength = instancePromptDialog.prompt.length;
+    const hasGlobalFallbackAssistantNameChanges =
+        normalizeAssistantNameInput(globalAssistantFallbackNameDraft)
+        !== normalizeAssistantNameInput(settings?.assistant_identity_name || '');
+    const autoScheduleHasChanges = hasAutoScheduleDraftChanges(autoScheduleDraft, settings);
 
     return (
         <div className="app-shell-bg flex-1 flex flex-col h-full overflow-hidden">
@@ -852,46 +1054,42 @@ export function AIAgentsView() {
             <div className="flex-1 overflow-y-auto w-full px-4 py-4 pb-8 sm:px-6 sm:py-6 sm:pb-24">
                 <div className="mx-auto w-full max-w-[900px] space-y-6">
 
-                    {/* Settings Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Nome do Assistente */}
-                        <Card className={AI_SECTION_CARD_CLASS}>
-                            <CardContent className="p-4">
-                                <Label className="text-xs font-semibold text-muted-foreground">Nome do Assistente</Label>
-                                <Input
-                                    className="mt-2"
-                                    value={localAssistantName}
-                                    onChange={handleNameChange}
-                                    placeholder="Ex: Consultor Solar, Ana, Carlos..."
-                                />
-                            </CardContent>
-                        </Card>
+                    <Card className={AI_SECTION_CARD_CLASS}>
+                        <CardContent className="space-y-4 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <Label className="text-xs font-semibold text-muted-foreground">
+                                    Instâncias WhatsApp + Identidade da IA por instância
+                                </Label>
+                                <span className="text-[11px] text-muted-foreground">Cada instância possui nome e prompt próprios</span>
+                            </div>
 
-                        {/* Instâncias WhatsApp - TODAS, não só connected */}
-                        <Card className={AI_SECTION_CARD_CLASS}>
-                            <CardContent className="p-4">
-                                <div className="mb-3 flex items-center justify-between gap-3">
-                                    <Label className="text-xs font-semibold text-muted-foreground">Instâncias WhatsApp</Label>
-                                    <span className="text-[11px] text-muted-foreground">Controle por instância</span>
-                                </div>
-                                <div className="mt-2 flex flex-col gap-2.5">
-                                    {whatsappInstances.length === 0 ? (
-                                        <p className="text-sm text-muted-foreground italic flex items-center gap-1.5">
-                                            <AlertTriangle className="h-3.5 w-3.5" /> Nenhuma instância cadastrada
-                                        </p>
-                                    ) : (
-                                        whatsappInstances.map(inst => {
-                                            const isOnline = inst.status === 'connected';
-                                            const isConnecting = inst.status === 'connecting';
-                                            return (
-                                                <div key={inst.id} className={`${AI_ROW_CLASS} flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between`}>
+                            <div className="flex flex-col gap-3">
+                                {whatsappInstances.length === 0 ? (
+                                    <p className="flex items-center gap-1.5 text-sm italic text-muted-foreground">
+                                        <AlertTriangle className="h-3.5 w-3.5" /> Nenhuma instância cadastrada
+                                    </p>
+                                ) : (
+                                    whatsappInstances.map((inst) => {
+                                        const isOnline = inst.status === 'connected';
+                                        const isConnecting = inst.status === 'connecting';
+                                        const draftAssistantName = instanceAssistantNameDrafts[inst.id] ?? String(inst.assistant_identity_name || '');
+                                        const nameDirty = isInstanceAssistantNameDirty(inst.id);
+                                        const assistantNameFallbackHint = String(settings?.assistant_identity_name || 'Consultor Solar');
+                                        const hasPromptOverride = String(inst.assistant_prompt_override || '').trim().length > 0;
+                                        return (
+                                            <div
+                                                key={inst.id}
+                                                className={`${AI_ROW_CLASS} space-y-3`}
+                                                data-testid={`ai-instance-row-${inst.instance_name}`}
+                                            >
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
                                                     <div className="flex min-w-0 items-center gap-2.5">
                                                         {isOnline ? (
-                                                            <Wifi className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                                                            <Wifi className="h-3.5 w-3.5 flex-shrink-0 text-green-500" />
                                                         ) : (
-                                                            <WifiOff className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                                            <WifiOff className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
                                                         )}
-                                                        <span className={`font-medium truncate ${!isOnline ? 'text-muted-foreground' : 'text-foreground'}`}>
+                                                        <span className={`truncate font-medium ${!isOnline ? 'text-muted-foreground' : 'text-foreground'}`}>
                                                             {inst.display_name || inst.instance_name}
                                                         </span>
                                                         <Badge
@@ -899,6 +1097,12 @@ export function AIAgentsView() {
                                                             className={`flex-shrink-0 ${AI_STATUS_BADGE_CLASS} ${isOnline ? 'border-primary/30 text-primary' : isConnecting ? 'border-amber-300/70 text-amber-700 dark:text-amber-300' : ''}`}
                                                         >
                                                             {isOnline ? 'Online' : isConnecting ? 'Conectando' : 'Offline'}
+                                                        </Badge>
+                                                        <Badge
+                                                            variant={hasPromptOverride ? 'default' : 'secondary'}
+                                                            className="h-5 px-2 text-[10px]"
+                                                        >
+                                                            {hasPromptOverride ? 'Prompt personalizado' : 'Prompt padrão'}
                                                         </Badge>
                                                     </div>
                                                     <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
@@ -911,6 +1115,16 @@ export function AIAgentsView() {
                                                         <Button
                                                             size="sm"
                                                             variant="outline"
+                                                            data-testid={`ai-instance-personalize-${inst.instance_name}`}
+                                                            className="h-7 border-border/60 px-2 text-[11px]"
+                                                            disabled={!canEdit || instanceActionLoading === inst.id}
+                                                            onClick={() => openInstancePromptEditor(inst.id)}
+                                                        >
+                                                            Personalizar
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
                                                             data-testid={`instance-ai-activate-all-${inst.instance_name}`}
                                                             className="h-7 border-border/60 px-2 text-[11px] text-primary hover:bg-primary/5 hover:text-primary/80"
                                                             disabled={!isOnline}
@@ -920,18 +1134,100 @@ export function AIAgentsView() {
                                                             }}
                                                             title="Reativar IA para todos os leads desta instância"
                                                         >
-                                                            <Power className="h-3 w-3 mr-1" />
+                                                            <Power className="mr-1 h-3 w-3" />
                                                             Religar todos
                                                         </Button>
                                                     </div>
                                                 </div>
-                                            );
-                                        })
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
+
+                                                <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                                                    <div className="space-y-1">
+                                                        <Label className="text-[11px] text-muted-foreground">
+                                                            Nome do assistente desta instância
+                                                        </Label>
+                                                        <Input
+                                                            data-testid={`ai-instance-assistant-name-input-${inst.instance_name}`}
+                                                            value={draftAssistantName}
+                                                            onChange={(event) => handleInstanceAssistantNameDraftChange(inst.id, event.target.value)}
+                                                            placeholder={`Fallback global: ${assistantNameFallbackHint}`}
+                                                            disabled={!canEdit || instanceActionLoading === inst.id}
+                                                        />
+                                                        <p className="text-[11px] text-muted-foreground">
+                                                            Se vazio, usa o fallback global da organização.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        {nameDirty && (
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="h-8 text-xs"
+                                                                onClick={() => handleInstanceAssistantNameReset(inst.id)}
+                                                                disabled={!canEdit || instanceActionLoading === inst.id}
+                                                            >
+                                                                Reverter
+                                                            </Button>
+                                                        )}
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            className="h-8 text-xs"
+                                                            data-testid={`ai-instance-assistant-name-save-${inst.instance_name}`}
+                                                            onClick={() => handleInstanceAssistantNameSave(inst.id)}
+                                                            disabled={!canEdit || !nameDirty || instanceActionLoading === inst.id}
+                                                        >
+                                                            Salvar Nome
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+
+                            <div className={AI_SUBSECTION_CLASS}>
+                                <Label className="text-xs font-semibold text-muted-foreground">
+                                    Fallback global do nome do assistente
+                                </Label>
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                    Usado somente quando a instância não tiver nome próprio configurado.
+                                </p>
+                                <Input
+                                    className="mt-2"
+                                    value={globalAssistantFallbackNameDraft}
+                                    onChange={(event) => handleGlobalAssistantFallbackChange(event.target.value)}
+                                    placeholder="Ex: Consultor Solar"
+                                    data-testid="ai-global-assistant-fallback-input"
+                                    disabled={!canEdit}
+                                />
+                                {canEdit && (
+                                    <div className="mt-3 flex items-center justify-end gap-2">
+                                        {hasGlobalFallbackAssistantNameChanges && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleGlobalAssistantFallbackCancel}
+                                                className="h-8 text-xs"
+                                            >
+                                                Cancelar
+                                            </Button>
+                                        )}
+                                        <Button
+                                            size="sm"
+                                            onClick={handleGlobalAssistantFallbackSave}
+                                            disabled={!globalAssistantFallbackDirty}
+                                            className="h-8 text-xs"
+                                            data-testid="ai-global-assistant-fallback-save"
+                                        >
+                                            Salvar Fallback
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
 
                     <Card className={AI_SECTION_CARD_CLASS} data-testid="auto-schedule-controls-card">
                         <CardHeader className="pb-2">
@@ -971,6 +1267,32 @@ export function AIAgentsView() {
                                             disabled={!canEdit}
                                         />
                                     </div>
+                                    <div className="mt-3 space-y-1">
+                                        <Label className="text-[11px] text-muted-foreground">Atribuir para</Label>
+                                        <Select
+                                            value={autoScheduleDraft.auto_schedule_call_assign_to_user_id || 'unassigned'}
+                                            onValueChange={(value) => handleAutoScheduleAssigneeChange('auto_schedule_call_assign_to_user_id', value)}
+                                            disabled={!canEdit || membersLoading}
+                                        >
+                                            <SelectTrigger data-testid="auto-schedule-call-assign-trigger">
+                                                <SelectValue placeholder="Selecione um vendedor" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="unassigned" data-testid="auto-schedule-call-assign-option-unassigned">
+                                                    Sem responsável fixo
+                                                </SelectItem>
+                                                {members.map((member) => (
+                                                    <SelectItem
+                                                        key={member.user_id}
+                                                        value={member.user_id}
+                                                        data-testid={`auto-schedule-call-assign-option-${member.user_id}`}
+                                                    >
+                                                        {getMemberDisplayName(member)}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
 
                                 <div className={AI_SUBSECTION_CLASS}>
@@ -1005,6 +1327,32 @@ export function AIAgentsView() {
                                             disabled={!canEdit}
                                         />
                                     </div>
+                                    <div className="mt-3 space-y-1">
+                                        <Label className="text-[11px] text-muted-foreground">Atribuir para</Label>
+                                        <Select
+                                            value={autoScheduleDraft.auto_schedule_visit_assign_to_user_id || 'unassigned'}
+                                            onValueChange={(value) => handleAutoScheduleAssigneeChange('auto_schedule_visit_assign_to_user_id', value)}
+                                            disabled={!canEdit || membersLoading}
+                                        >
+                                            <SelectTrigger data-testid="auto-schedule-visit-assign-trigger">
+                                                <SelectValue placeholder="Selecione um vendedor" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="unassigned" data-testid="auto-schedule-visit-assign-option-unassigned">
+                                                    Sem responsável fixo
+                                                </SelectItem>
+                                                {members.map((member) => (
+                                                    <SelectItem
+                                                        key={member.user_id}
+                                                        value={member.user_id}
+                                                        data-testid={`auto-schedule-visit-assign-option-${member.user_id}`}
+                                                    >
+                                                        {getMemberDisplayName(member)}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1034,14 +1382,14 @@ export function AIAgentsView() {
 
                             {canEdit && (
                                 <div className="flex items-center justify-end gap-2">
-                                    {autoScheduleDirty && (
+                                    {autoScheduleHasChanges && (
                                         <Button variant="outline" onClick={handleAutoScheduleCancel}>
                                             Cancelar
                                         </Button>
                                     )}
                                     <Button
                                         onClick={handleAutoScheduleSave}
-                                        disabled={!autoScheduleDirty}
+                                        disabled={!autoScheduleHasChanges}
                                         data-testid="auto-schedule-controls-save"
                                     >
                                         <Save className="mr-2 h-4 w-4" />
@@ -1533,25 +1881,58 @@ export function AIAgentsView() {
                         })}
                     </div>
 
-                    {/* Floating Save Bar */}
                 </div>
             </div>
 
-            {hasUnsavedChanges && (
-                <div className="fixed bottom-20 left-4 right-4 z-50 animate-in fade-in slide-in-from-bottom-4 sm:bottom-6 sm:left-auto sm:right-6">
-                    <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/70 bg-card/96 p-4 shadow-[0_22px_56px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl dark:shadow-[0_22px_56px_-28px_rgba(2,6,23,0.65)] sm:flex-nowrap">
-                        <span className="text-sm font-medium text-muted-foreground">Alterações não salvas</span>
-                        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
-                            <Button variant="outline" size="sm" onClick={handleCancelNameChange} className="h-9 flex-1 sm:flex-none">
-                                ✕ Cancelar
-                            </Button>
-                            <Button size="sm" onClick={handleSaveNameChange} className="h-9 flex-1 bg-primary text-white hover:bg-primary/90 sm:flex-none">
-                                <Save className="w-4 h-4 mr-2" /> Salvar
-                            </Button>
+            <Dialog open={instancePromptDialog.open} onOpenChange={(open) => {
+                if (!open) closeInstancePromptEditor();
+            }}>
+                <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle>
+                            Personalizar Assistente da Instância: {instancePromptDialog.instanceLabel}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Este texto adiciona instruções específicas para esta instância sem sobrescrever prompts por etapa.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="h-5 px-2 text-[10px]">
+                                Versão {currentInstancePromptVersion}
+                            </Badge>
+                            <Badge variant="secondary" className="h-5 px-2 text-[10px]">
+                                {instancePromptLength} caracteres
+                            </Badge>
                         </div>
+                        <Textarea
+                            data-testid="ai-instance-prompt-editor-textarea"
+                            className="min-h-[260px] resize-y font-mono text-sm"
+                            value={instancePromptDialog.prompt}
+                            onChange={(event) => setInstancePromptDialog((prev) => ({ ...prev, prompt: event.target.value }))}
+                            disabled={!canEdit || instancePromptDialog.saving}
+                            placeholder="Ex: Você é João, da equipe de vendas. Se o lead pedir pós-venda, atribua para Maria e informe que ela continuará o atendimento."
+                        />
                     </div>
-                </div>
-            )}
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={closeInstancePromptEditor}
+                            disabled={instancePromptDialog.saving}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            onClick={handleSaveInstancePrompt}
+                            disabled={!canEdit || instancePromptDialog.saving}
+                            data-testid="ai-instance-prompt-editor-save"
+                        >
+                            <Save className="mr-2 h-4 w-4" />
+                            Salvar Personalização
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Warning Dialog */}
             <Dialog open={isWarningOpen} onOpenChange={setIsWarningOpen}>

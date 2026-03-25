@@ -47,6 +47,28 @@ async function login(page: Page, email: string, password: string) {
   await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await page.waitForURL('**/', { timeout: 30_000 });
+  const skipTourButton = page.getByRole('button', { name: /Pular tour/i });
+  const skipTourAppeared = await skipTourButton
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (skipTourAppeared) {
+    await skipTourButton.click({ force: true });
+    await page.getByRole('dialog', { name: /Bem-vindo ao SolarZap/i }).waitFor({ state: 'hidden', timeout: 10_000 });
+  }
+  await page.getByTestId('nav-settings-trigger').waitFor({ state: 'visible', timeout: 30_000 });
+}
+
+async function ensureConversationsView(page: Page) {
+  const searchInput = page.getByPlaceholder(/Pesquisar/i);
+  const visibleOnCurrentTab = await searchInput
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (visibleOnCurrentTab) return;
+
+  await page.getByTestId('nav-tab-conversas').click({ force: true });
+  await searchInput.waitFor({ state: 'visible', timeout: 30_000 });
 }
 
 test.beforeAll(async () => {
@@ -64,6 +86,7 @@ test.beforeAll(async () => {
     email: state.ownerEmail,
     password: state.ownerPassword,
     email_confirm: true,
+    user_metadata: { org_id: state.orgId, p0_conversation_instance_switch: true },
   });
   if (ownerResp.error || !ownerResp.data.user?.id) {
     throw new Error(`Failed to create P0 instance switch owner user: ${ownerResp.error?.message || 'unknown'}`);
@@ -74,6 +97,9 @@ test.beforeAll(async () => {
     id: state.orgId,
     name: `P0 Instance Switch Org ${suffix}`,
     owner_id: state.ownerUserId,
+    plan: 'start',
+    subscription_status: 'active',
+    plan_limits: {},
   });
   if (orgErr) throw new Error(`Failed to create P0 org: ${orgErr.message}`);
 
@@ -84,6 +110,19 @@ test.beforeAll(async () => {
     can_view_team_leads: true,
   });
   if (membersErr) throw new Error(`Failed to create P0 membership: ${membersErr.message}`);
+
+  const { error: onboardingErr } = await admin.from('onboarding_progress').insert({
+    user_id: state.ownerUserId,
+    org_id: state.orgId,
+    current_step: 'complete',
+    completed_steps: ['profile', 'organization', 'install', 'explore'],
+    skipped_steps: [],
+    tour_completed_tabs: [],
+    is_complete: true,
+    guided_tour_status: 'dismissed',
+    guided_tour_version: 'v2-global-01',
+  });
+  if (onboardingErr) throw new Error(`Failed to create onboarding state: ${onboardingErr.message}`);
 
   const { error: instanceErr } = await admin.from('whatsapp_instances').insert([
     {
@@ -144,6 +183,7 @@ test.afterAll(async () => {
     await admin.from('interacoes').delete().eq('org_id', state.orgId);
     await admin.from('leads').delete().eq('org_id', state.orgId);
     await admin.from('whatsapp_instances').delete().eq('org_id', state.orgId);
+    await admin.from('onboarding_progress').delete().eq('org_id', state.orgId);
     await admin.from('organization_members').delete().eq('org_id', state.orgId);
     await admin.from('organizations').delete().eq('id', state.orgId);
   }
@@ -165,11 +205,12 @@ test('P0 conversation instance switch smoke: manual selection does not revert', 
   });
 
   await login(page, state.ownerEmail, state.ownerPassword);
+  await ensureConversationsView(page);
 
   await page.getByPlaceholder(/Pesquisar/i).fill(state.leadName);
   const row = page.locator('[data-testid="conversation-row"]').filter({ hasText: state.leadName }).first();
   await expect(row).toBeVisible({ timeout: 30_000 });
-  await row.click();
+  await row.getByText(state.leadName).first().click();
 
   await admin
     .from('whatsapp_instances')

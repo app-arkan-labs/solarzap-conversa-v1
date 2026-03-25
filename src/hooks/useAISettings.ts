@@ -25,10 +25,16 @@ const STAGE_CONFIG_REQUIRED_FIELDS =
   'id, org_id, is_active, agent_goal, default_prompt, prompt_override, updated_at';
 const STAGE_CONFIG_VERSION_FIELD = 'prompt_override_version';
 const STAGE_SCHEMA_ERRORS = new Set(['PGRST204', '42703']);
+const SETTINGS_SCHEMA_ERRORS = new Set(['PGRST204', '42703']);
 
 const isStageSchemaMismatch = (error: any): boolean => {
   const code = typeof error?.code === 'string' ? error.code : '';
   return STAGE_SCHEMA_ERRORS.has(code);
+};
+
+const isSettingsSchemaMismatch = (error: any): boolean => {
+  const code = typeof error?.code === 'string' ? error.code : '';
+  return SETTINGS_SCHEMA_ERRORS.has(code);
 };
 
 const stageConfigSelect = (stageCol: string, includeVersion = true): string => {
@@ -186,6 +192,22 @@ const normalizeTimezone = (raw: unknown, fallback: string): string => {
   return normalizeSupportedTimezone(raw, fallback);
 };
 
+const normalizeOptionalUuid = (raw: unknown): string | null => {
+  const value = String(raw ?? '').trim();
+  return value ? value : null;
+};
+
+const stripAutoScheduleAssigneeFields = (updates: Partial<AISettings>): Partial<AISettings> => {
+  const next = { ...updates };
+  if (Object.prototype.hasOwnProperty.call(next, 'auto_schedule_call_assign_to_user_id')) {
+    delete (next as any).auto_schedule_call_assign_to_user_id;
+  }
+  if (Object.prototype.hasOwnProperty.call(next, 'auto_schedule_visit_assign_to_user_id')) {
+    delete (next as any).auto_schedule_visit_assign_to_user_id;
+  }
+  return next;
+};
+
 const toStageTitle = (stage: string): string =>
   stage
     .split('_')
@@ -292,6 +314,12 @@ export function useAISettings() {
             (settingsData as any)?.auto_schedule_visit_min_days,
             DEFAULT_AI_SETTINGS.auto_schedule_visit_min_days ?? 0,
           ),
+          auto_schedule_call_assign_to_user_id: normalizeOptionalUuid(
+            (settingsData as any)?.auto_schedule_call_assign_to_user_id
+          ),
+          auto_schedule_visit_assign_to_user_id: normalizeOptionalUuid(
+            (settingsData as any)?.auto_schedule_visit_assign_to_user_id
+          ),
           appointment_window_config: normalizeAppointmentWindowConfig((settingsData as any)?.appointment_window_config),
           follow_up_sequence_config: normalizeFollowUpSequenceConfig((settingsData as any)?.follow_up_sequence_config),
           follow_up_window_config: normalizeFollowUpWindowConfig((settingsData as any)?.follow_up_window_config),
@@ -394,6 +422,16 @@ export function useAISettings() {
           settings?.auto_schedule_visit_min_days ?? DEFAULT_AI_SETTINGS.auto_schedule_visit_min_days ?? 0,
         );
       }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'auto_schedule_call_assign_to_user_id')) {
+        normalizedUpdates.auto_schedule_call_assign_to_user_id = normalizeOptionalUuid(
+          (normalizedUpdates as any).auto_schedule_call_assign_to_user_id
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'auto_schedule_visit_assign_to_user_id')) {
+        normalizedUpdates.auto_schedule_visit_assign_to_user_id = normalizeOptionalUuid(
+          (normalizedUpdates as any).auto_schedule_visit_assign_to_user_id
+        );
+      }
 
       if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'appointment_window_config')) {
         normalizedUpdates.appointment_window_config = normalizeAppointmentWindowConfig(
@@ -421,46 +459,74 @@ export function useAISettings() {
         const initialFollowUpWindow = normalizeFollowUpWindowConfig(
           (normalizedUpdates as any).follow_up_window_config || DEFAULT_FOLLOW_UP_WINDOW_CONFIG
         );
-        const { error } = await supabase
+        const insertPayload: Partial<AISettings> = {
+          ...DEFAULT_AI_SETTINGS,
+          ...normalizedUpdates,
+          timezone: normalizeTimezone(
+            (normalizedUpdates as any).timezone,
+            DEFAULT_AI_SETTINGS.timezone || 'America/Sao_Paulo',
+          ),
+          auto_schedule_call_enabled: normalizeBooleanSetting(
+            (normalizedUpdates as any).auto_schedule_call_enabled,
+            DEFAULT_AI_SETTINGS.auto_schedule_call_enabled ?? true,
+          ),
+          auto_schedule_visit_enabled: normalizeBooleanSetting(
+            (normalizedUpdates as any).auto_schedule_visit_enabled,
+            DEFAULT_AI_SETTINGS.auto_schedule_visit_enabled ?? true,
+          ),
+          auto_schedule_call_min_days: normalizeMinDaysSetting(
+            (normalizedUpdates as any).auto_schedule_call_min_days,
+            DEFAULT_AI_SETTINGS.auto_schedule_call_min_days ?? 0,
+          ),
+          auto_schedule_visit_min_days: normalizeMinDaysSetting(
+            (normalizedUpdates as any).auto_schedule_visit_min_days,
+            DEFAULT_AI_SETTINGS.auto_schedule_visit_min_days ?? 0,
+          ),
+          auto_schedule_call_assign_to_user_id: normalizeOptionalUuid(
+            (normalizedUpdates as any).auto_schedule_call_assign_to_user_id
+          ),
+          auto_schedule_visit_assign_to_user_id: normalizeOptionalUuid(
+            (normalizedUpdates as any).auto_schedule_visit_assign_to_user_id
+          ),
+          appointment_window_config: initialConfig,
+          follow_up_sequence_config: initialFollowUpSequence,
+          follow_up_window_config: initialFollowUpWindow,
+          org_id: orgId
+        };
+
+        let { error } = await supabase
           .from('ai_settings')
-          .insert([{
-            ...DEFAULT_AI_SETTINGS,
-            ...normalizedUpdates,
-            timezone: normalizeTimezone(
-              (normalizedUpdates as any).timezone,
-              DEFAULT_AI_SETTINGS.timezone || 'America/Sao_Paulo',
-            ),
-            auto_schedule_call_enabled: normalizeBooleanSetting(
-              (normalizedUpdates as any).auto_schedule_call_enabled,
-              DEFAULT_AI_SETTINGS.auto_schedule_call_enabled ?? true,
-            ),
-            auto_schedule_visit_enabled: normalizeBooleanSetting(
-              (normalizedUpdates as any).auto_schedule_visit_enabled,
-              DEFAULT_AI_SETTINGS.auto_schedule_visit_enabled ?? true,
-            ),
-            auto_schedule_call_min_days: normalizeMinDaysSetting(
-              (normalizedUpdates as any).auto_schedule_call_min_days,
-              DEFAULT_AI_SETTINGS.auto_schedule_call_min_days ?? 0,
-            ),
-            auto_schedule_visit_min_days: normalizeMinDaysSetting(
-              (normalizedUpdates as any).auto_schedule_visit_min_days,
-              DEFAULT_AI_SETTINGS.auto_schedule_visit_min_days ?? 0,
-            ),
-            appointment_window_config: initialConfig,
-            follow_up_sequence_config: initialFollowUpSequence,
-            follow_up_window_config: initialFollowUpWindow,
-            org_id: orgId
-          }])
+          .insert([insertPayload])
           .select()
           .single();
 
+        if (error && isSettingsSchemaMismatch(error)) {
+          const fallbackPayload = stripAutoScheduleAssigneeFields(insertPayload);
+          const retry = await supabase
+            .from('ai_settings')
+            .insert([fallbackPayload])
+            .select()
+            .single();
+          error = retry.error;
+        }
+
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        let { error } = await supabase
           .from('ai_settings')
           .update(normalizedUpdates)
           .eq('id', settings.id)
           .eq('org_id', orgId);
+
+        if (error && isSettingsSchemaMismatch(error)) {
+          const fallbackUpdates = stripAutoScheduleAssigneeFields(normalizedUpdates);
+          const retry = await supabase
+            .from('ai_settings')
+            .update(fallbackUpdates)
+            .eq('id', settings.id)
+            .eq('org_id', orgId);
+          error = retry.error;
+        }
 
         if (error) throw error;
       }

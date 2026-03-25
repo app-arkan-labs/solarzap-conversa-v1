@@ -21,9 +21,27 @@ export interface UserWhatsAppInstance {
   updated_at: string;
   color?: string; // Added for instance differentiation
   ai_enabled?: boolean | null;
+  assistant_identity_name?: string | null;
+  assistant_prompt_override?: string | null;
+  assistant_prompt_override_version?: number | null;
+  assistant_prompt_updated_at?: string | null;
 }
 
 type InstanceConnectionStatus = UserWhatsAppInstance['status'];
+
+type UpdateInstanceAssistantProfileInput = {
+  instanceId: string;
+  assistantIdentityName?: string | null;
+  assistantPromptOverride?: string | null;
+  expectedPromptVersion?: number;
+};
+
+type UpdateInstanceAssistantProfileResult = {
+  ok: boolean;
+  conflict?: boolean;
+  schemaMissing?: boolean;
+  instance?: UserWhatsAppInstance | null;
+};
 
 function extractQrCode(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -77,6 +95,31 @@ function toInstanceStatus(state: string | null | undefined): InstanceConnectionS
   return 'disconnected';
 }
 
+const INSTANCE_SCHEMA_ERRORS = new Set(['PGRST204', '42703']);
+const isInstanceSchemaMismatch = (error: any): boolean => {
+  const code = typeof error?.code === 'string' ? error.code : '';
+  return INSTANCE_SCHEMA_ERRORS.has(code);
+};
+
+const normalizePromptVersion = (raw: unknown): number => {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return Math.floor(value);
+};
+
+const normalizeNullableText = (raw: unknown): string | null => {
+  const value = String(raw ?? '').trim();
+  return value.length > 0 ? value : null;
+};
+
+const normalizeInstance = (row: any): UserWhatsAppInstance => ({
+  ...row,
+  assistant_identity_name: normalizeNullableText(row?.assistant_identity_name),
+  assistant_prompt_override: normalizeNullableText(row?.assistant_prompt_override),
+  assistant_prompt_override_version: normalizePromptVersion(row?.assistant_prompt_override_version),
+  assistant_prompt_updated_at: row?.assistant_prompt_updated_at ? String(row.assistant_prompt_updated_at) : null,
+});
+
 export function useUserWhatsAppInstances() {
   const { user, orgId, role } = useAuth();
   const { billing, openBillingBlocker } = useBillingBlocker();
@@ -112,7 +155,7 @@ export function useUserWhatsAppInstances() {
       if (error) throw error;
 
       // IMMEDIATE RENDER: Show what we have in DB
-      const dbInstances = data as UserWhatsAppInstance[];
+      const dbInstances = (data || []).map((row) => normalizeInstance(row));
       setInstances(dbInstances);
       setLoading(false); // Stop spinner immediately
 
@@ -215,13 +258,13 @@ export function useUserWhatsAppInstances() {
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            const newInstance = payload.new as UserWhatsAppInstance;
+            const newInstance = normalizeInstance(payload.new);
             if (!isOrgManager && newInstance.user_id !== user.id) return;
             if (newInstance.is_active) {
               setInstances(prev => [newInstance, ...prev]);
             }
           } else if (payload.eventType === 'UPDATE') {
-            const updated = payload.new as UserWhatsAppInstance;
+            const updated = normalizeInstance(payload.new);
             if (!isOrgManager && updated.user_id !== user.id) return;
             if (updated.is_active) {
               setInstances(prev => prev.map(inst =>
@@ -336,9 +379,10 @@ export function useUserWhatsAppInstances() {
 
       if (error) throw error;
 
-      setInstances(prev => [newInstance, ...prev]);
+      const normalizedNewInstance = normalizeInstance(newInstance);
+      setInstances(prev => [normalizedNewInstance, ...prev]);
       toast.success('Instância criada! Escaneie o QR Code.');
-      return { qrCode: qrCode || undefined, instance: newInstance };
+      return { qrCode: qrCode || undefined, instance: normalizedNewInstance };
     } catch (error) {
       console.error('Error creating instance:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao criar instância');
@@ -680,6 +724,99 @@ export function useUserWhatsAppInstances() {
     }
   }, [isOrgManager, orgId, user]);
 
+  const updateInstanceAssistantProfile = useCallback(
+    async (input: UpdateInstanceAssistantProfileInput): Promise<UpdateInstanceAssistantProfileResult> => {
+      try {
+        if (!orgId) {
+          toast.error('OrganizaÃ§Ã£o nÃ£o vinculada ao usuÃ¡rio');
+          return { ok: false };
+        }
+        if (!isOrgManager && !user?.id) {
+          toast.error('VocÃª precisa estar logado');
+          return { ok: false };
+        }
+
+        const targetInstance = instances.find((inst) => inst.id === input.instanceId);
+        if (!targetInstance) {
+          toast.error('InstÃ¢ncia nÃ£o encontrada');
+          return { ok: false };
+        }
+
+        const payload: Record<string, any> = {
+          updated_at: new Date().toISOString(),
+        };
+        let hasAnyField = false;
+        const hasNameField = Object.prototype.hasOwnProperty.call(input, 'assistantIdentityName');
+        const hasPromptField = Object.prototype.hasOwnProperty.call(input, 'assistantPromptOverride');
+
+        if (hasNameField) {
+          payload.assistant_identity_name = normalizeNullableText(input.assistantIdentityName);
+          hasAnyField = true;
+        }
+
+        let expectedPromptVersion = 0;
+        if (hasPromptField) {
+          expectedPromptVersion = Number.isFinite(Number(input.expectedPromptVersion))
+            ? Math.max(0, Math.floor(Number(input.expectedPromptVersion)))
+            : normalizePromptVersion(targetInstance.assistant_prompt_override_version);
+          payload.assistant_prompt_override = normalizeNullableText(input.assistantPromptOverride);
+          payload.assistant_prompt_updated_at = new Date().toISOString();
+          payload.assistant_prompt_override_version = expectedPromptVersion + 1;
+          hasAnyField = true;
+        }
+
+        if (!hasAnyField) {
+          return { ok: true, instance: targetInstance };
+        }
+
+        setActionLoading(targetInstance.id);
+
+        let query = supabase
+          .from('whatsapp_instances')
+          .update(payload)
+          .eq('id', input.instanceId)
+          .eq('org_id', orgId);
+
+        if (!isOrgManager) {
+          query = query.eq('user_id', user?.id);
+        }
+        if (hasPromptField) {
+          query = query.eq('assistant_prompt_override_version', expectedPromptVersion);
+        }
+
+        const { data, error } = await query.select('*');
+
+        if (error) {
+          if (isInstanceSchemaMismatch(error)) {
+            toast.error('Campos de personalizaÃ§Ã£o por instÃ¢ncia ainda nÃ£o estÃ£o disponÃ­veis no banco.');
+            return { ok: false, schemaMissing: true };
+          }
+          throw error;
+        }
+
+        const updatedRow = Array.isArray(data) && data.length > 0 ? data[0] : null;
+        if (!updatedRow) {
+          if (hasPromptField) {
+            toast.error('Conflito de ediÃ§Ã£o detectado. Recarregue para obter a versÃ£o mais recente.');
+            return { ok: false, conflict: true };
+          }
+          return { ok: false };
+        }
+
+        const normalizedUpdated = normalizeInstance(updatedRow);
+        setInstances((prev) => prev.map((inst) => (inst.id === normalizedUpdated.id ? normalizedUpdated : inst)));
+        return { ok: true, instance: normalizedUpdated };
+      } catch (error) {
+        console.error('Error updating assistant profile by instance:', error);
+        toast.error('Erro ao salvar personalizaÃ§Ã£o da instÃ¢ncia');
+        return { ok: false };
+      } finally {
+        setActionLoading(null);
+      }
+    },
+    [instances, isOrgManager, orgId, user]
+  );
+
   const connectedCount = instances.filter(i => i.status === 'connected').length;
   const hasConnectedInstance = connectedCount > 0;
   const isDevMode = false; // Hardcoded for now
@@ -702,6 +839,7 @@ export function useUserWhatsAppInstances() {
     hasConnectedInstance,
     isDevMode,
     isFallbackMode,
+    updateInstanceAssistantProfile,
     updateColor: async (instanceId: string, color: string) => {
       try {
         if (!orgId) {

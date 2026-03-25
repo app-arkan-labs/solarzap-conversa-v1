@@ -75,6 +75,8 @@ export interface AISettings {
     auto_schedule_visit_enabled?: boolean;
     auto_schedule_call_min_days?: number;
     auto_schedule_visit_min_days?: number;
+    auto_schedule_call_assign_to_user_id?: string | null;
+    auto_schedule_visit_assign_to_user_id?: string | null;
     appointment_window_config?: AppointmentWindowConfig;
     follow_up_sequence_config?: FollowUpSequenceConfig;
     follow_up_window_config?: FollowUpWindowConfig;
@@ -177,6 +179,8 @@ export const DEFAULT_AI_SETTINGS: Partial<AISettings> = {
     auto_schedule_visit_enabled: true,
     auto_schedule_call_min_days: 0,
     auto_schedule_visit_min_days: 0,
+    auto_schedule_call_assign_to_user_id: null,
+    auto_schedule_visit_assign_to_user_id: null,
     daily_report_enabled: false,
     weekly_report_enabled: false,
     monthly_report_enabled: false,

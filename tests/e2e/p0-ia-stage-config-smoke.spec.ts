@@ -35,6 +35,15 @@ async function login(page: Page, email: string, password: string) {
   await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await page.waitForURL('**/', { timeout: 30_000 });
+  const skipTourButton = page.getByRole('button', { name: /Pular tour/i });
+  const skipTourAppeared = await skipTourButton
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (skipTourAppeared) {
+    await skipTourButton.click({ force: true });
+    await page.getByRole('dialog', { name: /Bem-vindo ao SolarZap/i }).waitFor({ state: 'hidden', timeout: 10_000 });
+  }
   await page.getByTestId('nav-settings-trigger').waitFor({ state: 'visible', timeout: 30_000 });
 }
 
@@ -98,6 +107,10 @@ test.beforeAll(async () => {
   const { error: orgErr } = await admin.from('organizations').insert({
     id: state.orgId,
     name: `P0 IA Stage Org ${suffix}`,
+    owner_id: state.userId,
+    plan: 'start',
+    subscription_status: 'active',
+    plan_limits: {},
   });
   if (orgErr) throw new Error(`Failed to create org: ${orgErr.message}`);
 
@@ -108,6 +121,19 @@ test.beforeAll(async () => {
     can_view_team_leads: true,
   });
   if (memberErr) throw new Error(`Failed to create membership: ${memberErr.message}`);
+
+  const { error: onboardingErr } = await admin.from('onboarding_progress').insert({
+    user_id: state.userId,
+    org_id: state.orgId,
+    current_step: 'complete',
+    completed_steps: ['profile', 'organization', 'install', 'explore'],
+    skipped_steps: [],
+    tour_completed_tabs: [],
+    is_complete: true,
+    guided_tour_status: 'dismissed',
+    guided_tour_version: 'v2-global-01',
+  });
+  if (onboardingErr) throw new Error(`Failed to create onboarding state: ${onboardingErr.message}`);
 
   const { error: settingsErr } = await admin.from('ai_settings').upsert(
     {
@@ -137,6 +163,7 @@ test.afterAll(async () => {
   if (state.orgId) {
     await admin.from('ai_stage_config').delete().eq('org_id', state.orgId);
     await admin.from('ai_settings').delete().eq('org_id', state.orgId);
+    await admin.from('onboarding_progress').delete().eq('org_id', state.orgId);
     await admin.from('organization_members').delete().eq('org_id', state.orgId);
     await admin.from('organizations').delete().eq('id', state.orgId);
   }

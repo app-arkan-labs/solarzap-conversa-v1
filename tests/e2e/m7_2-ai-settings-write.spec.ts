@@ -31,6 +31,15 @@ async function login(page: Page, email: string, password: string) {
   await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await page.waitForURL('**/', { timeout: 30_000 });
+  const skipTourButton = page.getByRole('button', { name: /Pular tour/i });
+  const skipTourAppeared = await skipTourButton
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (skipTourAppeared) {
+    await skipTourButton.click({ force: true });
+    await page.getByRole('dialog', { name: /Bem-vindo ao SolarZap/i }).waitFor({ state: 'hidden', timeout: 10_000 });
+  }
 
   // Wait until AuthContext resolves orgId and the main layout/nav is mounted.
   await page.getByTestId('nav-settings-trigger').waitFor({ state: 'visible', timeout: 30_000 });
@@ -53,35 +62,40 @@ async function login(page: Page, email: string, password: string) {
  *      interactable, but we have already given it time to become stable.
  */
 async function openAiSettings(page: Page) {
-  // Locate the Settings trigger by its stable `title` attribute (no data-testid needed).
-  // This works regardless of whether the Vite bundle has data-testid attributes.
-  const settingsTrigger = page.locator('button[title="Configura\u00e7\u00f5es"]');
-  await settingsTrigger.waitFor({ state: 'visible', timeout: 30_000 });
+  const settingsTrigger = page.getByTestId('nav-settings-trigger');
+  const aiButton = page.getByTestId('nav-ia-agentes');
+  const aiSwitch = page.getByTestId('ai-master-switch');
 
-  // Click trigger and wait for Radix PopoverContent portal to mount.
-  // Retry up to 5 times if the popover doesn't open (Radix animation race).
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     await settingsTrigger.click();
-
-    // Give Radix 500ms to animate the PopoverContent into the portal
-    await page.waitForTimeout(500);
-
-    // Look for the IA button inside the now-open popover (by visible text or testid)
-    const iaButton = page.getByText('Intelig\u00eancia Artificial', { exact: true });
-    const appeared = await iaButton.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false);
+    const appeared = await aiButton
+      .waitFor({ state: 'visible', timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
 
     if (!appeared) {
-      // Popover didn't open — press Escape to dismiss any partial state and retry
       await page.keyboard.press('Escape');
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(250);
       continue;
     }
 
-    await iaButton.click();
-    break; // navigation triggered
+    const clicked = await aiButton
+      .click({ force: true, timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (clicked) {
+      const opened = await aiSwitch
+        .waitFor({ state: 'visible', timeout: 8_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (opened) {
+        return;
+      }
+    }
   }
 
-  await expect(page.getByRole('heading', { name: /Intelig/i })).toBeVisible({ timeout: 30_000 });
+  throw new Error('Unable to open IA settings view.');
 }
 
 
@@ -107,6 +121,10 @@ test.beforeAll(async () => {
   const { error: orgErr } = await admin.from('organizations').insert({
     id: state.orgId,
     name: `M7.2 AI Settings Org ${suffix}`,
+    owner_id: state.userId,
+    plan: 'start',
+    subscription_status: 'active',
+    plan_limits: {},
   });
   if (orgErr) throw new Error(`Failed to create M7.2 e2e org: ${orgErr.message}`);
 
@@ -117,6 +135,19 @@ test.beforeAll(async () => {
     can_view_team_leads: true,
   });
   if (memberErr) throw new Error(`Failed to create M7.2 e2e membership: ${memberErr.message}`);
+
+  const { error: onboardingErr } = await admin.from('onboarding_progress').insert({
+    user_id: state.userId,
+    org_id: state.orgId,
+    current_step: 'complete',
+    completed_steps: ['profile', 'organization', 'install', 'explore'],
+    skipped_steps: [],
+    tour_completed_tabs: [],
+    is_complete: true,
+    guided_tour_status: 'dismissed',
+    guided_tour_version: 'v2-global-01',
+  });
+  if (onboardingErr) throw new Error(`Failed to create M7.2 onboarding state: ${onboardingErr.message}`);
 
   // Deterministic baseline for the test: ensure ai_settings row exists for org.
   const { data: existingSettings, error: existingSettingsErr } = await admin
@@ -141,6 +172,7 @@ test.afterAll(async () => {
   if (state.orgId) {
     await admin.from('ai_stage_config').delete().eq('org_id', state.orgId);
     await admin.from('ai_settings').delete().eq('org_id', state.orgId);
+    await admin.from('onboarding_progress').delete().eq('org_id', state.orgId);
     await admin.from('organization_members').delete().eq('org_id', state.orgId);
     await admin.from('organizations').delete().eq('id', state.orgId);
   }

@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
 export interface AutomationSettings {
+  novoLeadFirstResponseToRespondeuEnabled: boolean;
   dragDropChamadaRealizada: boolean;
   dragDropAguardandoProposta: boolean;
   dragDropPropostaPronta: boolean;
@@ -23,6 +24,7 @@ export interface AutomationSettings {
 }
 
 export const DEFAULT_SETTINGS: AutomationSettings = {
+  novoLeadFirstResponseToRespondeuEnabled: true,
   dragDropChamadaRealizada: true,
   dragDropAguardandoProposta: true,
   dragDropPropostaPronta: true,

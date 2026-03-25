@@ -6,7 +6,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Missing env vars for prompt-versioning smoke: SUPABASE_URL/VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
+  throw new Error('Missing env vars for IA instance profile smoke: SUPABASE_URL/VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
 }
 
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -16,7 +16,7 @@ type SetupState = {
   userId: string;
   email: string;
   password: string;
-  stage: string;
+  instanceName: string;
 };
 
 const state: SetupState = {
@@ -24,12 +24,7 @@ const state: SetupState = {
   userId: '',
   email: '',
   password: '',
-  stage: 'respondeu',
-};
-
-const isSchemaMismatch = (error: any): boolean => {
-  const code = typeof error?.code === 'string' ? error.code : '';
-  return code === '42703' || code === 'PGRST204';
+  instanceName: '',
 };
 
 async function login(page: Page, email: string, password: string) {
@@ -53,11 +48,10 @@ async function login(page: Page, email: string, password: string) {
 async function openAiSettings(page: Page) {
   const settingsTrigger = page.getByTestId('nav-settings-trigger');
   const aiButton = page.getByTestId('nav-ia-agentes');
-  const aiCards = page.locator('[data-testid^="ai-stage-card-"]');
+  const aiSwitch = page.getByTestId('ai-master-switch');
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     await settingsTrigger.click();
-
     const appeared = await aiButton
       .waitFor({ state: 'visible', timeout: 5_000 })
       .then(() => true)
@@ -75,12 +69,13 @@ async function openAiSettings(page: Page) {
       .catch(() => false);
 
     if (clicked) {
-      const opened = await aiCards
-        .first()
+      const opened = await aiSwitch
         .waitFor({ state: 'visible', timeout: 8_000 })
         .then(() => true)
         .catch(() => false);
-      if (opened) return;
+      if (opened) {
+        return;
+      }
     }
   }
 
@@ -89,24 +84,23 @@ async function openAiSettings(page: Page) {
 
 test.beforeAll(async () => {
   const suffix = `${Date.now()}`;
-  state.email = `prompt.versioning.${suffix}@example.test`;
-  state.password = `PromptVersioning!${suffix}Aa1`;
+  state.email = `ia.instance.profile.${suffix}@example.test`;
+  state.password = `IAInstProf!${suffix}Aa1`;
+  state.instanceName = `ia-inst-${suffix}`;
 
   const userResp = await admin.auth.admin.createUser({
     email: state.email,
     password: state.password,
     email_confirm: true,
-    user_metadata: { org_id: state.orgId, prompt_versioning_e2e: true },
   });
-
   if (userResp.error || !userResp.data.user?.id) {
-    throw new Error(`Failed to create prompt-versioning user: ${userResp.error?.message || 'unknown'}`);
+    throw new Error(`Failed to create IA instance profile user: ${userResp.error?.message || 'unknown'}`);
   }
   state.userId = userResp.data.user.id;
 
   const { error: orgErr } = await admin.from('organizations').insert({
     id: state.orgId,
-    name: `Prompt Versioning Org ${suffix}`,
+    name: `IA Instance Profile Org ${suffix}`,
     owner_id: state.userId,
     plan: 'start',
     subscription_status: 'active',
@@ -135,131 +129,117 @@ test.beforeAll(async () => {
   });
   if (onboardingErr) throw new Error(`Failed to create onboarding state: ${onboardingErr.message}`);
 
-  const { error: settingsErr } = await admin.from('ai_settings').upsert(
-    {
-      org_id: state.orgId,
-      is_active: true,
-      assistant_identity_name: 'Prompt Versioning',
-    },
-    { onConflict: 'org_id' },
-  );
-  if (settingsErr) throw new Error(`Failed to upsert ai_settings baseline: ${settingsErr.message}`);
+  const { error: settingsErr } = await admin.from('ai_settings').insert({
+    org_id: state.orgId,
+    is_active: true,
+    assistant_identity_name: 'Consultor Solar Global',
+  });
+  if (settingsErr) throw new Error(`Failed to create ai settings: ${settingsErr.message}`);
 
-  const { error: stageErr } = await admin.from('ai_stage_config').upsert(
-    {
-      org_id: state.orgId,
-      pipeline_stage: state.stage,
-      is_active: true,
-      agent_goal: 'Objetivo baseline',
-      default_prompt: 'ETAPA: RESPONDEU\nOBJETIVO: Teste baseline\nPrompt baseline para versionamento.',
-      prompt_override: null,
-    },
-    { onConflict: 'org_id,pipeline_stage' },
-  );
-  if (stageErr) throw new Error(`Failed to upsert ai_stage_config baseline: ${stageErr.message}`);
+  const { error: instanceErr } = await admin.from('whatsapp_instances').insert({
+    org_id: state.orgId,
+    user_id: state.userId,
+    instance_name: state.instanceName,
+    display_name: 'Instancia Vendas',
+    status: 'connected',
+    is_active: true,
+    ai_enabled: true,
+  });
+  if (instanceErr) throw new Error(`Failed to create whatsapp instance: ${instanceErr.message}`);
 });
 
 test.afterAll(async () => {
   if (state.orgId) {
-    await admin.from('ai_stage_config').delete().eq('org_id', state.orgId);
+    await admin.from('whatsapp_instances').delete().eq('org_id', state.orgId);
     await admin.from('ai_settings').delete().eq('org_id', state.orgId);
     await admin.from('onboarding_progress').delete().eq('org_id', state.orgId);
     await admin.from('organization_members').delete().eq('org_id', state.orgId);
     await admin.from('organizations').delete().eq('id', state.orgId);
   }
+
   if (state.userId) {
     await admin.auth.admin.deleteUser(state.userId);
   }
 });
 
-test('prompt versioning: save increments version and restore remains editable', async ({ page }) => {
-  const versionProbe = await admin
-    .from('ai_stage_config')
-    .select('prompt_override_version')
-    .eq('org_id', state.orgId)
-    .eq('pipeline_stage', state.stage)
-    .limit(1)
-    .maybeSingle();
+test('IA por instância: salva nome e prompt personalizados sem sobrescrever global', async ({ page }) => {
+  await page.route('**/functions/v1/evolution-proxy**', async (route) => {
+    await route.abort();
+  });
+  await page.route('**/functions/v1/evolution-api**', async (route) => {
+    await route.abort();
+  });
+  await page.route('**/functions/v1/whatsapp-connect**', async (route) => {
+    await route.abort();
+  });
 
-  if (versionProbe.error && isSchemaMismatch(versionProbe.error)) {
-    test.skip(true, 'prompt_override_version column not available in current test database');
-  }
-  if (versionProbe.error) throw new Error(`Failed to probe prompt version column: ${versionProbe.error.message}`);
+  const assistantName = 'Joao Vendas';
+  const assistantPrompt = 'Voce e Joao da equipe de vendas. Se identificar pos-venda, atribua o contato para Maria da pos-vendas.';
 
   await login(page, state.email, state.password);
   await openAiSettings(page);
 
-  const card = page.getByTestId(`ai-stage-card-${state.stage}`);
-  await expect(card).toBeVisible({ timeout: 30_000 });
-  await expect(card.getByText(/Vers.*0/i)).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId(`ai-instance-row-${state.instanceName}`).waitFor({ state: 'visible', timeout: 30_000 });
 
-  await card.getByRole('button', { name: /Editar Prompt/i }).click();
-  await page.getByRole('button', { name: /Continuar/i }).click();
-
-  const editor = page.locator('textarea').first();
-  await expect(editor).toBeVisible({ timeout: 30_000 });
-  const originalPrompt = await editor.inputValue();
-
-  const customPrompt = `Prompt custom ${Date.now()} para teste de versionamento. Conteudo suficientemente longo para salvar sem bloqueio.`;
-  await editor.fill(customPrompt);
-  await expect(page.getByText(/Avisos.*bloqueiam o salvamento/i)).toBeVisible();
-  await expect(page.getByRole('button', { name: /Salvar Altera/i })).toBeEnabled();
-  await page.getByRole('button', { name: /Salvar Altera/i }).click();
+  const nameInput = page.getByTestId(`ai-instance-assistant-name-input-${state.instanceName}`);
+  await nameInput.fill(assistantName);
+  await page.getByTestId(`ai-instance-assistant-name-save-${state.instanceName}`).click();
 
   await expect
     .poll(
       async () => {
         const { data, error } = await admin
-          .from('ai_stage_config')
-          .select('prompt_override, prompt_override_version')
+          .from('whatsapp_instances')
+          .select('assistant_identity_name')
           .eq('org_id', state.orgId)
-          .eq('pipeline_stage', state.stage)
+          .eq('instance_name', state.instanceName)
           .limit(1)
           .maybeSingle();
-
         if (error) return `ERROR:${error.message}`;
-        if (!data) return null;
-        return `${data.prompt_override}|${data.prompt_override_version}`;
+        return String(data?.assistant_identity_name || '');
       },
       { timeout: 30_000 },
     )
-    .toBe(`${customPrompt}|1`);
+    .toBe(assistantName);
 
-  await expect(card.getByText(/Vers.*1/i)).toBeVisible({ timeout: 30_000 });
-
-  await card.getByRole('button', { name: /Editar Prompt/i }).click();
-  await page.getByRole('button', { name: /Continuar/i }).click();
-  const editorAfterSave = page.locator('textarea').first();
-  await expect(editorAfterSave).toHaveValue(customPrompt);
-
-  await page.getByRole('button', { name: /Restaurar Padr/i }).click();
-  const restoredPrompt = await editorAfterSave.inputValue();
-  expect(restoredPrompt).not.toBe(customPrompt);
-  expect(restoredPrompt.length).toBeGreaterThan(0);
-  expect(restoredPrompt).toContain('PROTOCOLO_BASE: PIPELINE_PDF_V1');
-  expect(restoredPrompt).toContain('ETAPA: RESPONDEU');
-  expect(restoredPrompt).not.toBe(originalPrompt);
-
-  await page.getByRole('button', { name: /Salvar Altera/i }).click();
+  await page.getByTestId(`ai-instance-personalize-${state.instanceName}`).click();
+  const promptInput = page.getByTestId('ai-instance-prompt-editor-textarea');
+  await promptInput.fill(assistantPrompt);
+  await page.getByTestId('ai-instance-prompt-editor-save').click();
 
   await expect
     .poll(
       async () => {
         const { data, error } = await admin
-          .from('ai_stage_config')
-          .select('prompt_override, prompt_override_version')
+          .from('whatsapp_instances')
+          .select('assistant_prompt_override, assistant_prompt_override_version')
           .eq('org_id', state.orgId)
-          .eq('pipeline_stage', state.stage)
+          .eq('instance_name', state.instanceName)
           .limit(1)
           .maybeSingle();
-
         if (error) return `ERROR:${error.message}`;
-        if (!data) return null;
-        return `${data.prompt_override}|${data.prompt_override_version}`;
+        const prompt = String(data?.assistant_prompt_override || '');
+        const version = Number(data?.assistant_prompt_override_version || 0);
+        return `${prompt}|${version}`;
       },
       { timeout: 30_000 },
     )
-    .toBe(`${restoredPrompt}|2`);
+    .toBe(`${assistantPrompt}|1`);
 
-  await expect(card.getByText(/Vers.*2/i)).toBeVisible({ timeout: 30_000 });
+  const { data: globalSettings, error: globalErr } = await admin
+    .from('ai_settings')
+    .select('assistant_identity_name')
+    .eq('org_id', state.orgId)
+    .limit(1)
+    .maybeSingle();
+  if (globalErr) throw new Error(`Failed to verify global assistant fallback: ${globalErr.message}`);
+  expect(String(globalSettings?.assistant_identity_name || '')).toBe('Consultor Solar Global');
+
+  await page.reload();
+  await page.getByTestId('nav-settings-trigger').waitFor({ state: 'visible', timeout: 30_000 });
+  await openAiSettings(page);
+
+  await expect(page.getByTestId(`ai-instance-assistant-name-input-${state.instanceName}`)).toHaveValue(assistantName);
+  await page.getByTestId(`ai-instance-personalize-${state.instanceName}`).click();
+  await expect(page.getByTestId('ai-instance-prompt-editor-textarea')).toHaveValue(assistantPrompt);
 });

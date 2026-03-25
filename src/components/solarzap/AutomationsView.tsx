@@ -125,6 +125,12 @@ export function AutomationsView() {
 
     const dragDropAutomations = [
         {
+            key: 'novoLeadFirstResponseToRespondeuEnabled' as keyof AutomationSettings,
+            title: 'Primeira Resposta (Novo Lead)',
+            description: 'Mover automaticamente para "Respondeu" ao receber a primeira mensagem inbound do lead',
+            icon: <MessageSquare className="w-5 h-5 text-sky-500" />,
+        },
+        {
             key: 'visitOutcomeModalEnabled' as keyof AutomationSettings,
             title: 'Modal Pós-Visita (+3h)',
             description: 'Abre modal automático para classificar outcome da visita realizada',

@@ -196,6 +196,33 @@ function normalizeProtocolVersion(raw: any): 'legacy' | 'pipeline_pdf_v1' {
     return value === 'pipeline_pdf_v1' ? 'pipeline_pdf_v1' : 'legacy'
 }
 
+const AUTOMATION_FIRST_RESPONSE_SETTING_KEY = 'novoLeadFirstResponseToRespondeuEnabled'
+const DEFAULT_AUTOMATION_FIRST_RESPONSE_ENABLED = true
+
+function normalizeLeadStageToken(raw: unknown): string {
+    const value = String(raw ?? '').trim().toLowerCase()
+    if (!value) return ''
+    return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+}
+
+function isNovoLeadStage(raw: unknown): boolean {
+    const normalized = normalizeLeadStageToken(raw)
+    return normalized === 'novo_lead' || normalized === 'novo' || normalized === 'lead'
+}
+
+function resolveFirstResponseAutomationEnabled(settings: unknown): boolean {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+        return DEFAULT_AUTOMATION_FIRST_RESPONSE_ENABLED
+    }
+    const rawValue = (settings as Record<string, unknown>)[AUTOMATION_FIRST_RESPONSE_SETTING_KEY]
+    const parsed = parseBooleanFlag(rawValue)
+    return parsed === null ? DEFAULT_AUTOMATION_FIRST_RESPONSE_ENABLED : parsed
+}
+
 const TERMINAL_STAGES = new Set(['perdido', 'contato_futuro', 'projeto_instalado', 'coletar_avaliacao'])
 type FollowUpStepRule = {
     step: 1 | 2 | 3 | 4 | 5
@@ -805,6 +832,7 @@ Deno.serve(async (req: Request) => {
         let protocolVersion: 'legacy' | 'pipeline_pdf_v1' = 'legacy'
         let supportAiEnabled = false
         let supportAiAutoDisableOnSellerMessage = true
+        let firstResponseAutomationEnabled = DEFAULT_AUTOMATION_FIRST_RESPONSE_ENABLED
 
         try {
             const { data: aiSettings } = await supabase
@@ -823,6 +851,23 @@ Deno.serve(async (req: Request) => {
             }
         } catch (settingsErr) {
             console.warn('âš ï¸ Failed to load ai_settings for webhook takeover context:', settingsErr)
+        }
+
+        try {
+            const { data: automationSettingsRow, error: automationSettingsErr } = await supabase
+                .from('automation_settings')
+                .select('settings')
+                .eq('org_id', orgId)
+                .maybeSingle()
+
+            if (automationSettingsErr) throw automationSettingsErr
+
+            firstResponseAutomationEnabled = resolveFirstResponseAutomationEnabled(
+                (automationSettingsRow as any)?.settings ?? null,
+            )
+        } catch (automationSettingsLoadErr) {
+            firstResponseAutomationEnabled = DEFAULT_AUTOMATION_FIRST_RESPONSE_ENABLED
+            console.warn('Failed to load automation_settings for first-response stage rule (fail-open ON):', automationSettingsLoadErr)
         }
 
         // Audit Webhook (M7 hardening)
@@ -1307,6 +1352,86 @@ Deno.serve(async (req: Request) => {
                             error: dispatchErrorMessage,
                         })
                         await markDispatchFailure(dispatchErrorMessage)
+                    }
+                }
+
+                if (!isFromMe && leadId) {
+                    const leadIdNum = Number(leadId)
+                    let firstResponseStageFrom: string | null = null
+                    let firstResponseStageOutcome = 'skipped:unknown'
+                    let firstResponseStageError: string | null = null
+
+                    if (!Number.isFinite(leadIdNum) || leadIdNum <= 0) {
+                        firstResponseStageOutcome = 'skipped:invalid_lead_id'
+                    } else if (!firstResponseAutomationEnabled) {
+                        firstResponseStageOutcome = 'skipped:disabled'
+                    } else {
+                        try {
+                            const { data: leadBeforeMove, error: leadBeforeMoveErr } = await supabase
+                                .from('leads')
+                                .select('status_pipeline')
+                                .eq('id', leadIdNum)
+                                .eq('org_id', orgId)
+                                .maybeSingle()
+
+                            if (leadBeforeMoveErr) {
+                                firstResponseStageOutcome = 'error:lead_lookup_failed'
+                                firstResponseStageError = leadBeforeMoveErr.message || String(leadBeforeMoveErr)
+                            } else {
+                                firstResponseStageFrom = (leadBeforeMove as any)?.status_pipeline ?? null
+                                if (!isNovoLeadStage(firstResponseStageFrom)) {
+                                    const normalizedCurrentStage = normalizeLeadStageToken(firstResponseStageFrom) || 'unknown'
+                                    firstResponseStageOutcome = `skipped:current_stage_${normalizedCurrentStage}`
+                                } else if (typeof firstResponseStageFrom !== 'string' || !firstResponseStageFrom.trim()) {
+                                    firstResponseStageOutcome = 'skipped:invalid_current_stage'
+                                } else {
+                                    const { data: movedRows, error: moveStageErr } = await supabase
+                                        .from('leads')
+                                        .update({ status_pipeline: 'respondeu' })
+                                        .eq('id', leadIdNum)
+                                        .eq('org_id', orgId)
+                                        .eq('status_pipeline', firstResponseStageFrom)
+                                        .select('id')
+
+                                    if (moveStageErr) {
+                                        firstResponseStageOutcome = 'error:stage_move_failed'
+                                        firstResponseStageError = moveStageErr.message || String(moveStageErr)
+                                    } else if (Array.isArray(movedRows) && movedRows.length > 0) {
+                                        firstResponseStageOutcome = 'moved:novo_lead_to_respondeu'
+                                    } else {
+                                        firstResponseStageOutcome = 'skipped:race_guard_no_rows_updated'
+                                    }
+                                }
+                            }
+                        } catch (firstResponseErr) {
+                            firstResponseStageOutcome = 'error:unexpected'
+                            firstResponseStageError = firstResponseErr instanceof Error
+                                ? firstResponseErr.message
+                                : String(firstResponseErr)
+                        }
+                    }
+
+                    try {
+                        await supabase.from('ai_action_logs').insert({
+                            org_id: orgId,
+                            lead_id: Number.isFinite(leadIdNum) ? leadIdNum : null,
+                            action_type: 'first_response_stage_automation',
+                            stage_from: firstResponseStageFrom,
+                            stage_to: firstResponseStageOutcome.startsWith('moved:') ? 'respondeu' : null,
+                            details: JSON.stringify({
+                                automation_key: AUTOMATION_FIRST_RESPONSE_SETTING_KEY,
+                                automation_enabled: firstResponseAutomationEnabled,
+                                outcome: firstResponseStageOutcome,
+                                stage_from_normalized: normalizeLeadStageToken(firstResponseStageFrom) || null,
+                                instance_name: instanceName,
+                                interaction_id: inserted?.id || null,
+                                wa_message_id: waMessageId || null,
+                                error: firstResponseStageError,
+                            }),
+                            success: firstResponseStageOutcome.startsWith('moved:'),
+                        })
+                    } catch (firstResponseLogErr) {
+                        console.warn('Failed to insert first_response_stage_automation log:', firstResponseLogErr)
                     }
                 }
 
