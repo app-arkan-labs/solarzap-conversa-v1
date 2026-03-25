@@ -101,10 +101,10 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
           </p>
         </DialogHeader>
 
-        {(form.isLoading || form.aiLoading) && (
+        {form.isLoading && (
           <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm">
             <Loader2 className="mb-4 h-12 w-12 animate-spin text-primary" />
-            <p className="text-lg font-semibold">{form.aiLoading ? 'Personalizando com IA...' : 'Gerando proposta...'}</p>
+            <p className="text-lg font-semibold">Gerando proposta...</p>
           </div>
         )}
 

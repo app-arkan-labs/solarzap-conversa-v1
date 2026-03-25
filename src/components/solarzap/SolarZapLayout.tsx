@@ -1227,7 +1227,6 @@ export function SolarZapLayout() {
       status: 'Enviada',
       tipoCliente: data.tipo_cliente,
       contactName: selectedContact?.name,
-      observacoes: data.observacoes,
       source: proposalSource,
       segment: proposalSegment,
       premiumPayload: data.premiumPayload,

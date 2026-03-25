@@ -42,7 +42,8 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
     // Create org
     const { error: orgErr } = await admin.from('organizations').insert({
       id: orgId,
-      name: `E2E TPL Org ${Date.now()}`
+      name: `E2E TPL Org ${Date.now()}`,
+      subscription_status: 'active',
     });
     if (orgErr) throw new Error(`Failed to create org: ${orgErr.message}`);
 
@@ -53,6 +54,21 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
       can_view_team_leads: true,
     });
     if (memberErr) throw new Error(`Failed to create membership: ${memberErr.message}`);
+
+    const { error: onboardingErr } = await admin.from('onboarding_progress').insert({
+      user_id: userId,
+      org_id: orgId,
+      current_step: 'complete',
+      completed_steps: ['profile', 'organization', 'install', 'explore'],
+      skipped_steps: [],
+      tour_completed_tabs: ['conversas', 'pipelines', 'calendario', 'disparos'],
+      is_complete: true,
+      guided_tour_version: 'v2-global-01',
+      guided_tour_status: 'completed',
+      guided_tour_seen_at: new Date().toISOString(),
+      guided_tour_completed_at: new Date().toISOString(),
+    });
+    if (onboardingErr) throw new Error(`Failed to seed onboarding progress: ${onboardingErr.message}`);
 
     leadName = `E2E_TPL_${Date.now()}_${rand(4)}`;
     const phone = `55119888${Math.floor(1000 + Math.random() * 8999)}`;
@@ -68,6 +84,10 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
         status_pipeline: 'respondeu',
         consumo_kwh: 650,
         valor_estimado: 48000,
+        latitude: -23.55052,
+        longitude: -46.633308,
+        irradiance_source: 'pvgis',
+        irradiance_ref_at: new Date().toISOString(),
       })
       .select('id')
       .single();
@@ -81,14 +101,23 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
     await page.locator('#password').fill(password);
     await page.getByRole('button', { name: 'Entrar' }).click();
     await page.waitForURL('**/');
+    const welcomeDialog = page.getByRole('dialog', { name: /Bem-vindo ao SolarZap/i });
+    if (await welcomeDialog.isVisible().catch(() => false)) {
+      const skipTour = welcomeDialog.getByRole('button', { name: /Pular tour/i }).first();
+      if (await skipTour.isVisible().catch(() => false)) {
+        await skipTour.click({ force: true });
+      } else {
+        await page.keyboard.press('Escape').catch(() => {});
+      }
+      await expect(welcomeDialog).toHaveCount(0, { timeout: 10_000 }).catch(() => {});
+    }
 
     await page.getByTitle('Pipelines').click();
 
-    const search = page.getByPlaceholder('Buscar leads...');
     const dismissReadyModalIfPresent = async (): Promise<boolean> => {
       const readyDialog = page.getByRole('dialog', { name: /Proposta Pronta!/i });
 
-      for (let attempt = 0; attempt < 3; attempt += 1) {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
         if (!(await readyDialog.isVisible().catch(() => false))) {
           return true;
         }
@@ -112,7 +141,24 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
         await page.waitForTimeout(250);
       }
 
+      await expect(readyDialog).toHaveCount(0, { timeout: 5_000 }).catch(() => {});
       return !(await readyDialog.isVisible().catch(() => false));
+    };
+    const getProposalDialog = () => page
+      .locator('[role="dialog"]:visible')
+      .filter({ hasText: /Gerador de Proposta|Gerar Proposta em PDF/i })
+      .last();
+    const waitForProposalDialog = async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const dialog = getProposalDialog();
+        if (await dialog.isVisible({ timeout: 8_000 }).catch(() => false)) {
+          return dialog;
+        }
+        await dismissReadyModalIfPresent();
+        await page.keyboard.press('Escape').catch(() => {});
+        await page.waitForTimeout(300);
+      }
+      return null;
     };
 
     const cases = [
@@ -126,6 +172,10 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
       if (!(await dismissReadyModalIfPresent())) {
         test.skip(true, 'Modal "Proposta Pronta" nao fechou de forma confiavel neste ambiente.');
       }
+      await page.waitForTimeout(300);
+      if (!(await dismissReadyModalIfPresent())) {
+        test.skip(true, 'Modal "Proposta Pronta" nao fechou de forma confiavel neste ambiente.');
+      }
       await page.keyboard.press('Escape').catch(() => {});
 
       const { error: stageResetErr } = await admin
@@ -136,19 +186,33 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
         throw new Error(`Failed to reset lead stage before case ${c.value}: ${stageResetErr.message}`);
       }
 
+      await page.reload();
+      await page.waitForURL('**/');
+      await dismissReadyModalIfPresent();
+      await page.getByTitle('Pipelines').click().catch(() => {});
+
+      const search = page.getByPlaceholder('Buscar leads...');
       await search.fill(leadName);
 
       await expect(page.getByTestId(`lead-actions-${String(leadId)}`)).toBeVisible({ timeout: 30_000 });
 
       let proposalOpened = false;
+      let proposalDialog: ReturnType<typeof getProposalDialog> | null = null;
       for (let attempt = 0; attempt < 3 && !proposalOpened; attempt += 1) {
+        await dismissReadyModalIfPresent();
         await page.getByTestId(`lead-actions-${String(leadId)}`).click({ force: true });
         const proposalAction = page.getByTestId(`lead-action-proposal-${String(leadId)}`).first();
         await expect(proposalAction).toBeVisible({ timeout: 10_000 });
         try {
+          await dismissReadyModalIfPresent();
           await proposalAction.click({ force: true, timeout: 10_000 });
-          proposalOpened = true;
+          const openedDialog = await waitForProposalDialog();
+          if (openedDialog) {
+            proposalDialog = openedDialog;
+            proposalOpened = true;
+          }
         } catch {
+          await dismissReadyModalIfPresent();
           await page.keyboard.press('Escape').catch(() => {});
           await page.waitForTimeout(200);
         }
@@ -157,10 +221,9 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
         throw new Error(`Falha ao abrir acao de proposta para lead ${String(leadId)}.`);
       }
 
-      const proposalDialog = page
-        .locator('[role="dialog"]:visible')
-        .filter({ hasText: /Gerador de Proposta|Gerar Proposta em PDF/i })
-        .last();
+      if (!proposalDialog) {
+        throw new Error(`Falha ao abrir modal de proposta para lead ${String(leadId)}.`);
+      }
       await expect(proposalDialog).toBeVisible({ timeout: 30_000 });
 
       const isLegacyModal = await proposalDialog
@@ -173,30 +236,50 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
         await page.getByRole('option', { name: new RegExp(c.optionLabel, 'i') }).first().click();
       } else {
         // Step 1: select client/project type (auto-advances to step 2).
-        const projectTypeButton = proposalDialog.getByRole('button', { name: new RegExp(c.optionLabel, 'i') }).first();
-        await expect(projectTypeButton).toBeVisible({ timeout: 30_000 });
-        await projectTypeButton.click();
+        let projectTypeSelected = false;
+        for (let pickAttempt = 0; pickAttempt < 3 && !projectTypeSelected; pickAttempt += 1) {
+          const currentDialog = getProposalDialog();
+          const projectTypeButton = currentDialog.getByRole('button', { name: new RegExp(c.optionLabel, 'i') }).first();
+          await expect(projectTypeButton).toBeVisible({ timeout: 30_000 });
+          try {
+            await projectTypeButton.click({ force: true, timeout: 10_000 });
+            projectTypeSelected = true;
+          } catch {
+            await dismissReadyModalIfPresent();
+            await page.waitForTimeout(200);
+          }
+        }
+        if (!projectTypeSelected) {
+          throw new Error(`Nao foi possivel selecionar tipo de projeto ${c.optionLabel}.`);
+        }
 
         // Step 2 requires city + UF.
-        await proposalDialog.getByPlaceholder('Cidade').fill('Sao Paulo');
-        await proposalDialog.locator('button[role="combobox"]').first().click();
+        await getProposalDialog().getByPlaceholder('Cidade').fill('Sao Paulo');
+        await dismissReadyModalIfPresent();
+        await getProposalDialog().locator('button[role="combobox"]').first().click({ force: true });
         await page.getByRole('option', { name: /SP -/i }).click();
-        const addressInput = proposalDialog.getByLabel(/Endereco/i).first();
+        const addressInput = getProposalDialog().getByLabel(/Endereco/i).first();
         if (await addressInput.isVisible().catch(() => false)) {
           await addressInput.fill('Rua de Teste, 123 - Centro');
         }
-        await proposalDialog.getByRole('button', { name: /Proximo/i }).last().click();
+        await getProposalDialog().getByRole('button', { name: /Proximo/i }).last().click({ force: true });
 
-        // Steps 3, 4, 5 -> review.
-        for (let step = 0; step < 3; step += 1) {
-          const nextButton = proposalDialog.getByRole('button', { name: /Proximo/i }).last();
+        // Steps 3, 4, 5 -> review (state-driven to avoid flaky transitions).
+        for (let guard = 0; guard < 6; guard += 1) {
+          const generateButton = getProposalDialog().getByTestId('proposal-generate-pdf');
+          if (await generateButton.isVisible().catch(() => false)) break;
+
+          const nextButton = getProposalDialog().getByRole('button', { name: /Proximo/i }).last();
+          if (!(await nextButton.isVisible().catch(() => false))) break;
           await expect(nextButton).toBeEnabled({ timeout: 30_000 });
-          await nextButton.click();
+          await nextButton.click({ force: true });
+          await dismissReadyModalIfPresent();
+          await page.waitForTimeout(150);
         }
       }
 
       const targetSegments = [...c.segments];
-      await expect(proposalDialog.getByTestId('proposal-generate-pdf')).toBeVisible({ timeout: 30_000 });
+      await expect(getProposalDialog().getByTestId('proposal-generate-pdf')).toBeVisible({ timeout: 30_000 });
 
       const { count: beforeCount, error: beforeErr } = await admin
         .from('proposal_versions')
@@ -208,7 +291,7 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
         throw new Error(`Failed to read proposal_versions before generate: ${beforeErr.message}`);
       }
 
-      await proposalDialog.getByTestId('proposal-generate-pdf').click();
+      await getProposalDialog().getByTestId('proposal-generate-pdf').click({ force: true });
 
       const startedAt = Date.now();
       let afterCount = beforeCount ?? 0;

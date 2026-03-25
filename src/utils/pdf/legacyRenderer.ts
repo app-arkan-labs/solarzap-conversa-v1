@@ -1,4 +1,4 @@
-import jsPDF from 'jspdf';
+﻿import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Contact } from '@/types/solarzap';
 import {
@@ -223,13 +223,13 @@ function clamp255(value: number): number {
 
 //  Tarifa e custo de disponibilidade (ANEEL) 
 
-/** Custo de disponibilidade em kWh por tipo de conexão/cliente (ANEEL REN 1.000/2021) */
+/** Custo de disponibilidade em kWh por tipo de conexÃ£o/cliente (ANEEL REN 1.000/2021) */
 function getCustoDisponibilidadeFallback(tipoCliente?: string): number {
   switch (tipoCliente?.toLowerCase()) {
-    case 'residencial': return 50;   // bifásico (padrão residencial)
-    case 'comercial': return 100;  // trifásico
-    case 'industrial': return 100;  // trifásico
-    case 'rural': return 30;   // monofásico
+    case 'residencial': return 50;   // bifÃ¡sico (padrÃ£o residencial)
+    case 'comercial': return 100;  // trifÃ¡sico
+    case 'industrial': return 100;  // trifÃ¡sico
+    case 'rural': return 30;   // monofÃ¡sico
     default: return 50;
   }
 }
@@ -418,26 +418,26 @@ function buildTermsConditionsFromSelection(params: {
   showFinancingSimulation: boolean;
 }): string[] {
   const paymentText = params.paymentConditionLabels.length > 0
-    ? `Condições de pagamento selecionadas: ${params.paymentConditionLabels.join(', ')}.`
-    : 'Condições de pagamento sob consulta comercial.';
+    ? `CondiÃ§Ãµes de pagamento selecionadas: ${params.paymentConditionLabels.join(', ')}.`
+    : 'CondiÃ§Ãµes de pagamento sob consulta comercial.';
   const financingClause = params.financingSelected
     ? (params.showFinancingSimulation
-      ? 'A simulação de financiamento apresentada é comercial, sujeita a análise e aprovação de crédito pela instituição financeira.'
-      : 'Financiamento bancário pode ser contratado como forma de pagamento, sujeito a análise e aprovação de crédito.')
+      ? 'A simulaÃ§Ã£o de financiamento apresentada Ã© comercial, sujeita a anÃ¡lise e aprovaÃ§Ã£o de crÃ©dito pela instituiÃ§Ã£o financeira.'
+      : 'Financiamento bancÃ¡rio pode ser contratado como forma de pagamento, sujeito a anÃ¡lise e aprovaÃ§Ã£o de crÃ©dito.')
     : '';
 
   return [
-    `Validade desta proposta: ${Math.max(1, Math.round(params.validadeDias || 15))} dias corridos a partir da data de emissão.`,
+    `Validade desta proposta: ${Math.max(1, Math.round(params.validadeDias || 15))} dias corridos a partir da data de emissÃ£o.`,
     params.isUsina
-      ? `Os valores apresentados são estimativas baseadas na potência projetada de ${fmtDecimal(params.potenciaSistema, 1, 2)} kWp e estão sujeitos a vistoria técnica.`
-      : `Os valores apresentados são estimativas baseadas no consumo informado de ${fmtNumber(params.consumoMensal)} kWh/mês e estão sujeitos a vistoria técnica.`,
-    'O dimensionamento segue as normas da ANEEL e da Lei 14.300/2022 (geração distribuída).',
+      ? `Os valores apresentados sÃ£o estimativas baseadas na potÃªncia projetada de ${fmtDecimal(params.potenciaSistema, 1, 2)} kWp e estÃ£o sujeitos a vistoria tÃ©cnica.`
+      : `Os valores apresentados sÃ£o estimativas baseadas no consumo informado de ${fmtNumber(params.consumoMensal)} kWh/mÃªs e estÃ£o sujeitos a vistoria tÃ©cnica.`,
+    'O dimensionamento segue as normas da ANEEL e da Lei 14.300/2022 (geraÃ§Ã£o distribuÃ­da).',
     params.isUsina
-      ? 'A receita projetada considera a tarifa vigente e pode variar conforme reajustes tarifários e condições contratuais.'
-      : 'A economia projetada considera a tarifa vigente e pode variar conforme reajustes tarifários.',
-    `Garantia dos equipamentos e serviços: módulo (${params.moduloGarantia || 25} anos), inversor (${params.inversorGarantia || 25} anos) e serviços (${params.garantiaServicos || 25} anos).`,
-    'A instalação inclui projeto elétrico, instalação mecânica e elétrica, comissionamento e solicitação de vistoria junto à concessionária.',
-    'Prazo estimado de instalação: 7 a 15 dias úteis após aprovação do projeto e disponibilidade de materiais.',
+      ? 'A receita projetada considera a tarifa vigente e pode variar conforme reajustes tarifÃ¡rios e condiÃ§Ãµes contratuais.'
+      : 'A economia projetada considera a tarifa vigente e pode variar conforme reajustes tarifÃ¡rios.',
+    `Garantia dos equipamentos e serviÃ§os: mÃ³dulo (${params.moduloGarantia || 25} anos), inversor (${params.inversorGarantia || 25} anos) e serviÃ§os (${params.garantiaServicos || 25} anos).`,
+    'A instalaÃ§Ã£o inclui projeto elÃ©trico, instalaÃ§Ã£o mecÃ¢nica e elÃ©trica, comissionamento e solicitaÃ§Ã£o de vistoria junto Ã  concessionÃ¡ria.',
+    'Prazo estimado de instalaÃ§Ã£o: 7 a 15 dias Ãºteis apÃ³s aprovaÃ§Ã£o do projeto e disponibilidade de materiais.',
     paymentText,
     financingClause,
   ].filter(Boolean);
@@ -500,12 +500,12 @@ function buildChartTheme(P: Palette): ChartTheme {
 //  Accent sanitisation for Helvetica (standard 14 font  no Unicode glyphs) 
 /** Transliterate common Portuguese/Spanish accented chars so Helvetica can render them. */
 function repairMojibake(text: string): string {
-  if (!/[ÃƒÃ‚Ã¢]/.test(text)) return text;
+  if (!/[ÃƒÆ’Ãƒâ€šÃƒÂ¢]/.test(text)) return text;
   try {
     const bytes = Uint8Array.from(text, (char) => char.charCodeAt(0) & 0xff);
     const decoded = new TextDecoder('utf-8').decode(bytes);
-    const badOriginal = (text.match(/[ÃƒÃ‚Ã¢]/g) || []).length;
-    const badDecoded = (decoded.match(/[ÃƒÃ‚Ã¢]/g) || []).length;
+    const badOriginal = (text.match(/[ÃƒÆ’Ãƒâ€šÃƒÂ¢]/g) || []).length;
+    const badDecoded = (decoded.match(/[ÃƒÆ’Ãƒâ€šÃƒÂ¢]/g) || []).length;
     return badDecoded < badOriginal ? decoded : text;
   } catch {
     return text;
@@ -683,6 +683,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     paymentConditions: data.paymentConditions,
   });
   const descontoAvistaValor = cashDiscountSnapshot.descontoAvistaValor;
+  const descontoAvistaPercentual = Math.max(0, Number(data.descontoAvistaPercentual) || 0);
   const valorAvistaLiquido = Number.isFinite(Number(data.valorAvistaLiquido))
     ? Math.max(0, Number(data.valorAvistaLiquido) || 0)
     : cashDiscountSnapshot.valorAvistaLiquido;
@@ -796,7 +797,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     if (source === 'cache') return 'cache georreferenciado';
     if (source === 'uf_fallback') return 'fallback por UF';
     if (source === 'legacy_profile') return 'perfil sazonal legado';
-    return source || 'não informado';
+    return source || 'nÃ£o informado';
   };
   const effectiveOmCostPct = Math.max(0, Number(resolvedFinancialInputs.annualOmCostPct) || 0);
   const effectiveOmCostFixed = Math.max(0, Number(resolvedFinancialInputs.annualOmCostFixed) || 0);
@@ -809,11 +810,11 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     ? (financialOutputs?.retornoPorKwh || 0)
     : (annualGenerationKwh > 0 ? (econAnual / annualGenerationKwh) : 0);
   const equipSpecs: EquipmentSpec[] = premium?.equipmentSpecs || [
-    { item: 'Módulos Fotovoltaicos', spec: 'Monocristalino 550W+ Tier 1', qty: data.quantidadePaineis, warranty: '12 anos produto / 25 anos performance' },
-    { item: 'Inversor', spec: 'On-Grid alta eficiência (>97%)', qty: 1, warranty: '25 anos' },
-    { item: 'Estrutura de Fixação', spec: 'Alumínio anodizado', qty: `${data.quantidadePaineis} conjuntos`, warranty: '15 anos' },
+    { item: 'MÃ³dulos Fotovoltaicos', spec: 'Monocristalino 550W+ Tier 1', qty: data.quantidadePaineis, warranty: '12 anos produto / 25 anos performance' },
+    { item: 'Inversor', spec: 'On-Grid alta eficiÃªncia (>97%)', qty: 1, warranty: '25 anos' },
+    { item: 'Estrutura de FixaÃ§Ã£o', spec: 'AlumÃ­nio anodizado', qty: `${data.quantidadePaineis} conjuntos`, warranty: '15 anos' },
     { item: 'Cabos e Conectores', spec: 'Solar CC 6mm\u00B2 + MC4', qty: 'Kit completo', warranty: '10 anos' },
-    { item: 'String Box / Proteção', spec: 'DPS + chave seccionadora CC/CA', qty: 1, warranty: '5 anos' },
+    { item: 'String Box / ProteÃ§Ã£o', spec: 'DPS + chave seccionadora CC/CA', qty: 1, warranty: '5 anos' },
   ];
   // Monthly bill comparison for before/after chart.
   const billBeforeFromModel = Number(financialOutputs.billBeforeMonthly);
@@ -870,12 +871,12 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     showFinancingSimulation,
   });
   const nextSteps: NextStepDetailed[] = premium?.nextStepsDetailed || [
-    { step: 'Aprovação da Proposta', description: 'Confirmação dos termos e assinatura.' },
-    { step: 'Vistoria Técnica', description: 'Visita para validação do local.' },
-    { step: 'Projeto Executivo', description: 'Projeto elétrico e registro na concessionária.' },
-    { step: 'Instalação', description: 'Montagem e comissionamento do sistema.' },
-    { step: 'Homologação', description: 'Vistoria da concessionária e troca do medidor.' },
-    { step: 'Geração', description: 'Sistema ativo gerando economia!' },
+    { step: 'AprovaÃ§Ã£o da Proposta', description: 'ConfirmaÃ§Ã£o dos termos e assinatura.' },
+    { step: 'Vistoria TÃ©cnica', description: 'Visita para validaÃ§Ã£o do local.' },
+    { step: 'Projeto Executivo', description: 'Projeto elÃ©trico e registro na concessionÃ¡ria.' },
+    { step: 'InstalaÃ§Ã£o', description: 'Montagem e comissionamento do sistema.' },
+    { step: 'HomologaÃ§Ã£o', description: 'Vistoria da concessionÃ¡ria e troca do medidor.' },
+    { step: 'GeraÃ§Ã£o', description: 'Sistema ativo gerando economia!' },
   ];
   const fin = resolveFinancing({ ...data, showFinancingSimulation });
   const SECTION_GAP = 7;
@@ -961,7 +962,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   };
 
 // ---
-  // PAGE 0  COVER (clean modern layout — white bg, brand stripe, partial photo)
+  // PAGE 0  COVER (clean modern layout â€” white bg, brand stripe, partial photo)
 // ---
   const coverImageSrc = data.coverImageDataUrl || null;
   const coverImageList = Array.isArray(data.coverImageDataUrls)
@@ -975,10 +976,10 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   const coverSubtitles: Record<string, string> = {
     residencial: 'Economia e sustentabilidade para sua casa',
-    comercial: 'Redução de custos operacionais com energia limpa',
-    industrial: 'Eficiência energética para sua indústria',
-    rural: 'Energia solar no campo - economia e independência',
-    usina: 'Investimento em geração de energia solar',
+    comercial: 'ReduÃ§Ã£o de custos operacionais com energia limpa',
+    industrial: 'EficiÃªncia energÃ©tica para sua indÃºstria',
+    rural: 'Energia solar no campo - economia e independÃªncia',
+    usina: 'Investimento em geraÃ§Ã£o de energia solar',
   };
 
   // 1. Clean white background
@@ -1062,7 +1063,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   doc.setLineWidth(0.6);
   doc.line(txL, 66, txL + 35, 66);
 
-  // 8. Title block — strong typographic hierarchy
+  // 8. Title block â€” strong typographic hierarchy
   doc.setTextColor(35, 35, 35);
   doc.setFontSize(30);
   doc.setFont('helvetica', 'bold');
@@ -1106,7 +1107,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     doc.text(data.contact.city, txL, 252);
   }
 
-  // Segment label — pure typography, no badge
+  // Segment label â€” pure typography, no badge
   doc.setTextColor(C.header[0], C.header[1], C.header[2]);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
@@ -1184,11 +1185,53 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   //  THREE METRIC CARDS 
   const cardWidth = (W - 2 * M - 8) / 3;
   const metricH = 20;
-  const metricsArr = [
-    { label: 'INVESTIMENTO ESTIMADO', value: fmtCurrency(investimentoBaseMetricas) },
-    { label: isUsina ? 'RECEITA MENSAL ESTIMADA' : 'ECONOMIA MENSAL ESTIMADA', value: fmtCurrency(econMensal) },
-    { label: 'PAYBACK ESTIMADO', value: paybackYears },
-  ];
+  const metricsArr = isUsina
+    ? [
+      {
+        label: 'INVESTIMENTO ESTIMADO',
+        value: fmtCurrency(investimentoBaseMetricas),
+        barColor: C.teal,
+        labelColor: C.bodyText,
+        valueColor: C.header,
+      },
+      {
+        label: 'RECEITA MENSAL ESTIMADA',
+        value: fmtCurrency(econMensal),
+        barColor: C.teal,
+        labelColor: C.bodyText,
+        valueColor: C.header,
+      },
+      {
+        label: 'PAYBACK ESTIMADO',
+        value: paybackYears,
+        barColor: C.teal,
+        labelColor: C.bodyText,
+        valueColor: C.header,
+      },
+    ]
+    : [
+      {
+        label: 'SEM ENERGIA SOLAR',
+        value: `${fmtCurrency(contaEstimada)} / mes`,
+        barColor: C.red,
+        labelColor: C.red,
+        valueColor: C.red,
+      },
+      {
+        label: 'COM ENERGIA SOLAR',
+        value: `${fmtCurrency(contaComSolar)} / mes`,
+        barColor: C.teal,
+        labelColor: C.bodyText,
+        valueColor: C.header,
+      },
+      {
+        label: 'ECONOMIA MENSAL ESTIMADA',
+        value: `${fmtCurrency(billSavingsMonthly)} / mes`,
+        barColor: C.teal,
+        labelColor: C.bodyText,
+        valueColor: C.header,
+      },
+    ];
 
   metricsArr.forEach((m, i) => {
     const cx = M + i * (cardWidth + 4);
@@ -1196,13 +1239,13 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     doc.setDrawColor(C.lightGray[0], C.lightGray[1], C.lightGray[2]);
     doc.setLineWidth(0.3);
     doc.roundedRect(cx, y, cardWidth, metricH, 2, 2, 'FD');
-    doc.setFillColor(C.teal[0], C.teal[1], C.teal[2]);
+    doc.setFillColor(m.barColor[0], m.barColor[1], m.barColor[2]);
     doc.roundedRect(cx, y, cardWidth, 2.5, 2, 2, 'F');
     doc.rect(cx, y + 1, cardWidth, 1.5, 'F');
-    doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
+    doc.setTextColor(m.labelColor[0], m.labelColor[1], m.labelColor[2]);
     doc.setFontSize(7.4); doc.setFont('helvetica', 'normal');
     doc.text(m.label, cx + 4, y + 8);
-    doc.setTextColor(C.header[0], C.header[1], C.header[2]);
+    doc.setTextColor(m.valueColor[0], m.valueColor[1], m.valueColor[2]);
     doc.setFontSize(12); doc.setFont('helvetica', 'bold');
     doc.text(m.value, cx + 4, y + 16);
   });
@@ -1220,8 +1263,8 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   }
 
   const narrative = isUsina
-    ? `${fmtCurrency(investimentoBaseMetricas)} de investimento estimado para gerar receita de cerca de ${fmtCurrency(econMensal)}/mês (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Receita acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulação).`
-    : `${fmtCurrency(investimentoBaseMetricas)} de investimento estimado para economizar cerca de ${fmtCurrency(econMensal)}/mês (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Economia acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulação).`;
+    ? `${fmtCurrency(investimentoBaseMetricas)} de investimento estimado para gerar receita de cerca de ${fmtCurrency(econMensal)}/mÃªs (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Receita acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulaÃ§Ã£o).`
+    : `${fmtCurrency(investimentoBaseMetricas)} de investimento estimado para economizar cerca de ${fmtCurrency(econMensal)}/mÃªs (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Economia acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulaÃ§Ã£o).`;
   doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
   doc.setFontSize(9.6); doc.setFont('helvetica', 'normal');
   const narLines = doc.splitTextToSize(narrative, W - 2 * M);
@@ -1241,7 +1284,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   //  "Beneficios principais" 
   if (premium?.valuePillars && premium.valuePillars.length > 0) {
-    sectionTitle('Benefícios principais');
+    sectionTitle('BenefÃ­cios principais');
     premium.valuePillars.forEach((p) => {
       bullet(p.charAt(0).toUpperCase() + p.slice(1), C.teal);
     });
@@ -1251,8 +1294,8 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   //  "Por que confiar" 
   const trustItems = [
     ...(premium?.proofPoints || []),
-    `Garantias comerciais: módulo ${data.moduloGarantia || 25} anos, inversor ${data.inversorGarantia || 25} anos e serviços ${data.garantiaAnos} anos.`,
-    'Dimensionamento alinhado ao consumo informado e às regras vigentes de geração distribuída.',
+    `Garantias comerciais: mÃ³dulo ${data.moduloGarantia || 25} anos, inversor ${data.inversorGarantia || 25} anos e serviÃ§os ${data.garantiaAnos} anos.`,
+    'Dimensionamento alinhado ao consumo informado e Ã s regras vigentes de geraÃ§Ã£o distribuÃ­da.',
   ];
   sectionTitle('Por que confiar');
   trustItems.slice(0, 5).forEach((pt) => {
@@ -1263,7 +1306,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   // PAGE 2  ANLISE DE ECONOMIA + GRFICOS
 // ---
   doc.addPage();
-  y = drawCompactHeader(isUsina ? 'Análise de Investimento e Retorno' : 'Análise de Economia e Retorno');
+  y = drawCompactHeader(isUsina ? 'AnÃ¡lise de Investimento e Retorno' : 'AnÃ¡lise de Economia e Retorno');
 
   // Before/After comparison table (only for non-usina)
   if (!isUsina) {
@@ -1282,7 +1325,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     y += baH + TABLE_GAP;
   } else {
     // Usina: Revenue projection table
-    sectionTitle('Projeção de Receita e Retorno');
+    sectionTitle('ProjeÃ§Ã£o de Receita e Retorno');
     const retPerReal = investimentoBaseMetricas > 0 ? retornoPorReal.toFixed(1) : '-';
     autoTable(doc, {
       startY: y,
@@ -1292,9 +1335,9 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
         ...(showCashDiscountBreakdown
           ? [
             ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
-            ['Desconto à Vista', fmtCurrency(descontoAvistaValor)],
-            ['Valor à Vista Líquido', fmtCurrency(valorAvistaLiquido)],
-            ['Investimento Base (Métricas)', fmtCurrency(investimentoBaseMetricas)],
+            ['Desconto Ã  Vista', fmtCurrency(descontoAvistaValor)],
+            ['Valor Ã  Vista LÃ­quido', fmtCurrency(valorAvistaLiquido)],
+            ['Investimento Base (MÃ©tricas)', fmtCurrency(investimentoBaseMetricas)],
           ]
           : [['Investimento Total', fmtCurrency(investimentoBaseMetricas)]]),
         ['Receita Mensal Estimada', fmtCurrency(econMensal)],
@@ -1385,29 +1428,29 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
     const retPerReal = investimentoBaseMetricas > 0 ? retornoPorReal.toFixed(1) : '-';
     doc.text(
-      `Para cada R$ 1,00 investido, você recupera R$ ${retPerReal} ao longo de 25 anos.`,
+      `Para cada R$ 1,00 investido, vocÃª recupera R$ ${retPerReal} ao longo de 25 anos.`,
       W / 2, y, { align: 'center' }
     );
     y += 8;
   }
 
 // ---
-  // PAGE 3  TÉCNICO + EQUIPAMENTOS + AMBIENTAL
+  // PAGE 3  TÃ‰CNICO + EQUIPAMENTOS + AMBIENTAL
 // ---
   doc.addPage();
-  y = drawCompactHeader('Dimensionamento Técnico e Equipamentos');
+  y = drawCompactHeader('Dimensionamento TÃ©cnico e Equipamentos');
 
   sectionTitle('Dimensionamento do Sistema');
   autoTable(doc, {
     startY: y,
-    head: [['Especificação', 'Valor']],
+    head: [['EspecificaÃ§Ã£o', 'Valor']],
     body: [
-      [isUsina ? 'Geração Média Mensal' : 'Consumo Médio Mensal', `${fmtNumber(Math.round(isUsina ? avgMonthlyGenerationKwh : data.consumoMensal))} kWh/mês`],
-      ['Potência do Sistema', `${data.potenciaSistema.toFixed(2)} kWp`],
-      ['Quantidade de Painéis', `${data.quantidadePaineis} módulos`],
-      ['Geração Mensal Estimada', `${fmtNumber(Math.round(avgMonthlyGenerationKwh))} kWh/mês`],
-      ['Geração Anual Estimada', `${fmtNumber(annualGenerationKwh)} kWh/ano`],
-      ['Garantia dos Serviços', `${data.garantiaAnos} anos`],
+      [isUsina ? 'GeraÃ§Ã£o MÃ©dia Mensal' : 'Consumo MÃ©dio Mensal', `${fmtNumber(Math.round(isUsina ? avgMonthlyGenerationKwh : data.consumoMensal))} kWh/mÃªs`],
+      ['PotÃªncia do Sistema', `${data.potenciaSistema.toFixed(2)} kWp`],
+      ['Quantidade de PainÃ©is', `${data.quantidadePaineis} mÃ³dulos`],
+      ['GeraÃ§Ã£o Mensal Estimada', `${fmtNumber(Math.round(avgMonthlyGenerationKwh))} kWh/mÃªs`],
+      ['GeraÃ§Ã£o Anual Estimada', `${fmtNumber(annualGenerationKwh)} kWh/ano`],
+      ['Garantia dos ServiÃ§os', `${data.garantiaAnos} anos`],
     ],
     theme: 'striped',
     headStyles: { fillColor: C.header, textColor: 255, fontStyle: 'bold', fontSize: 9.5 },
@@ -1419,7 +1462,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   // Kit Fotovoltaico
   sectionTitle('Kit Fotovoltaico');
-  const moduloNome = data.moduloNome || `Módulo Fotovoltaico ${data.moduloPotencia || 550}W`;
+  const moduloNome = data.moduloNome || `MÃ³dulo Fotovoltaico ${data.moduloPotencia || 550}W`;
   const moduloMarca = data.moduloMarca || '';
   const moduloPot = data.moduloPotencia || 550;
   const moduloGar = data.moduloGarantia || 25;
@@ -1434,15 +1477,15 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   // Mdulo row
   const kitBody: string[][] = [
-    ['Módulo', `${moduloNome}${moduloMarca ? ` | Marca: ${moduloMarca}` : ''}\nPotência: ${moduloPot}W | Tipo: ${moduloTipo} | Garantia: ${moduloGar} anos`, String(data.quantidadePaineis)],
-    ['Inversor', `${invNome}${invMarca ? ` | Marca: ${invMarca}` : ''}\nPotência: ${fmtNumber(invPot)} kWp | Tensão: ${invTensao}V | Garantia: ${invGar} anos`, String(invQtd)],
+    ['MÃ³dulo', `${moduloNome}${moduloMarca ? ` | Marca: ${moduloMarca}` : ''}\nPotÃªncia: ${moduloPot}W | Tipo: ${moduloTipo} | Garantia: ${moduloGar} anos`, String(data.quantidadePaineis)],
+    ['Inversor', `${invNome}${invMarca ? ` | Marca: ${invMarca}` : ''}\nPotÃªncia: ${fmtNumber(invPot)} kWp | TensÃ£o: ${invTensao}V | Garantia: ${invGar} anos`, String(invQtd)],
     ['Estrutura', estrutura, '-'],
-    ['Serviços', `Projeto, instalação e homologação\nGarantia dos serviços: ${data.garantiaAnos} anos`, '-'],
+    ['ServiÃ§os', `Projeto, instalaÃ§Ã£o e homologaÃ§Ã£o\nGarantia dos serviÃ§os: ${data.garantiaAnos} anos`, '-'],
   ];
 
   autoTable(doc, {
     startY: y,
-    head: [['Componente', 'Especificação', 'Qtd.']],
+    head: [['Componente', 'EspecificaÃ§Ã£o', 'Qtd.']],
     body: kitBody,
     theme: 'striped',
     headStyles: { fillColor: C.header, textColor: 255, fontStyle: 'bold', fontSize: 9 },
@@ -1467,19 +1510,19 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   // PAGE 4  FINANCEIRO + FINANCIAMENTO
 // ---
   doc.addPage();
-  y = drawCompactHeader('Análise Financeira e Financiamento');
+  y = drawCompactHeader('AnÃ¡lise Financeira e Financiamento');
 
-  sectionTitle('Análise Financeira Detalhada');
+  sectionTitle('AnÃ¡lise Financeira Detalhada');
   autoTable(doc, {
     startY: y,
-    head: [['Descrição', 'Valor']],
+    head: [['DescriÃ§Ã£o', 'Valor']],
     body: [
       ...(showCashDiscountBreakdown
         ? [
           ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
-          ['Desconto à Vista', fmtCurrency(descontoAvistaValor)],
-          ['Valor à Vista Líquido', fmtCurrency(valorAvistaLiquido)],
-          ['Investimento Base (Métricas)', fmtCurrency(investimentoBaseMetricas)],
+          ['Desconto Ã  Vista', fmtCurrency(descontoAvistaValor)],
+          ['Valor Ã  Vista LÃ­quido', fmtCurrency(valorAvistaLiquido)],
+          ['Investimento Base (MÃ©tricas)', fmtCurrency(investimentoBaseMetricas)],
         ]
         : [['Investimento Total', fmtCurrency(investimentoBaseMetricas)]]),
       [isUsina ? 'Receita Mensal Estimada' : 'Economia Mensal Estimada', fmtCurrency(econMensal)],
@@ -1495,71 +1538,21 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     styles: { fontSize: 9.5, cellPadding: 4, textColor: C.bodyText },
   });
   y = (doc as any).lastAutoTable.finalY + TABLE_GAP;
-
-  // Payment and Financing conditions
-  sectionTitle('Condições de Pagamento');
-  if (paymentConditionLabels.length > 0) {
-    paymentConditionLabels.forEach((label) => bullet(label, C.teal));
-  } else {
-    bullet('À vista (sob consulta).', C.teal);
-  }
-  y += FOOTNOTE_GAP;
-
-  if (financingSelected && showFinancingSimulation && fin.financingRows.length > 0) {
-    sectionTitle('Condições de Financiamento');
-
-    const financingRows = (fin.financingRows || []).sort((a, b) => {
-      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
-      if (a.institutionName !== b.institutionName) return a.institutionName.localeCompare(b.institutionName, 'pt-BR');
-      return a.installment - b.installment;
-    });
-
-    autoTable(doc, {
-      startY: y,
-      head: [['Instituição financeira', 'Valor da parcela', 'No. de parcelas', 'Prazo de carência']],
-      body: financingRows.map((row) => [
-        row.isPrimary ? `${row.institutionName} (principal)` : row.institutionName,
-        `A partir de ${fmtCurrency(row.installmentValue)}`,
-        `${row.installment}x`,
-        row.gracePeriodLabel,
-      ]),
-      theme: 'striped',
-      headStyles: { fillColor: C.header, textColor: 255, fontStyle: 'bold', fontSize: 9 },
-      alternateRowStyles: { fillColor: C.lightBg },
-      margin: { left: M, right: M },
-      styles: { fontSize: 8.8, cellPadding: 3.5, textColor: C.bodyText },
-    });
-    y = (doc as any).lastAutoTable.finalY + FOOTNOTE_GAP;
-    doc.setTextColor(130, 130, 130);
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'italic');
-    doc.text('Simulação comercial sujeita a análise de crédito da instituição financeira.', M, y + 3);
-    y += BLOCK_GAP + 3;
-  }
-
   // Value Pillars
   if (premium?.valuePillars && premium.valuePillars.length > 0) {
     checkPageBreak(30);
-    sectionTitle('Benefícios do Seu Projeto');
+    sectionTitle('BenefÃ­cios do Seu Projeto');
     premium.valuePillars.forEach((p) => {
       bullet(p.charAt(0).toUpperCase() + p.slice(1), C.teal);
     });
     y += 4;
   }
 
-  // Observations
-  if (data.observacoes) {
-    checkPageBreak(25);
-    sectionTitle('Observações');
-    const obs = doc.splitTextToSize(data.observacoes, W - 2 * M);
-    doc.text(obs, M, y); y += obs.length * 4.5 + BLOCK_GAP;
-  }
-
 // ---
   // PAGE 5  TERMOS, PRXIMOS PASSOS, CTA
 // ---
   doc.addPage();
-  y = drawCompactHeader('Condições, Próximos Passos e Fechamento');
+  y = drawCompactHeader('CondiÃ§Ãµes, PrÃ³ximos Passos e Fechamento');
 
   const assumptionsFromPremium = premium?.assumptions || [];
   const assumptionsSnapshot = (financialOutputs?.assumptionsSnapshot || {}) as Record<string, unknown>;
@@ -1581,7 +1574,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   }
 
   // Terms & Conditions
-  sectionTitle('Condições Gerais');
+  sectionTitle('CondiÃ§Ãµes Gerais');
   doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
   doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
   termsConditions.forEach((term, i) => {
@@ -1595,7 +1588,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
   // Next Steps Timeline
   checkPageBreak(50);
-  sectionTitle('Próximos Passos');
+  sectionTitle('PrÃ³ximos Passos');
 
   nextSteps.forEach((ns, i) => {
     checkPageBreak(16);
@@ -1626,8 +1619,8 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   {
     checkPageBreak(35);
     const ctaText = premium?.nextStepCta || (isUsina
-      ? `Entre em contato conosco para dar o próximo passo rumo ao retorno com sua usina solar. Estamos prontos para tirar todas as suas dúvidas!`
-      : `Entre em contato conosco para dar o próximo passo rumo à economia com energia solar. Estamos prontos para tirar todas as suas dúvidas!`);
+      ? `Entre em contato conosco para dar o proximo passo rumo ao retorno com sua usina solar. Estamos prontos para tirar todas as suas duvidas!`
+      : `Entre em contato conosco para dar o proximo passo rumo a economia com energia solar. Estamos prontos para tirar todas as suas duvidas!`);
     const cta = doc.splitTextToSize(ctaText, W - 2 * M - 20);
     const ctaBoxH = cta.length * 5.5 + 22;
     doc.setFillColor(C.lightBg[0], C.lightBg[1], C.lightBg[2]);
@@ -1636,19 +1629,20 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     doc.roundedRect(M, y, W - 2 * M, ctaBoxH, 3, 3, 'FD');
     doc.setTextColor(C.header[0], C.header[1], C.header[2]);
     doc.setFontSize(13); doc.setFont('helvetica', 'bold');
-    doc.text('Vamos começar?', M + 8, y + 12);
+    doc.text('Vamos comeÃ§ar?', M + 8, y + 12);
     doc.setFontSize(9.5); doc.setFont('helvetica', 'normal');
     doc.text(cta, M + 8, y + 20);
     y += ctaBoxH + BLOCK_GAP;
   }
 
-  // Signature block
+  // Payment + signature are intentionally consolidated on the last page.
   {
     const contractorName = String(data.signatureContractorName || data.contact.name || 'CONTRATANTE');
     const contractorCnpj = String(data.signatureContractorCnpj || '').trim();
     const companyName = String(data.signatureCompanyName || 'EMPRESA');
     const companyCnpj = String(data.signatureCompanyCnpj || '').trim();
-    const signatureText = 'Em razão de ambas as partes concordarem com a proposta acima especificada, declaram a aceitação da mesma. Assim sendo dão seguimento às providências necessárias para a execução do projeto. E por estarem justos e de acordo assinam a presente proposta.';
+    const signatureText = 'Em razÃ£o de ambas as partes concordarem com a proposta acima especificada, declaram a aceitaÃ§Ã£o da mesma. Assim sendo dÃ£o seguimento Ã s providÃªncias necessÃ¡rias para a execuÃ§Ã£o do projeto. E por estarem justos e de acordo assinam a presente proposta.';
+
     doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
@@ -1657,12 +1651,93 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
       + TABLE_GAP
       + (contractorCnpj ? 19 : 15)
       + (companyCnpj ? 19 : 15);
+
+    const financingRows = (fin.financingRows || []).sort((a, b) => {
+      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+      if (a.institutionName !== b.institutionName) return a.institutionName.localeCompare(b.institutionName, 'pt-BR');
+      return a.installment - b.installment;
+    });
+    const descontoPercentualExibicao = descontoAvistaPercentual > 0
+      ? descontoAvistaPercentual
+      : (data.valorTotal > 0 ? (descontoAvistaValor / data.valorTotal) * 100 : 0);
+    const valorAvistaExibicao = descontoPercentualExibicao > 0
+      ? `${fmtCurrency(valorAvistaLiquido)} (${fmtDecimal(descontoPercentualExibicao, 0, 2)}% de desconto)`
+      : fmtCurrency(valorAvistaLiquido);
+    const paymentSummaryEstimate = 38
+      + Math.max(1, paymentConditionLabels.length) * 6
+      + (
+        financingSelected
+          ? (showFinancingSimulation && financingRows.length > 0
+            ? (34 + (financingRows.length * 7))
+            : 10)
+          : 0
+      );
+
+    if (y + paymentSummaryEstimate + signatureBlockH + TABLE_GAP > H - 28) {
+      doc.addPage();
+      y = drawCompactHeader('Condicoes de Pagamento e Assinatura');
+    }
+
+    sectionTitle('Condicoes de Pagamento');
+    autoTable(doc, {
+      startY: y,
+      head: [['Descricao', 'Valor']],
+      body: [
+        ['Valor cheio da proposta', fmtCurrency(data.valorTotal)],
+        ['Valor a vista', valorAvistaExibicao],
+        ...(descontoAvistaValor > 0 ? [['Desconto a vista', fmtCurrency(descontoAvistaValor)]] : []),
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: C.header, textColor: 255, fontStyle: 'bold', fontSize: 9 },
+      alternateRowStyles: { fillColor: C.lightBg },
+      margin: { left: M, right: M },
+      styles: { fontSize: 9, cellPadding: 3.8, textColor: C.bodyText },
+      columnStyles: { 0: { cellWidth: 75, fontStyle: 'bold' }, 1: { halign: 'right' as const } },
+    });
+    y = (doc as any).lastAutoTable.finalY + FOOTNOTE_GAP;
+
+    if (paymentConditionLabels.length > 0) {
+      paymentConditionLabels.forEach((label) => bullet(label, C.teal));
+    } else {
+      bullet('A vista (sob consulta).', C.teal);
+    }
+    y += FOOTNOTE_GAP;
+
+    if (financingSelected) {
+      if (showFinancingSimulation && financingRows.length > 0) {
+        sectionTitle('Condicoes de Financiamento');
+        autoTable(doc, {
+          startY: y,
+          head: [['Instituicao financeira', 'Parcela', 'N. de parcelas', 'Carencia']],
+          body: financingRows.map((row) => [
+            row.isPrimary ? `${row.institutionName} (principal)` : row.institutionName,
+            `A partir de ${fmtCurrency(row.installmentValue)}`,
+            `${row.installment}x`,
+            row.gracePeriodLabel,
+          ]),
+          theme: 'striped',
+          headStyles: { fillColor: C.header, textColor: 255, fontStyle: 'bold', fontSize: 8.8 },
+          alternateRowStyles: { fillColor: C.lightBg },
+          margin: { left: M, right: M },
+          styles: { fontSize: 8.4, cellPadding: 3.2, textColor: C.bodyText },
+        });
+        y = (doc as any).lastAutoTable.finalY + FOOTNOTE_GAP;
+        doc.setTextColor(130, 130, 130);
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'italic');
+        doc.text('Simulacao comercial sujeita a analise de credito da instituicao financeira.', M, y + 3);
+        y += BLOCK_GAP + 3;
+      } else {
+        bullet('Financiamento bancario sujeito a analise de credito da instituicao financeira.', C.teal);
+        y += FOOTNOTE_GAP;
+      }
+    }
+
     checkPageBreak(signatureBlockH + 2);
     const anchoredSignatureY = (H - 28) - signatureBlockH;
     if (y < anchoredSignatureY) y = anchoredSignatureY;
     doc.text(signatureLines, M, y);
     y += signatureLines.length * 5 + TABLE_GAP;
-
 
     const lineStart = M + 38;
     const lineEnd = W - M - 38;
@@ -1824,8 +1899,8 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
     doc.line(M, fY, W - M, fY);
     doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
     doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-    doc.text('Uso interno (vendedor) - não compartilhar com o cliente', M, fY + 7);
-    doc.text(`Página ${pageNum} de ${totalPages}`, W - M, fY + 7, { align: 'right' });
+    doc.text('Uso interno (vendedor) - nÃ£o compartilhar com o cliente', M, fY + 7);
+    doc.text(`PÃ¡gina ${pageNum} de ${totalPages}`, W - M, fY + 7, { align: 'right' });
   };
 
 // ---
@@ -1872,7 +1947,7 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
   doc.roundedRect(M, y, W - 2 * M, warnH, 2, 2, 'FD');
   doc.setTextColor(C.warningText[0], C.warningText[1], C.warningText[2]);
   doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-  doc.text('NÃO COMPARTILHAR COM O CLIENTE', M + 6, y + 7);
+  doc.text('NÃƒO COMPARTILHAR COM O CLIENTE', M + 6, y + 7);
   doc.setFontSize(9); doc.setFont('helvetica', 'normal');
   doc.text('Use este roteiro como guia simples durante a visita.', M + 6, y + 14);
   y += warnH + 8;
@@ -1894,7 +1969,7 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
   y += 4;
 
   // Key numbers table
-  sectionTitle('Números-chave (para abrir)');
+  sectionTitle('NÃºmeros-chave (para abrir)');
   autoTable(doc, {
     startY: y,
     head: [['Indicador', 'Valor']],
@@ -1902,17 +1977,17 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
       ...(showCashDiscountBreakdown
         ? [
           ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
-          ['Desconto à Vista', fmtCurrency(descontoAvistaValor)],
-          ['Valor à Vista Líquido', fmtCurrency(valorAvistaLiquido)],
-          ['Investimento Base (Métricas)', fmtCurrency(investimentoBaseMetricas)],
+          ['Desconto Ã  Vista', fmtCurrency(descontoAvistaValor)],
+          ['Valor Ã  Vista LÃ­quido', fmtCurrency(valorAvistaLiquido)],
+          ['Investimento Base (MÃ©tricas)', fmtCurrency(investimentoBaseMetricas)],
         ]
         : [['Investimento', fmtCurrency(investimentoBaseMetricas)]]),
       ['Economia mensal estimada', fmtCurrency(econMensal)],
       ['Economia anual estimada', fmtCurrency(econAnual)],
       ['Payback estimado', paybackYears],
       ['ROI 25 anos (estim.)', roi25],
-      ['Taxa (simulação)', `${taxa.toFixed(2)}% a.m.`],
-      ['Garantia dos serviços (referência)', `${data.garantiaAnos} anos`],
+      ['Taxa (simulaÃ§Ã£o)', `${taxa.toFixed(2)}% a.m.`],
+      ['Garantia dos serviÃ§os (referÃªncia)', `${data.garantiaAnos} anos`],
       ['Validade comercial', `${validadeDias} dias`],
     ],
     theme: 'grid',
@@ -1967,15 +2042,15 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
 
   // BANT qualification
   if (premium?.bantQualification && premium.bantQualification.length > 0) {
-    sectionTitle('Qualificação rápida');
+    sectionTitle('QualificaÃ§Ã£o rÃ¡pida');
     doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
     doc.setFontSize(9.3); doc.setFont('helvetica', 'normal');
-    doc.text('Orçamento | Decisor | Motivo | Prazo', M, y);
+    doc.text('OrÃ§amento | Decisor | Motivo | Prazo', M, y);
     y += 6;
 
     autoTable(doc, {
       startY: y,
-      head: [['Item', 'Status (se já identificado)', 'Pergunta de validação']],
+      head: [['Item', 'Status (se jÃ¡ identificado)', 'Pergunta de validaÃ§Ã£o']],
       body: premium.bantQualification.map((r) => [r.item, r.status, r.question]),
       theme: 'striped',
       headStyles: { fillColor: C.teal, textColor: 255, fontStyle: 'bold', fontSize: 8.6 },
@@ -1990,7 +2065,7 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
 
   // Value Pillars
   if (premium?.valuePillars && premium.valuePillars.length > 0) {
-    sectionTitle('Pilares de valor (enfatizar na apresentação)');
+    sectionTitle('Pilares de valor (enfatizar na apresentaÃ§Ã£o)');
     premium.valuePillars.forEach((p) => {
       checkPageBreak(10);
       sBullet(p.charAt(0).toUpperCase() + p.slice(1), C.teal);
@@ -2010,7 +2085,7 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
 
   // Objection Handlers
   if (premium?.objectionHandlers && premium.objectionHandlers.length > 0) {
-    sectionTitle('Respostas a objeções (se o cliente perguntar)');
+    sectionTitle('Respostas a objeÃ§Ãµes (se o cliente perguntar)');
     premium.objectionHandlers.forEach((h, i) => {
       checkPageBreak(14);
       doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
@@ -2023,7 +2098,7 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
 
   // Financing cheat sheet
   if (fin.showFinancing && data.valorTotal > 0) {
-    sectionTitle('Financiamento (dados rápidos)');
+    sectionTitle('Financiamento (dados rÃ¡pidos)');
     if (paymentConditionLabels.length > 0) {
       const paymentLine = `Pagamento: ${paymentConditionLabels.join(' | ')}`;
       const lines = doc.splitTextToSize(paymentLine, W - 2 * M - 8);
@@ -2041,7 +2116,7 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
       quickRows.slice(0, 8).forEach((row) => {
         checkPageBreak(8);
         doc.text(
-          `${row.institutionName}: ${row.installment}x de ${fmtCurrency(row.installmentValue)} | carência ${row.gracePeriodLabel}`,
+          `${row.institutionName}: ${row.installment}x de ${fmtCurrency(row.installmentValue)} | carÃªncia ${row.gracePeriodLabel}`,
           M + 4,
           y,
         );
@@ -2049,7 +2124,7 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
       });
       if (quickRows.length > 8) {
         doc.setFont('helvetica', 'italic');
-        doc.text(`+ ${quickRows.length - 8} condições adicionais no PDF do cliente`, M + 4, y);
+        doc.text(`+ ${quickRows.length - 8} condiÃ§Ãµes adicionais no PDF do cliente`, M + 4, y);
         doc.setFont('helvetica', 'normal');
         y += 5;
       }
@@ -2093,17 +2168,17 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
     y += ctaBoxH + 6;
   }
 
-  // Check-list Pós-Visita
+  // Check-list PÃ³s-Visita
   checkPageBreak(45);
-  sectionTitle('Check-list Pós-Visita');
+  sectionTitle('Check-list PÃ³s-Visita');
   [
-    'Foto do telhado / área de instalação',
-    'Foto do padrão de entrada / quadro elétrico',
-    'Cópia da última conta de energia',
-    'Confirmação do decisor e contato principal',
-    'Condição de pagamento preferida (à vista / financiamento)',
-    'Prazo desejado para instalação',
-    'Objeções não resolvidas (anotar para follow-up)',
+    'Foto do telhado / Ã¡rea de instalaÃ§Ã£o',
+    'Foto do padrÃ£o de entrada / quadro elÃ©trico',
+    'CÃ³pia da Ãºltima conta de energia',
+    'ConfirmaÃ§Ã£o do decisor e contato principal',
+    'CondiÃ§Ã£o de pagamento preferida (Ã  vista / financiamento)',
+    'Prazo desejado para instalaÃ§Ã£o',
+    'ObjeÃ§Ãµes nÃ£o resolvidas (anotar para follow-up)',
   ].forEach((item) => {
     checkPageBreak(10);
     doc.setDrawColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
@@ -2126,4 +2201,5 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
   if (data.returnBlob) return doc.output('blob');
   doc.save(fileName);
 }
+
 

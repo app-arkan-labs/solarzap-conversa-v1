@@ -138,7 +138,6 @@ export interface ProposalData {
   economiaAnual: number;
   paybackMeses: number;
   garantiaAnos: number;
-  observacoes?: string;
   tipo_cliente?: ClientType;
   estado?: string;
   cidade?: string;
@@ -301,7 +300,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     economiaAnual: 0,
     paybackMeses: 0,
     garantiaAnos: 25,
-    observacoes: '',
     endereco: contact?.address || '',
     cidade: contact?.city || '',
     cep: contact?.zip || '',
@@ -1116,7 +1114,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       economiaAnual: formData.economiaAnual, paybackMeses: formData.paybackMeses, garantiaAnos: formData.garantiaAnos,
     };
     return buildPremiumProposalContent({
-      contact: contact!, clientType: formData.tipo_cliente, observacoes: formData.observacoes, metrics,
+      contact: contact!, clientType: formData.tipo_cliente, metrics,
       comments: (contextData?.comments as ProposalCommentContext[]) || [],
       companyProfile: (contextData?.companyProfile as CompanyProfileContext) || null,
       objections: (contextData?.objections as ObjectionContext[]) || [],
@@ -1141,7 +1139,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           contactName: contact.name,
           clientType: formData.tipo_cliente,
           city: formData.cidade || contact.city || undefined,
-          observacoes: formData.observacoes || undefined,
           metrics: {
             consumoMensal: formData.consumoMensal,
             contaLuzMensal: formData.contaLuzMensal,
@@ -1681,7 +1678,6 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         valorAvistaLiquido: Math.max(0, Number(currentContact.projectValue) || 0),
         investimentoBaseMetricas: Math.max(0, Number(currentContact.projectValue) || 0),
         tipo_cliente: (currentContact.clientType || 'residencial') as ClientType,
-        observacoes: '',
         endereco: currentContact.address || '',
         cidade: currentContact.city || '',
         cep: currentContact.zip || '',

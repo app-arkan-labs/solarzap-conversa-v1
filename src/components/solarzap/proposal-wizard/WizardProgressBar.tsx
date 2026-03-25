@@ -6,7 +6,7 @@ const STEP_LABELS = [
   'Local e consumo',
   'Equipamento',
   'Pagamento',
-  'Personalizacao',
+  'Assinatura',
   'Revisao',
 ];
 
