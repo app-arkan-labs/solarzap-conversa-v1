@@ -84,6 +84,9 @@ const stageOptions: { id: PipelineStage | 'todos'; label: string; icon: string }
   })),
 ];
 
+const ACTIONS_MODE_ROW_CLASS = 'h-[72px]';
+const ACTIONS_MODE_HEADER_CLASS = 'h-[54px]';
+
 export function ConversationList({
   conversations,
   contacts,
@@ -471,11 +474,19 @@ export function ConversationList({
     onActionsScroll?.(event.currentTarget.scrollTop);
   }, [onActionsScroll]);
 
+  const showActionsLayout = actionsMode && !isMobileViewport;
+  const shouldShowLeadScopeRow = showActionsLayout || (canViewTeam && onLeadScopeChange);
+
   return (
     <div className="w-full h-full flex flex-col border-r border-border bg-card">
       {/* Premium Header */}
-      <div className="p-4 border-b border-border/70 bg-[linear-gradient(120deg,hsl(var(--primary)/0.12),transparent_30%,hsl(var(--secondary)/0.10)_100%)] shadow-sm backdrop-blur-sm">
-        <div className="flex items-center justify-between mb-4">
+      <div
+        className={cn(
+          'border-b border-border/70 bg-[linear-gradient(120deg,hsl(var(--primary)/0.12),transparent_30%,hsl(var(--secondary)/0.10)_100%)] shadow-sm backdrop-blur-sm',
+          showActionsLayout ? 'px-4 pb-3 pt-3' : 'p-4',
+        )}
+      >
+        <div className={cn('flex items-center justify-between', showActionsLayout ? 'mb-3' : 'mb-4')}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
               <MessageSquare className="w-5 h-5 text-white" />
@@ -639,13 +650,13 @@ export function ConversationList({
             placeholder="Pesquisar"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-10 bg-background border-0 shadow-sm"
+            className={cn('pl-10 bg-background border-0 shadow-sm', showActionsLayout && 'h-10')}
           />
         </div>
       </div>
 
       {/* Active Filters Indicator */}
-      {hasActiveFilters && (
+      {hasActiveFilters && !showActionsLayout && (
         <div className="px-3 py-2 bg-primary/5 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm flex-wrap">
             {hasStageFilter && (
@@ -676,83 +687,94 @@ export function ConversationList({
         </div>
       )}
 
-      {canViewTeam && onLeadScopeChange ? (
-        <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-          <DropdownMenu
-            onOpenChange={(open) => {
-              if (open) {
-                void refreshLeadScopeMembers();
-              }
-            }}
-          >
-            <DropdownMenuTrigger asChild>
-              <button
-                className="w-full h-9 flex items-center justify-between gap-2 px-3 rounded-md text-sm font-medium bg-background border border-border/60 text-foreground hover:bg-muted transition-colors"
-                data-testid="toggle-team-leads"
-              >
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <Users className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
-                  <span className="truncate">{leadScopeLabel}</span>
-                </span>
-                <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56 bg-popover border border-border z-50">
-              <DropdownMenuItem
-                onClick={() => onLeadScopeChange('org_all')}
-                data-testid="toggle-team-leads-option-org-all"
-                className={cn('gap-2', leadScope === 'org_all' && 'bg-muted font-medium')}
-              >
-                <Users className="w-3.5 h-3.5" />
-                Toda a equipe
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onLeadScopeChange('mine')}
-                data-testid="toggle-team-leads-option-mine"
-                className={cn('gap-2', leadScope === 'mine' && 'bg-muted font-medium')}
-              >
-                <User className="w-3.5 h-3.5" />
-                Meus leads
-              </DropdownMenuItem>
-              {availableTeamMembers.map((member) => {
-                const scopeValue = `user:${member.user_id}` as LeadScopeValue;
-                return (
+      {shouldShowLeadScopeRow ? (
+        <div
+          className={cn(
+            'border-b border-border flex items-center gap-2 px-3',
+            showActionsLayout ? `${ACTIONS_MODE_HEADER_CLASS} bg-background/90 py-0` : 'py-2',
+          )}
+        >
+          {canViewTeam && onLeadScopeChange ? (
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (open) {
+                  void refreshLeadScopeMembers();
+                }
+              }}
+            >
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="w-full h-9 flex items-center justify-between gap-2 px-3 rounded-md text-sm font-medium bg-background border border-border/60 text-foreground hover:bg-muted transition-colors"
+                  data-testid="toggle-team-leads"
+                >
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <Users className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+                    <span className="truncate">{leadScopeLabel}</span>
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56 bg-popover border border-border z-50">
+                <DropdownMenuItem
+                  onClick={() => onLeadScopeChange('org_all')}
+                  data-testid="toggle-team-leads-option-org-all"
+                  className={cn('gap-2', leadScope === 'org_all' && 'bg-muted font-medium')}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  Toda a equipe
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onLeadScopeChange('mine')}
+                  data-testid="toggle-team-leads-option-mine"
+                  className={cn('gap-2', leadScope === 'mine' && 'bg-muted font-medium')}
+                >
+                  <User className="w-3.5 h-3.5" />
+                  Meus leads
+                </DropdownMenuItem>
+                {availableTeamMembers.map((member) => {
+                  const scopeValue = `user:${member.user_id}` as LeadScopeValue;
+                  return (
+                    <DropdownMenuItem
+                      key={member.user_id}
+                      onClick={() => onLeadScopeChange(scopeValue)}
+                      data-testid={`toggle-team-leads-option-user-${member.user_id}`}
+                      className={cn('gap-2', leadScope === scopeValue && 'bg-muted font-medium')}
+                    >
+                      <User className="w-3.5 h-3.5" />
+                      {getMemberDisplayName(member)}
+                    </DropdownMenuItem>
+                  );
+                })}
+                {isLeadScopeMembersLoading && availableTeamMembers.length === 0 ? (
                   <DropdownMenuItem
-                    key={member.user_id}
-                    onClick={() => onLeadScopeChange(scopeValue)}
-                    data-testid={`toggle-team-leads-option-user-${member.user_id}`}
-                    className={cn('gap-2', leadScope === scopeValue && 'bg-muted font-medium')}
+                    disabled
+                    data-testid="toggle-team-leads-option-loading"
+                    className="gap-2 text-muted-foreground"
                   >
-                    <User className="w-3.5 h-3.5" />
-                    {getMemberDisplayName(member)}
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Carregando membros...
                   </DropdownMenuItem>
-                );
-              })}
-              {isLeadScopeMembersLoading && availableTeamMembers.length === 0 ? (
-                <DropdownMenuItem
-                  disabled
-                  data-testid="toggle-team-leads-option-loading"
-                  className="gap-2 text-muted-foreground"
-                >
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Carregando membros...
-                </DropdownMenuItem>
-              ) : null}
-              {!isLeadScopeMembersLoading && availableTeamMembers.length === 0 ? (
-                <DropdownMenuItem
-                  disabled
-                  data-testid="toggle-team-leads-option-empty"
-                  className="gap-2 text-muted-foreground"
-                >
-                  Nenhum outro membro encontrado
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                ) : null}
+                {!isLeadScopeMembersLoading && availableTeamMembers.length === 0 ? (
+                  <DropdownMenuItem
+                    disabled
+                    data-testid="toggle-team-leads-option-empty"
+                    className="gap-2 text-muted-foreground"
+                  >
+                    Nenhum outro membro encontrado
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : showActionsLayout ? (
+            <div className="flex h-9 w-full items-center rounded-md border border-border/60 bg-background px-3 text-sm font-medium text-foreground">
+              Meus leads
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      {isSelectionMode && canUseSelectionMode && (
+      {isSelectionMode && canUseSelectionMode && !showActionsLayout && (
         <div className="px-3 py-3 border-b border-border bg-gradient-to-r from-primary/10 via-primary/5 to-transparent space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -857,7 +879,7 @@ export function ConversationList({
       )}
 
       {/* Conversation List */}
-      {actionsMode && !isMobileViewport ? (
+      {showActionsLayout ? (
         <div className="flex-1 min-h-0 border-t border-border/50">
           <div
             ref={actionsScrollRef}
@@ -870,9 +892,7 @@ export function ConversationList({
               </div>
             ) : (
               displayConversations.map((conversation) => {
-                const stage = PIPELINE_STAGES[conversation.contact.pipelineStage];
                 const isSelected = selectedId === conversation.id;
-                const isAiActive = conversation.contact.aiEnabled !== false;
 
                 return (
                   <div
@@ -887,53 +907,17 @@ export function ConversationList({
                       onSelect(conversation);
                     }}
                     className={cn(
-                      'grid h-[74px] grid-cols-[auto,1fr,auto] items-center gap-3 border-b border-border/50 px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
-                      isSelected ? 'bg-primary/6' : 'hover:bg-muted/35',
+                      `flex ${ACTIONS_MODE_ROW_CLASS} items-center border-b border-border/50 px-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`,
+                      isSelected ? 'bg-primary/6' : 'hover:bg-muted/20',
                     )}
                   >
-                    <div className="relative flex-shrink-0">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted" title={isAiActive ? 'IA ativa' : undefined}>
-                        {isAiActive ? (
-                          <Bot className="h-5 w-5 text-primary" />
-                        ) : (
-                          <span className="text-lg">{conversation.contact.avatar || 'o/'}</span>
-                        )}
-                      </div>
-                      {conversation.isUrgent ? (
-                        <div className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-danger ring-2 ring-card" />
-                      ) : null}
-                    </div>
-
-                    <div className="min-w-0 text-left">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-semibold text-foreground">
-                          {conversation.contact.name}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">
-                          {conversation.lastMessage ? formatTime(conversation.lastMessage.timestamp) : '--'}
-                        </span>
-                      </div>
-
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {conversation.contact.phone || conversation.contact.company || 'Sem telefone'}
+                    <div className="min-w-0 flex-1 text-left">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {conversation.contact.name}
                       </p>
-
-                      <div className="mt-1 flex items-center gap-1.5">
-                        <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-                          {stage.icon} {stage.title}
-                        </Badge>
-                        <span className="truncate text-[11px] text-muted-foreground">
-                          {getCompactMessagePreview(conversation)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      {conversation.unreadCount > 0 ? (
-                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
-                          {conversation.unreadCount}
-                        </span>
-                      ) : null}
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {conversation.contact.phone || 'Sem telefone'}
+                      </p>
                     </div>
                   </div>
                 );

@@ -4,6 +4,14 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAuthUserDisplayName, getMemberDisplayName } from '@/lib/memberDisplayName';
@@ -55,7 +63,20 @@ type ActionSheetDraft = {
   isSaving: boolean;
 };
 
+type TextEditorField = 'title' | 'location';
+
+type TextEditorState = {
+  leadId: string;
+  field: TextEditorField;
+  label: string;
+  value: string;
+  multiline: boolean;
+  placeholder: string;
+} | null;
+
 const GRID_TEMPLATE_COLUMNS = 'minmax(0,1.25fr) minmax(0,1.35fr) minmax(0,0.72fr) minmax(0,1fr) minmax(0,0.58fr) minmax(0,1.02fr) minmax(0,0.8fr) minmax(0,0.86fr) minmax(88px,0.62fr)';
+const GRID_HEADER_CLASS = 'h-[54px]';
+const GRID_ROW_CLASS = 'h-[72px]';
 const DEFAULT_DURATION = '30';
 const DURATION_OPTIONS = ['15', '30', '45', '60', '90', '120'];
 const TYPE_OPTIONS: Array<{ value: AppointmentType; label: string }> = [
@@ -124,6 +145,8 @@ export function ConversationActionsSheet({
   const { user, role, orgId } = useAuth();
   const { toast } = useToast();
   const [drafts, setDrafts] = useState<Record<string, ActionSheetDraft>>({});
+  const [textEditor, setTextEditor] = useState<TextEditorState>(null);
+  const [textEditorValue, setTextEditorValue] = useState('');
   const [responsibleOptions, setResponsibleOptions] = useState<ResponsibleOption[]>([]);
   const [isLoadingResponsibles, setIsLoadingResponsibles] = useState(false);
   const actionsScrollRef = useRef<HTMLDivElement | null>(null);
@@ -338,6 +361,41 @@ export function ConversationActionsSheet({
     }));
   }, [updateDraft]);
 
+  const openTextEditor = useCallback((
+    conversation: Conversation,
+    field: TextEditorField,
+  ) => {
+    const leadId = String(conversation.contact.id);
+    const draft = drafts[leadId];
+    if (!draft) return;
+
+    onSelectConversation?.(conversation);
+
+    const isTitleField = field === 'title';
+    const nextValue = isTitleField ? draft.title : draft.location;
+
+    setTextEditor({
+      leadId,
+      field,
+      label: isTitleField ? 'Proxima Acao' : 'Local',
+      value: nextValue,
+      multiline: isTitleField,
+      placeholder: isTitleField ? 'Descreva a proxima acao' : 'Informe o local',
+    });
+    setTextEditorValue(nextValue);
+  }, [drafts, onSelectConversation]);
+
+  const handleCloseTextEditor = useCallback(() => {
+    setTextEditor(null);
+    setTextEditorValue('');
+  }, []);
+
+  const handleSaveTextEditor = useCallback(() => {
+    if (!textEditor) return;
+    handleFieldChange(textEditor.leadId, textEditor.field, textEditorValue);
+    handleCloseTextEditor();
+  }, [handleCloseTextEditor, handleFieldChange, textEditor, textEditorValue]);
+
   const handleSave = useCallback(async (conversation: Conversation) => {
     const leadId = String(conversation.contact.id);
     const draft = drafts[leadId];
@@ -448,21 +506,25 @@ export function ConversationActionsSheet({
   }, [onActionsScroll]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col border-b border-border/60 bg-background/35">
-      <div className="min-w-0 flex flex-1 min-h-0 flex-col">
+    <>
+      <div className="flex h-full min-h-0 flex-col bg-background">
+        <div className="min-w-0 flex flex-1 min-h-0 flex-col">
           <div
-            className="grid border-b border-border/60 bg-background/90 px-2 backdrop-blur-sm"
+            className={cn(
+              'grid border-b border-border/60 bg-background px-2',
+              GRID_HEADER_CLASS,
+            )}
             style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
           >
-            <div className="border-r border-border/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ultima Acao</div>
-            <div className="border-r border-border/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proxima Acao</div>
-            <div className="border-r border-border/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tipo</div>
-            <div className="border-r border-border/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Data / Hora</div>
-            <div className="border-r border-border/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Duracao</div>
-            <div className="border-r border-border/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Responsavel</div>
-            <div className="border-r border-border/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Local</div>
-            <div className="border-r border-border/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Etapa</div>
-            <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Salvar</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ultima Acao</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proxima Acao</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tipo</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Data / Hora</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Duracao</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Responsavel</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Local</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Etapa</div>
+            <div className="flex items-center px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Salvar</div>
           </div>
 
           <div
@@ -475,6 +537,8 @@ export function ConversationActionsSheet({
               const draft = drafts[leadId];
               const stage = PIPELINE_STAGES[conversation.contact.pipelineStage];
               const isSelected = selectedConversationId === conversation.id;
+              const hasTitle = draft?.title.trim().length > 0;
+              const hasLocation = draft?.location.trim().length > 0;
 
               if (!draft) return null;
 
@@ -482,33 +546,39 @@ export function ConversationActionsSheet({
                 <div
                   key={conversation.id}
                   className={cn(
-                    'grid border-b border-border/50 bg-background/10 px-2',
-                    draft.isDirty && 'bg-primary/[0.05]',
-                    isSelected && 'bg-muted/30',
+                    'grid border-b border-border/50 bg-background px-2',
+                    GRID_ROW_CLASS,
+                    draft.isDirty && 'bg-primary/[0.045]',
+                    isSelected && 'bg-muted/20',
                   )}
                   style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
                 >
-                  <div className="min-w-0 flex min-h-[74px] flex-col justify-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex h-full flex-col justify-center border-r border-border/60 px-3 py-2">
                     <p className="line-clamp-2 text-sm font-medium text-foreground">{draft.lastActionTitle}</p>
                     <p className="mt-1 text-[11px] text-muted-foreground">{draft.lastActionMeta || 'Sem historico'}</p>
                   </div>
 
-                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
-                    <Input
-                      value={draft.title}
-                      onFocus={() => onSelectConversation?.(conversation)}
-                      onChange={(event) => handleFieldChange(leadId, 'title', event.target.value)}
-                      placeholder="Titulo do agendamento"
-                      className="h-8 bg-background/80 text-xs"
-                    />
+                  <div className="min-w-0 flex h-full items-center border-r border-border/60 px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => openTextEditor(conversation, 'title')}
+                      className={cn(
+                        'flex h-9 w-full items-center rounded-md border px-3 text-left text-xs transition-colors',
+                        hasTitle
+                          ? 'border-input bg-background/80 text-foreground hover:border-primary/35'
+                          : 'border-dashed border-border/80 bg-background/45 text-muted-foreground hover:border-primary/35 hover:text-foreground',
+                      )}
+                    >
+                      <span className="truncate">{hasTitle ? draft.title : 'Adicionar proxima acao'}</span>
+                    </button>
                   </div>
 
-                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex h-full items-center border-r border-border/60 px-3 py-2">
                     <select
                       value={draft.type}
                       onFocus={() => onSelectConversation?.(conversation)}
                       onChange={(event) => handleFieldChange(leadId, 'type', event.target.value)}
-                      className="h-8 w-full rounded-md border border-input bg-background/80 px-2 text-xs text-foreground outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+                      className="h-9 w-full rounded-md border border-input bg-background/80 px-2 text-xs text-foreground outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {TYPE_OPTIONS.map((option) => (
                         <option key={`${leadId}-${option.value}`} value={option.value}>
@@ -518,22 +588,22 @@ export function ConversationActionsSheet({
                     </select>
                   </div>
 
-                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex h-full items-center border-r border-border/60 px-3 py-2">
                     <Input
                       type="datetime-local"
                       value={draft.dateTime}
                       onFocus={() => onSelectConversation?.(conversation)}
                       onChange={(event) => handleFieldChange(leadId, 'dateTime', event.target.value)}
-                      className="h-8 bg-background/80 text-xs"
+                      className="h-9 bg-background/80 text-xs"
                     />
                   </div>
 
-                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex h-full items-center border-r border-border/60 px-3 py-2">
                     <select
                       value={draft.duration}
                       onFocus={() => onSelectConversation?.(conversation)}
                       onChange={(event) => handleFieldChange(leadId, 'duration', event.target.value)}
-                      className="h-8 w-full rounded-md border border-input bg-background/80 px-2 text-xs text-foreground outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+                      className="h-9 w-full rounded-md border border-input bg-background/80 px-2 text-xs text-foreground outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {DURATION_OPTIONS.map((value) => (
                         <option key={`${leadId}-duration-${value}`} value={value}>
@@ -543,13 +613,13 @@ export function ConversationActionsSheet({
                     </select>
                   </div>
 
-                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex h-full items-center border-r border-border/60 px-3 py-2">
                     <select
                       value={draft.responsibleUserId}
                       onFocus={() => onSelectConversation?.(conversation)}
                       onChange={(event) => handleFieldChange(leadId, 'responsibleUserId', event.target.value)}
                       disabled={isLoadingResponsibles}
-                      className="h-8 w-full rounded-md border border-input bg-background/80 px-2 text-xs text-foreground outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                      className="h-9 w-full rounded-md border border-input bg-background/80 px-2 text-xs text-foreground outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                     >
                       {responsibleOptions.length === 0 ? (
                         <option value="">Sem responsavel</option>
@@ -562,23 +632,28 @@ export function ConversationActionsSheet({
                     </select>
                   </div>
 
-                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
-                    <Input
-                      value={draft.location}
-                      onFocus={() => onSelectConversation?.(conversation)}
-                      onChange={(event) => handleFieldChange(leadId, 'location', event.target.value)}
-                      placeholder="Local"
-                      className="h-8 bg-background/80 text-xs"
-                    />
+                  <div className="min-w-0 flex h-full items-center border-r border-border/60 px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => openTextEditor(conversation, 'location')}
+                      className={cn(
+                        'flex h-9 w-full items-center rounded-md border px-3 text-left text-xs transition-colors',
+                        hasLocation
+                          ? 'border-input bg-background/80 text-foreground hover:border-primary/35'
+                          : 'border-dashed border-border/80 bg-background/45 text-muted-foreground hover:border-primary/35 hover:text-foreground',
+                      )}
+                    >
+                      <span className="truncate">{hasLocation ? draft.location : 'Adicionar local'}</span>
+                    </button>
                   </div>
 
-                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex h-full items-center border-r border-border/60 px-3 py-2">
                     <Badge variant="secondary" className="max-w-full truncate text-[11px]">
                       {stage.icon} {stage.title}
                     </Badge>
                   </div>
 
-                  <div className="flex min-h-[74px] items-center justify-center px-3 py-2">
+                  <div className="flex h-full items-center justify-center px-3 py-2">
                     <Button
                       type="button"
                       size="sm"
@@ -605,7 +680,45 @@ export function ConversationActionsSheet({
               );
             })}
           </div>
+        </div>
       </div>
-    </div>
+
+      <Dialog open={Boolean(textEditor)} onOpenChange={(open) => (!open ? handleCloseTextEditor() : undefined)}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>{textEditor?.label || 'Editar campo'}</DialogTitle>
+          </DialogHeader>
+
+          <div className="py-2">
+            {textEditor?.multiline ? (
+              <Textarea
+                value={textEditorValue}
+                onChange={(event) => setTextEditorValue(event.target.value)}
+                placeholder={textEditor?.placeholder}
+                className="min-h-[140px] resize-none"
+                autoFocus
+              />
+            ) : (
+              <Input
+                value={textEditorValue}
+                onChange={(event) => setTextEditorValue(event.target.value)}
+                placeholder={textEditor?.placeholder}
+                className="h-11"
+                autoFocus
+              />
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={handleCloseTextEditor}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleSaveTextEditor}>
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
