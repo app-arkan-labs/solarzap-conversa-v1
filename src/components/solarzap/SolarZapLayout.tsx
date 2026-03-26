@@ -26,7 +26,7 @@ import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Contact, PipelineStage, ChannelFilter, ActiveTab, Conversation, LeadTask } from '@/types/solarzap';
+import { Appointment, Contact, PipelineStage, ChannelFilter, ActiveTab, Conversation, LeadTask } from '@/types/solarzap';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppointments } from '@/hooks/useAppointments';
 import { useLeadTasks } from '@/hooks/useLeadTasks';
@@ -46,7 +46,7 @@ import { useGuidedTour } from '@/hooks/useGuidedTour';
 import GuidedTour from '@/components/onboarding/GuidedTour';
 import { isMobileMoreTabActive, type SolarZapTabPermissions } from './mobileNavConfig';
 import { lazyWithRetry } from '@/lib/lazyWithRetry';
-import { inferLeadNextActionAppointmentType } from '@/lib/leadNextActions';
+import { formatLeadTaskTimestamp, getLastActionText } from '@/lib/leadNextActions';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -204,7 +204,8 @@ export function SolarZapLayout() {
   } = usePipeline();
 
   const { getMessage, isDragDropEnabled, activeSettings } = useAutomationSettings();
-  const { appointments, updateAppointment } = useAppointments();
+  const appointmentReadScope = canViewTeam && leadScope !== 'mine' ? 'org' : 'mine';
+  const { appointments, updateAppointment } = useAppointments({ readScope: appointmentReadScope });
   const {
     tasks: leadTasks,
     nextActionByLeadId,
@@ -389,7 +390,34 @@ export function SolarZapLayout() {
     return true;
   }, [billing, openBillingBlocker]);
 
-  const openScheduleFlow = useCallback((contact: Contact | null, type: 'reuniao' | 'visita', linkedTask: LeadTask | null = null) => {
+  const resetScheduleFlowState = useCallback(() => {
+    setIsScheduleOpen(false);
+    setActionContact(null);
+    setLinkedScheduleTask(null);
+    setSelectedScheduleAppointment(undefined);
+    setScheduleDraftTitle(null);
+    setScheduleDraftNotes(null);
+    setScheduleDefaultDate(undefined);
+    setScheduleLastEventSummary(null);
+    setScheduleLockLeadSelection(false);
+    setScheduleFlowMode('standard');
+    setScheduleType('reuniao');
+  }, []);
+
+  const openScheduleFlow = useCallback((
+    contact: Contact | null,
+    type: 'reuniao' | 'visita' | 'other',
+    linkedTask: LeadTask | null = null,
+    options?: {
+      selectedAppointment?: Appointment;
+      draftTitle?: string | null;
+      draftNotes?: string | null;
+      defaultDate?: Date | null;
+      lastEventSummary?: string | null;
+      lockLeadSelection?: boolean;
+      flowMode?: 'standard' | 'next_action';
+    },
+  ) => {
     const blocker = buildTabBlocker('calendario', billing);
     if (blocker) {
       openBillingBlocker(blocker);
@@ -399,6 +427,13 @@ export function SolarZapLayout() {
     setActionContact(contact || null);
     setScheduleType(type);
     setLinkedScheduleTask(linkedTask);
+    setSelectedScheduleAppointment(options?.selectedAppointment);
+    setScheduleDraftTitle(options?.draftTitle ?? null);
+    setScheduleDraftNotes(options?.draftNotes ?? null);
+    setScheduleDefaultDate(options?.defaultDate ?? undefined);
+    setScheduleLastEventSummary(options?.lastEventSummary ?? null);
+    setScheduleLockLeadSelection(Boolean(options?.lockLeadSelection));
+    setScheduleFlowMode(options?.flowMode || 'standard');
     setIsScheduleOpen(true);
     return true;
   }, [billing, openBillingBlocker]);
@@ -419,17 +454,34 @@ export function SolarZapLayout() {
       .filter((task) => task.leadId === leadId && task.taskKind === 'next_action' && task.status !== 'open')
       .slice(0, 4);
   }, [activeConversation, leadTasks]);
-  const scheduleActiveConversationNextAction = useCallback(
-    (task: LeadTask) => {
-      if (!activeConversation) return;
-      openScheduleFlow(
-        activeConversation.contact,
-        inferLeadNextActionAppointmentType(task, activeConversation.contact),
-        task,
-      );
-    },
-    [activeConversation, openScheduleFlow],
-  );
+  const buildLastEventSummary = useCallback((task: LeadTask | null) => {
+    if (!task) return 'Nenhum evento registrado.';
+
+    const summary = getLastActionText(task);
+    const timestamp = formatLeadTaskTimestamp(task.completedAt || task.updatedAt || task.createdAt);
+    return timestamp ? `${timestamp} - ${summary}` : summary;
+  }, []);
+  const openLeadNextActionFlow = useCallback((contact: Contact | null) => {
+    if (!contact) return false;
+
+    const leadId = String(contact.id);
+    const linkedTask = nextActionByLeadId.get(leadId) || null;
+    const linkedAppointment =
+      linkedTask?.linkedAppointmentId
+        ? appointments.find((appointment) => String(appointment.id) === String(linkedTask.linkedAppointmentId))
+        : undefined;
+    const lastAction = lastActionByLeadId.get(leadId) || null;
+
+    return openScheduleFlow(contact, 'other', linkedTask, {
+      selectedAppointment: linkedAppointment,
+      draftTitle: linkedTask?.title || null,
+      draftNotes: linkedTask?.notes || null,
+      defaultDate: linkedTask?.dueAt ? new Date(linkedTask.dueAt) : new Date(),
+      lastEventSummary: buildLastEventSummary(lastAction),
+      lockLeadSelection: true,
+      flowMode: 'next_action',
+    });
+  }, [appointments, buildLastEventSummary, lastActionByLeadId, nextActionByLeadId, openScheduleFlow]);
 
   // Mark As Read logic (Local + potentially optimistic update if we had mutation)
   // Mark As Read — delegates to useChat which persists to DB (Sprint 2, Item #4)
@@ -482,9 +534,16 @@ export function SolarZapLayout() {
   const [isProposalOpen, setIsProposalOpen] = useState(false);
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
-  const [scheduleType, setScheduleType] = useState<'reuniao' | 'visita'>('reuniao');
+  const [scheduleType, setScheduleType] = useState<'reuniao' | 'visita' | 'other'>('reuniao');
   const [actionContact, setActionContact] = useState<Contact | null>(null);
   const [linkedScheduleTask, setLinkedScheduleTask] = useState<LeadTask | null>(null);
+  const [selectedScheduleAppointment, setSelectedScheduleAppointment] = useState<Appointment | undefined>(undefined);
+  const [scheduleDraftTitle, setScheduleDraftTitle] = useState<string | null>(null);
+  const [scheduleDraftNotes, setScheduleDraftNotes] = useState<string | null>(null);
+  const [scheduleDefaultDate, setScheduleDefaultDate] = useState<Date | undefined>(undefined);
+  const [scheduleLastEventSummary, setScheduleLastEventSummary] = useState<string | null>(null);
+  const [scheduleLockLeadSelection, setScheduleLockLeadSelection] = useState(false);
+  const [scheduleFlowMode, setScheduleFlowMode] = useState<'standard' | 'next_action'>('standard');
   const [pendingChatMessage, setPendingChatMessage] = useState<string>('');
   const [pendingVisitScheduleContactId, setPendingVisitScheduleContactId] = useState<string | null>(null);
 
@@ -636,13 +695,12 @@ export function SolarZapLayout() {
 
   const handleAppointmentModalError = useCallback((error: Error) => {
     console.error(error);
-    setIsScheduleOpen(false);
-    setLinkedScheduleTask(null);
+    resetScheduleFlowState();
     toast({
       title: "Erro ao abrir agendamento",
       variant: "destructive",
     });
-  }, [toast]);
+  }, [resetScheduleFlowState, toast]);
 
   // Listen for custom events (e.g. from AppointmentModal)
   // Effect moved below goToConversation to avoid ReferenceError
@@ -735,6 +793,10 @@ export function SolarZapLayout() {
 
       case 'schedule':
         openScheduleFlow(targetContact || null, 'reuniao');
+        break;
+
+      case 'next_action':
+        openLeadNextActionFlow(targetContact || null);
         break;
 
       case 'proposal':
@@ -1621,10 +1683,7 @@ export function SolarZapLayout() {
               nextAction={activeConversation ? nextActionByLeadId.get(activeConversation.contact.id) || null : null}
               lastAction={activeConversation ? lastActionByLeadId.get(activeConversation.contact.id) || null : null}
               leadNextActionLoading={isLoadingLeadTasks}
-              onCreateLeadNextAction={createNextAction}
-              onUpdateLeadNextAction={updateNextAction}
-              onCompleteLeadNextAction={completeNextAction}
-              onCancelLeadNextAction={cancelNextAction}
+              onOpenLeadNextAction={openLeadNextActionFlow}
               onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
               onSendMessage={async (conversationId, content, instanceName, replyTo, options) => {
                 import.meta.env.DEV && console.log('SolarZapLayout: onSendMessage called', {
@@ -1754,7 +1813,6 @@ export function SolarZapLayout() {
                   onUpdateLeadNextAction={updateNextAction}
                   onCompleteLeadNextAction={completeNextAction}
                   onCancelLeadNextAction={cancelNextAction}
-                  onScheduleLeadNextAction={scheduleActiveConversationNextAction}
                   onMoveToPipeline={handlePipelineStageChange}
                   onAction={handleAction}
                   onClose={() => setIsDetailsPanelOpen(false)}
@@ -2032,29 +2090,105 @@ export function SolarZapLayout() {
       />
 
       <AppointmentModalErrorBoundary
-        key={`appointment-${isScheduleOpen ? 'open' : 'closed'}-${actionContact?.id ?? 'none'}-${scheduleType}`}
+        key={`appointment-${isScheduleOpen ? 'open' : 'closed'}-${actionContact?.id ?? 'none'}-${selectedScheduleAppointment?.id ?? 'new'}-${scheduleType}-${scheduleFlowMode}`}
         onError={handleAppointmentModalError}
       >
         <AppointmentModal
           isOpen={isScheduleOpen}
-          onClose={() => {
-            setIsScheduleOpen(false);
-            setLinkedScheduleTask(null);
-          }}
+          onClose={resetScheduleFlowState}
           preselectedLeadId={actionContact?.id}
           preselectedContact={actionContact || undefined}
-          initialData={undefined}
+          initialData={selectedScheduleAppointment}
           initialType={scheduleType}
+          defaultDate={scheduleDefaultDate}
           linkedTaskTitle={linkedScheduleTask?.title || null}
+          initialTitle={scheduleDraftTitle}
+          initialNotes={scheduleDraftNotes}
+          lastEventSummary={scheduleLastEventSummary}
+          lockLeadSelection={scheduleLockLeadSelection}
+          onDeleteSuccess={async () => {
+            if (scheduleFlowMode !== 'next_action' || !linkedScheduleTask) return;
+
+            try {
+              await linkNextActionToAppointment({
+                taskId: linkedScheduleTask.id,
+                appointmentId: null,
+                dueAt: null,
+                channel: 'other',
+              });
+            } catch (error) {
+              console.error('Lead next action unlink failed after appointment delete', {
+                taskId: linkedScheduleTask.id,
+                error,
+              });
+              toast({
+                title: "Evento excluido sem limpar a proxima acao",
+                description: "O agendamento foi removido, mas a proxima acao nao foi atualizada.",
+                variant: "destructive",
+              });
+            }
+          }}
           onSuccess={async (appointment) => {
             if (!actionContact) return;
+
+            const appointmentStart = new Date(appointment.start_at);
+
+            if (scheduleFlowMode === 'next_action') {
+              try {
+                if (linkedScheduleTask) {
+                  await updateNextAction({
+                    taskId: linkedScheduleTask.id,
+                    title: appointment.title,
+                    notes: appointment.notes || null,
+                    dueAt: appointmentStart,
+                    channel: 'other',
+                    userId: appointment.user_id || linkedScheduleTask.userId,
+                  });
+                  await linkNextActionToAppointment({
+                    taskId: linkedScheduleTask.id,
+                    appointmentId: String(appointment.id),
+                    dueAt: appointmentStart,
+                    channel: 'other',
+                  });
+                } else {
+                  await createNextAction({
+                    leadId: Number(actionContact.id),
+                    title: appointment.title,
+                    notes: appointment.notes || null,
+                    dueAt: appointmentStart,
+                    channel: 'other',
+                    userId: appointment.user_id || null,
+                    linkedAppointmentId: String(appointment.id),
+                  });
+                }
+
+                toast({
+                  title: linkedScheduleTask ? "Proxima acao atualizada!" : "Proxima acao agendada!",
+                  description: `${actionContact.name} agora tem uma proxima acao operacional definida.`,
+                });
+              } catch (error) {
+                console.error('Lead next action sync failed', {
+                  contactId: actionContact.id,
+                  taskId: linkedScheduleTask?.id ?? null,
+                  appointmentId: appointment.id,
+                  error,
+                });
+                toast({
+                  title: "Agendamento salvo com pendencia operacional",
+                  description: "O evento foi salvo, mas a proxima acao nao foi sincronizada corretamente.",
+                  variant: "destructive",
+                });
+              }
+
+              return;
+            }
 
             if (linkedScheduleTask) {
               try {
                 await linkNextActionToAppointment({
                   taskId: linkedScheduleTask.id,
-                  appointmentId: appointment.id,
-                  dueAt: new Date(appointment.start_at),
+                  appointmentId: String(appointment.id),
+                  dueAt: appointmentStart,
                   channel: linkedScheduleTask.channel,
                 });
               } catch (error) {
@@ -2101,7 +2235,7 @@ export function SolarZapLayout() {
 
             goToConversation(actionContact.id, message, false);
 
-            const startDate = new Date(appointment.start_at);
+            const startDate = appointmentStart;
             if (isCallLikeType) {
               onCallScheduled(actionContact, startDate);
             } else {
@@ -2112,7 +2246,6 @@ export function SolarZapLayout() {
               title: "Agendamento realizado!",
               description: `Lead movido para "${newStage === 'chamada_agendada' ? 'Chamada Agendada' : 'Visita Agendada'}"`
             });
-            setLinkedScheduleTask(null);
           }}
         />
       </AppointmentModalErrorBoundary>

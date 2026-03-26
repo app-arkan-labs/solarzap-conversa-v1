@@ -141,13 +141,16 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
             if (data.outcome !== undefined) payload.outcome = data.outcome;
             if (data.user_id !== undefined) payload.user_id = data.user_id;
 
-            const { error } = await supabase
+            const { data: updatedEvent, error } = await supabase
                 .from('appointments')
                 .update(payload)
                 .eq('id', id)
-                .eq('org_id', orgId);
+                .eq('org_id', orgId)
+                .select()
+                .single();
 
             if (error) throw error;
+            return updatedEvent as Appointment;
         },
         onSuccess: () => {
             toast.success('Agendamento atualizado!');

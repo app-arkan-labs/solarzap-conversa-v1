@@ -47,6 +47,7 @@ type UpsertLeadTaskInput = {
   priority?: LeadTask['priority'];
   channel?: LeadTask['channel'];
   userId?: string | null;
+  linkedAppointmentId?: string | null;
 };
 
 type UpdateLeadTaskInput = {
@@ -207,6 +208,7 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
           ...basePayload,
           created_by: 'manual',
           task_kind: 'next_action',
+          linked_appointment_id: input.linkedAppointmentId || null,
           metadata: {},
         });
 

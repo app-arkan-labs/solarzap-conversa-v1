@@ -16,7 +16,6 @@ import { KpiCards } from "@/components/dashboard/KpiCards";
 import { LossSummaryCard } from "@/components/dashboard/LossSummaryCard";
 import { SourcePerformanceCard } from "@/components/dashboard/SourcePerformanceCard";
 import { CalendarSummaryPanel } from "@/components/dashboard/tables/CalendarSummaryPanel";
-import { LeadActionQueuePanel } from "@/components/dashboard/tables/LeadActionQueuePanel";
 import { OwnerPerformanceTable } from "@/components/dashboard/tables/OwnerPerformanceTable";
 import { StaleLeadsTable } from "@/components/dashboard/tables/StaleLeadsTable";
 import { LossAnalyticsModal } from "@/components/solarzap/LossAnalyticsModal";
@@ -370,17 +369,6 @@ export function DashboardView({
               onViewAll={() => onNavigate?.("calendario")}
             />
           </div>
-
-          {showLeadNextAction ? (
-            <LeadActionQueuePanel
-              contacts={contacts}
-              tasks={leadTasks}
-              isLoading={isLoading}
-              teamMode={isTeamMode}
-              onViewConversations={() => onNavigate?.("conversas")}
-              onOpenLead={handleOpenLeadFromQueue}
-            />
-          ) : null}
 
           <Collapsible
             open={staleLeadsOpen}

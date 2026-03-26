@@ -44,7 +44,12 @@ interface AppointmentModalProps {
     preselectedContact?: Contact; // Full contact object to avoid lookup issues
     contacts?: Contact[]; // Optional injected contact list to avoid scope divergence
     linkedTaskTitle?: string | null;
+    initialTitle?: string | null;
+    initialNotes?: string | null;
+    lastEventSummary?: string | null;
+    lockLeadSelection?: boolean;
     onSuccess?: (appointment: Appointment) => void;
+    onDeleteSuccess?: (appointmentId: string) => void | Promise<void>;
 }
 
 type FormData = {
@@ -96,7 +101,12 @@ export function AppointmentModal({
     preselectedContact,
     contacts: providedContacts,
     linkedTaskTitle,
-    onSuccess
+    initialTitle,
+    initialNotes,
+    lastEventSummary,
+    lockLeadSelection = false,
+    onSuccess,
+    onDeleteSuccess
 }: AppointmentModalProps) {
     const { createAppointment, updateAppointment, deleteAppointment } = useAppointments();
     const { user, role, orgId } = useAuth();
@@ -305,15 +315,17 @@ export function AppointmentModal({
             } else {
                 // Create Mode (New appointment)
                 const currentType = normalizeAppointmentType(initialData?.type, normalizeAppointmentType(initialType));
-                let initialTitle = '';
+                let resolvedInitialTitle = typeof initialTitle === 'string' ? initialTitle.trim() : '';
                 let safeLeadId = '';
 
                 if (preselectedLeadId) {
                     const requestedLeadId = toSafeLeadId(preselectedLeadId);
                     const lead = preselectedContact || contacts.find(c => toSafeLeadId(c.id) === requestedLeadId);
                     if (lead) {
-                        const typeLabel = currentType.charAt(0).toUpperCase() + currentType.slice(1);
-                        initialTitle = `${typeLabel} - ${lead.name}`;
+                        if (!resolvedInitialTitle) {
+                            const typeLabel = currentType.charAt(0).toUpperCase() + currentType.slice(1);
+                            resolvedInitialTitle = `${typeLabel} - ${lead.name}`;
+                        }
                         safeLeadId = toSafeLeadId(lead.id);
                         if (!leadOptionIds.has(safeLeadId)) {
                             safeLeadId = '';
@@ -328,7 +340,7 @@ export function AppointmentModal({
                 const safeResponsibleId = resolveLeadDefaultResponsibleId(safeLeadId || preselectedLeadId);
 
                 reset({
-                    title: initialTitle,
+                    title: resolvedInitialTitle,
                     lead_id: safeLeadId,
                     responsible_user_id: safeResponsibleId,
                     type: currentType,
@@ -336,7 +348,7 @@ export function AppointmentModal({
                     time: format(safeDefaultDate, 'HH:mm'),
                     duration: '30',
                     location: '',
-                    notes: ''
+                    notes: typeof initialNotes === 'string' ? initialNotes : ''
                 });
             }
         } catch (error) {
@@ -358,6 +370,8 @@ export function AppointmentModal({
         initialData?.location,
         initialData?.notes,
         initialData?.type,
+        initialNotes,
+        initialTitle,
         initialType,
         preselectedLeadId,
         preselectedContact?.id,
@@ -510,7 +524,7 @@ export function AppointmentModal({
             }
 
             if (initialData?.id) {
-                await updateAppointment({
+                const updatedAppt = await updateAppointment({
                     id: initialData.id,
                     data: {
                         user_id: responsibleUserId,
@@ -523,6 +537,9 @@ export function AppointmentModal({
                         notes: data.notes
                     }
                 });
+                if (onSuccess && updatedAppt) {
+                    onSuccess(updatedAppt);
+                }
             } else {
                 const newAppt = await createAppointment({
                     user_id: responsibleUserId,
@@ -575,7 +592,7 @@ export function AppointmentModal({
                                         const currentLeadValue = toSafeLeadId(field.value);
                                         return leadOptionIds.has(currentLeadValue) ? currentLeadValue : '';
                                     })()}
-                                    disabled={!!initialData}
+                                    disabled={!!initialData || lockLeadSelection}
                                 >
                                     <SelectTrigger className={cn(errors.lead_id && "border-destructive")}>
                                         <SelectValue placeholder="Selecione um cliente..." />
@@ -640,6 +657,17 @@ export function AppointmentModal({
                         <Label>Título</Label>
                         <Input {...register('title', { required: true })} placeholder="Ex: Chamada de Alinhamento" />
                     </div>
+
+                    {lastEventSummary ? (
+                        <div className="space-y-2">
+                            <Label>Ultimo evento</Label>
+                            <Textarea
+                                value={lastEventSummary}
+                                readOnly
+                                className="min-h-[84px] resize-none border-border/70 bg-muted/25 text-sm text-muted-foreground"
+                            />
+                        </div>
+                    ) : null}
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
@@ -788,6 +816,9 @@ export function AppointmentModal({
                                 return;
                             }
                             await deleteAppointment(initialData.id);
+                            if (onDeleteSuccess) {
+                                await onDeleteSuccess(initialData.id);
+                            }
                             onClose();
                         }
                         setConfirmDeleteOpen(false);

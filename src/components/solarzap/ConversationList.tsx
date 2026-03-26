@@ -45,8 +45,6 @@ import { useToast } from '@/hooks/use-toast';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import type { LeadScopeValue } from './LeadScopeSelect';
-import { LeadNextActionBadge } from './LeadNextActionBadge';
-import { getLeadTaskDueState } from '@/lib/leadNextActions';
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -81,15 +79,6 @@ const stageOptions: { id: PipelineStage | 'todos'; label: string; icon: string }
     label: value.title,
     icon: value.icon,
   })),
-];
-
-type LeadOperationalFilter = 'all' | 'overdue' | 'today' | 'none';
-
-const operationalFilterOptions: { id: LeadOperationalFilter; label: string }[] = [
-  { id: 'all', label: 'Todas' },
-  { id: 'overdue', label: 'Vencidas' },
-  { id: 'today', label: 'Hoje' },
-  { id: 'none', label: 'Sem acao' },
 ];
 
 export function ConversationList({
@@ -135,11 +124,6 @@ export function ConversationList({
   const [bulkAssignUserId, setBulkAssignUserId] = useState<string>('unassigned');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
-  const [operationalFilter, setOperationalFilter] = useState<LeadOperationalFilter>('all');
-  const [dismissedReminderDay, setDismissedReminderDay] = useState(() => {
-    if (typeof window === 'undefined') return '';
-    return window.localStorage.getItem('lead-next-action-reminder-dismissed') || '';
-  });
   const [fallbackLeadScopeMembers, setFallbackLeadScopeMembers] = useState<MemberDto[]>([]);
   const [isRefreshingLeadScopeMembers, setIsRefreshingLeadScopeMembers] = useState(false);
   const [bulkAssignMembers, setBulkAssignMembers] = useState<MemberDto[]>([]);
@@ -191,32 +175,7 @@ export function ConversationList({
 
   const canBulkAssign = Boolean(onBulkAssignLeads);
   const canUseSelectionMode = Boolean(onDeleteLead) || canBulkAssign;
-  const operationalCounts = useMemo(
-    () =>
-      conversations.reduce(
-        (acc, conversation) => {
-          const dueState = getLeadTaskDueState(nextActionByLeadId.get(conversation.contact.id) || null);
-          acc.all += 1;
-          if (dueState === 'overdue') acc.overdue += 1;
-          if (dueState === 'today') acc.today += 1;
-          if (dueState === 'none') acc.none += 1;
-          return acc;
-        },
-        { all: 0, overdue: 0, today: 0, none: 0 } as Record<LeadOperationalFilter, number>,
-      ),
-    [conversations, nextActionByLeadId],
-  );
-  const displayConversations = useMemo(() => {
-    if (!showLeadNextAction || operationalFilter === 'all') return conversations;
-
-    return conversations.filter((conversation) => {
-      const dueState = getLeadTaskDueState(nextActionByLeadId.get(conversation.contact.id) || null);
-      if (operationalFilter === 'overdue') return dueState === 'overdue';
-      if (operationalFilter === 'today') return dueState === 'today';
-      if (operationalFilter === 'none') return dueState === 'none';
-      return true;
-    });
-  }, [conversations, nextActionByLeadId, operationalFilter, showLeadNextAction]);
+  const displayConversations = conversations;
   const visibleLeadIds = useMemo(
     () => displayConversations.map((conversation) => conversation.contact.id),
     [displayConversations],
@@ -449,30 +408,11 @@ export function ConversationList({
   const selectedChannel = channelFilters.find((filter) => filter.id === channelFilter) || channelFilters[0];
   const hasStageFilter = stageFilter !== 'todos';
   const hasChannelFilter = channelFilter !== 'todos';
-  const hasOperationalFilter = showLeadNextAction && operationalFilter !== 'all';
-  const hasActiveFilters = hasStageFilter || hasChannelFilter || hasOperationalFilter;
-  const activeFilterCount = Number(hasStageFilter) + Number(hasChannelFilter) + Number(hasOperationalFilter);
+  const hasActiveFilters = hasStageFilter || hasChannelFilter;
+  const activeFilterCount = Number(hasStageFilter) + Number(hasChannelFilter);
   const activeStageCount = stageFilter !== 'todos'
     ? conversations.filter(c => c.contact.pipelineStage === stageFilter).length
     : conversations.length;
-  const selectedOperationalFilter =
-    operationalFilterOptions.find((option) => option.id === operationalFilter) || operationalFilterOptions[0];
-  const reminderNow = new Date();
-  const reminderDayKey = `${reminderNow.getFullYear()}-${String(reminderNow.getMonth() + 1).padStart(2, '0')}-${String(
-    reminderNow.getDate(),
-  ).padStart(2, '0')}`;
-  const showOperationalReminder =
-    showLeadNextAction &&
-    !isSelectionMode &&
-    dismissedReminderDay !== reminderDayKey &&
-    (operationalCounts.overdue > 0 || operationalCounts.today > 0 || operationalCounts.none > 0);
-
-  const dismissOperationalReminder = () => {
-    setDismissedReminderDay(reminderDayKey);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('lead-next-action-reminder-dismissed', reminderDayKey);
-    }
-  };
 
   return (
     <div className="w-full h-full flex flex-col border-r border-border bg-card">
@@ -535,7 +475,6 @@ export function ConversationList({
                         onClick={() => {
                           onStageFilterChange('todos');
                           onChannelFilterChange('todos');
-                          setOperationalFilter('all');
                         }}
                         className="h-7 text-xs text-muted-foreground hover:text-foreground"
                       >
@@ -664,11 +603,6 @@ export function ConversationList({
                 Origem: {selectedChannel.label}
               </Badge>
             )}
-            {hasOperationalFilter && (
-              <Badge variant="secondary" className="text-xs">
-                Operacional: {selectedOperationalFilter.label}
-              </Badge>
-            )}
           </div>
           <Button
             variant="ghost"
@@ -676,7 +610,6 @@ export function ConversationList({
             onClick={() => {
               onStageFilterChange('todos');
               onChannelFilterChange('todos');
-              setOperationalFilter('all');
             }}
             className="h-6 w-6 p-0 hover:bg-muted"
             title="Limpar filtros"
@@ -866,91 +799,11 @@ export function ConversationList({
         </div>
       )}
 
-      {showLeadNextAction ? (
-        <div className="space-y-2 border-b border-border bg-muted/10 px-3 py-2">
-          {showOperationalReminder ? (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/65 px-2.5 py-2">
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Fila operacional
-                </p>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {operationalCounts.overdue > 0 ? (
-                    <button
-                      type="button"
-                      className="inline-flex h-5 items-center rounded-full border border-red-500/25 bg-red-500/10 px-2 text-[10px] font-medium text-red-200 transition-colors hover:border-red-400/40"
-                      onClick={() => setOperationalFilter('overdue')}
-                    >
-                      {operationalCounts.overdue} vencidas
-                    </button>
-                  ) : null}
-                  {operationalCounts.today > 0 ? (
-                    <button
-                      type="button"
-                      className="inline-flex h-5 items-center rounded-full border border-amber-500/25 bg-amber-500/10 px-2 text-[10px] font-medium text-amber-200 transition-colors hover:border-amber-400/40"
-                      onClick={() => setOperationalFilter('today')}
-                    >
-                      {operationalCounts.today} hoje
-                    </button>
-                  ) : null}
-                  {operationalCounts.none > 0 ? (
-                    <button
-                      type="button"
-                      className="inline-flex h-5 items-center rounded-full border border-border/70 bg-muted/25 px-2 text-[10px] font-medium text-muted-foreground transition-colors hover:border-border"
-                      onClick={() => setOperationalFilter('none')}
-                    >
-                      {operationalCounts.none} sem acao
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 rounded-full px-2 text-[11px] text-muted-foreground"
-                onClick={dismissOperationalReminder}
-              >
-                Fechar hoje
-              </Button>
-            </div>
-          ) : null}
-
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-            {operationalFilterOptions.map((option) => {
-              const isActive = operationalFilter === option.id;
-              return (
-                <Button
-                  key={option.id}
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className={cn(
-                    'h-7 rounded-full border px-3 text-[11px] whitespace-nowrap',
-                    isActive
-                      ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/15'
-                      : 'border-border/60 bg-background/35 text-muted-foreground hover:bg-muted/30',
-                  )}
-                  onClick={() => setOperationalFilter(option.id)}
-                >
-                  {option.label}
-                  <span className={cn('ml-1.5 text-[10px]', isActive ? 'text-primary' : 'text-muted-foreground')}>
-                    {operationalCounts[option.id]}
-                  </span>
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
       {/* Conversation List */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         {displayConversations.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground">
-            {showLeadNextAction && operationalFilter !== 'all'
-              ? 'Nenhuma conversa encontrada neste filtro operacional'
-              : 'Nenhuma conversa encontrada'}
+            Nenhuma conversa encontrada
           </div>
         ) : (
           displayConversations.map((conversation) => {
@@ -1118,26 +971,12 @@ export function ConversationList({
                         {stage.icon} {stage.title}
                       </Badge>
                     </div>
-                      <div className="w-full overflow-hidden space-y-1">
-                        {showLeadNextAction ? (
-                          <div className="w-full overflow-hidden">
-                            {(() => {
-                              const task = nextActionByLeadId.get(conversation.contact.id) || null;
-                              const showEmptyBadge = operationalFilter === 'none' || isSelected;
-
-                              if (!task && !showEmptyBadge) return null;
-
-                              return <LeadNextActionBadge task={task} showEmpty={showEmptyBadge} />;
-                            })()}
-                          </div>
-                        ) : null}
-                        <div className="w-full overflow-hidden">
-                          <FollowUpIndicator
-                            step={conversation.contact.followUpStep ?? 0}
-                            enabled={conversation.contact.followUpEnabled !== false}
-                            compact
-                          />
-                        </div>
+                      <div className="w-full overflow-hidden">
+                        <FollowUpIndicator
+                          step={conversation.contact.followUpStep ?? 0}
+                          enabled={conversation.contact.followUpEnabled !== false}
+                          compact
+                        />
                       </div>
                   </div>
                 </div>

@@ -37,7 +37,7 @@ import { InstanceSelector } from './InstanceSelector';
 import { useUserWhatsAppInstances } from '@/hooks/useUserWhatsAppInstances';
 import { ReactionPicker } from './ReactionPicker';
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
-import { LeadNextActionSection } from './LeadNextActionSection';
+import { LeadNextActionInlineBar } from './LeadNextActionInlineBar';
 
 import { supabase } from '@/lib/supabase'; // Imported for Internal Forwarding
 import { listMembers } from '@/lib/orgAdminClient';
@@ -100,6 +100,7 @@ interface ChatAreaProps {
   }) => Promise<void>;
   onCompleteLeadNextAction?: (task: LeadTask, resultSummary: string) => Promise<void>;
   onCancelLeadNextAction?: (taskId: string) => Promise<void>;
+  onOpenLeadNextAction?: (contact: Conversation['contact']) => void;
   onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
   onCallAction?: (contact: Conversation['contact']) => void;
   onVideoCallAction?: (contact: Conversation['contact']) => void;
@@ -140,6 +141,7 @@ export function ChatArea({
   onUpdateLeadNextAction,
   onCompleteLeadNextAction,
   onCancelLeadNextAction,
+  onOpenLeadNextAction,
   onCallAction,
   onImportContacts,
   initialMessage,
@@ -1243,19 +1245,12 @@ export function ChatArea({
         </div>
       </div>
 
-      {showLeadNextAction && conversation && onCreateLeadNextAction && onUpdateLeadNextAction && onCompleteLeadNextAction && onCancelLeadNextAction ? (
-        <div className="shrink-0 border-b border-border/70 bg-card/60 px-3 py-1.5">
-          <LeadNextActionSection
-            enabled={showLeadNextAction}
-            compact
-            contact={conversation.contact}
+      {showLeadNextAction && conversation ? (
+        <div className="shrink-0">
+          <LeadNextActionInlineBar
             nextAction={nextAction}
-            lastAction={lastAction}
             isLoading={leadNextActionLoading}
-            onCreate={onCreateLeadNextAction}
-            onUpdate={onUpdateLeadNextAction}
-            onComplete={onCompleteLeadNextAction}
-            onCancel={onCancelLeadNextAction}
+            onOpen={onOpenLeadNextAction ? () => onOpenLeadNextAction(conversation.contact) : undefined}
           />
         </div>
       ) : null}
