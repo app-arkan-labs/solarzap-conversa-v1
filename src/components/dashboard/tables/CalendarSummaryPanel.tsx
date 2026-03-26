@@ -6,94 +6,116 @@ import { ptBR } from "date-fns/locale";
 import { Calendar as CalendarIcon } from "lucide-react";
 
 interface CalendarSummaryProps {
-    data?: DashboardPayload["calendar"];
-    isLoading: boolean;
-    filter: 'next_7_days' | 'last_7_days';
-    onFilterChange: (val: 'next_7_days' | 'last_7_days') => void;
-    onViewAll?: () => void;
+  data?: DashboardPayload["calendar"];
+  isLoading: boolean;
+  filter: "next_7_days" | "last_7_days";
+  onFilterChange: (val: "next_7_days" | "last_7_days") => void;
+  onViewAll?: () => void;
 }
 
 export function CalendarSummaryPanel({ data, isLoading, filter, onFilterChange, onViewAll }: CalendarSummaryProps) {
-    if (isLoading || !data) return null;
+  if (isLoading || !data) return null;
 
-    const periodLabel = filter === "next_7_days" ? "Proximos 7 dias" : "Ultimos 7 dias";
-    const pendingCount = data.scheduled + data.confirmed;
+  const periodLabel = filter === "next_7_days" ? "Proximos 7 dias" : "Ultimos 7 dias";
+  const pendingCount = data.scheduled + data.confirmed;
+  const visibleEvents = data.upcoming.slice(0, 4);
 
-    return (
-        <Card className="h-full border-border/50 bg-background/50 shadow-sm">
-            <CardHeader>
-                <div className="flex items-center justify-between gap-3">
-                    <CardTitle className="flex items-center gap-2">
-                        <CalendarIcon className="h-5 w-5" />
-                        Agenda Comercial
-                    </CardTitle>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={onViewAll}
-                            className="text-xs font-medium text-primary hover:underline"
-                            type="button"
-                        >
-                            Ver Agenda
-                        </button>
-                        <Select value={filter} onValueChange={(value) => onFilterChange(value as 'next_7_days' | 'last_7_days')}>
-                            <SelectTrigger className="h-8 w-[150px] text-xs">
-                                <SelectValue>{periodLabel}</SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="next_7_days">Proximos 7 dias</SelectItem>
-                                <SelectItem value="last_7_days">Ultimos 7 dias</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+  return (
+    <Card className="h-full min-w-0 border-border/50 bg-background/50 shadow-sm">
+      <CardHeader className="space-y-3 pb-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <CalendarIcon className="h-4 w-4" />
+              Agenda comercial
+            </CardTitle>
+            <CardDescription>Compromissos que pedem atencao no curto prazo.</CardDescription>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={onViewAll}
+              className="text-xs font-medium text-primary hover:underline"
+              type="button"
+            >
+              Ver agenda
+            </button>
+            <Select value={filter} onValueChange={(value) => onFilterChange(value as "next_7_days" | "last_7_days")}>
+              <SelectTrigger className="h-8 w-[150px] text-xs">
+                <SelectValue>{periodLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="next_7_days">Proximos 7 dias</SelectItem>
+                <SelectItem value="last_7_days">Ultimos 7 dias</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Eventos</p>
+            <p className="mt-1 text-xl font-semibold text-foreground">{data.total}</p>
+            <p className="text-xs text-muted-foreground">{periodLabel.toLowerCase()}</p>
+          </div>
+          <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-700">Pendentes</p>
+            <p className="mt-1 text-xl font-semibold text-foreground">{pendingCount}</p>
+            <p className="text-xs text-muted-foreground">Agendados e confirmados</p>
+          </div>
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Realizados</p>
+            <p className="mt-1 text-xl font-semibold text-foreground">{data.done}</p>
+            <p className="text-xs text-muted-foreground">Compromissos concluidos</p>
+          </div>
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Risco</p>
+            <p className="mt-1 text-xl font-semibold text-foreground">{data.no_show + data.canceled}</p>
+            <p className="text-xs text-muted-foreground">{data.no_show} no-show e {data.canceled} cancelados</p>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-3">
+        {visibleEvents.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border/60 px-4 py-5 text-sm text-muted-foreground">
+            Nenhum compromisso encontrado para {periodLabel.toLowerCase()}.
+          </div>
+        ) : (
+          visibleEvents.map((event) => {
+            const eventDate = new Date(event.start_at);
+            const statusTone =
+              event.status === "done" || event.status === "completed"
+                ? "bg-emerald-500/10 text-emerald-700"
+                : event.status === "canceled"
+                  ? "bg-rose-500/10 text-rose-700"
+                  : event.status === "no_show"
+                    ? "bg-amber-500/10 text-amber-700"
+                    : "bg-blue-500/10 text-blue-700";
+
+            return (
+              <div key={event.id} className="rounded-lg border border-border/60 bg-background/70 px-4 py-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">{event.title || "Compromisso"}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {event.leads?.nome || "Lead sem nome"} | {event.type || "outro"}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                    <span className="text-sm font-medium text-foreground">
+                      {format(eventDate, "dd/MM HH:mm", { locale: ptBR })}
+                    </span>
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-medium uppercase ${statusTone}`}>
+                      {event.status === "no_show" ? "no-show" : event.status}
+                    </span>
+                  </div>
                 </div>
-                <CardDescription>
-                    {data.total} eventos em <b>{periodLabel.toLowerCase()}</b>.
-                    <span className="ml-2 block text-green-600 sm:inline">{data.done} realizados</span>
-                    <span className="ml-2 block text-blue-600 sm:inline">{pendingCount} pendentes</span>
-                    <span className="ml-2 block text-amber-600 sm:inline">{data.no_show} no-show</span>
-                    <span className="ml-2 block text-red-600 sm:inline">{data.canceled} cancelados</span>
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-4 pr-2">
-                    {data.upcoming.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                            Nenhum evento encontrado para {periodLabel.toLowerCase()}.
-                        </p>
-                    ) : (
-                        data.upcoming.map((event) => (
-                            <div key={event.id} className="flex items-start justify-between border-b border-border/50 pb-2 last:border-0">
-                                <div className="max-w-[70%]">
-                                    <p className="truncate text-sm font-medium text-foreground" title={event.title}>
-                                        {event.title}
-                                    </p>
-                                    <p className="truncate text-xs text-muted-foreground">
-                                        {event.leads?.nome || "Lead sem nome"} • {event.type}
-                                    </p>
-                                </div>
-                                <div className="shrink-0 text-right">
-                                    <p className="text-sm font-medium">
-                                        {format(new Date(event.start_at), "dd/MM HH:mm", { locale: ptBR })}
-                                    </p>
-                                    <span
-                                        className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[10px] uppercase ${
-                                            event.status === "done" || event.status === "completed"
-                                                ? "bg-green-100 text-green-700"
-                                                : event.status === "canceled"
-                                                    ? "bg-red-100 text-red-700"
-                                                    : event.status === "no_show"
-                                                        ? "bg-amber-100 text-amber-700"
-                                                        : "bg-blue-100 text-blue-700"
-                                        }`}
-                                    >
-                                        {event.status === "no_show" ? "no-show" : event.status}
-                                    </span>
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </CardContent>
-        </Card>
-    );
+              </div>
+            );
+          })
+        )}
+      </CardContent>
+    </Card>
+  );
 }

@@ -101,11 +101,11 @@ export function LeadActionQueuePanel({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Badge variant="outline" className="gap-1 rounded-full border-red-500/25 bg-red-500/10 text-red-200">
+          <Badge variant="outline" className="gap-1 rounded-full border-red-500/25 bg-red-500/10 text-red-700">
             <AlertTriangle className="h-3 w-3" />
             {queueSummary.overdue} vencidas
           </Badge>
-          <Badge variant="outline" className="gap-1 rounded-full border-amber-500/25 bg-amber-500/10 text-amber-200">
+          <Badge variant="outline" className="gap-1 rounded-full border-amber-500/25 bg-amber-500/10 text-amber-700">
             <Clock3 className="h-3 w-3" />
             {queueSummary.today} hoje
           </Badge>
@@ -144,7 +144,7 @@ export function LeadActionQueuePanel({
                       <p className="truncate text-sm font-semibold text-foreground">{row.contact.name}</p>
                       <p className="truncate text-sm text-foreground">{row.nextAction?.title}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {stage.title} • Ultima: {getLastActionText(row.lastAction)}
+                        {stage.title} | Ultima: {getLastActionText(row.lastAction)}
                       </p>
                     </div>
                     <LeadNextActionBadge task={row.nextAction} />

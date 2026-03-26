@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { endOfMonth, format, startOfMonth, startOfYear, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { BarChart3, CalendarIcon, ChevronDown, Download, TrendingDown } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -11,11 +12,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
+import { ActionSnapshotCard } from "@/components/dashboard/ActionSnapshotCard";
 import { FunnelOverview } from "@/components/dashboard/FunnelOverview";
 import { KpiCards } from "@/components/dashboard/KpiCards";
 import { LossSummaryCard } from "@/components/dashboard/LossSummaryCard";
 import { SourcePerformanceCard } from "@/components/dashboard/SourcePerformanceCard";
 import { CalendarSummaryPanel } from "@/components/dashboard/tables/CalendarSummaryPanel";
+import { LeadActionQueuePanel } from "@/components/dashboard/tables/LeadActionQueuePanel";
 import { OwnerPerformanceTable } from "@/components/dashboard/tables/OwnerPerformanceTable";
 import { StaleLeadsTable } from "@/components/dashboard/tables/StaleLeadsTable";
 import { LossAnalyticsModal } from "@/components/solarzap/LossAnalyticsModal";
@@ -54,6 +57,7 @@ export function DashboardView({
   const { toast } = useToast();
   const { orgId, user } = useAuth();
   const isMobileViewport = useMobileViewport();
+  const navigate = useNavigate();
 
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
     from: startOfMonth(new Date()),
@@ -103,12 +107,17 @@ export function DashboardView({
     });
   }, [data?.tables.owner_performance, leadScopeMembers]);
   const isTeamMode = canViewTeam && leadScope !== "mine";
+  const hasLeadActionQueue = showLeadNextAction && contacts.length > 0 && leadTasks.length > 0;
 
   const handleOpenLeadFromQueue = (contactId: string) => {
     onNavigate?.("conversas");
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent("open-chat", { detail: { contactId } }));
     }, 120);
+  };
+
+  const handleOpenLeadByName = (leadName: string) => {
+    navigate(`/app?tab=conversas&search=${encodeURIComponent(leadName)}`);
   };
 
   const handlePeriodChange = (value: string) => {
@@ -169,7 +178,7 @@ export function DashboardView({
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/30">
       <PageHeader
         title="Dashboard"
-        subtitle="Visao geral do negocio e do funil comercial"
+        subtitle="Resultado, prioridades e agenda comercial do periodo"
         icon={BarChart3}
         actionContent={
           <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
@@ -333,42 +342,65 @@ export function DashboardView({
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="w-full space-y-6 px-4 py-4 sm:px-6 sm:py-6">
           <KpiCards data={data?.kpis} isLoading={isLoading} />
-          <DashboardCharts data={data?.charts} isLoading={isLoading} />
 
-          <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
-            <FunnelOverview data={data?.funnel} isLoading={isLoading} />
+          <div className="grid gap-6 2xl:grid-cols-[1.15fr_0.85fr]">
+            <div className="min-w-0">
+              {hasLeadActionQueue ? (
+                <LeadActionQueuePanel
+                  contacts={contacts}
+                  tasks={leadTasks}
+                  teamMode={isTeamMode}
+                  onOpenLead={handleOpenLeadFromQueue}
+                  onViewConversations={() => onNavigate?.("conversas")}
+                />
+              ) : (
+                <ActionSnapshotCard
+                  funnel={data?.funnel}
+                  staleLeads={data?.tables.stale_leads}
+                  teamMode={isTeamMode}
+                  onOpenLead={handleOpenLeadByName}
+                  onViewConversations={() => onNavigate?.("conversas")}
+                />
+              )}
+            </div>
 
-            <div className="space-y-6">
-              <SourcePerformanceCard data={data?.source_performance} isLoading={isLoading} />
-              <LossSummaryCard
-                data={data?.loss_summary}
+            <div className="min-w-0">
+              <CalendarSummaryPanel
+                data={data?.calendar}
                 isLoading={isLoading}
-                onOpenDetails={() => setLossAnalyticsOpen(true)}
+                filter={calendarFilter}
+                onFilterChange={setCalendarFilter}
+                onViewAll={() => onNavigate?.("calendario")}
               />
             </div>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <Card className="border-border/50 bg-background/50 shadow-sm">
-              <CardHeader>
-                <CardTitle>Performance por responsavel</CardTitle>
-                <CardDescription>
-                  Leitura direta de volume, conversao, faturamento e lucro por responsavel no periodo.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <OwnerPerformanceTable data={ownerPerformanceData} isLoading={isLoading} />
-              </CardContent>
-            </Card>
+          <FunnelOverview data={data?.funnel} isLoading={isLoading} />
 
-            <CalendarSummaryPanel
-              data={data?.calendar}
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div className="space-y-6">
+              <SourcePerformanceCard data={data?.source_performance} isLoading={isLoading} />
+            </div>
+            <LossSummaryCard
+              data={data?.loss_summary}
               isLoading={isLoading}
-              filter={calendarFilter}
-              onFilterChange={setCalendarFilter}
-              onViewAll={() => onNavigate?.("calendario")}
+              onOpenDetails={() => setLossAnalyticsOpen(true)}
             />
           </div>
+
+          <DashboardCharts data={data?.charts} isLoading={isLoading} />
+
+          <Card className="border-border/50 bg-background/50 shadow-sm">
+            <CardHeader>
+              <CardTitle>Performance por responsavel</CardTitle>
+              <CardDescription>
+                Veja quem esta puxando resultado no periodo e onde pode ser necessario apoio comercial.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <OwnerPerformanceTable data={ownerPerformanceData} isLoading={isLoading} />
+            </CardContent>
+          </Card>
 
           <Collapsible
             open={staleLeadsOpen}
