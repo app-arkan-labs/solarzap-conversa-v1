@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { Phone, Video, Search, Paperclip, Smile, Mic, Send, FileText, Image, Film, X, CheckSquare, Copy, Forward, ArrowLeft, Reply, Bot, UserCog, MoreVertical } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import { Conversation, Message, PIPELINE_STAGES, Contact } from '@/types/solarzap';
+import { Conversation, Message, PIPELINE_STAGES, Contact, LeadTask } from '@/types/solarzap';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,7 @@ import { InstanceSelector } from './InstanceSelector';
 import { useUserWhatsAppInstances } from '@/hooks/useUserWhatsAppInstances';
 import { ReactionPicker } from './ReactionPicker';
 import { useAISettings } from '@/hooks/useAISettings'; // New Import
+import { LeadNextActionSection } from './LeadNextActionSection';
 
 import { supabase } from '@/lib/supabase'; // Imported for Internal Forwarding
 import { listMembers } from '@/lib/orgAdminClient';
@@ -75,6 +76,30 @@ interface ChatAreaProps {
     fromMe: boolean
   ) => Promise<void>;
   onOpenDetails?: () => void;
+  showLeadNextAction?: boolean;
+  nextAction?: LeadTask | null;
+  lastAction?: LeadTask | null;
+  leadNextActionLoading?: boolean;
+  onCreateLeadNextAction?: (input: {
+    leadId: number;
+    title: string;
+    notes?: string | null;
+    dueAt?: Date | null;
+    priority?: LeadTask['priority'];
+    channel?: LeadTask['channel'];
+    userId?: string | null;
+  }) => Promise<void>;
+  onUpdateLeadNextAction?: (input: {
+    taskId: string;
+    title?: string;
+    notes?: string | null;
+    dueAt?: Date | null;
+    priority?: LeadTask['priority'];
+    channel?: LeadTask['channel'];
+    userId?: string | null;
+  }) => Promise<void>;
+  onCompleteLeadNextAction?: (task: LeadTask, resultSummary: string) => Promise<void>;
+  onCancelLeadNextAction?: (taskId: string) => Promise<void>;
   onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
   onCallAction?: (contact: Conversation['contact']) => void;
   onVideoCallAction?: (contact: Conversation['contact']) => void;
@@ -107,6 +132,14 @@ export function ChatArea({
   onSendAudio,
   onSendReaction,
   onOpenDetails,
+  showLeadNextAction = false,
+  nextAction = null,
+  lastAction = null,
+  leadNextActionLoading = false,
+  onCreateLeadNextAction,
+  onUpdateLeadNextAction,
+  onCompleteLeadNextAction,
+  onCancelLeadNextAction,
   onCallAction,
   onImportContacts,
   initialMessage,
@@ -1209,6 +1242,23 @@ export function ChatArea({
           )}
         </div>
       </div>
+
+      {showLeadNextAction && conversation && onCreateLeadNextAction && onUpdateLeadNextAction && onCompleteLeadNextAction && onCancelLeadNextAction ? (
+        <div className="shrink-0 border-b border-border bg-card px-3 py-2">
+          <LeadNextActionSection
+            enabled={showLeadNextAction}
+            compact
+            contact={conversation.contact}
+            nextAction={nextAction}
+            lastAction={lastAction}
+            isLoading={leadNextActionLoading}
+            onCreate={onCreateLeadNextAction}
+            onUpdate={onUpdateLeadNextAction}
+            onComplete={onCompleteLeadNextAction}
+            onCancel={onCancelLeadNextAction}
+          />
+        </div>
+      ) : null}
 
       {/* Mobile actions drawer */}
       {isMobileChat && onToggleLeadAi && (

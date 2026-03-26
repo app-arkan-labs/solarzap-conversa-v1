@@ -1,6 +1,6 @@
 import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText, Bot, CheckSquare, Loader2, Users, User, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Conversation, CHANNEL_INFO, PIPELINE_STAGES, PipelineStage, Contact, ChannelFilter } from '@/types/solarzap';
+import { Conversation, CHANNEL_INFO, PIPELINE_STAGES, PipelineStage, Contact, ChannelFilter, LeadTask } from '@/types/solarzap';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,10 +45,14 @@ import { useToast } from '@/hooks/use-toast';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import type { LeadScopeValue } from './LeadScopeSelect';
+import { LeadNextActionBadge } from './LeadNextActionBadge';
+import { getLeadTaskDueState } from '@/lib/leadNextActions';
 
 interface ConversationListProps {
   conversations: Conversation[];
   contacts: Contact[];
+  showLeadNextAction?: boolean;
+  nextActionByLeadId?: Map<string, LeadTask>;
   selectedId: string | null;
   channelFilter: ChannelFilter;
   searchQuery: string;
@@ -79,9 +83,20 @@ const stageOptions: { id: PipelineStage | 'todos'; label: string; icon: string }
   })),
 ];
 
+type LeadOperationalFilter = 'all' | 'overdue' | 'today' | 'none';
+
+const operationalFilterOptions: { id: LeadOperationalFilter; label: string }[] = [
+  { id: 'all', label: 'Todas' },
+  { id: 'overdue', label: 'Vencidas' },
+  { id: 'today', label: 'Hoje' },
+  { id: 'none', label: 'Sem acao' },
+];
+
 export function ConversationList({
   conversations,
   contacts,
+  showLeadNextAction = false,
+  nextActionByLeadId = new Map<string, LeadTask>(),
   selectedId,
   channelFilter,
   searchQuery,
@@ -120,6 +135,11 @@ export function ConversationList({
   const [bulkAssignUserId, setBulkAssignUserId] = useState<string>('unassigned');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [operationalFilter, setOperationalFilter] = useState<LeadOperationalFilter>('all');
+  const [dismissedReminderDay, setDismissedReminderDay] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem('lead-next-action-reminder-dismissed') || '';
+  });
   const [fallbackLeadScopeMembers, setFallbackLeadScopeMembers] = useState<MemberDto[]>([]);
   const [isRefreshingLeadScopeMembers, setIsRefreshingLeadScopeMembers] = useState(false);
   const [bulkAssignMembers, setBulkAssignMembers] = useState<MemberDto[]>([]);
@@ -171,7 +191,36 @@ export function ConversationList({
 
   const canBulkAssign = Boolean(onBulkAssignLeads);
   const canUseSelectionMode = Boolean(onDeleteLead) || canBulkAssign;
-  const visibleLeadIds = useMemo(() => conversations.map((conversation) => conversation.contact.id), [conversations]);
+  const operationalCounts = useMemo(
+    () =>
+      conversations.reduce(
+        (acc, conversation) => {
+          const dueState = getLeadTaskDueState(nextActionByLeadId.get(conversation.contact.id) || null);
+          acc.all += 1;
+          if (dueState === 'overdue') acc.overdue += 1;
+          if (dueState === 'today') acc.today += 1;
+          if (dueState === 'none') acc.none += 1;
+          return acc;
+        },
+        { all: 0, overdue: 0, today: 0, none: 0 } as Record<LeadOperationalFilter, number>,
+      ),
+    [conversations, nextActionByLeadId],
+  );
+  const displayConversations = useMemo(() => {
+    if (!showLeadNextAction || operationalFilter === 'all') return conversations;
+
+    return conversations.filter((conversation) => {
+      const dueState = getLeadTaskDueState(nextActionByLeadId.get(conversation.contact.id) || null);
+      if (operationalFilter === 'overdue') return dueState === 'overdue';
+      if (operationalFilter === 'today') return dueState === 'today';
+      if (operationalFilter === 'none') return dueState === 'none';
+      return true;
+    });
+  }, [conversations, nextActionByLeadId, operationalFilter, showLeadNextAction]);
+  const visibleLeadIds = useMemo(
+    () => displayConversations.map((conversation) => conversation.contact.id),
+    [displayConversations],
+  );
 
   const selectedVisibleCount = useMemo(
     () => visibleLeadIds.filter((leadId) => selectedLeadIds.has(leadId)).length,
@@ -400,11 +449,30 @@ export function ConversationList({
   const selectedChannel = channelFilters.find((filter) => filter.id === channelFilter) || channelFilters[0];
   const hasStageFilter = stageFilter !== 'todos';
   const hasChannelFilter = channelFilter !== 'todos';
-  const hasActiveFilters = hasStageFilter || hasChannelFilter;
-  const activeFilterCount = Number(hasStageFilter) + Number(hasChannelFilter);
+  const hasOperationalFilter = showLeadNextAction && operationalFilter !== 'all';
+  const hasActiveFilters = hasStageFilter || hasChannelFilter || hasOperationalFilter;
+  const activeFilterCount = Number(hasStageFilter) + Number(hasChannelFilter) + Number(hasOperationalFilter);
   const activeStageCount = stageFilter !== 'todos'
     ? conversations.filter(c => c.contact.pipelineStage === stageFilter).length
     : conversations.length;
+  const selectedOperationalFilter =
+    operationalFilterOptions.find((option) => option.id === operationalFilter) || operationalFilterOptions[0];
+  const reminderNow = new Date();
+  const reminderDayKey = `${reminderNow.getFullYear()}-${String(reminderNow.getMonth() + 1).padStart(2, '0')}-${String(
+    reminderNow.getDate(),
+  ).padStart(2, '0')}`;
+  const showOperationalReminder =
+    showLeadNextAction &&
+    !isSelectionMode &&
+    dismissedReminderDay !== reminderDayKey &&
+    (operationalCounts.overdue > 0 || operationalCounts.today > 0 || operationalCounts.none > 0);
+
+  const dismissOperationalReminder = () => {
+    setDismissedReminderDay(reminderDayKey);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('lead-next-action-reminder-dismissed', reminderDayKey);
+    }
+  };
 
   return (
     <div className="w-full h-full flex flex-col border-r border-border bg-card">
@@ -467,6 +535,7 @@ export function ConversationList({
                         onClick={() => {
                           onStageFilterChange('todos');
                           onChannelFilterChange('todos');
+                          setOperationalFilter('all');
                         }}
                         className="h-7 text-xs text-muted-foreground hover:text-foreground"
                       >
@@ -595,6 +664,11 @@ export function ConversationList({
                 Origem: {selectedChannel.label}
               </Badge>
             )}
+            {hasOperationalFilter && (
+              <Badge variant="secondary" className="text-xs">
+                Operacional: {selectedOperationalFilter.label}
+              </Badge>
+            )}
           </div>
           <Button
             variant="ghost"
@@ -602,6 +676,7 @@ export function ConversationList({
             onClick={() => {
               onStageFilterChange('todos');
               onChannelFilterChange('todos');
+              setOperationalFilter('all');
             }}
             className="h-6 w-6 p-0 hover:bg-muted"
             title="Limpar filtros"
@@ -791,14 +866,81 @@ export function ConversationList({
         </div>
       )}
 
+      {showLeadNextAction ? (
+        <div className="border-b border-border bg-muted/20 px-3 py-2 space-y-2">
+          {showOperationalReminder ? (
+            <div className="rounded-xl border border-primary/15 bg-primary/5 px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-foreground">Resumo operacional do dia</p>
+                  <p className="text-xs text-muted-foreground">
+                    {operationalCounts.overdue} vencidas, {operationalCounts.today} para hoje e {operationalCounts.none} sem proxima acao.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-muted-foreground"
+                  onClick={dismissOperationalReminder}
+                >
+                  Fechar hoje
+                </Button>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {operationalCounts.overdue > 0 ? (
+                  <Button type="button" size="sm" className="h-7 px-3 text-[11px]" onClick={() => setOperationalFilter('overdue')}>
+                    Ver vencidas
+                  </Button>
+                ) : null}
+                {operationalCounts.today > 0 ? (
+                  <Button type="button" size="sm" variant="outline" className="h-7 px-3 text-[11px]" onClick={() => setOperationalFilter('today')}>
+                    Ver hoje
+                  </Button>
+                ) : null}
+                {operationalCounts.none > 0 ? (
+                  <Button type="button" size="sm" variant="outline" className="h-7 px-3 text-[11px]" onClick={() => setOperationalFilter('none')}>
+                    Ver sem acao
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex gap-2 overflow-x-auto pb-0.5">
+            {operationalFilterOptions.map((option) => {
+              const isActive = operationalFilter === option.id;
+              return (
+                <Button
+                  key={option.id}
+                  type="button"
+                  size="sm"
+                  variant={isActive ? 'default' : 'outline'}
+                  className="h-7 rounded-full px-3 text-[11px] whitespace-nowrap"
+                  onClick={() => setOperationalFilter(option.id)}
+                >
+                  {option.label}
+                  <span className={cn('ml-1.5 text-[10px]', isActive ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
+                    {operationalCounts[option.id]}
+                  </span>
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {/* Conversation List */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {conversations.length === 0 ? (
+        {displayConversations.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground">
-            Nenhuma conversa encontrada
+            {showLeadNextAction && operationalFilter !== 'all'
+              ? 'Nenhuma conversa encontrada neste filtro operacional'
+              : 'Nenhuma conversa encontrada'}
           </div>
         ) : (
-          conversations.map((conversation) => {
+          displayConversations.map((conversation) => {
             const stage = PIPELINE_STAGES[conversation.contact.pipelineStage];
             const isSelected = selectedId === conversation.id;
             const isAiActive = conversation.contact.aiEnabled !== false;
@@ -963,13 +1105,23 @@ export function ConversationList({
                         {stage.icon} {stage.title}
                       </Badge>
                     </div>
-                    <div className="w-full overflow-hidden">
-                      <FollowUpIndicator
-                        step={conversation.contact.followUpStep ?? 0}
-                        enabled={conversation.contact.followUpEnabled !== false}
-                        compact
-                      />
-                    </div>
+                      <div className="w-full overflow-hidden space-y-1">
+                        {showLeadNextAction ? (
+                          <div className="w-full overflow-hidden">
+                            <LeadNextActionBadge
+                              task={nextActionByLeadId.get(conversation.contact.id) || null}
+                              showEmpty
+                            />
+                          </div>
+                        ) : null}
+                        <div className="w-full overflow-hidden">
+                          <FollowUpIndicator
+                            step={conversation.contact.followUpStep ?? 0}
+                            enabled={conversation.contact.followUpEnabled !== false}
+                            compact
+                          />
+                        </div>
+                      </div>
                   </div>
                 </div>
               </div>

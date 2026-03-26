@@ -43,6 +43,7 @@ interface AppointmentModalProps {
     preselectedLeadId?: string; // string because Contact.id is string
     preselectedContact?: Contact; // Full contact object to avoid lookup issues
     contacts?: Contact[]; // Optional injected contact list to avoid scope divergence
+    linkedTaskTitle?: string | null;
     onSuccess?: (appointment: Appointment) => void;
 }
 
@@ -94,6 +95,7 @@ export function AppointmentModal({
     preselectedLeadId,
     preselectedContact,
     contacts: providedContacts,
+    linkedTaskTitle,
     onSuccess
 }: AppointmentModalProps) {
     const { createAppointment, updateAppointment, deleteAppointment } = useAppointments();
@@ -551,6 +553,14 @@ export function AppointmentModal({
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
+                    {linkedTaskTitle ? (
+                        <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+                            <p className="text-xs font-semibold text-primary">Vinculo operacional ativo</p>
+                            <p className="mt-1 text-sm text-foreground">
+                                Este agendamento sera vinculado a: <span className="font-medium">{linkedTaskTitle}</span>
+                            </p>
+                        </div>
+                    ) : null}
 
                     <div className="space-y-2">
                         <Label>Cliente / Lead</Label>

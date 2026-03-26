@@ -144,6 +144,33 @@ export interface CalendarEvent {
 
 export type AppointmentStatus = 'scheduled' | 'confirmed' | 'done' | 'canceled' | 'no_show' | 'completed';
 export type AppointmentType = 'call' | 'visit' | 'installation' | 'meeting' | 'other' | 'chamada' | 'visita' | 'instalacao' | 'reuniao';
+export type LeadTaskStatus = 'open' | 'done' | 'canceled';
+export type LeadTaskPriority = 'low' | 'medium' | 'high';
+export type LeadTaskChannel = 'whatsapp' | 'call' | 'email' | 'other' | null;
+export type LeadTaskKind = 'generic' | 'next_action' | 'follow_up_ai' | 'system';
+export type LeadNextActionDueState = 'none' | 'unscheduled' | 'today' | 'upcoming' | 'overdue';
+
+export interface LeadTask {
+  id: string;
+  orgId: string;
+  userId: string;
+  leadId: number;
+  title: string;
+  notes?: string | null;
+  dueAt?: string | null;
+  status: LeadTaskStatus;
+  priority: LeadTaskPriority;
+  channel: LeadTaskChannel;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  taskKind: LeadTaskKind;
+  completedAt?: string | null;
+  completedBy?: string | null;
+  resultSummary?: string | null;
+  linkedAppointmentId?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
 
 export interface Appointment {
   id: string;

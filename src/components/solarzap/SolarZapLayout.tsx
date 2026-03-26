@@ -26,9 +26,11 @@ import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Contact, PipelineStage, ChannelFilter, ActiveTab, Conversation } from '@/types/solarzap';
+import { Contact, PipelineStage, ChannelFilter, ActiveTab, Conversation, LeadTask } from '@/types/solarzap';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppointments } from '@/hooks/useAppointments';
+import { useLeadTasks } from '@/hooks/useLeadTasks';
+import { useOrgFeatureFlags } from '@/hooks/useOrgFeatureFlags';
 import { useSellerPermissions } from '@/hooks/useSellerPermissions';
 import { supabase } from '@/lib/supabase';
 import { getAuthUserDisplayName } from '@/lib/memberDisplayName';
@@ -44,6 +46,7 @@ import { useGuidedTour } from '@/hooks/useGuidedTour';
 import GuidedTour from '@/components/onboarding/GuidedTour';
 import { isMobileMoreTabActive, type SolarZapTabPermissions } from './mobileNavConfig';
 import { lazyWithRetry } from '@/lib/lazyWithRetry';
+import { inferLeadNextActionAppointmentType } from '@/lib/leadNextActions';
 
 type AppointmentModalErrorBoundaryProps = {
   children: ReactNode;
@@ -138,6 +141,8 @@ export function SolarZapLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const canAccessAdmin = role === 'owner' || role === 'admin';
+  const orgFeatureFlagsQuery = useOrgFeatureFlags();
+  const leadNextActionEnabled = orgFeatureFlagsQuery.data?.lead_next_action_v1 === true;
   const activeOrganizationName = useMemo(() => {
     if (!orgId) return null;
     const current = organizations.find((organization) => organization.org_id === orgId);
@@ -200,6 +205,20 @@ export function SolarZapLayout() {
 
   const { getMessage, isDragDropEnabled, activeSettings } = useAutomationSettings();
   const { appointments, updateAppointment } = useAppointments();
+  const {
+    tasks: leadTasks,
+    nextActionByLeadId,
+    lastActionByLeadId,
+    isLoading: isLoadingLeadTasks,
+    createNextAction,
+    updateNextAction,
+    completeNextAction,
+    cancelNextAction,
+    linkNextActionToAppointment,
+  } = useLeadTasks({
+    leadIds: contacts.map((contact) => contact.id),
+    enabled: leadNextActionEnabled,
+  });
 
   // Global loading state - Only show full screen loader on INITIAL load (no data)
   // We check if lists are empty AND loading is true.
@@ -370,7 +389,7 @@ export function SolarZapLayout() {
     return true;
   }, [billing, openBillingBlocker]);
 
-  const openScheduleFlow = useCallback((contact: Contact | null, type: 'reuniao' | 'visita') => {
+  const openScheduleFlow = useCallback((contact: Contact | null, type: 'reuniao' | 'visita', linkedTask: LeadTask | null = null) => {
     const blocker = buildTabBlocker('calendario', billing);
     if (blocker) {
       openBillingBlocker(blocker);
@@ -379,6 +398,7 @@ export function SolarZapLayout() {
 
     setActionContact(contact || null);
     setScheduleType(type);
+    setLinkedScheduleTask(linkedTask);
     setIsScheduleOpen(true);
     return true;
   }, [billing, openBillingBlocker]);
@@ -389,6 +409,27 @@ export function SolarZapLayout() {
     if (!selectedConversation) return null;
     return conversations.find(c => c.id === selectedConversation.id) || selectedConversation;
   }, [conversations, selectedConversation]);
+  const activeConversationActionHistory = useMemo(() => {
+    if (!activeConversation) return [];
+
+    const leadId = Number(activeConversation.contact.id);
+    if (!Number.isFinite(leadId)) return [];
+
+    return leadTasks
+      .filter((task) => task.leadId === leadId && task.taskKind === 'next_action' && task.status !== 'open')
+      .slice(0, 4);
+  }, [activeConversation, leadTasks]);
+  const scheduleActiveConversationNextAction = useCallback(
+    (task: LeadTask) => {
+      if (!activeConversation) return;
+      openScheduleFlow(
+        activeConversation.contact,
+        inferLeadNextActionAppointmentType(task, activeConversation.contact),
+        task,
+      );
+    },
+    [activeConversation, openScheduleFlow],
+  );
 
   // Mark As Read logic (Local + potentially optimistic update if we had mutation)
   // Mark As Read — delegates to useChat which persists to DB (Sprint 2, Item #4)
@@ -443,6 +484,7 @@ export function SolarZapLayout() {
   const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
   const [scheduleType, setScheduleType] = useState<'reuniao' | 'visita'>('reuniao');
   const [actionContact, setActionContact] = useState<Contact | null>(null);
+  const [linkedScheduleTask, setLinkedScheduleTask] = useState<LeadTask | null>(null);
   const [pendingChatMessage, setPendingChatMessage] = useState<string>('');
   const [pendingVisitScheduleContactId, setPendingVisitScheduleContactId] = useState<string | null>(null);
 
@@ -595,6 +637,7 @@ export function SolarZapLayout() {
   const handleAppointmentModalError = useCallback((error: Error) => {
     console.error(error);
     setIsScheduleOpen(false);
+    setLinkedScheduleTask(null);
     toast({
       title: "Erro ao abrir agendamento",
       variant: "destructive",
@@ -1528,6 +1571,8 @@ export function SolarZapLayout() {
               <ConversationList
                 conversations={filteredConversations}
                 contacts={contacts}
+                showLeadNextAction={leadNextActionEnabled}
+                nextActionByLeadId={nextActionByLeadId}
                 canViewTeam={canViewTeam}
                 leadScope={leadScope}
                 onLeadScopeChange={setLeadScope}
@@ -1572,6 +1617,14 @@ export function SolarZapLayout() {
               <ChatArea
               conversation={activeConversation}
               conversations={conversations}
+              showLeadNextAction={leadNextActionEnabled}
+              nextAction={activeConversation ? nextActionByLeadId.get(activeConversation.contact.id) || null : null}
+              lastAction={activeConversation ? lastActionByLeadId.get(activeConversation.contact.id) || null : null}
+              leadNextActionLoading={isLoadingLeadTasks}
+              onCreateLeadNextAction={createNextAction}
+              onUpdateLeadNextAction={updateNextAction}
+              onCompleteLeadNextAction={completeNextAction}
+              onCancelLeadNextAction={cancelNextAction}
               onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
               onSendMessage={async (conversationId, content, instanceName, replyTo, options) => {
                 import.meta.env.DEV && console.log('SolarZapLayout: onSendMessage called', {
@@ -1692,6 +1745,16 @@ export function SolarZapLayout() {
               <Suspense fallback={<TabLoadingFallback label="Carregando detalhes..." />}>
                 <ActionsPanel
                   conversation={activeConversation}
+                  showLeadNextAction={leadNextActionEnabled}
+                  nextAction={activeConversation ? nextActionByLeadId.get(activeConversation.contact.id) || null : null}
+                  lastAction={activeConversation ? lastActionByLeadId.get(activeConversation.contact.id) || null : null}
+                  actionHistory={activeConversationActionHistory}
+                  leadNextActionLoading={isLoadingLeadTasks}
+                  onCreateLeadNextAction={createNextAction}
+                  onUpdateLeadNextAction={updateNextAction}
+                  onCompleteLeadNextAction={completeNextAction}
+                  onCancelLeadNextAction={cancelNextAction}
+                  onScheduleLeadNextAction={scheduleActiveConversationNextAction}
                   onMoveToPipeline={handlePipelineStageChange}
                   onAction={handleAction}
                   onClose={() => setIsDetailsPanelOpen(false)}
@@ -1755,6 +1818,10 @@ export function SolarZapLayout() {
           >
             <CalendarView
               contacts={contacts}
+              showLeadNextAction={leadNextActionEnabled}
+              leadTasks={leadTasks}
+              onCompleteLeadNextAction={completeNextAction}
+              onCreateLeadNextAction={createNextAction}
               canViewTeam={canViewTeam}
               leadScope={leadScope}
               onLeadScopeChange={setLeadScope}
@@ -1813,6 +1880,9 @@ export function SolarZapLayout() {
         <Suspense fallback={<TabLoadingFallback label="Carregando dashboard..." />}>
           <DashboardView
             onNavigate={(tab) => handleTabChange(tab as any)}
+            contacts={contacts}
+            leadTasks={leadTasks}
+            showLeadNextAction={leadNextActionEnabled}
             canViewTeam={canViewTeam}
             leadScope={leadScope}
             onLeadScopeChange={setLeadScope}
@@ -1967,13 +2037,39 @@ export function SolarZapLayout() {
       >
         <AppointmentModal
           isOpen={isScheduleOpen}
-          onClose={() => setIsScheduleOpen(false)}
+          onClose={() => {
+            setIsScheduleOpen(false);
+            setLinkedScheduleTask(null);
+          }}
           preselectedLeadId={actionContact?.id}
           preselectedContact={actionContact || undefined}
           initialData={undefined}
           initialType={scheduleType}
+          linkedTaskTitle={linkedScheduleTask?.title || null}
           onSuccess={async (appointment) => {
             if (!actionContact) return;
+
+            if (linkedScheduleTask) {
+              try {
+                await linkNextActionToAppointment({
+                  taskId: linkedScheduleTask.id,
+                  appointmentId: appointment.id,
+                  dueAt: new Date(appointment.start_at),
+                  channel: linkedScheduleTask.channel,
+                });
+              } catch (error) {
+                console.error('Lead next action linking failed', {
+                  taskId: linkedScheduleTask.id,
+                  appointmentId: appointment.id,
+                  error,
+                });
+                toast({
+                  title: "Evento criado sem vinculo operacional",
+                  description: "O agendamento foi salvo, mas nao foi possivel vincular a proxima acao.",
+                  variant: "destructive",
+                });
+              }
+            }
 
             const isCallLikeType = appointment.type === 'reuniao' || appointment.type === 'chamada' || appointment.type === 'meeting' || appointment.type === 'call';
             const newStage: PipelineStage = isCallLikeType ? 'chamada_agendada' : 'visita_agendada';
@@ -2016,6 +2112,7 @@ export function SolarZapLayout() {
               title: "Agendamento realizado!",
               description: `Lead movido para "${newStage === 'chamada_agendada' ? 'Chamada Agendada' : 'Visita Agendada'}"`
             });
+            setLinkedScheduleTask(null);
           }}
         />
       </AppointmentModalErrorBoundary>

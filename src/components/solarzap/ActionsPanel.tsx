@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
 import { Phone, Video, Calendar, FileText, Home, Kanban, User, Zap, MapPin, Mail, X, Save, Loader2, MessageSquare } from 'lucide-react';
-import { Conversation, PIPELINE_STAGES, PipelineStage, CHANNEL_INFO, Channel, ClientType } from '@/types/solarzap';
+import { Conversation, PIPELINE_STAGES, PipelineStage, CHANNEL_INFO, Channel, ClientType, LeadTask } from '@/types/solarzap';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { scopeProposalVersionByIdsQuery } from '@/lib/multiOrgLeadScoping';
 import { resolveProposalLinks } from '@/utils/proposalLinks';
+import { LeadNextActionSection } from './LeadNextActionSection';
 
 type LeadProposalItem = {
   proposal_version_id: string;
@@ -32,6 +33,32 @@ type LeadProposalItem = {
 
 interface ActionsPanelProps {
   conversation: Conversation | null;
+  showLeadNextAction?: boolean;
+  nextAction?: LeadTask | null;
+  lastAction?: LeadTask | null;
+  actionHistory?: LeadTask[];
+  leadNextActionLoading?: boolean;
+  onCreateLeadNextAction?: (input: {
+    leadId: number;
+    title: string;
+    notes?: string | null;
+    dueAt?: Date | null;
+    priority?: LeadTask['priority'];
+    channel?: LeadTask['channel'];
+    userId?: string | null;
+  }) => Promise<void>;
+  onUpdateLeadNextAction?: (input: {
+    taskId: string;
+    title?: string;
+    notes?: string | null;
+    dueAt?: Date | null;
+    priority?: LeadTask['priority'];
+    channel?: LeadTask['channel'];
+    userId?: string | null;
+  }) => Promise<void>;
+  onCompleteLeadNextAction?: (task: LeadTask, resultSummary: string) => Promise<void>;
+  onCancelLeadNextAction?: (taskId: string) => Promise<void>;
+  onScheduleLeadNextAction?: (task: LeadTask) => void;
   onMoveToPipeline: (contactId: string, stage: PipelineStage) => Promise<void>;
   onAction: (action: string, contact?: Conversation['contact']) => void;
   onClose: () => void;
@@ -56,7 +83,24 @@ const CLIENT_TYPES: { value: ClientType; label: string }[] = [
   { value: 'rural', label: 'Rural' },
 ];
 
-export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose, onUpdateLead, onToggleLeadFollowUp }: ActionsPanelProps) {
+export function ActionsPanel({
+  conversation,
+  showLeadNextAction = false,
+  nextAction = null,
+  lastAction = null,
+  actionHistory = [],
+  leadNextActionLoading = false,
+  onCreateLeadNextAction,
+  onUpdateLeadNextAction,
+  onCompleteLeadNextAction,
+  onCancelLeadNextAction,
+  onScheduleLeadNextAction,
+  onMoveToPipeline,
+  onAction,
+  onClose,
+  onUpdateLead,
+  onToggleLeadFollowUp,
+}: ActionsPanelProps) {
   const { orgId } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [isTogglingFollowUp, setIsTogglingFollowUp] = useState(false);
@@ -394,6 +438,25 @@ export function ActionsPanel({ conversation, onMoveToPipeline, onAction, onClose
           </div>
         )}
       </div>
+
+      {showLeadNextAction && onCreateLeadNextAction && onUpdateLeadNextAction && onCompleteLeadNextAction && onCancelLeadNextAction ? (
+        <div className="p-4 border-b border-border">
+          <h3 className="mb-3 text-sm font-semibold text-foreground">Camada Operacional</h3>
+          <LeadNextActionSection
+            enabled={showLeadNextAction}
+            contact={contact}
+            nextAction={nextAction}
+            lastAction={lastAction}
+            history={actionHistory}
+            isLoading={leadNextActionLoading}
+            onCreate={onCreateLeadNextAction}
+            onUpdate={onUpdateLeadNextAction}
+            onComplete={onCompleteLeadNextAction}
+            onCancel={onCancelLeadNextAction}
+            onScheduleAppointment={onScheduleLeadNextAction}
+          />
+        </div>
+      ) : null}
 
       {/* Quick Actions */}
       <div className="p-4 border-b border-border">

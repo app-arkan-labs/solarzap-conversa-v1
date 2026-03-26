@@ -16,6 +16,7 @@ import { KpiCards } from "@/components/dashboard/KpiCards";
 import { LossSummaryCard } from "@/components/dashboard/LossSummaryCard";
 import { SourcePerformanceCard } from "@/components/dashboard/SourcePerformanceCard";
 import { CalendarSummaryPanel } from "@/components/dashboard/tables/CalendarSummaryPanel";
+import { LeadActionQueuePanel } from "@/components/dashboard/tables/LeadActionQueuePanel";
 import { OwnerPerformanceTable } from "@/components/dashboard/tables/OwnerPerformanceTable";
 import { StaleLeadsTable } from "@/components/dashboard/tables/StaleLeadsTable";
 import { LossAnalyticsModal } from "@/components/solarzap/LossAnalyticsModal";
@@ -26,9 +27,13 @@ import { useDashboardReport } from "@/hooks/useDashboardReport";
 import { useMobileViewport } from "@/hooks/useMobileViewport";
 import type { MemberDto } from "@/lib/orgAdminClient";
 import { supabase } from "@/lib/supabase";
+import type { Contact, LeadTask } from "@/types/solarzap";
 
 interface DashboardViewProps {
   onNavigate?: (tab: string) => void;
+  contacts?: Contact[];
+  leadTasks?: LeadTask[];
+  showLeadNextAction?: boolean;
   canViewTeam?: boolean;
   leadScope?: LeadScopeValue;
   onLeadScopeChange?: (scope: LeadScopeValue) => void;
@@ -38,6 +43,9 @@ interface DashboardViewProps {
 
 export function DashboardView({
   onNavigate,
+  contacts = [],
+  leadTasks = [],
+  showLeadNextAction = false,
   canViewTeam = false,
   leadScope = "mine",
   onLeadScopeChange,
@@ -95,6 +103,14 @@ export function DashboardView({
       return mappedName ? { ...row, name: mappedName } : row;
     });
   }, [data?.tables.owner_performance, leadScopeMembers]);
+  const isTeamMode = canViewTeam && leadScope !== "mine";
+
+  const handleOpenLeadFromQueue = (contactId: string) => {
+    onNavigate?.("conversas");
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("open-chat", { detail: { contactId } }));
+    }, 120);
+  };
 
   const handlePeriodChange = (value: string) => {
     setPeriodLabel(value);
@@ -354,6 +370,17 @@ export function DashboardView({
               onViewAll={() => onNavigate?.("calendario")}
             />
           </div>
+
+          {showLeadNextAction ? (
+            <LeadActionQueuePanel
+              contacts={contacts}
+              tasks={leadTasks}
+              isLoading={isLoading}
+              teamMode={isTeamMode}
+              onViewConversations={() => onNavigate?.("conversas")}
+              onOpenLead={handleOpenLeadFromQueue}
+            />
+          ) : null}
 
           <Collapsible
             open={staleLeadsOpen}

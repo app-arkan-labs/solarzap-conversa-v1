@@ -1,5 +1,5 @@
 import React, { Component, ReactNode, useMemo, useState } from 'react';
-import { Appointment, Contact } from '@/types/solarzap';
+import { Appointment, Contact, LeadTask } from '@/types/solarzap';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Plus, Video, Calendar as CalendarIcon, Clock, MapPin, Archive, History, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -56,6 +56,18 @@ class CalendarAppointmentErrorBoundary extends Component<
 
 interface CalendarViewProps {
   contacts?: Contact[];
+  showLeadNextAction?: boolean;
+  leadTasks?: LeadTask[];
+  onCompleteLeadNextAction?: (task: LeadTask, resultSummary: string) => Promise<void>;
+  onCreateLeadNextAction?: (input: {
+    leadId: number;
+    title: string;
+    notes?: string | null;
+    dueAt?: Date | null;
+    priority?: LeadTask['priority'];
+    channel?: LeadTask['channel'];
+    userId?: string | null;
+  }) => Promise<void>;
   canViewTeam?: boolean;
   leadScope?: LeadScopeValue;
   onLeadScopeChange?: (scope: LeadScopeValue) => void;
@@ -106,6 +118,10 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function CalendarView({
   contacts: propContacts,
+  showLeadNextAction = false,
+  leadTasks = [],
+  onCompleteLeadNextAction,
+  onCreateLeadNextAction,
   canViewTeam = false,
   leadScope = 'mine',
   onLeadScopeChange,
@@ -123,6 +139,16 @@ export function CalendarView({
     () => new Map(contacts.map((contact) => [String(contact.id), contact])),
     [contacts],
   );
+  const linkedTaskByAppointmentId = useMemo(() => {
+    const map = new Map<string, LeadTask>();
+    for (const task of leadTasks) {
+      if (task.taskKind !== 'next_action') continue;
+      if (task.status !== 'open') continue;
+      if (!task.linkedAppointmentId) continue;
+      map.set(task.linkedAppointmentId, task);
+    }
+    return map;
+  }, [leadTasks]);
   const scopedAppointments = useMemo(
     () => appointments.filter((appointment) => contactByLeadId.has(String(appointment.lead_id))),
     [appointments, contactByLeadId],
@@ -777,6 +803,9 @@ export function CalendarView({
           contacts={contacts}
           initialData={selectedAppointment}
           defaultDate={modalDate}
+          linkedTaskTitle={
+            selectedAppointment?.id ? linkedTaskByAppointmentId.get(String(selectedAppointment.id))?.title || null : null
+          }
         />
       </CalendarAppointmentErrorBoundary>
 
@@ -784,6 +813,14 @@ export function CalendarView({
         isOpen={feedbackModalOpen}
         onClose={() => setFeedbackModalOpen(false)}
         appointment={feedbackEvent}
+        contact={feedbackEvent ? contactByLeadId.get(String(feedbackEvent.lead_id)) || null : null}
+        linkedNextAction={
+          showLeadNextAction && feedbackEvent
+            ? linkedTaskByAppointmentId.get(String(feedbackEvent.id)) || null
+            : null
+        }
+        onCompleteLinkedNextAction={onCompleteLeadNextAction}
+        onCreateNextAction={showLeadNextAction ? onCreateLeadNextAction : undefined}
       />
 
       <EventArchiveModal
