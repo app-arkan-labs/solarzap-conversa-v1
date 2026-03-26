@@ -63,16 +63,18 @@ export function LeadActionQueuePanel({
       });
   }, [contacts, lastActionByLeadId, nextActionByLeadId]);
 
-  const noActionRows = useMemo(() => {
-    return contacts
-      .filter((contact) => !nextActionByLeadId.get(String(contact.id)))
-      .slice(0, 8);
-  }, [contacts, nextActionByLeadId]);
+  const noActionRows = useMemo(
+    () =>
+      contacts
+        .filter((contact) => !nextActionByLeadId.get(String(contact.id)))
+        .slice(0, 3),
+    [contacts, nextActionByLeadId],
+  );
 
-  const title = teamMode ? "Fila do time" : "Minha fila de hoje";
+  const title = teamMode ? "Fila operacional do time" : "Fila operacional";
   const description = teamMode
-    ? "Leitura operacional consolidada para priorizar o time respeitando o escopo atual."
-    : "Priorize os leads vencidos e de hoje sem sair do contexto comercial.";
+    ? "Resumo rapido para priorizar o time sem inflar a dashboard."
+    : "Leitura compacta das prioridades do dia para voltar a agir em Conversas.";
 
   if (isLoading) {
     return null;
@@ -80,65 +82,69 @@ export function LeadActionQueuePanel({
 
   return (
     <Card className="border-border/50 bg-background/50 shadow-sm">
-      <CardHeader className="space-y-4">
+      <CardHeader className="space-y-3 pb-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <ListTodo className="h-5 w-5 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ListTodo className="h-4 w-4 text-primary" />
               {title}
             </CardTitle>
             <CardDescription>{description}</CardDescription>
           </div>
 
           {onViewConversations ? (
-            <Button variant="outline" className="gap-2" onClick={onViewConversations}>
-              Ver Conversas
-              <ArrowRight className="h-4 w-4" />
+            <Button variant="outline" size="sm" className="gap-2 rounded-full" onClick={onViewConversations}>
+              Abrir em Conversas
+              <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           ) : null}
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Badge variant="outline" className="gap-1 border-red-200 bg-red-50 text-red-700">
+          <Badge variant="outline" className="gap-1 rounded-full border-red-500/25 bg-red-500/10 text-red-200">
             <AlertTriangle className="h-3 w-3" />
             {queueSummary.overdue} vencidas
           </Badge>
-          <Badge variant="outline" className="gap-1 border-amber-200 bg-amber-50 text-amber-700">
+          <Badge variant="outline" className="gap-1 rounded-full border-amber-500/25 bg-amber-500/10 text-amber-200">
             <Clock3 className="h-3 w-3" />
             {queueSummary.today} hoje
           </Badge>
-          <Badge variant="outline">{queueSummary.upcoming} proximas</Badge>
-          <Badge variant="outline">{queueSummary.none} sem proxima acao</Badge>
+          <Badge variant="outline" className="rounded-full border-border/70 bg-muted/20">
+            {queueSummary.upcoming} proximas
+          </Badge>
+          <Badge variant="outline" className="rounded-full border-border/70 bg-muted/20">
+            {queueSummary.none} sem acao
+          </Badge>
         </div>
       </CardHeader>
 
-      <CardContent className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+      <CardContent className="space-y-4">
         <div className="space-y-3">
-          <div>
-            <p className="text-sm font-semibold text-foreground">Prioridade do dia</p>
-            <p className="text-xs text-muted-foreground">Vencidas e previstas para hoje.</p>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Prioridade imediata</p>
+              <p className="text-xs text-muted-foreground">Leads vencidos e previstos para hoje.</p>
+            </div>
+            {priorityRows.length > 0 ? (
+              <span className="text-xs text-muted-foreground">{Math.min(priorityRows.length, 5)} itens</span>
+            ) : null}
           </div>
 
           {priorityRows.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
-              Nenhuma proxima acao vencida ou programada para hoje neste escopo.
+            <div className="rounded-lg border border-dashed border-border px-4 py-4 text-sm text-muted-foreground">
+              Nenhuma prioridade imediata neste escopo.
             </div>
           ) : (
-            priorityRows.slice(0, 8).map((row) => {
+            priorityRows.slice(0, 5).map((row) => {
               const stage = PIPELINE_STAGES[row.contact.pipelineStage];
               const content = (
-                <div className="w-full rounded-xl border border-border/70 bg-card/80 px-4 py-3 text-left transition-colors hover:border-primary/40">
+                <div className="w-full rounded-lg border border-border/60 bg-card/60 px-3 py-2.5 text-left transition-colors hover:border-primary/35">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-semibold text-foreground">{row.contact.name}</p>
-                        <Badge variant="secondary" className="h-5 px-2 text-[10px]">
-                          {stage.icon} {stage.title}
-                        </Badge>
-                      </div>
+                      <p className="truncate text-sm font-semibold text-foreground">{row.contact.name}</p>
                       <p className="truncate text-sm text-foreground">{row.nextAction?.title}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        Ultima acao: {getLastActionText(row.lastAction)}
+                        {stage.title} • Ultima: {getLastActionText(row.lastAction)}
                       </p>
                     </div>
                     <LeadNextActionBadge task={row.nextAction} />
@@ -159,44 +165,48 @@ export function LeadActionQueuePanel({
           )}
         </div>
 
-        <div className="space-y-3">
-          <div>
-            <p className="text-sm font-semibold text-foreground">Leads sem proxima acao</p>
-            <p className="text-xs text-muted-foreground">Buracos operacionais que precisam de dono e prazo.</p>
+        <div className="rounded-lg border border-border/60 bg-muted/15 px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Sem proxima acao
+              </p>
+              <p className="text-2xl font-semibold text-foreground">{queueSummary.none}</p>
+              <p className="text-xs text-muted-foreground">
+                {queueSummary.none > 0
+                  ? "Leads ainda sem dono operacional ou prazo definido."
+                  : "Todos os leads deste escopo ja tem um proximo passo."}
+              </p>
+            </div>
+            {queueSummary.none > 0 ? <LeadNextActionBadge task={null} showEmpty /> : null}
           </div>
 
-          {noActionRows.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
-              Nenhum lead sem proxima acao neste escopo.
+          {noActionRows.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {noActionRows.map((contact) => {
+                const chip = (
+                  <span className="inline-flex max-w-full items-center rounded-full border border-border/60 bg-background/60 px-2.5 py-1 text-[11px] text-muted-foreground">
+                    <span className="truncate">{contact.name}</span>
+                  </span>
+                );
+
+                if (!onOpenLead) {
+                  return <div key={contact.id}>{chip}</div>;
+                }
+
+                return (
+                  <button key={contact.id} type="button" onClick={() => onOpenLead(contact.id)}>
+                    {chip}
+                  </button>
+                );
+              })}
+              {queueSummary.none > noActionRows.length ? (
+                <span className="inline-flex items-center rounded-full border border-border/60 bg-background/35 px-2.5 py-1 text-[11px] text-muted-foreground">
+                  +{queueSummary.none - noActionRows.length} restantes
+                </span>
+              ) : null}
             </div>
-          ) : (
-            noActionRows.map((contact) => {
-              const stage = PIPELINE_STAGES[contact.pipelineStage];
-              const content = (
-                <div className="w-full rounded-xl border border-border/70 bg-card/80 px-4 py-3 text-left transition-colors hover:border-primary/40">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <p className="truncate text-sm font-semibold text-foreground">{contact.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        Etapa atual: {stage.title}
-                      </p>
-                    </div>
-                    <LeadNextActionBadge task={null} showEmpty />
-                  </div>
-                </div>
-              );
-
-              if (!onOpenLead) {
-                return <div key={contact.id}>{content}</div>;
-              }
-
-              return (
-                <button key={contact.id} type="button" className="w-full" onClick={() => onOpenLead(contact.id)}>
-                  {content}
-                </button>
-              );
-            })
-          )}
+          ) : null}
         </div>
       </CardContent>
     </Card>

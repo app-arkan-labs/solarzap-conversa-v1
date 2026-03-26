@@ -867,48 +867,56 @@ export function ConversationList({
       )}
 
       {showLeadNextAction ? (
-        <div className="border-b border-border bg-muted/20 px-3 py-2 space-y-2">
+        <div className="space-y-2 border-b border-border bg-muted/10 px-3 py-2">
           {showOperationalReminder ? (
-            <div className="rounded-xl border border-primary/15 bg-primary/5 px-3 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-foreground">Resumo operacional do dia</p>
-                  <p className="text-xs text-muted-foreground">
-                    {operationalCounts.overdue} vencidas, {operationalCounts.today} para hoje e {operationalCounts.none} sem proxima acao.
-                  </p>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/65 px-2.5 py-2">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Fila operacional
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {operationalCounts.overdue > 0 ? (
+                    <button
+                      type="button"
+                      className="inline-flex h-5 items-center rounded-full border border-red-500/25 bg-red-500/10 px-2 text-[10px] font-medium text-red-200 transition-colors hover:border-red-400/40"
+                      onClick={() => setOperationalFilter('overdue')}
+                    >
+                      {operationalCounts.overdue} vencidas
+                    </button>
+                  ) : null}
+                  {operationalCounts.today > 0 ? (
+                    <button
+                      type="button"
+                      className="inline-flex h-5 items-center rounded-full border border-amber-500/25 bg-amber-500/10 px-2 text-[10px] font-medium text-amber-200 transition-colors hover:border-amber-400/40"
+                      onClick={() => setOperationalFilter('today')}
+                    >
+                      {operationalCounts.today} hoje
+                    </button>
+                  ) : null}
+                  {operationalCounts.none > 0 ? (
+                    <button
+                      type="button"
+                      className="inline-flex h-5 items-center rounded-full border border-border/70 bg-muted/25 px-2 text-[10px] font-medium text-muted-foreground transition-colors hover:border-border"
+                      onClick={() => setOperationalFilter('none')}
+                    >
+                      {operationalCounts.none} sem acao
+                    </button>
+                  ) : null}
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs text-muted-foreground"
-                  onClick={dismissOperationalReminder}
-                >
-                  Fechar hoje
-                </Button>
               </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {operationalCounts.overdue > 0 ? (
-                  <Button type="button" size="sm" className="h-7 px-3 text-[11px]" onClick={() => setOperationalFilter('overdue')}>
-                    Ver vencidas
-                  </Button>
-                ) : null}
-                {operationalCounts.today > 0 ? (
-                  <Button type="button" size="sm" variant="outline" className="h-7 px-3 text-[11px]" onClick={() => setOperationalFilter('today')}>
-                    Ver hoje
-                  </Button>
-                ) : null}
-                {operationalCounts.none > 0 ? (
-                  <Button type="button" size="sm" variant="outline" className="h-7 px-3 text-[11px]" onClick={() => setOperationalFilter('none')}>
-                    Ver sem acao
-                  </Button>
-                ) : null}
-              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 rounded-full px-2 text-[11px] text-muted-foreground"
+                onClick={dismissOperationalReminder}
+              >
+                Fechar hoje
+              </Button>
             </div>
           ) : null}
 
-          <div className="flex gap-2 overflow-x-auto pb-0.5">
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5">
             {operationalFilterOptions.map((option) => {
               const isActive = operationalFilter === option.id;
               return (
@@ -916,12 +924,17 @@ export function ConversationList({
                   key={option.id}
                   type="button"
                   size="sm"
-                  variant={isActive ? 'default' : 'outline'}
-                  className="h-7 rounded-full px-3 text-[11px] whitespace-nowrap"
+                  variant="ghost"
+                  className={cn(
+                    'h-7 rounded-full border px-3 text-[11px] whitespace-nowrap',
+                    isActive
+                      ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/15'
+                      : 'border-border/60 bg-background/35 text-muted-foreground hover:bg-muted/30',
+                  )}
                   onClick={() => setOperationalFilter(option.id)}
                 >
                   {option.label}
-                  <span className={cn('ml-1.5 text-[10px]', isActive ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
+                  <span className={cn('ml-1.5 text-[10px]', isActive ? 'text-primary' : 'text-muted-foreground')}>
                     {operationalCounts[option.id]}
                   </span>
                 </Button>
@@ -1108,10 +1121,14 @@ export function ConversationList({
                       <div className="w-full overflow-hidden space-y-1">
                         {showLeadNextAction ? (
                           <div className="w-full overflow-hidden">
-                            <LeadNextActionBadge
-                              task={nextActionByLeadId.get(conversation.contact.id) || null}
-                              showEmpty
-                            />
+                            {(() => {
+                              const task = nextActionByLeadId.get(conversation.contact.id) || null;
+                              const showEmptyBadge = operationalFilter === 'none' || isSelected;
+
+                              if (!task && !showEmptyBadge) return null;
+
+                              return <LeadNextActionBadge task={task} showEmpty={showEmptyBadge} />;
+                            })()}
                           </div>
                         ) : null}
                         <div className="w-full overflow-hidden">

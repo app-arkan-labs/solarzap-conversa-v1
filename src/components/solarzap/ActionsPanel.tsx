@@ -440,8 +440,11 @@ export function ActionsPanel({
       </div>
 
       {showLeadNextAction && onCreateLeadNextAction && onUpdateLeadNextAction && onCompleteLeadNextAction && onCancelLeadNextAction ? (
-        <div className="p-4 border-b border-border">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Camada Operacional</h3>
+        <div className="border-b border-border px-3 py-3">
+          <div className="mb-2">
+            <h3 className="text-sm font-semibold text-foreground">Proxima acao</h3>
+            <p className="text-[11px] text-muted-foreground">Detalhe operacional do lead sem ocupar a conversa.</p>
+          </div>
           <LeadNextActionSection
             enabled={showLeadNextAction}
             contact={contact}

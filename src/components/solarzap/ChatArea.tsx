@@ -1244,7 +1244,7 @@ export function ChatArea({
       </div>
 
       {showLeadNextAction && conversation && onCreateLeadNextAction && onUpdateLeadNextAction && onCompleteLeadNextAction && onCancelLeadNextAction ? (
-        <div className="shrink-0 border-b border-border bg-card px-3 py-2">
+        <div className="shrink-0 border-b border-border/70 bg-card/60 px-3 py-1.5">
           <LeadNextActionSection
             enabled={showLeadNextAction}
             compact
