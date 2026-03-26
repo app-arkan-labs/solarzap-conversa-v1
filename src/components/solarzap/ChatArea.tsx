@@ -81,6 +81,9 @@ interface ChatAreaProps {
   nextAction?: LeadTask | null;
   lastAction?: LeadTask | null;
   leadNextActionLoading?: boolean;
+  showActionsToggle?: boolean;
+  isActionsOpen?: boolean;
+  onToggleActions?: () => void;
   onCreateLeadNextAction?: (input: {
     leadId: number;
     title: string;
@@ -138,6 +141,9 @@ export function ChatArea({
   nextAction = null,
   lastAction = null,
   leadNextActionLoading = false,
+  showActionsToggle = false,
+  isActionsOpen = false,
+  onToggleActions,
   onCreateLeadNextAction,
   onUpdateLeadNextAction,
   onCompleteLeadNextAction,
@@ -1243,6 +1249,9 @@ export function ChatArea({
           <LeadNextActionInlineBar
             nextAction={nextAction}
             isLoading={leadNextActionLoading}
+            showActionsToggle={showActionsToggle}
+            isActionsOpen={isActionsOpen}
+            onToggleActions={onToggleActions}
           />
         </div>
       ) : null}

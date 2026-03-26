@@ -4,7 +4,7 @@ import { Conversation, CHANNEL_INFO, PIPELINE_STAGES, PipelineStage, Contact, Ch
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,8 +51,9 @@ interface ConversationListProps {
   contacts: Contact[];
   showLeadNextAction?: boolean;
   nextActionByLeadId?: Map<string, LeadTask>;
-  showActionsSheetToggle?: boolean;
-  isActionsSheetOpen?: boolean;
+  actionsMode?: boolean;
+  actionsViewportHeight?: number;
+  actionsScrollTop?: number;
   selectedId: string | null;
   channelFilter: ChannelFilter;
   searchQuery: string;
@@ -71,7 +72,7 @@ interface ConversationListProps {
   leadScopeLoading?: boolean;
   currentUserId?: string | null;
   isDetailsPanelOpen?: boolean;
-  onToggleActionsSheet?: () => void;
+  onActionsScroll?: (scrollTop: number) => void;
 }
 
 // Get stage options for filter
@@ -89,8 +90,9 @@ export function ConversationList({
   contacts,
   showLeadNextAction = false,
   nextActionByLeadId = new Map<string, LeadTask>(),
-  showActionsSheetToggle = false,
-  isActionsSheetOpen = false,
+  actionsMode = false,
+  actionsViewportHeight = 296,
+  actionsScrollTop = 0,
   selectedId,
   channelFilter,
   searchQuery,
@@ -110,7 +112,7 @@ export function ConversationList({
   leadScopeLoading = false,
   currentUserId = null,
   isDetailsPanelOpen = false,
-  onToggleActionsSheet,
+  onActionsScroll,
 }: ConversationListProps) {
   const { toast } = useToast();
   const isMobileViewport = useMobileViewport();
@@ -134,6 +136,8 @@ export function ConversationList({
   const [isRefreshingLeadScopeMembers, setIsRefreshingLeadScopeMembers] = useState(false);
   const [bulkAssignMembers, setBulkAssignMembers] = useState<MemberDto[]>([]);
   const [isLoadingBulkAssignMembers, setIsLoadingBulkAssignMembers] = useState(false);
+  const actionsScrollRef = useRef<HTMLDivElement | null>(null);
+  const actionsScrollSyncRef = useRef(false);
 
   const formatTime = (date: Date) => {
     const now = new Date();
@@ -224,6 +228,28 @@ export function ConversationList({
     return 'Meus leads';
   }, [effectiveLeadScopeMembers, leadScope]);
   const isLeadScopeMembersLoading = leadScopeLoading || isRefreshingLeadScopeMembers;
+
+  useEffect(() => {
+    if (!actionsMode) return;
+    setIsSelectionMode(false);
+  }, [actionsMode]);
+
+  useEffect(() => {
+    if (!actionsMode || !actionsScrollRef.current) return;
+
+    const element = actionsScrollRef.current;
+    if (Math.abs(element.scrollTop - actionsScrollTop) < 1) return;
+
+    actionsScrollSyncRef.current = true;
+    element.scrollTop = actionsScrollTop;
+
+    const timeoutId = window.setTimeout(() => {
+      actionsScrollSyncRef.current = false;
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [actionsMode, actionsScrollTop]);
+
   const refreshLeadScopeMembers = useCallback(async () => {
     if (!canViewTeam && !canBulkAssign) return;
     if (effectiveLeadScopeMembers.length > 0) return;
@@ -419,6 +445,33 @@ export function ConversationList({
   const activeStageCount = stageFilter !== 'todos'
     ? conversations.filter(c => c.contact.pipelineStage === stageFilter).length
     : conversations.length;
+  const getCompactMessagePreview = useCallback((conversation: Conversation) => {
+    if (conversation.lastMessage?.attachment_type === 'image' && conversation.lastMessage.attachment_url) {
+      return 'Imagem';
+    }
+
+    if (conversation.lastMessage?.attachment_type === 'video') {
+      return 'Video';
+    }
+
+    if (conversation.lastMessage?.attachment_type === 'audio') {
+      return 'Audio';
+    }
+
+    if (conversation.lastMessage?.attachment_type === 'document') {
+      return 'Documento';
+    }
+
+    const content = String(conversation.lastMessage?.content || '').trim();
+    if (content.length > 0) return content;
+
+    return conversation.contact.company || conversation.contact.phone || 'Sem historico recente';
+  }, []);
+
+  const handleCompactActionsScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    if (actionsScrollSyncRef.current) return;
+    onActionsScroll?.(event.currentTarget.scrollTop);
+  }, [onActionsScroll]);
 
   return (
     <div className="w-full h-full flex flex-col border-r border-border bg-card">
@@ -580,23 +633,6 @@ export function ConversationList({
             </DropdownMenu>
           </div>
         </div>
-
-        {showActionsSheetToggle && !isMobileViewport ? (
-          <div className="flex items-center">
-            <Button
-              type="button"
-              size="sm"
-              variant={isActionsSheetOpen ? 'default' : 'outline'}
-              className={cn(
-                'h-8 rounded-full px-4 text-xs font-semibold',
-                isActionsSheetOpen && 'shadow-sm',
-              )}
-              onClick={onToggleActionsSheet}
-            >
-              Acoes
-            </Button>
-          </div>
-        ) : null}
 
         {/* Search */}
         <div className="relative">
@@ -823,7 +859,93 @@ export function ConversationList({
       )}
 
       {/* Conversation List */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      {actionsMode && !isMobileViewport ? (
+        <div className="border-t border-border/50">
+          <div
+            ref={actionsScrollRef}
+            className="overflow-y-auto custom-scrollbar"
+            style={{ height: actionsViewportHeight }}
+            onScroll={handleCompactActionsScroll}
+          >
+            {displayConversations.length === 0 ? (
+              <div className="p-4 text-center text-muted-foreground">
+                Nenhuma conversa encontrada
+              </div>
+            ) : (
+              displayConversations.map((conversation) => {
+                const stage = PIPELINE_STAGES[conversation.contact.pipelineStage];
+                const isSelected = selectedId === conversation.id;
+                const isAiActive = conversation.contact.aiEnabled !== false;
+
+                return (
+                  <div
+                    key={conversation.id}
+                    data-testid="conversation-row"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onSelect(conversation)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      onSelect(conversation);
+                    }}
+                    className={cn(
+                      'grid h-[74px] grid-cols-[auto,1fr,auto] items-center gap-3 border-b border-border/50 px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+                      isSelected ? 'bg-primary/6' : 'hover:bg-muted/35',
+                    )}
+                  >
+                    <div className="relative flex-shrink-0">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted" title={isAiActive ? 'IA ativa' : undefined}>
+                        {isAiActive ? (
+                          <Bot className="h-5 w-5 text-primary" />
+                        ) : (
+                          <span className="text-lg">{conversation.contact.avatar || 'o/'}</span>
+                        )}
+                      </div>
+                      {conversation.isUrgent ? (
+                        <div className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-danger ring-2 ring-card" />
+                      ) : null}
+                    </div>
+
+                    <div className="min-w-0 text-left">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-semibold text-foreground">
+                          {conversation.contact.name}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {conversation.lastMessage ? formatTime(conversation.lastMessage.timestamp) : '--'}
+                        </span>
+                      </div>
+
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {conversation.contact.phone || conversation.contact.company || 'Sem telefone'}
+                      </p>
+
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                          {stage.icon} {stage.title}
+                        </Badge>
+                        <span className="truncate text-[11px] text-muted-foreground">
+                          {getCompactMessagePreview(conversation)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {conversation.unreadCount > 0 ? (
+                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                          {conversation.unreadCount}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
         {displayConversations.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground">
             Nenhuma conversa encontrada
@@ -1007,7 +1129,8 @@ export function ConversationList({
             );
           })
         )}
-      </div>
+        </div>
+      )}
 
       {/* Comments Modal */}
       <LeadCommentsModal
