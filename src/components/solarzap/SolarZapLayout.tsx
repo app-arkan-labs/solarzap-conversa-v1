@@ -233,6 +233,7 @@ export function SolarZapLayout() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(() =>
     isAdminMembersPath(location.pathname) ? 'admin_members' : 'conversas',
   );
+  const [isConversationActionsSheetOpen, setIsConversationActionsSheetOpen] = useState(false);
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('todos');
   const [stageFilter, setStageFilter] = useState<PipelineStage | 'todos'>('todos');
   const [searchQuery, setSearchQuery] = useState('');
@@ -302,6 +303,11 @@ export function SolarZapLayout() {
   }, []);
 
   useEffect(() => {
+    if (isConversationActionsSheetOpen && isResizingConversationsSidebar) {
+      setIsResizingConversationsSidebar(false);
+      return;
+    }
+
     if (!isResizingConversationsSidebar) return;
 
     const handleMouseMove = (event: MouseEvent) => {
@@ -329,12 +335,13 @@ export function SolarZapLayout() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizingConversationsSidebar]);
+  }, [isConversationActionsSheetOpen, isResizingConversationsSidebar]);
 
   const handleConversationsSidebarResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (isMobileViewport || isConversationActionsSheetOpen) return;
     event.preventDefault();
     setIsResizingConversationsSidebar(true);
-  }, []);
+  }, [isConversationActionsSheetOpen, isMobileViewport]);
   const openTab = useCallback((tab: ActiveTab) => {
     setActiveTab(tab);
     if (location.pathname !== '/') {
@@ -525,11 +532,6 @@ export function SolarZapLayout() {
     ));
   }, []);
 
-  const conversationActionsViewportHeight = useMemo(() => {
-    const visibleRows = Math.max(4, Math.min(filteredConversations.length || 0, 5));
-    return visibleRows * 74;
-  }, [filteredConversations.length]);
-
   const handleSaveConversationActionSheetRow = useCallback(async (input: {
     contact: Contact;
     appointmentId?: string | null;
@@ -651,7 +653,6 @@ export function SolarZapLayout() {
   } = useNotifications();
 
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
-  const [isConversationActionsSheetOpen, setIsConversationActionsSheetOpen] = useState(false);
   const [conversationActionsScrollTop, setConversationActionsScrollTop] = useState(0);
   const [isCreateLeadOpen, setIsCreateLeadOpen] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
@@ -1757,7 +1758,15 @@ export function SolarZapLayout() {
             <div
               ref={conversationsSidebarRef}
               className={`relative ${isMobileViewport ? 'flex-1 min-w-0' : 'flex-shrink-0'}`}
-              style={isMobileViewport ? undefined : { width: conversationsSidebarWidth }}
+              style={
+                isMobileViewport
+                  ? undefined
+                  : {
+                      width: isConversationActionsSheetOpen
+                        ? 'clamp(320px, 29vw, 430px)'
+                        : conversationsSidebarWidth,
+                    }
+              }
             >
             <Suspense fallback={<TabLoadingFallback label="Carregando conversas..." />}>
               <ConversationList
@@ -1766,7 +1775,6 @@ export function SolarZapLayout() {
                 showLeadNextAction={leadNextActionEnabled}
                 nextActionByLeadId={nextActionByLeadId}
                 actionsMode={!isMobileViewport && isConversationActionsSheetOpen}
-                actionsViewportHeight={conversationActionsViewportHeight}
                 actionsScrollTop={conversationActionsScrollTop}
                 canViewTeam={canViewTeam}
                 leadScope={leadScope}
@@ -1788,7 +1796,7 @@ export function SolarZapLayout() {
                 onActionsScroll={handleConversationActionsScroll}
               />
             </Suspense>
-              {!isMobileViewport && (
+              {!isMobileViewport && !isConversationActionsSheetOpen && (
                 <div
                   role="separator"
                   aria-orientation="vertical"
@@ -1823,7 +1831,6 @@ export function SolarZapLayout() {
                   nextActionByLeadId={nextActionByLeadId}
                   selectedConversationId={activeConversation?.id || null}
                   onSelectConversation={handleSelectConversation}
-                  actionsViewportHeight={conversationActionsViewportHeight}
                   actionsScrollTop={conversationActionsScrollTop}
                   onActionsScroll={handleConversationActionsScroll}
                   onSaveRow={handleSaveConversationActionSheetRow}

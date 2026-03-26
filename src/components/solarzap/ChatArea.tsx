@@ -1064,6 +1064,7 @@ export function ChatArea({
   };
 
   const stage = PIPELINE_STAGES[conversation.contact.pipelineStage];
+  const isActionsWorkspaceOpen = Boolean(actionsSheet) && !isMobileChat;
 
   return (
     <div
@@ -1256,8 +1257,8 @@ export function ChatArea({
         </div>
       ) : null}
 
-      {actionsSheet ? (
-        <div className="shrink-0">
+      {isActionsWorkspaceOpen ? (
+        <div className="flex-1 min-h-0 overflow-hidden">
           {actionsSheet}
         </div>
       ) : null}
@@ -1283,6 +1284,8 @@ export function ChatArea({
         />
       )}
 
+      {!isActionsWorkspaceOpen ? (
+      <>
       {/* Messages Area */}
       <div
         ref={scrollRef}
@@ -1764,6 +1767,8 @@ export function ChatArea({
           </div>
         </div>
       )}
+      </>
+      ) : null}
 
       {/* Search Modal */}
       <ChatSearchModal

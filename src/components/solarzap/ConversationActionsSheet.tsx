@@ -18,7 +18,6 @@ type ConversationActionsSheetProps = {
   nextActionByLeadId: Map<string, LeadTask>;
   selectedConversationId?: string | null;
   onSelectConversation?: (conversation: Conversation) => void;
-  actionsViewportHeight?: number;
   actionsScrollTop?: number;
   onActionsScroll?: (scrollTop: number) => void;
   onSaveRow: (input: {
@@ -56,7 +55,7 @@ type ActionSheetDraft = {
   isSaving: boolean;
 };
 
-const GRID_TEMPLATE_COLUMNS = 'minmax(180px, 1.15fr) minmax(220px, 1.3fr) minmax(108px, 0.72fr) minmax(164px, 0.95fr) minmax(88px, 0.52fr) minmax(172px, 0.95fr) minmax(128px, 0.8fr) minmax(150px, 0.9fr) 104px';
+const GRID_TEMPLATE_COLUMNS = 'minmax(0,1.25fr) minmax(0,1.35fr) minmax(0,0.72fr) minmax(0,1fr) minmax(0,0.58fr) minmax(0,1.02fr) minmax(0,0.8fr) minmax(0,0.86fr) minmax(88px,0.62fr)';
 const DEFAULT_DURATION = '30';
 const DURATION_OPTIONS = ['15', '30', '45', '60', '90', '120'];
 const TYPE_OPTIONS: Array<{ value: AppointmentType; label: string }> = [
@@ -118,7 +117,6 @@ export function ConversationActionsSheet({
   nextActionByLeadId,
   selectedConversationId = null,
   onSelectConversation,
-  actionsViewportHeight = 296,
   actionsScrollTop = 0,
   onActionsScroll,
   onSaveRow,
@@ -450,9 +448,8 @@ export function ConversationActionsSheet({
   }, [onActionsScroll]);
 
   return (
-    <div className="border-b border-border/60 bg-background/35">
-      <div className="overflow-x-auto custom-scrollbar">
-        <div className="min-w-[1160px]">
+    <div className="flex h-full min-h-0 flex-col border-b border-border/60 bg-background/35">
+      <div className="min-w-0 flex flex-1 min-h-0 flex-col">
           <div
             className="grid border-b border-border/60 bg-background/90 px-2 backdrop-blur-sm"
             style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
@@ -470,8 +467,7 @@ export function ConversationActionsSheet({
 
           <div
             ref={actionsScrollRef}
-            className="overflow-y-auto custom-scrollbar"
-            style={{ height: actionsViewportHeight }}
+            className="flex-1 min-h-0 overflow-y-auto custom-scrollbar"
             onScroll={handleGridScroll}
           >
             {conversations.map((conversation) => {
@@ -492,12 +488,12 @@ export function ConversationActionsSheet({
                   )}
                   style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
                 >
-                  <div className="flex min-h-[74px] flex-col justify-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex min-h-[74px] flex-col justify-center border-r border-border/60 px-3 py-2">
                     <p className="line-clamp-2 text-sm font-medium text-foreground">{draft.lastActionTitle}</p>
                     <p className="mt-1 text-[11px] text-muted-foreground">{draft.lastActionMeta || 'Sem historico'}</p>
                   </div>
 
-                  <div className="flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
                     <Input
                       value={draft.title}
                       onFocus={() => onSelectConversation?.(conversation)}
@@ -507,7 +503,7 @@ export function ConversationActionsSheet({
                     />
                   </div>
 
-                  <div className="flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
                     <select
                       value={draft.type}
                       onFocus={() => onSelectConversation?.(conversation)}
@@ -522,7 +518,7 @@ export function ConversationActionsSheet({
                     </select>
                   </div>
 
-                  <div className="flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
                     <Input
                       type="datetime-local"
                       value={draft.dateTime}
@@ -532,7 +528,7 @@ export function ConversationActionsSheet({
                     />
                   </div>
 
-                  <div className="flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
                     <select
                       value={draft.duration}
                       onFocus={() => onSelectConversation?.(conversation)}
@@ -547,7 +543,7 @@ export function ConversationActionsSheet({
                     </select>
                   </div>
 
-                  <div className="flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
                     <select
                       value={draft.responsibleUserId}
                       onFocus={() => onSelectConversation?.(conversation)}
@@ -566,7 +562,7 @@ export function ConversationActionsSheet({
                     </select>
                   </div>
 
-                  <div className="flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
                     <Input
                       value={draft.location}
                       onFocus={() => onSelectConversation?.(conversation)}
@@ -576,7 +572,7 @@ export function ConversationActionsSheet({
                     />
                   </div>
 
-                  <div className="flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
+                  <div className="min-w-0 flex min-h-[74px] items-center border-r border-border/60 px-3 py-2">
                     <Badge variant="secondary" className="max-w-full truncate text-[11px]">
                       {stage.icon} {stage.title}
                     </Badge>
@@ -609,7 +605,6 @@ export function ConversationActionsSheet({
               );
             })}
           </div>
-        </div>
       </div>
     </div>
   );

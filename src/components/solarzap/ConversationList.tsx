@@ -52,7 +52,6 @@ interface ConversationListProps {
   showLeadNextAction?: boolean;
   nextActionByLeadId?: Map<string, LeadTask>;
   actionsMode?: boolean;
-  actionsViewportHeight?: number;
   actionsScrollTop?: number;
   selectedId: string | null;
   channelFilter: ChannelFilter;
@@ -91,7 +90,6 @@ export function ConversationList({
   showLeadNextAction = false,
   nextActionByLeadId = new Map<string, LeadTask>(),
   actionsMode = false,
-  actionsViewportHeight = 296,
   actionsScrollTop = 0,
   selectedId,
   channelFilter,
@@ -860,11 +858,10 @@ export function ConversationList({
 
       {/* Conversation List */}
       {actionsMode && !isMobileViewport ? (
-        <div className="border-t border-border/50">
+        <div className="flex-1 min-h-0 border-t border-border/50">
           <div
             ref={actionsScrollRef}
-            className="overflow-y-auto custom-scrollbar"
-            style={{ height: actionsViewportHeight }}
+            className="h-full overflow-y-auto custom-scrollbar"
             onScroll={handleCompactActionsScroll}
           >
             {displayConversations.length === 0 ? (
