@@ -21,8 +21,9 @@ import { GenerateProposalPromptModal } from './GenerateProposalPromptModal';
 import { ProposalReadyModal } from './ProposalReadyModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
 import { FollowUpExhaustedModal, type FollowUpLostReasonKey } from './FollowUpExhaustedModal';
+import { ConversationActionsSheet } from './ConversationActionsSheet';
 import { Loader2, Plus } from 'lucide-react';
-import { format } from 'date-fns';
+import { addMinutes, format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
@@ -205,7 +206,7 @@ export function SolarZapLayout() {
 
   const { getMessage, isDragDropEnabled, activeSettings } = useAutomationSettings();
   const appointmentReadScope = canViewTeam && leadScope !== 'mine' ? 'org' : 'mine';
-  const { appointments, updateAppointment } = useAppointments({ readScope: appointmentReadScope });
+  const { appointments, createAppointment, updateAppointment } = useAppointments({ readScope: appointmentReadScope });
   const {
     tasks: leadTasks,
     nextActionByLeadId,
@@ -502,6 +503,119 @@ export function SolarZapLayout() {
     });
   }, [conversations, channelFilter, stageFilter, searchQuery]);
 
+  const handleToggleConversationActionsSheet = useCallback(() => {
+    if (isMobileViewport) return;
+
+    if (!selectedConversation) {
+      const firstConversation = filteredConversations[0] || conversations[0];
+      if (firstConversation) {
+        setSelectedConversation(firstConversation);
+        markAsRead(firstConversation.id);
+      }
+    }
+
+    setIsDetailsPanelOpen(false);
+    setIsConversationActionsSheetOpen((current) => !current);
+  }, [conversations, filteredConversations, isMobileViewport, markAsRead, selectedConversation]);
+
+  const handleCloseConversationActionsSheet = useCallback(() => {
+    setIsConversationActionsSheetOpen(false);
+  }, []);
+
+  const handleSaveConversationActionSheetRow = useCallback(async (input: {
+    contact: Contact;
+    appointmentId?: string | null;
+    nextActionTaskId?: string | null;
+    title: string;
+    type: Appointment['type'];
+    startAt: Date;
+    durationMinutes: number;
+    location?: string;
+    responsibleUserId: string;
+    notes?: string | null;
+  }) => {
+    const startAt = input.startAt;
+    const endAt = addMinutes(startAt, input.durationMinutes);
+    const existingAppointment =
+      input.appointmentId
+        ? appointments.find((appointment) => String(appointment.id) === String(input.appointmentId))
+        : null;
+    let resolvedNextActionTaskId = input.nextActionTaskId || nextActionByLeadId.get(String(input.contact.id))?.id || null;
+
+    const savedAppointment = input.appointmentId
+      ? await updateAppointment({
+          id: String(input.appointmentId),
+          data: {
+            user_id: input.responsibleUserId,
+            lead_id: Number(input.contact.id),
+            title: input.title,
+            type: input.type,
+            start_at: startAt,
+            end_at: endAt,
+            location: input.location || '',
+            notes: input.notes || existingAppointment?.notes || '',
+          },
+        })
+      : await createAppointment({
+          user_id: input.responsibleUserId,
+          lead_id: Number(input.contact.id),
+          title: input.title,
+          type: input.type,
+          start_at: startAt,
+          end_at: endAt,
+          location: input.location || '',
+          notes: input.notes || '',
+        });
+
+    if (!resolvedNextActionTaskId && orgId) {
+      const { data: existingTaskRow, error: existingTaskError } = await supabase
+        .from('lead_tasks')
+        .select('id')
+        .eq('org_id', orgId)
+        .eq('lead_id', Number(input.contact.id))
+        .eq('status', 'open')
+        .eq('task_kind', 'next_action')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingTaskError) {
+        throw existingTaskError;
+      }
+
+      resolvedNextActionTaskId = existingTaskRow?.id ? String(existingTaskRow.id) : null;
+    }
+
+    if (resolvedNextActionTaskId) {
+      await updateNextAction({
+        taskId: resolvedNextActionTaskId,
+        title: input.title,
+        notes: input.notes || null,
+        dueAt: startAt,
+        channel: 'other',
+        userId: input.responsibleUserId,
+      });
+      await linkNextActionToAppointment({
+        taskId: resolvedNextActionTaskId,
+        appointmentId: String(savedAppointment.id),
+        dueAt: startAt,
+        channel: 'other',
+      });
+    } else {
+      await createNextAction({
+        leadId: Number(input.contact.id),
+        title: input.title,
+        notes: input.notes || null,
+        dueAt: startAt,
+        channel: 'other',
+        userId: input.responsibleUserId,
+        linkedAppointmentId: String(savedAppointment.id),
+      });
+    }
+
+    return savedAppointment;
+  }, [appointments, createAppointment, createNextAction, linkNextActionToAppointment, nextActionByLeadId, orgId, updateAppointment, updateNextAction]);
+
   // Set initial selected conversation
   if (!selectedConversation && conversations.length > 0) {
     // Avoid infinite loop by checking if it's already set or if we really need to set it
@@ -529,6 +643,7 @@ export function SolarZapLayout() {
   } = useNotifications();
 
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
+  const [isConversationActionsSheetOpen, setIsConversationActionsSheetOpen] = useState(false);
   const [isCreateLeadOpen, setIsCreateLeadOpen] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isProposalOpen, setIsProposalOpen] = useState(false);
@@ -1481,6 +1596,12 @@ export function SolarZapLayout() {
     setIsMobileMoreOpen(false);
   }, [activeTab, location.pathname]);
 
+  useEffect(() => {
+    if (activeTab !== 'conversas' || isMobileViewport) {
+      setIsConversationActionsSheetOpen(false);
+    }
+  }, [activeTab, isMobileViewport]);
+
   if (isInitialLoading) {
     return (
       <div className="app-shell-bg h-dvh w-full flex items-center justify-center bg-background">
@@ -1635,6 +1756,8 @@ export function SolarZapLayout() {
                 contacts={contacts}
                 showLeadNextAction={leadNextActionEnabled}
                 nextActionByLeadId={nextActionByLeadId}
+                showActionsSheetToggle={leadNextActionEnabled}
+                isActionsSheetOpen={isConversationActionsSheetOpen}
                 canViewTeam={canViewTeam}
                 leadScope={leadScope}
                 onLeadScopeChange={setLeadScope}
@@ -1652,6 +1775,7 @@ export function SolarZapLayout() {
                 onImportContacts={importContacts}
                 onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
                 isDetailsPanelOpen={isDetailsPanelOpen}
+                onToggleActionsSheet={handleToggleConversationActionsSheet}
               />
             </Suspense>
               {!isMobileViewport && (
@@ -1679,11 +1803,21 @@ export function SolarZapLayout() {
               <ChatArea
               conversation={activeConversation}
               conversations={conversations}
+              actionsSheet={!isMobileViewport && isConversationActionsSheetOpen ? (
+                <ConversationActionsSheet
+                  conversations={filteredConversations}
+                  appointments={appointments}
+                  nextActionByLeadId={nextActionByLeadId}
+                  selectedConversationId={activeConversation?.id || null}
+                  onSelectConversation={handleSelectConversation}
+                  onClose={handleCloseConversationActionsSheet}
+                  onSaveRow={handleSaveConversationActionSheetRow}
+                />
+              ) : undefined}
               showLeadNextAction={leadNextActionEnabled}
               nextAction={activeConversation ? nextActionByLeadId.get(activeConversation.contact.id) || null : null}
               lastAction={activeConversation ? lastActionByLeadId.get(activeConversation.contact.id) || null : null}
               leadNextActionLoading={isLoadingLeadTasks}
-              onOpenLeadNextAction={openLeadNextActionFlow}
               onToggleLeadAi={sellerPerms.can_toggle_ai ? toggleLeadAi : undefined}
               onSendMessage={async (conversationId, content, instanceName, replyTo, options) => {
                 import.meta.env.DEV && console.log('SolarZapLayout: onSendMessage called', {
@@ -1740,7 +1874,10 @@ export function SolarZapLayout() {
                   });
                 }
               }}
-              onOpenDetails={() => setIsDetailsPanelOpen(true)}
+              onOpenDetails={() => {
+                setIsConversationActionsSheetOpen(false);
+                setIsDetailsPanelOpen(true);
+              }}
               isDetailsOpen={isDetailsPanelOpen}
               onCallAction={(contact) => {
                 setPendingCallContact(contact);
@@ -1794,6 +1931,7 @@ export function SolarZapLayout() {
               onBack={isMobileViewport ? () => {
                 setSelectedConversation(null);
                 setIsDetailsPanelOpen(false);
+                setIsConversationActionsSheetOpen(false);
               } : undefined}
             />
             </Suspense>

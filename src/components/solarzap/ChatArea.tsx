@@ -45,6 +45,7 @@ import { listMembers } from '@/lib/orgAdminClient';
 interface ChatAreaProps {
   conversation: Conversation | null;
   conversations?: Conversation[];
+  actionsSheet?: React.ReactNode;
   onSendMessage: (
     conversationId: string,
     content: string,
@@ -100,7 +101,6 @@ interface ChatAreaProps {
   }) => Promise<void>;
   onCompleteLeadNextAction?: (task: LeadTask, resultSummary: string) => Promise<void>;
   onCancelLeadNextAction?: (taskId: string) => Promise<void>;
-  onOpenLeadNextAction?: (contact: Conversation['contact']) => void;
   onToggleLeadAi?: (params: { leadId: string; enabled: boolean; reason?: 'manual' | 'human_takeover' }) => Promise<{ leadId: string; enabled: boolean }>;
   onCallAction?: (contact: Conversation['contact']) => void;
   onVideoCallAction?: (contact: Conversation['contact']) => void;
@@ -128,6 +128,7 @@ const emojiCategories = [
 export function ChatArea({
   conversation,
   conversations = [],
+  actionsSheet,
   onSendMessage,
   onSendAttachment,
   onSendAudio,
@@ -141,7 +142,6 @@ export function ChatArea({
   onUpdateLeadNextAction,
   onCompleteLeadNextAction,
   onCancelLeadNextAction,
-  onOpenLeadNextAction,
   onCallAction,
   onImportContacts,
   initialMessage,
@@ -1192,15 +1192,8 @@ export function ChatArea({
                 )}
               </div>
               <button
-                onClick={handleCall}
-                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-                title="Ligar"
-              >
-                <Phone className="w-5 h-5" />
-              </button>
-              <button
                 onClick={handleVideoCall}
-                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                className="hidden"
                 title="Chamada de vídeo (Google Meet)"
               >
                 <Video className="w-5 h-5" />
@@ -1250,8 +1243,13 @@ export function ChatArea({
           <LeadNextActionInlineBar
             nextAction={nextAction}
             isLoading={leadNextActionLoading}
-            onOpen={onOpenLeadNextAction ? () => onOpenLeadNextAction(conversation.contact) : undefined}
           />
+        </div>
+      ) : null}
+
+      {actionsSheet ? (
+        <div className="shrink-0">
+          {actionsSheet}
         </div>
       ) : null}
 

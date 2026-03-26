@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phoneUtils';
-import { Phone, Video, Calendar, FileText, Home, Kanban, User, Zap, MapPin, Mail, X, Save, Loader2, MessageSquare, Clock3 } from 'lucide-react';
+import { Phone, Video, Calendar, FileText, Home, Kanban, User, Zap, MapPin, Mail, X, Save, Loader2, MessageSquare } from 'lucide-react';
 import { Conversation, PIPELINE_STAGES, PipelineStage, CHANNEL_INFO, Channel, ClientType, LeadTask } from '@/types/solarzap';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -106,17 +106,7 @@ export function ActionsPanel({
   const [hasChanges, setHasChanges] = useState(false);
   const [formData, setFormData] = useState<UpdateLeadData & { canal?: Channel }>({});
   const { toast } = useToast();
-  const quickActions = useMemo(() => {
-    if (!showLeadNextAction) return baseQuickActions;
-
-    return [
-      baseQuickActions[0],
-      baseQuickActions[1],
-      baseQuickActions[2],
-      { id: 'next_action', label: 'Proxima Acao', icon: Clock3, color: 'bg-slate-600 hover:bg-slate-500' },
-      ...baseQuickActions.slice(3),
-    ];
-  }, [showLeadNextAction]);
+  const quickActions = useMemo(() => baseQuickActions, []);
 
   const prevContactIdRef = React.useRef<string | null>(null);
   const [leadProposals, setLeadProposals] = useState<LeadProposalItem[]>([]);

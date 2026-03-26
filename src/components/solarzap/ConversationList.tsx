@@ -51,6 +51,8 @@ interface ConversationListProps {
   contacts: Contact[];
   showLeadNextAction?: boolean;
   nextActionByLeadId?: Map<string, LeadTask>;
+  showActionsSheetToggle?: boolean;
+  isActionsSheetOpen?: boolean;
   selectedId: string | null;
   channelFilter: ChannelFilter;
   searchQuery: string;
@@ -69,6 +71,7 @@ interface ConversationListProps {
   leadScopeLoading?: boolean;
   currentUserId?: string | null;
   isDetailsPanelOpen?: boolean;
+  onToggleActionsSheet?: () => void;
 }
 
 // Get stage options for filter
@@ -86,6 +89,8 @@ export function ConversationList({
   contacts,
   showLeadNextAction = false,
   nextActionByLeadId = new Map<string, LeadTask>(),
+  showActionsSheetToggle = false,
+  isActionsSheetOpen = false,
   selectedId,
   channelFilter,
   searchQuery,
@@ -105,6 +110,7 @@ export function ConversationList({
   leadScopeLoading = false,
   currentUserId = null,
   isDetailsPanelOpen = false,
+  onToggleActionsSheet,
 }: ConversationListProps) {
   const { toast } = useToast();
   const isMobileViewport = useMobileViewport();
@@ -574,6 +580,23 @@ export function ConversationList({
             </DropdownMenu>
           </div>
         </div>
+
+        {showActionsSheetToggle && !isMobileViewport ? (
+          <div className="flex items-center">
+            <Button
+              type="button"
+              size="sm"
+              variant={isActionsSheetOpen ? 'default' : 'outline'}
+              className={cn(
+                'h-8 rounded-full px-4 text-xs font-semibold',
+                isActionsSheetOpen && 'shadow-sm',
+              )}
+              onClick={onToggleActionsSheet}
+            >
+              Acoes
+            </Button>
+          </div>
+        ) : null}
 
         {/* Search */}
         <div className="relative">
