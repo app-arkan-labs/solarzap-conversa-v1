@@ -1,3 +1,9 @@
+import type {
+    DashboardFunnelPayload,
+    DashboardLossSummary,
+    DashboardSourcePerformanceRow,
+} from "@/lib/dashboardMetrics";
+
 export interface DashboardPayload {
     kpis: {
         leads: { value: number; delta_pct: number };
@@ -13,6 +19,9 @@ export interface DashboardPayload {
         sales_by_source: Array<{ source: string; count: number; pct: number }>;
         monthly: Array<{ month: string; leads: number; sales: number; revenue: number; profit: number; conversion_rate: number }>;
     };
+    funnel: DashboardFunnelPayload;
+    source_performance: DashboardSourcePerformanceRow[];
+    loss_summary: DashboardLossSummary;
     tables: {
         stale_leads: Array<{
             id: number;
@@ -36,6 +45,9 @@ export interface DashboardPayload {
         total: number;
         done: number;
         canceled: number;
+        no_show: number;
+        scheduled: number;
+        confirmed: number;
         upcoming: Array<{
             id: string;
             title: string;

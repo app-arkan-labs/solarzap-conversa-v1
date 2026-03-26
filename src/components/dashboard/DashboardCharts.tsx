@@ -1,6 +1,17 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardPayload } from "@/types/dashboard";
-import { ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, AreaChart, Line, Area } from "recharts";
+import {
+    Area,
+    AreaChart,
+    CartesianGrid,
+    Legend,
+    Line,
+    LineChart,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from "recharts";
 
 interface ChartProps {
     data?: DashboardPayload["charts"];
@@ -23,26 +34,78 @@ export function DashboardCharts({ data, isLoading }: ChartProps) {
         sales: item.sales,
         revenue: item.revenue,
         profit: item.profit,
-        conversion_rate: item.conversion_rate,
+        conversion_rate: Number(item.conversion_rate.toFixed(1)),
     }));
 
+    const hasCommercialData = monthlyData.some((item) => item.leads > 0 || item.sales > 0);
     const hasFinancialData = monthlyData.some((item) => item.revenue > 0 || item.profit > 0);
 
     return (
-        <div className="mt-4">
+        <div className="grid gap-6 xl:grid-cols-2">
+            <Card className="border-border/50 bg-background/50 shadow-sm">
+                <CardHeader>
+                    <CardTitle className="text-foreground">Evolucao comercial</CardTitle>
+                    <CardDescription>Leads, vendas e conversao ao longo do periodo selecionado.</CardDescription>
+                </CardHeader>
+                <CardContent className="h-[340px]">
+                    {hasCommercialData ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={monthlyData} margin={{ top: 16, right: 12, left: 0, bottom: 0 }}>
+                                <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} dy={8} />
+                                <YAxis yAxisId="volume" allowDecimals={false} axisLine={false} tickLine={false} width={40} />
+                                <YAxis
+                                    yAxisId="conversion"
+                                    orientation="right"
+                                    axisLine={false}
+                                    tickLine={false}
+                                    width={46}
+                                    tickFormatter={(value) => `${Number(value).toFixed(0)}%`}
+                                />
+                                <Tooltip
+                                    formatter={(value: number, name: string) => {
+                                        if (name === "conversion_rate") return [`${Number(value).toFixed(1)}%`, "Conversao"];
+                                        if (name === "sales") return [Number(value), "Vendas"];
+                                        return [Number(value), "Leads"];
+                                    }}
+                                    labelFormatter={(label) => `Periodo: ${label}`}
+                                />
+                                <Legend
+                                    formatter={(value) => {
+                                        if (value === "leads") return "Leads";
+                                        if (value === "sales") return "Vendas";
+                                        return "Conversao";
+                                    }}
+                                />
+                                <Line yAxisId="volume" type="monotone" dataKey="leads" stroke="#0284c7" strokeWidth={3} dot={false} />
+                                <Line yAxisId="volume" type="monotone" dataKey="sales" stroke="#f59e0b" strokeWidth={3} dot={false} />
+                                <Line yAxisId="conversion" type="monotone" dataKey="conversion_rate" stroke="#0f766e" strokeWidth={2} dot={false} />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-background/40 text-center">
+                            <p className="text-sm font-medium text-foreground">Sem movimento comercial no periodo</p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Ajuste o periodo para visualizar a entrada de leads, vendas e conversao.
+                            </p>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
             <Card className="border-border/50 bg-background/50 shadow-sm">
                 <CardHeader>
                     <CardTitle className="text-foreground">Financeiro realizado</CardTitle>
-                    <CardDescription>Recebimentos e lucro reconhecidos por data de pagamento</CardDescription>
+                    <CardDescription>Recebimentos e lucro reconhecidos por data do evento financeiro.</CardDescription>
                 </CardHeader>
-                <CardContent className="h-[360px]">
+                <CardContent className="h-[340px]">
                     {hasFinancialData ? (
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={monthlyData} margin={{ top: 16, right: 12, left: 4, bottom: 0 }}>
                                 <defs>
                                     <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.28} />
-                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.03} />
+                                        <stop offset="5%" stopColor="#16a34a" stopOpacity={0.28} />
+                                        <stop offset="95%" stopColor="#16a34a" stopOpacity={0.03} />
                                     </linearGradient>
                                 </defs>
                                 <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
@@ -51,20 +114,28 @@ export function DashboardCharts({ data, isLoading }: ChartProps) {
                                     axisLine={false}
                                     tickLine={false}
                                     width={96}
-                                    tickFormatter={(value) => formatCurrency(Number(value)).replace(',00', '')}
+                                    tickFormatter={(value) => formatCurrency(Number(value)).replace(",00", "")}
                                 />
                                 <Tooltip
-                                    formatter={(value: number, name: string) => [formatCurrency(Number(value)), name === 'revenue' ? 'Faturamento' : 'Lucro']}
-                                    labelFormatter={(label) => `Período: ${label}`}
+                                    formatter={(value: number, name: string) => [
+                                        formatCurrency(Number(value)),
+                                        name === "revenue" ? "Faturamento" : "Lucro",
+                                    ]}
+                                    labelFormatter={(label) => `Periodo: ${label}`}
                                 />
-                                <Area type="monotone" dataKey="revenue" name="revenue" stroke="#10b981" strokeWidth={2} fill="url(#revenueFill)" />
-                                <Line type="monotone" dataKey="profit" name="profit" stroke="#0f766e" strokeWidth={3} dot={false} activeDot={{ r: 5 }} />
+                                <Legend
+                                    formatter={(value) => (value === "revenue" ? "Faturamento" : "Lucro")}
+                                />
+                                <Area type="monotone" dataKey="revenue" name="revenue" stroke="#16a34a" strokeWidth={2} fill="url(#revenueFill)" />
+                                <Line type="monotone" dataKey="profit" name="profit" stroke="#15803d" strokeWidth={3} dot={false} />
                             </AreaChart>
                         </ResponsiveContainer>
                     ) : (
                         <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-background/40 text-center">
-                            <p className="text-sm font-medium text-foreground">Sem dados financeiros no período</p>
-                            <p className="mt-1 text-sm text-muted-foreground">Ajuste o período ou aguarde novos recebimentos para visualizar a tendência.</p>
+                            <p className="text-sm font-medium text-foreground">Sem dados financeiros no periodo</p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                O grafico fica ativo assim que houver faturamento ou lucro reconhecido no intervalo.
+                            </p>
                         </div>
                     )}
                 </CardContent>

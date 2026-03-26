@@ -1,28 +1,31 @@
 import { useMemo, useState } from "react";
-import { format, subDays, startOfMonth, endOfMonth, startOfYear } from "date-fns";
+import { endOfMonth, format, startOfMonth, startOfYear, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { BarChart3, CalendarIcon, ChevronDown, Download, TrendingDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { useToast } from "@/components/ui/use-toast";
-
-import { useDashboardReport } from "@/hooks/useDashboardReport";
-import { KpiCards } from "@/components/dashboard/KpiCards";
-import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
-import { StaleLeadsTable } from "@/components/dashboard/tables/StaleLeadsTable";
-import { OwnerPerformanceTable } from "@/components/dashboard/tables/OwnerPerformanceTable";
-import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/contexts/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/components/ui/use-toast";
+import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
+import { FunnelOverview } from "@/components/dashboard/FunnelOverview";
+import { KpiCards } from "@/components/dashboard/KpiCards";
+import { LossSummaryCard } from "@/components/dashboard/LossSummaryCard";
+import { SourcePerformanceCard } from "@/components/dashboard/SourcePerformanceCard";
+import { CalendarSummaryPanel } from "@/components/dashboard/tables/CalendarSummaryPanel";
+import { OwnerPerformanceTable } from "@/components/dashboard/tables/OwnerPerformanceTable";
+import { StaleLeadsTable } from "@/components/dashboard/tables/StaleLeadsTable";
+import { LossAnalyticsModal } from "@/components/solarzap/LossAnalyticsModal";
 import { PageHeader } from "@/components/solarzap/PageHeader";
 import { LeadScopeSelect, type LeadScopeValue } from "@/components/solarzap/LeadScopeSelect";
-import { LossAnalyticsModal } from "@/components/solarzap/LossAnalyticsModal";
+import { useAuth } from "@/contexts/AuthContext";
+import { useDashboardReport } from "@/hooks/useDashboardReport";
 import { useMobileViewport } from "@/hooks/useMobileViewport";
 import type { MemberDto } from "@/lib/orgAdminClient";
+import { supabase } from "@/lib/supabase";
 
 interface DashboardViewProps {
   onNavigate?: (tab: string) => void;
@@ -34,8 +37,9 @@ interface DashboardViewProps {
 }
 
 export function DashboardView({
+  onNavigate,
   canViewTeam = false,
-  leadScope = 'mine',
+  leadScope = "mine",
   onLeadScopeChange,
   leadScopeMembers = [],
   isLoadingLeadScopeMembers = false,
@@ -44,26 +48,24 @@ export function DashboardView({
   const { orgId, user } = useAuth();
   const isMobileViewport = useMobileViewport();
 
-
-  // State for Filters
-  const [dateRange, setDateRange] = useState<{ from: Date, to: Date }>({
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
     from: startOfMonth(new Date()),
-    to: endOfMonth(new Date())
+    to: endOfMonth(new Date()),
   });
   const [periodLabel, setPeriodLabel] = useState("this_month");
-
+  const [calendarFilter, setCalendarFilter] = useState<"next_7_days" | "last_7_days">("next_7_days");
   const [staleLeadsOpen, setStaleLeadsOpen] = useState(false);
   const [lossAnalyticsOpen, setLossAnalyticsOpen] = useState(false);
+
   const resolvedOwnerUserId = useMemo(() => {
     if (!user) return null;
     if (!canViewTeam) return user.id;
-    if (leadScope === 'org_all') return null;
-    if (leadScope === 'mine') return user.id;
+    if (leadScope === "org_all") return null;
+    if (leadScope === "mine") return user.id;
     const scopedUserId = leadScope.slice(5).trim();
     return scopedUserId || user.id;
   }, [canViewTeam, leadScope, user]);
 
-  // Fetch Data
   const { data, isLoading, error } = useDashboardReport({
     start: dateRange.from,
     end: dateRange.to,
@@ -71,7 +73,8 @@ export function DashboardView({
     orgId,
     filters: {
       owner_user_id: resolvedOwnerUserId,
-    }
+      calendarFilter,
+    },
   });
 
   const ownerPerformanceData = useMemo(() => {
@@ -81,7 +84,7 @@ export function DashboardView({
     const memberNameById = new Map(
       leadScopeMembers.map((member) => [
         member.user_id,
-        member.display_name?.trim() || member.email?.trim() || `Usuário ${member.user_id.slice(0, 8)}`,
+        member.display_name?.trim() || member.email?.trim() || `Usuario ${member.user_id.slice(0, 8)}`,
       ]),
     );
 
@@ -93,46 +96,65 @@ export function DashboardView({
     });
   }, [data?.tables.owner_performance, leadScopeMembers]);
 
-  // Handlers
-  const handlePeriodChange = (val: string) => {
-    setPeriodLabel(val);
+  const handlePeriodChange = (value: string) => {
+    setPeriodLabel(value);
     const now = new Date();
-    if (val === 'this_month') {
+
+    if (value === "this_month") {
       setDateRange({ from: startOfMonth(now), to: endOfMonth(now) });
-    } else if (val === 'last_7_days') {
+      return;
+    }
+
+    if (value === "last_7_days") {
       setDateRange({ from: subDays(now, 7), to: now });
-    } else if (val === 'last_30_days') {
+      return;
+    }
+
+    if (value === "last_30_days") {
       setDateRange({ from: subDays(now, 30), to: now });
-    } else if (val === 'this_year') {
+      return;
+    }
+
+    if (value === "this_year") {
       setDateRange({ from: startOfYear(now), to: now });
     }
   };
 
-  const handleExport = async (type: 'leads' | 'deals' | 'appointments') => {
+  const handleExport = async (type: "leads" | "deals" | "appointments") => {
     try {
-      toast({ title: "Gerando exportação...", description: "Aguarde um momento." });
-      const { data: res, error } = await supabase.functions.invoke("reports-export", {
-        body: { type, start: dateRange.from.toISOString(), end: dateRange.to.toISOString() }
+      toast({ title: "Gerando exportacao...", description: "Aguarde um momento." });
+      const { data: response, error: exportError } = await supabase.functions.invoke("reports-export", {
+        body: {
+          type,
+          start: dateRange.from.toISOString(),
+          end: dateRange.to.toISOString(),
+        },
       });
 
-      if (error) throw error;
-      if (res?.url) {
-        window.open(res.url, '_blank');
-        toast({ title: "Sucesso!", description: "Download iniciado." });
+      if (exportError) throw exportError;
+      if (response?.url) {
+        window.open(response.url, "_blank");
+        toast({ title: "Sucesso", description: "Download iniciado." });
       }
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "Erro ao exportar", description: e.message });
+    } catch (exportFailure: unknown) {
+      const exportMessage = exportFailure instanceof Error ? exportFailure.message : "Nao foi possivel concluir a exportacao.";
+      toast({
+        variant: "destructive",
+        title: "Erro ao exportar",
+        description: exportMessage,
+      });
     }
   };
 
   if (error) {
     return <div className="p-8 text-red-500">Erro ao carregar dashboard: {(error as Error).message}</div>;
   }
+
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-muted/30">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/30">
       <PageHeader
         title="Dashboard"
-        subtitle="Visão geral do seu negócio"
+        subtitle="Visao geral do negocio e do funil comercial"
         icon={BarChart3}
         actionContent={
           <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
@@ -153,35 +175,32 @@ export function DashboardView({
               onClick={() => setLossAnalyticsOpen(true)}
             >
               <TrendingDown className="mr-2 h-4 w-4 text-rose-500" />
-              Analise de Perdas
+              Analise de perdas
             </Button>
 
-            {/* Period Selector */}
             <Select value={periodLabel} onValueChange={handlePeriodChange}>
-              <SelectTrigger className="w-full sm:w-[160px] bg-background border-border/50 shadow-sm glass">
-                <SelectValue placeholder="Período" />
+              <SelectTrigger className="w-full border-border/50 bg-background shadow-sm glass sm:w-[160px]">
+                <SelectValue placeholder="Periodo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="this_month">Este Mês</SelectItem>
-                <SelectItem value="last_7_days">Últimos 7 dias</SelectItem>
-                <SelectItem value="last_30_days">Últimos 30 dias</SelectItem>
-                <SelectItem value="this_year">Este Ano</SelectItem>
+                <SelectItem value="this_month">Este mes</SelectItem>
+                <SelectItem value="last_7_days">Ultimos 7 dias</SelectItem>
+                <SelectItem value="last_30_days">Ultimos 30 dias</SelectItem>
+                <SelectItem value="this_year">Este ano</SelectItem>
               </SelectContent>
             </Select>
 
-            {/* Date Picker */}
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-full sm:w-[220px] justify-start text-left font-normal bg-background border-border/50 shadow-sm glass"
+                  className="w-full justify-start border-border/50 bg-background text-left font-normal shadow-sm glass sm:w-[220px]"
                 >
                   <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
                   {dateRange.from ? (
                     dateRange.to ? (
                       <>
-                        {format(dateRange.from, "dd/MM/y", { locale: ptBR })} -{" "}
-                        {format(dateRange.to, "dd/MM/y", { locale: ptBR })}
+                        {format(dateRange.from, "dd/MM/y", { locale: ptBR })} - {format(dateRange.to, "dd/MM/y", { locale: ptBR })}
                       </>
                     ) : (
                       format(dateRange.from, "dd/MM/y", { locale: ptBR })
@@ -208,9 +227,8 @@ export function DashboardView({
               </PopoverContent>
             </Popover>
 
-            {/* Export Button */}
-            <Select onValueChange={(v) => handleExport(v as any)}>
-              <SelectTrigger className="w-full sm:w-[130px] bg-background border-border/50 shadow-sm glass">
+            <Select onValueChange={(value) => handleExport(value as "leads" | "deals" | "appointments")}>
+              <SelectTrigger className="w-full border-border/50 bg-background shadow-sm glass sm:w-[130px]">
                 <Download className="mr-2 h-4 w-4 text-muted-foreground" />
                 <SelectValue placeholder="Exportar" />
               </SelectTrigger>
@@ -224,11 +242,11 @@ export function DashboardView({
         mobileToolbar={
           <div className="flex items-center gap-2">
             <Select value={periodLabel} onValueChange={handlePeriodChange}>
-              <SelectTrigger className="h-8 w-[120px] text-xs bg-background border-border/50">
-                <SelectValue placeholder="Período" />
+              <SelectTrigger className="h-8 w-[120px] border-border/50 bg-background text-xs">
+                <SelectValue placeholder="Periodo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="this_month">Este Mês</SelectItem>
+                <SelectItem value="this_month">Este mes</SelectItem>
                 <SelectItem value="last_7_days">7 dias</SelectItem>
                 <SelectItem value="last_30_days">30 dias</SelectItem>
                 <SelectItem value="this_year">Ano</SelectItem>
@@ -270,15 +288,22 @@ export function DashboardView({
               loading={isLoadingLeadScopeMembers}
               currentUserId={user?.id ?? null}
               testId="dashboard-owner-scope-trigger"
-              triggerClassName="h-8 text-xs shrink-0"
+              triggerClassName="h-8 shrink-0 text-xs"
             />
           ) : null}
-          <Button variant="outline" size="sm" className="h-8 shrink-0 gap-1 text-xs" onClick={() => setLossAnalyticsOpen(true)}>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 gap-1 text-xs"
+            onClick={() => setLossAnalyticsOpen(true)}
+          >
             <TrendingDown className="h-3.5 w-3.5 text-rose-500" />
             Perdas
           </Button>
-          <Select onValueChange={(v) => handleExport(v as any)}>
-            <SelectTrigger className="h-8 w-[100px] text-xs shrink-0 bg-background border-border/50">
+
+          <Select onValueChange={(value) => handleExport(value as "leads" | "deals" | "appointments")}>
+            <SelectTrigger className="h-8 w-[100px] shrink-0 border-border/50 bg-background text-xs">
               <Download className="mr-1 h-3.5 w-3.5" />
               <SelectValue placeholder="Exportar" />
             </SelectTrigger>
@@ -291,40 +316,71 @@ export function DashboardView({
       )}
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-      <div className="w-full px-4 py-4 sm:px-6 sm:py-6 space-y-6">
-        <KpiCards data={data?.kpis} isLoading={isLoading} />
-        <DashboardCharts data={data?.charts} isLoading={isLoading} />
+        <div className="w-full space-y-6 px-4 py-4 sm:px-6 sm:py-6">
+          <KpiCards data={data?.kpis} isLoading={isLoading} />
+          <DashboardCharts data={data?.charts} isLoading={isLoading} />
 
-        <Card className="border-border/50 bg-background/50 shadow-sm">
-          <CardHeader>
-            <CardTitle>Performance por responsável</CardTitle>
-            <CardDescription>Leitura direta de quem está contribuindo para faturamento e lucro no período.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <OwnerPerformanceTable data={ownerPerformanceData} isLoading={isLoading} />
-          </CardContent>
-        </Card>
+          <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+            <FunnelOverview data={data?.funnel} isLoading={isLoading} />
 
-        <Collapsible open={staleLeadsOpen} onOpenChange={setStaleLeadsOpen} className="rounded-xl border border-border/50 bg-background/50 shadow-sm">
-          <div className="flex flex-col gap-2 p-6 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">Leads estagnados</h3>
-              <p className="text-sm text-muted-foreground">Leads sem movimentação de etapa há mais de 7 dias.</p>
+            <div className="space-y-6">
+              <SourcePerformanceCard data={data?.source_performance} isLoading={isLoading} />
+              <LossSummaryCard
+                data={data?.loss_summary}
+                isLoading={isLoading}
+                onOpenDetails={() => setLossAnalyticsOpen(true)}
+              />
             </div>
-            <CollapsibleTrigger asChild>
-              <Button variant="outline" className="w-full justify-between md:w-[220px]">
-                {staleLeadsOpen ? 'Ocultar detalhes' : 'Ver detalhes'}
-                <ChevronDown className={`h-4 w-4 transition-transform ${staleLeadsOpen ? 'rotate-180' : ''}`} />
-              </Button>
-            </CollapsibleTrigger>
           </div>
-          <CollapsibleContent>
-            <div className="px-6 pb-6">
-              <StaleLeadsTable data={data?.tables.stale_leads} isLoading={isLoading} />
+
+          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <Card className="border-border/50 bg-background/50 shadow-sm">
+              <CardHeader>
+                <CardTitle>Performance por responsavel</CardTitle>
+                <CardDescription>
+                  Leitura direta de volume, conversao, faturamento e lucro por responsavel no periodo.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <OwnerPerformanceTable data={ownerPerformanceData} isLoading={isLoading} />
+              </CardContent>
+            </Card>
+
+            <CalendarSummaryPanel
+              data={data?.calendar}
+              isLoading={isLoading}
+              filter={calendarFilter}
+              onFilterChange={setCalendarFilter}
+              onViewAll={() => onNavigate?.("calendario")}
+            />
+          </div>
+
+          <Collapsible
+            open={staleLeadsOpen}
+            onOpenChange={setStaleLeadsOpen}
+            className="rounded-xl border border-border/50 bg-background/50 shadow-sm"
+          >
+            <div className="flex flex-col gap-2 p-6 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Leads estagnados</h3>
+                <p className="text-sm text-muted-foreground">
+                  Leads sem movimentacao de etapa ha mais de 7 dias para acao imediata.
+                </p>
+              </div>
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" className="w-full justify-between md:w-[220px]">
+                  {staleLeadsOpen ? "Ocultar detalhes" : "Ver detalhes"}
+                  <ChevronDown className={`h-4 w-4 transition-transform ${staleLeadsOpen ? "rotate-180" : ""}`} />
+                </Button>
+              </CollapsibleTrigger>
             </div>
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
+            <CollapsibleContent>
+              <div className="px-6 pb-6">
+                <StaleLeadsTable data={data?.tables.stale_leads} isLoading={isLoading} />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
       </div>
 
       <LossAnalyticsModal

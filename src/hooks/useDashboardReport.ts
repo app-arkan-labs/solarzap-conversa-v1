@@ -1,6 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+﻿import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { DashboardPayload } from "@/types/dashboard";
+import {
+    buildDashboardFunnel,
+    buildLossSummary,
+    buildSourcePerformance,
+} from "@/lib/dashboardMetrics";
 
 const FINANCE_PROJECT_PAID_FLAG = "finance_project_paid_v1";
 
@@ -8,6 +13,96 @@ const toSafeNumber = (value: unknown): number => {
     const parsed = Number(value ?? 0);
     return Number.isFinite(parsed) ? parsed : 0;
 };
+
+const asArray = <T>(value: T[] | null | undefined): T[] => (Array.isArray(value) ? value : []);
+
+interface LeadRow {
+    id: number | string;
+    created_at: string;
+    canal: string | null;
+    status_pipeline: string | null;
+    stage_changed_at: string | null;
+    nome: string | null;
+    user_id: string | null;
+    assigned_to_user_id: string | null;
+}
+
+interface LeadIdRow {
+    id: number | string;
+}
+
+interface FunnelLeadRow {
+    id: number | string;
+    status_pipeline: string | null;
+    stage_changed_at: string | null;
+}
+
+interface StageHistoryRow {
+    to_stage: string | null;
+    changed_at: string | null;
+}
+
+interface DealRow {
+    id?: number | string;
+    amount: number | string | null;
+    closed_at?: string | null;
+    lead_id: number | string | null;
+    created_at?: string | null;
+    user_id: string | null;
+}
+
+interface InstallmentRow {
+    lead_id: number | string | null;
+    paid_amount: number | string | null;
+    profit_amount: number | string | null;
+    paid_at: string | null;
+    amount?: number | string | null;
+}
+
+interface LeadSourceRow {
+    id: number | string;
+    canal: string | null;
+    created_at?: string | null;
+    assigned_to_user_id?: string | null;
+}
+
+interface InteractionRow {
+    lead_id: number | string | null;
+    created_at: string | null;
+}
+
+interface LossReasonRow {
+    motivos_perda?: {
+        key?: string | null;
+        label?: string | null;
+    } | null;
+}
+
+interface AppointmentSummaryRow {
+    id: number | string;
+    status: string | null;
+}
+
+interface AppointmentUpcomingLeadRow {
+    nome?: string | null;
+}
+
+interface AppointmentUpcomingRow {
+    id: number | string;
+    title: string | null;
+    start_at: string | null;
+    type: string | null;
+    status: string | null;
+    leads?: AppointmentUpcomingLeadRow | AppointmentUpcomingLeadRow[] | null;
+}
+
+interface ChartBucket {
+    month: string;
+    leads: number;
+    sales: number;
+    revenue: number;
+    profit: number;
+}
 
 export interface DashboardFilters {
     start: Date;
@@ -27,6 +122,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
         queryKey: ["dashboard-report-client", params],
         queryFn: async () => {
             const { start, end, filters, orgId } = params;
+            const calendarFilter = filters?.calendarFilter || 'next_7_days';
 
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error("User not authenticated");
@@ -56,6 +152,19 @@ export const useDashboardReport = (params: DashboardFilters) => {
             const endIso = end.toISOString();
             const prevStartIso = prevStart.toISOString();
             const prevEndIso = prevEnd.toISOString();
+            const now = new Date();
+
+            const calendarStart = new Date(now);
+            const calendarEnd = new Date(now);
+            if (calendarFilter === 'last_7_days') {
+                calendarStart.setDate(now.getDate() - 7);
+                calendarStart.setHours(0, 0, 0, 0);
+                calendarEnd.setHours(23, 59, 59, 999);
+            } else {
+                calendarStart.setHours(0, 0, 0, 0);
+                calendarEnd.setDate(now.getDate() + 7);
+                calendarEnd.setHours(23, 59, 59, 999);
+            }
 
             // --- 1-4. Parallel fetch: LEADS, PREV LEADS, DEALS, PREV DEALS, OPEN DEALS, STALE LEADS ---
             let leadsQ = supabase
@@ -74,6 +183,21 @@ export const useDashboardReport = (params: DashboardFilters) => {
             if (ownerUserId) prevLeadsQ = prevLeadsQ.eq("assigned_to_user_id", ownerUserId);
             if (orgId) prevLeadsQ = prevLeadsQ.eq('org_id', orgId);
 
+            let funnelLeadsQ = supabase
+                .from("leads")
+                .select("id, status_pipeline, stage_changed_at")
+                .lte("created_at", endIso);
+            if (ownerUserId) funnelLeadsQ = funnelLeadsQ.eq("assigned_to_user_id", ownerUserId);
+            if (orgId) funnelLeadsQ = funnelLeadsQ.eq("org_id", orgId);
+
+            let stageHistoryQ = supabase
+                .from("lead_stage_history")
+                .select("to_stage, changed_at, leads!inner(assigned_to_user_id)")
+                .gte("changed_at", startIso)
+                .lte("changed_at", endIso);
+            if (ownerUserId) stageHistoryQ = stageHistoryQ.eq("leads.assigned_to_user_id", ownerUserId);
+            if (orgId) stageHistoryQ = stageHistoryQ.eq("org_id", orgId);
+
             let ownerLeadIds: number[] | null = null;
             if (ownerUserId) {
                 let ownerLeadsQ = supabase
@@ -85,8 +209,9 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 const { data: ownerLeadsData, error: ownerLeadsError } = await ownerLeadsQ;
                 if (ownerLeadsError) throw ownerLeadsError;
 
-                ownerLeadIds = (ownerLeadsData || [])
-                    .map((row: any) => Number(row.id))
+                const ownerLeadRows = asArray<LeadIdRow>(ownerLeadsData as LeadIdRow[] | null | undefined);
+                ownerLeadIds = ownerLeadRows
+                    .map((row) => Number(row.id))
                     .filter((id: number) => Number.isFinite(id));
             }
 
@@ -172,7 +297,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
             }
             if (orgId) openDealsQ = openDealsQ.eq('org_id', orgId);
 
-            // Stale leads — exclude terminal stages
+            // Stale leads â€” exclude terminal stages
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
             let staleLeadsQ = supabase
@@ -185,22 +310,68 @@ export const useDashboardReport = (params: DashboardFilters) => {
             if (ownerUserId) staleLeadsQ = staleLeadsQ.eq("assigned_to_user_id", ownerUserId);
             if (orgId) staleLeadsQ = staleLeadsQ.eq('org_id', orgId);
 
+            let appointmentsSummaryQ = supabase
+                .from("appointments")
+                .select("id, status")
+                .gte("start_at", startIso)
+                .lte("start_at", endIso);
+            if (ownerUserId) appointmentsSummaryQ = appointmentsSummaryQ.eq("user_id", ownerUserId);
+            if (orgId) appointmentsSummaryQ = appointmentsSummaryQ.eq("org_id", orgId);
+
+            let upcomingAppointmentsQ = supabase
+                .from("appointments")
+                .select("id, title, start_at, type, status, leads(nome)")
+                .gte("start_at", calendarStart.toISOString())
+                .lte("start_at", calendarEnd.toISOString())
+                .order("start_at", { ascending: calendarFilter === 'next_7_days' })
+                .limit(10);
+            if (ownerUserId) upcomingAppointmentsQ = upcomingAppointmentsQ.eq("user_id", ownerUserId);
+            if (orgId) upcomingAppointmentsQ = upcomingAppointmentsQ.eq("org_id", orgId);
+
+            let currentLossesQ = supabase
+                .from("perdas_leads")
+                .select("motivos_perda!inner(key, label), leads!inner(assigned_to_user_id)")
+                .gte("created_at", startIso)
+                .lte("created_at", endIso);
+            if (ownerUserId) currentLossesQ = currentLossesQ.eq("leads.assigned_to_user_id", ownerUserId);
+            if (orgId) currentLossesQ = currentLossesQ.eq("org_id", orgId);
+
+            let previousLossesQ = supabase
+                .from("perdas_leads")
+                .select("motivos_perda!inner(key, label), leads!inner(assigned_to_user_id)")
+                .gte("created_at", prevStartIso)
+                .lte("created_at", prevEndIso);
+            if (ownerUserId) previousLossesQ = previousLossesQ.eq("leads.assigned_to_user_id", ownerUserId);
+            if (orgId) previousLossesQ = previousLossesQ.eq("org_id", orgId);
+
             const [
                 { data: leadsData, error: leadsError },
                 { count: prevLeadsCount },
+                { data: funnelLeadsData, error: funnelLeadsError },
+                { data: stageHistoryRows, error: stageHistoryError },
                 { data: wonDeals, error: dealsError },
                 { data: prevWonDeals },
                 { data: openDeals },
                 { data: staleLeadsData },
+                { data: appointmentsSummaryRows, error: appointmentsSummaryError },
+                { data: upcomingAppointmentsRows, error: upcomingAppointmentsError },
+                { data: currentLossRows, error: currentLossError },
+                { data: previousLossRows, error: previousLossError },
                 { data: paidInstallments, error: paidInstallmentsError },
                 { data: prevPaidInstallments, error: prevPaidInstallmentsError }
             ] = await Promise.all([
                 leadsQ,
                 prevLeadsQ,
+                funnelLeadsQ,
+                stageHistoryQ,
                 wonDealsQ,
                 prevWonDealsQ,
                 openDealsQ,
                 staleLeadsQ,
+                appointmentsSummaryQ,
+                upcomingAppointmentsQ,
+                currentLossesQ,
+                previousLossesQ,
                 financeCashMode ? paidInstallmentsQ : Promise.resolve({ data: [], error: null }),
                 financeCashMode ? prevPaidInstallmentsQ : Promise.resolve({ data: [], error: null }),
             ]);
@@ -209,31 +380,50 @@ export const useDashboardReport = (params: DashboardFilters) => {
             if (dealsError) throw dealsError;
             if (paidInstallmentsError) throw paidInstallmentsError;
             if (prevPaidInstallmentsError) throw prevPaidInstallmentsError;
+            if (funnelLeadsError) console.warn("[useDashboardReport] failed to load funnel leads", funnelLeadsError);
+            if (stageHistoryError) console.warn("[useDashboardReport] failed to load stage history", stageHistoryError);
+            if (appointmentsSummaryError) console.warn("[useDashboardReport] failed to load appointments summary", appointmentsSummaryError);
+            if (upcomingAppointmentsError) console.warn("[useDashboardReport] failed to load upcoming appointments", upcomingAppointmentsError);
+            if (currentLossError) console.warn("[useDashboardReport] failed to load losses for current period", currentLossError);
+            if (previousLossError) console.warn("[useDashboardReport] failed to load losses for previous period", previousLossError);
 
-            const paidInstallmentsRows: any[] = Array.isArray(paidInstallments) ? paidInstallments : [];
-            const prevPaidInstallmentsRows: any[] = Array.isArray(prevPaidInstallments) ? prevPaidInstallments : [];
+            const leadRows = asArray<LeadRow>(leadsData as LeadRow[] | null | undefined);
+            const wonDealRows = asArray<DealRow>(wonDeals as DealRow[] | null | undefined);
+            const prevWonDealRows = asArray<DealRow>(prevWonDeals as DealRow[] | null | undefined);
+            const openDealRows = asArray<DealRow>(openDeals as DealRow[] | null | undefined);
+            const staleLeadRows = asArray<FunnelLeadRow & Pick<LeadRow, "nome">>(staleLeadsData as (FunnelLeadRow & Pick<LeadRow, "nome">)[] | null | undefined);
+            const paidInstallmentsRows = asArray<InstallmentRow>(paidInstallments as InstallmentRow[] | null | undefined);
+            const prevPaidInstallmentsRows = asArray<InstallmentRow>(prevPaidInstallments as InstallmentRow[] | null | undefined);
+            const funnelLeadRows = asArray<FunnelLeadRow>(funnelLeadsData as FunnelLeadRow[] | null | undefined);
+            const stageHistoryData = asArray<StageHistoryRow>(stageHistoryRows as StageHistoryRow[] | null | undefined);
+            const currentLossData = asArray<LossReasonRow>(currentLossRows as LossReasonRow[] | null | undefined);
+            const previousLossData = asArray<LossReasonRow>(previousLossRows as LossReasonRow[] | null | undefined);
+            const appointmentsSummaryData = asArray<AppointmentSummaryRow>(appointmentsSummaryRows as AppointmentSummaryRow[] | null | undefined);
+            const upcomingAppointmentsData = asArray<AppointmentUpcomingRow>(upcomingAppointmentsRows as AppointmentUpcomingRow[] | null | undefined);
 
             // Fetch Leads for Won Deals to map Source (depends on wonDeals result)
             // We need the `canal` of the leads associated with Won Deals
-            const wonLeadsMap = new Map<string, any>();
-            if (wonDeals && wonDeals.length > 0) {
-                const leadIds = wonDeals.map(d => d.lead_id);
+            const wonLeadsMap = new Map<string, LeadSourceRow>();
+            if (wonDealRows.length > 0) {
+                const leadIds = wonDealRows.map((deal) => deal.lead_id);
                 const { data: wonLeads } = await supabase
                     .from("leads")
                     .select("id, canal, created_at, assigned_to_user_id")
                     .in("id", leadIds);
 
                 if (wonLeads) {
-                    wonLeads.forEach(l => wonLeadsMap.set(String(l.id), l)); // cast ID just in case
+                    asArray<LeadSourceRow>(wonLeads as LeadSourceRow[] | null | undefined).forEach((lead) => {
+                        wonLeadsMap.set(String(lead.id), lead);
+                    });
                 }
             }
 
-            const paidLeadsMap = new Map<string, any>();
+            const paidLeadsMap = new Map<string, LeadSourceRow>();
             if (financeCashMode && paidInstallmentsRows.length > 0) {
                 const paidLeadIds = Array.from(
                     new Set(
                         paidInstallmentsRows
-                            .map((i: any) => Number(i.lead_id))
+                            .map((installment) => Number(installment.lead_id))
                             .filter((id: number) => Number.isFinite(id)),
                     ),
                 );
@@ -245,40 +435,72 @@ export const useDashboardReport = (params: DashboardFilters) => {
                         .in("id", paidLeadIds);
 
                     if (paidLeads) {
-                        paidLeads.forEach((lead) => paidLeadsMap.set(String(lead.id), lead));
+                        asArray<LeadSourceRow>(paidLeads as LeadSourceRow[] | null | undefined).forEach((lead) => {
+                            paidLeadsMap.set(String(lead.id), lead);
+                        });
                     }
+                }
+            }
+
+            const staleLeadIds = Array.from(
+                new Set(
+                    staleLeadRows
+                        .map((lead) => Number(lead.id))
+                        .filter((id: number) => Number.isFinite(id)),
+                ),
+            );
+            const lastInteractionByLeadId = new Map<number, string>();
+            if (staleLeadIds.length > 0) {
+                let interactionsQ = supabase
+                    .from("interacoes")
+                    .select("lead_id, created_at")
+                    .in("lead_id", staleLeadIds)
+                    .order("created_at", { ascending: false });
+                if (orgId) interactionsQ = interactionsQ.eq("org_id", orgId);
+
+                const { data: interactionRows, error: interactionsError } = await interactionsQ;
+                if (interactionsError) {
+                    console.warn("[useDashboardReport] failed to load stale lead interactions", interactionsError);
+                } else {
+                    asArray<InteractionRow>(interactionRows as InteractionRow[] | null | undefined).forEach((row) => {
+                        const leadId = Number(row.lead_id);
+                        if (!Number.isFinite(leadId) || lastInteractionByLeadId.has(leadId)) return;
+                        if (typeof row.created_at === "string" && row.created_at) {
+                            lastInteractionByLeadId.set(leadId, row.created_at);
+                        }
+                    });
                 }
             }
 
             // ================= AGGREGATION =================
 
             // KPI: Leads
-            const leadsCount = leadsData?.length || 0;
+            const leadsCount = leadRows.length;
             const leadsDelta = prevLeadsCount ? ((leadsCount - prevLeadsCount) / prevLeadsCount) * 100 : 0;
 
-            const wonCount = wonDeals?.length || 0;
+            const wonCount = wonDealRows.length;
             const paidInstallmentsCount = paidInstallmentsRows.length;
 
             // KPI: Revenue / Profit (cash mode when feature is enabled)
-            const dealsRevenue = wonDeals?.reduce((sum, d) => sum + toSafeNumber(d.amount), 0) || 0;
-            const prevDealsRevenue = prevWonDeals?.reduce((sum, d) => sum + toSafeNumber(d.amount), 0) || 0;
-            const installmentsRevenue = paidInstallmentsRows.reduce((sum: number, installment: any) => {
+            const dealsRevenue = wonDealRows.reduce((sum, deal) => sum + toSafeNumber(deal.amount), 0);
+            const prevDealsRevenue = prevWonDealRows.reduce((sum, deal) => sum + toSafeNumber(deal.amount), 0);
+            const installmentsRevenue = paidInstallmentsRows.reduce((sum: number, installment) => {
                 const paidAmount = toSafeNumber(installment.paid_amount);
-                const fallbackAmount = toSafeNumber((installment as any).amount);
+                const fallbackAmount = toSafeNumber(installment.amount);
                 return sum + (paidAmount > 0 ? paidAmount : fallbackAmount);
-            }, 0) || 0;
-            const prevInstallmentsRevenue = prevPaidInstallmentsRows.reduce((sum: number, installment: any) => {
+            }, 0);
+            const prevInstallmentsRevenue = prevPaidInstallmentsRows.reduce((sum: number, installment) => {
                 const paidAmount = toSafeNumber(installment.paid_amount);
-                const fallbackAmount = toSafeNumber((installment as any).amount);
+                const fallbackAmount = toSafeNumber(installment.amount);
                 return sum + (paidAmount > 0 ? paidAmount : fallbackAmount);
-            }, 0) || 0;
+            }, 0);
 
-            const installmentsProfit = paidInstallmentsRows.reduce((sum: number, installment: any) => {
+            const installmentsProfit = paidInstallmentsRows.reduce((sum: number, installment) => {
                 return sum + toSafeNumber(installment.profit_amount);
-            }, 0) || 0;
-            const prevInstallmentsProfit = prevPaidInstallmentsRows.reduce((sum: number, installment: any) => {
+            }, 0);
+            const prevInstallmentsProfit = prevPaidInstallmentsRows.reduce((sum: number, installment) => {
                 return sum + toSafeNumber(installment.profit_amount);
-            }, 0) || 0;
+            }, 0);
 
             const revenue = financeCashMode ? installmentsRevenue : dealsRevenue;
             const prevRevenue = financeCashMode ? prevInstallmentsRevenue : prevDealsRevenue;
@@ -296,7 +518,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
             const ticketAverage = ticketDivisor > 0 ? (revenue / ticketDivisor) : 0;
 
             // KPI: Average close cycle in days
-            const closeCycleDays = (wonDeals || [])
+            const closeCycleDays = wonDealRows
                 .map((deal) => {
                     const dealClosedAt = deal.closed_at || deal.created_at;
                     const leadCreatedAt = wonLeadsMap.get(String(deal.lead_id))?.created_at;
@@ -317,14 +539,14 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 : 0;
 
             // KPI: Forecast
-            const forecastValue = openDeals?.reduce((sum, d) => sum + (Number(d.amount) || 0), 0) || 0;
-            const forecastCount = openDeals?.length || 0;
+            const forecastValue = openDealRows.reduce((sum, deal) => sum + toSafeNumber(deal.amount), 0);
+            const forecastCount = openDealRows.length;
 
             // Chart: Leads by Source (Using CANAL)
             const sourceMap: Record<string, number> = {};
-            leadsData?.forEach(l => {
-                const s = l.canal || "unknown";
-                sourceMap[s] = (sourceMap[s] || 0) + 1;
+            leadRows.forEach((lead) => {
+                const source = lead.canal || "unknown";
+                sourceMap[source] = (sourceMap[source] || 0) + 1;
             });
             const leadsBySource = Object.entries(sourceMap)
                 .map(([source, count]) => ({
@@ -339,14 +561,14 @@ export const useDashboardReport = (params: DashboardFilters) => {
             const salesSourceTotal = financeCashMode ? paidInstallmentsCount : wonCount;
 
             if (financeCashMode) {
-                paidInstallmentsRows.forEach((installment: any) => {
+                paidInstallmentsRows.forEach((installment) => {
                     const lead = paidLeadsMap.get(String(installment.lead_id));
                     const source = lead?.canal || "unknown";
                     salesSourceMap[source] = (salesSourceMap[source] || 0) + 1;
                 });
             } else {
-                wonDeals?.forEach(d => {
-                    const lead = wonLeadsMap.get(String(d.lead_id));
+                wonDealRows.forEach((deal) => {
+                    const lead = wonLeadsMap.get(String(deal.lead_id));
                     const source = lead?.canal || "unknown";
                     salesSourceMap[source] = (salesSourceMap[source] || 0) + 1;
                 });
@@ -360,6 +582,27 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 }))
                 .sort((a, b) => b.count - a.count);
 
+            const sourcePerformanceRows = buildSourcePerformance(
+                leadRows,
+                financeCashMode
+                    ? paidInstallmentsRows.map((installment) => {
+                        const lead = paidLeadsMap.get(String(installment.lead_id));
+                        const paidAmount = toSafeNumber(installment.paid_amount);
+                        const fallbackAmount = toSafeNumber(installment.amount);
+                        return {
+                            source: lead?.canal || "unknown",
+                            revenue: paidAmount > 0 ? paidAmount : fallbackAmount,
+                        };
+                    })
+                    : wonDealRows.map((deal) => {
+                        const lead = wonLeadsMap.get(String(deal.lead_id));
+                        return {
+                            source: lead?.canal || "unknown",
+                            revenue: toSafeNumber(deal.amount),
+                        };
+                    }),
+            );
+
             // 4. Sales Analysis (Dynamic Granularity)
             // Use the filtered data directly to respect the dashboard date range.
             const startDate = new Date(startIso);
@@ -369,7 +612,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
             const useDays = diffDays <= 65; // Use Daily view if range <= 65 days
-            const timeBuckets: Record<string, any> = {};
+            const timeBuckets: Record<string, ChartBucket> = {};
 
             if (useDays) {
                 // Generate Daily Buckets
@@ -395,20 +638,20 @@ export const useDashboardReport = (params: DashboardFilters) => {
             }
 
             // Fill Data from Filtered Source
-            leadsData?.forEach(l => {
-                const k = useDays ? l.created_at.slice(0, 10) : l.created_at.slice(0, 7);
-                if (timeBuckets[k]) timeBuckets[k].leads++;
+            leadRows.forEach((lead) => {
+                const bucketKey = useDays ? lead.created_at.slice(0, 10) : lead.created_at.slice(0, 7);
+                if (timeBuckets[bucketKey]) timeBuckets[bucketKey].leads++;
             });
 
             if (financeCashMode) {
-                paidInstallmentsRows.forEach((installment: any) => {
+                paidInstallmentsRows.forEach((installment) => {
                     const paidAt = String(installment.paid_at || "");
                     if (!paidAt) return;
                     const key = useDays ? paidAt.slice(0, 10) : paidAt.slice(0, 7);
                     if (!timeBuckets[key]) return;
 
                     const paidAmount = toSafeNumber(installment.paid_amount);
-                    const fallbackAmount = toSafeNumber((installment as any).amount);
+                    const fallbackAmount = toSafeNumber(installment.amount);
                     const realizedRevenue = paidAmount > 0 ? paidAmount : fallbackAmount;
 
                     timeBuckets[key].sales++;
@@ -416,25 +659,25 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     timeBuckets[key].profit += toSafeNumber(installment.profit_amount);
                 });
             } else {
-                wonDeals?.forEach(d => {
+                wonDealRows.forEach((deal) => {
                     // uses closed_at for sales if available, else created_at
-                    const dateRef = d.closed_at || d.created_at;
+                    const dateRef = deal.closed_at || deal.created_at;
                     if (!dateRef) return;
                     const key = useDays ? dateRef.slice(0, 10) : dateRef.slice(0, 7);
                     if (timeBuckets[key]) {
                         timeBuckets[key].sales++;
-                        timeBuckets[key].revenue += toSafeNumber(d.amount);
+                        timeBuckets[key].revenue += toSafeNumber(deal.amount);
                     }
                 });
             }
 
-            const monthlyChart = Object.values(timeBuckets).map((m: any) => ({
-                ...m,
-                conversion_rate: m.leads > 0 ? ((m.sales / m.leads) * 100) : 0
+            const monthlyChart = Object.values(timeBuckets).map((bucket) => ({
+                ...bucket,
+                conversion_rate: bucket.leads > 0 ? ((bucket.sales / bucket.leads) * 100) : 0
             }));
 
             const ownerStatsMap = new Map<string, { leads: number; won: number; revenue: number; profit: number }>();
-            const ownerLabelFromId = (id: string) => (id === user.id ? "Você" : `Usuário ${id.slice(0, 8)}`);
+            const ownerLabelFromId = (id: string) => (id === user.id ? "Voce" : `Usuario ${id.slice(0, 8)}`);
             const ensureOwner = (ownerId: string) => {
                 if (!ownerStatsMap.has(ownerId)) {
                     ownerStatsMap.set(ownerId, { leads: 0, won: 0, revenue: 0, profit: 0 });
@@ -442,14 +685,14 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 return ownerStatsMap.get(ownerId)!;
             };
 
-            (leadsData || []).forEach((lead: any) => {
+            leadRows.forEach((lead) => {
                 const ownerId = String(lead.assigned_to_user_id || lead.user_id || "").trim();
                 if (!ownerId) return;
                 ensureOwner(ownerId).leads += 1;
             });
 
             if (financeCashMode) {
-                paidInstallmentsRows.forEach((installment: any) => {
+                paidInstallmentsRows.forEach((installment) => {
                     const lead = paidLeadsMap.get(String(installment.lead_id));
                     const ownerId = String(lead?.assigned_to_user_id || "").trim();
                     if (!ownerId) return;
@@ -457,12 +700,12 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     const ownerStats = ensureOwner(ownerId);
                     ownerStats.won += 1;
                     const paidAmount = toSafeNumber(installment.paid_amount);
-                    const fallbackAmount = toSafeNumber((installment as any).amount);
+                    const fallbackAmount = toSafeNumber(installment.amount);
                     ownerStats.revenue += paidAmount > 0 ? paidAmount : fallbackAmount;
                     ownerStats.profit += toSafeNumber(installment.profit_amount);
                 });
             } else {
-                (wonDeals || []).forEach((deal: any) => {
+                wonDealRows.forEach((deal) => {
                     const lead = wonLeadsMap.get(String(deal.lead_id));
                     const ownerId = String(lead?.assigned_to_user_id || deal.user_id || "").trim();
                     if (!ownerId) return;
@@ -488,7 +731,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     .sort((a, b) => b.revenue - a.revenue)
                 : [{
                     owner_id: ownerUserId ?? undefined,
-                    name: ownerUserId ? ownerLabelFromId(ownerUserId) : "Geral (Organização)",
+                    name: ownerUserId ? ownerLabelFromId(ownerUserId) : "Geral (Organizacao)",
                     leads: leadsCount,
                     won: wonCount,
                     revenue,
@@ -496,6 +739,30 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     conversion: conversionRate,
                     ticket_avg: ticketAverage,
                 }];
+
+            const funnelPayload = buildDashboardFunnel(
+                funnelLeadRows,
+                stageHistoryData,
+                now,
+            );
+
+            const lossSummary = buildLossSummary(
+                currentLossData.map((row) => ({
+                        reason_key: row.motivos_perda?.key,
+                        reason_label: row.motivos_perda?.label,
+                    })),
+                previousLossData.map((row) => ({
+                        reason_key: row.motivos_perda?.key,
+                        reason_label: row.motivos_perda?.label,
+                    })),
+            );
+
+            const calendarRows = appointmentsSummaryData;
+            const doneAppointments = calendarRows.filter((row) => row.status === "done" || row.status === "completed").length;
+            const canceledAppointments = calendarRows.filter((row) => row.status === "canceled").length;
+            const noShowAppointments = calendarRows.filter((row) => row.status === "no_show").length;
+            const scheduledAppointments = calendarRows.filter((row) => row.status === "scheduled").length;
+            const confirmedAppointments = calendarRows.filter((row) => row.status === "confirmed").length;
 
             // Format Objects for Component
             const payload: DashboardPayload = {
@@ -513,21 +780,40 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     sales_by_source: salesBySource,
                     monthly: monthlyChart
                 },
+                funnel: funnelPayload,
+                source_performance: sourcePerformanceRows,
+                loss_summary: lossSummary,
                 tables: {
-                    stale_leads: staleLeadsData?.map(l => ({
-                        id: l.id,
-                        name: l.nome,
-                        stage: l.status_pipeline,
-                        days_stale: Math.floor((new Date().getTime() - new Date(l.stage_changed_at).getTime()) / (1000 * 3600 * 24)),
-                        // last_interaction: l.last_message_at // Removed as column doesn't exist
-                    })) || [],
+                    stale_leads: staleLeadRows.map((lead) => ({
+                        id: Number(lead.id),
+                        name: lead.nome || "Sem nome",
+                        stage: lead.status_pipeline || "novo_lead",
+                        days_stale: lead.stage_changed_at
+                            ? Math.floor((new Date().getTime() - new Date(lead.stage_changed_at).getTime()) / (1000 * 3600 * 24))
+                            : 0,
+                        last_interaction: lastInteractionByLeadId.get(Number(lead.id)),
+                    })),
                     owner_performance: ownerPerformanceRows
                 },
                 calendar: {
-                    total: 0,
-                    done: 0,
-                    canceled: 0,
-                    upcoming: []
+                    total: calendarRows.length,
+                    done: doneAppointments,
+                    canceled: canceledAppointments,
+                    no_show: noShowAppointments,
+                    scheduled: scheduledAppointments,
+                    confirmed: confirmedAppointments,
+                    upcoming: upcomingAppointmentsData.map((row) => ({
+                        id: String(row.id),
+                        title: row.title || "",
+                        start_at: row.start_at || "",
+                        type: row.type || "",
+                        status: row.status || "",
+                        leads: (() => {
+                            const leadRef = Array.isArray(row.leads) ? row.leads[0] : row.leads;
+                            if (!leadRef?.nome) return undefined;
+                            return { nome: leadRef.nome };
+                        })(),
+                    })),
                 }
             };
 
@@ -537,6 +823,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
         enabled: !!params.orgId,
     });
 };
+
 
 
 
