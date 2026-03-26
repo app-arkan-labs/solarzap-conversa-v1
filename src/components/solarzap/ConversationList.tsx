@@ -880,7 +880,7 @@ export function ConversationList({
 
       {/* Conversation List */}
       {showActionsLayout ? (
-        <div className="flex-1 min-h-0 border-t border-border/50">
+        <div className="flex-1 min-h-0">
           <div
             ref={actionsScrollRef}
             className="h-full overflow-y-auto custom-scrollbar"

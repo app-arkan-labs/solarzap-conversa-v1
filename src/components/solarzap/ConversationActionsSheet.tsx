@@ -299,13 +299,36 @@ export function ConversationActionsSheet({
   }, [appointmentsById, currentUserId, nextActionByLeadId, sortedAppointmentsByLeadId]);
 
   useEffect(() => {
-    const nextDrafts: Record<string, ActionSheetDraft> = {};
+    setDrafts((currentDrafts) => {
+      const nextDrafts: Record<string, ActionSheetDraft> = {};
 
-    for (const conversation of conversations) {
-      nextDrafts[String(conversation.contact.id)] = buildDraftForConversation(conversation);
-    }
+      for (const conversation of conversations) {
+        const leadId = String(conversation.contact.id);
+        const freshDraft = buildDraftForConversation(conversation);
+        const currentDraft = currentDrafts[leadId];
 
-    setDrafts(nextDrafts);
+        if (!currentDraft) {
+          nextDrafts[leadId] = freshDraft;
+          continue;
+        }
+
+        // Preserve local edits while user is filling the sheet.
+        if (currentDraft.isDirty || currentDraft.isSaving) {
+          nextDrafts[leadId] = {
+            ...currentDraft,
+            appointmentId: freshDraft.appointmentId,
+            nextActionTaskId: freshDraft.nextActionTaskId,
+            lastActionTitle: freshDraft.lastActionTitle,
+            lastActionMeta: freshDraft.lastActionMeta,
+          };
+          continue;
+        }
+
+        nextDrafts[leadId] = freshDraft;
+      }
+
+      return nextDrafts;
+    });
   }, [buildDraftForConversation, conversations]);
 
   useEffect(() => {
@@ -510,28 +533,28 @@ export function ConversationActionsSheet({
       <div className="flex h-full min-h-0 flex-col bg-background">
         <div className="min-w-0 flex flex-1 min-h-0 flex-col">
           <div
-            className={cn(
-              'grid border-b border-border/60 bg-background px-2',
-              GRID_HEADER_CLASS,
-            )}
-            style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
-          >
-            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ultima Acao</div>
-            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proxima Acao</div>
-            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tipo</div>
-            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Data / Hora</div>
-            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Duracao</div>
-            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Responsavel</div>
-            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Local</div>
-            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Etapa</div>
-            <div className="flex items-center px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Salvar</div>
-          </div>
-
-          <div
             ref={actionsScrollRef}
             className="flex-1 min-h-0 overflow-y-auto custom-scrollbar"
             onScroll={handleGridScroll}
           >
+            <div
+              className={cn(
+                'sticky top-0 z-10 grid border-b border-border/60 bg-background px-2',
+                GRID_HEADER_CLASS,
+              )}
+              style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
+            >
+              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ultima Acao</div>
+              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proxima Acao</div>
+              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tipo</div>
+              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Data / Hora</div>
+              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Duracao</div>
+              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Responsavel</div>
+              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Local</div>
+              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Etapa</div>
+              <div className="flex items-center px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Salvar</div>
+            </div>
+
             {conversations.map((conversation) => {
               const leadId = String(conversation.contact.id);
               const draft = drafts[leadId];
