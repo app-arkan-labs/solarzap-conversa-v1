@@ -1,8 +1,26 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase Self-Hosted na VPS ArkanLabs
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const DEFAULT_SUPABASE_URL = 'https://ucwmcmdwbvrwotuzlmxh.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMzkyMTEsImV4cCI6MjA4MzYxNTIxMX0.KMk4XqFCm4FkvOZg7LNWaI_4lknMwcdCkYSGjBjDdOg';
+
+const envSupabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const envSupabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl =
+  typeof envSupabaseUrl === 'string' && envSupabaseUrl.trim().length > 0
+    ? envSupabaseUrl
+    : DEFAULT_SUPABASE_URL;
+const supabaseKey =
+  typeof envSupabaseKey === 'string' && envSupabaseKey.trim().length > 0
+    ? envSupabaseKey
+    : DEFAULT_SUPABASE_ANON_KEY;
+
+if (
+  (typeof envSupabaseUrl !== 'string' || envSupabaseUrl.trim().length === 0) ||
+  (typeof envSupabaseKey !== 'string' || envSupabaseKey.trim().length === 0)
+) {
+  console.warn('[supabase] Missing VITE_SUPABASE_* envs. Using fallback project credentials.');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
