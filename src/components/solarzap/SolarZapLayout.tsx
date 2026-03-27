@@ -548,15 +548,8 @@ export function SolarZapLayout() {
     }
 
     setIsDetailsPanelOpen(false);
-    setConversationActionsScrollTop(0);
     setIsConversationActionsSheetOpen((current) => !current);
   }, [conversations, conversationsForActionsSheet, filteredConversations, isMobileViewport, markAsRead, selectedConversation]);
-
-  const handleConversationActionsScroll = useCallback((scrollTop: number) => {
-    setConversationActionsScrollTop((current) => (
-      Math.abs(current - scrollTop) < 1 ? current : scrollTop
-    ));
-  }, []);
 
   const handleSaveConversationActionSheetRow = useCallback(async (input: {
     contact: Contact;
@@ -760,7 +753,6 @@ export function SolarZapLayout() {
   } = useNotifications();
 
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
-  const [conversationActionsScrollTop, setConversationActionsScrollTop] = useState(0);
   const [isCreateLeadOpen, setIsCreateLeadOpen] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isProposalOpen, setIsProposalOpen] = useState(false);
@@ -1870,7 +1862,7 @@ export function SolarZapLayout() {
                   ? undefined
                   : {
                       width: isConversationActionsSheetOpen
-                        ? 'clamp(250px, 22vw, 300px)'
+                        ? 'clamp(220px, 18vw, 260px)'
                         : conversationsSidebarWidth,
                     }
               }
@@ -1879,10 +1871,7 @@ export function SolarZapLayout() {
               <ConversationList
                 conversations={conversationsForActionsSheet}
                 contacts={contacts}
-                showLeadNextAction={leadNextActionEnabled}
-                nextActionByLeadId={nextActionByLeadId}
                 actionsMode={!isMobileViewport && isConversationActionsSheetOpen}
-                actionsScrollTop={conversationActionsScrollTop}
                 canViewTeam={canViewTeam}
                 leadScope={leadScope}
                 onLeadScopeChange={setLeadScope}
@@ -1900,7 +1889,6 @@ export function SolarZapLayout() {
                 onImportContacts={importContacts}
                 onDeleteLead={sellerPerms.can_delete_leads ? async (id) => { await deleteLead(id); } : undefined}
                 isDetailsPanelOpen={isDetailsPanelOpen}
-                onActionsScroll={handleConversationActionsScroll}
               />
             </Suspense>
               {!isMobileViewport && !isConversationActionsSheetOpen && (
@@ -1912,14 +1900,16 @@ export function SolarZapLayout() {
                   onMouseDown={handleConversationsSidebarResizeStart}
                 />
               )}
-            <Button
-              onClick={() => setIsCreateLeadOpen(true)}
-              size="icon"
-              data-testid="open-create-lead-modal"
-              className={cn('absolute right-4 rounded-full w-12 h-12 shadow-lg', isMobileViewport ? 'bottom-20' : 'bottom-4')}
-            >
-              <Plus className="w-6 h-6" />
-            </Button>
+            {!isConversationActionsSheetOpen && (
+              <Button
+                onClick={() => setIsCreateLeadOpen(true)}
+                size="icon"
+                data-testid="open-create-lead-modal"
+                className={cn('absolute right-4 rounded-full w-12 h-12 shadow-lg', isMobileViewport ? 'bottom-20' : 'bottom-4')}
+              >
+                <Plus className="w-6 h-6" />
+              </Button>
+            )}
             </div>
           )}
 
@@ -1938,8 +1928,6 @@ export function SolarZapLayout() {
                   nextActionByLeadId={nextActionByLeadId}
                   selectedConversationId={activeConversation?.id || null}
                   onSelectConversation={handleSelectConversation}
-                  actionsScrollTop={conversationActionsScrollTop}
-                  onActionsScroll={handleConversationActionsScroll}
                   onSaveRow={handleSaveConversationActionSheetRow}
                 />
               ) : undefined}

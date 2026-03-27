@@ -1,10 +1,10 @@
 import { Search, MessageSquare, Mic, Filter, X, ArrowUpDown, FileUp, FileDown, MoreVertical, Trash2, FileText, Bot, CheckSquare, Loader2, Users, User, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Conversation, CHANNEL_INFO, PIPELINE_STAGES, PipelineStage, Contact, ChannelFilter, LeadTask } from '@/types/solarzap';
+import { Conversation, CHANNEL_INFO, PIPELINE_STAGES, PipelineStage, Contact, ChannelFilter } from '@/types/solarzap';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,10 +49,7 @@ import type { LeadScopeValue } from './LeadScopeSelect';
 interface ConversationListProps {
   conversations: Conversation[];
   contacts: Contact[];
-  showLeadNextAction?: boolean;
-  nextActionByLeadId?: Map<string, LeadTask>;
   actionsMode?: boolean;
-  actionsScrollTop?: number;
   selectedId: string | null;
   channelFilter: ChannelFilter;
   searchQuery: string;
@@ -71,7 +68,6 @@ interface ConversationListProps {
   leadScopeLoading?: boolean;
   currentUserId?: string | null;
   isDetailsPanelOpen?: boolean;
-  onActionsScroll?: (scrollTop: number) => void;
 }
 
 // Get stage options for filter
@@ -84,16 +80,12 @@ const stageOptions: { id: PipelineStage | 'todos'; label: string; icon: string }
   })),
 ];
 
-const ACTIONS_MODE_ROW_CLASS = 'h-[72px]';
 const ACTIONS_MODE_HEADER_CLASS = 'h-[54px]';
 
 export function ConversationList({
   conversations,
   contacts,
-  showLeadNextAction = false,
-  nextActionByLeadId = new Map<string, LeadTask>(),
   actionsMode = false,
-  actionsScrollTop = 0,
   selectedId,
   channelFilter,
   searchQuery,
@@ -113,7 +105,6 @@ export function ConversationList({
   leadScopeLoading = false,
   currentUserId = null,
   isDetailsPanelOpen = false,
-  onActionsScroll,
 }: ConversationListProps) {
   const { toast } = useToast();
   const isMobileViewport = useMobileViewport();
@@ -137,8 +128,6 @@ export function ConversationList({
   const [isRefreshingLeadScopeMembers, setIsRefreshingLeadScopeMembers] = useState(false);
   const [bulkAssignMembers, setBulkAssignMembers] = useState<MemberDto[]>([]);
   const [isLoadingBulkAssignMembers, setIsLoadingBulkAssignMembers] = useState(false);
-  const actionsScrollRef = useRef<HTMLDivElement | null>(null);
-  const actionsScrollSyncRef = useRef(false);
 
   const formatTime = (date: Date) => {
     const now = new Date();
@@ -234,22 +223,6 @@ export function ConversationList({
     if (!actionsMode) return;
     setIsSelectionMode(false);
   }, [actionsMode]);
-
-  useEffect(() => {
-    if (!actionsMode || !actionsScrollRef.current) return;
-
-    const element = actionsScrollRef.current;
-    if (Math.abs(element.scrollTop - actionsScrollTop) < 1) return;
-
-    actionsScrollSyncRef.current = true;
-    element.scrollTop = actionsScrollTop;
-
-    const timeoutId = window.setTimeout(() => {
-      actionsScrollSyncRef.current = false;
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [actionsMode, actionsScrollTop]);
 
   const refreshLeadScopeMembers = useCallback(async () => {
     if (!canViewTeam && !canBulkAssign) return;
@@ -468,11 +441,6 @@ export function ConversationList({
 
     return conversation.contact.company || conversation.contact.phone || 'Sem historico recente';
   }, []);
-
-  const handleCompactActionsScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
-    if (actionsScrollSyncRef.current) return;
-    onActionsScroll?.(event.currentTarget.scrollTop);
-  }, [onActionsScroll]);
 
   const showActionsLayout = actionsMode && !isMobileViewport;
   const shouldShowLeadScopeRow = showActionsLayout || (canViewTeam && onLeadScopeChange);
@@ -880,51 +848,7 @@ export function ConversationList({
 
       {/* Conversation List */}
       {showActionsLayout ? (
-        <div className="flex-1 min-h-0">
-          <div
-            ref={actionsScrollRef}
-            className="h-full overflow-y-auto custom-scrollbar"
-            onScroll={handleCompactActionsScroll}
-          >
-            {displayConversations.length === 0 ? (
-              <div className="p-4 text-center text-muted-foreground">
-                Nenhuma conversa encontrada
-              </div>
-            ) : (
-              displayConversations.map((conversation) => {
-                const isSelected = selectedId === conversation.id;
-
-                return (
-                  <div
-                    key={conversation.id}
-                    data-testid="conversation-row"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onSelect(conversation)}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return;
-                      event.preventDefault();
-                      onSelect(conversation);
-                    }}
-                    className={cn(
-                      `flex ${ACTIONS_MODE_ROW_CLASS} items-center border-b border-border/50 px-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`,
-                      isSelected ? 'bg-primary/6' : 'hover:bg-muted/20',
-                    )}
-                  >
-                    <div className="min-w-0 flex-1 text-left">
-                      <p className="truncate text-sm font-semibold text-foreground">
-                        {conversation.contact.name}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {conversation.contact.phone || 'Sem telefone'}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+        <div className="flex-1 min-h-0" />
       ) : (
         <div className="flex-1 overflow-y-auto custom-scrollbar">
         {displayConversations.length === 0 ? (
