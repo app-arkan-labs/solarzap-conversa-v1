@@ -33,7 +33,7 @@ export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOvervi
   const remainingRows = priorityRows.slice(2);
 
   return (
-    <Card className="border-border/50 bg-background/50 shadow-sm">
+    <Card className="h-full border-border/50 bg-background/50 shadow-sm">
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <CardTitle>Onde as vendas travam</CardTitle>

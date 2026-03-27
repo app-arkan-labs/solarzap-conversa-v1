@@ -313,8 +313,9 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 .from("lead_sale_installments")
                 .select("id, lead_id, installment_no, due_on, amount, status, leads(nome)")
                 .in("status", ["scheduled", "awaiting_confirmation"])
+                .lte("due_on", todayDateIso)
                 .order("due_on", { ascending: true })
-                .limit(5);
+                .limit(12);
 
             if (shouldForceDealsEmpty) {
                 scheduledInstallmentsPeriodQ = scheduledInstallmentsPeriodQ.in("lead_id", [-1]);

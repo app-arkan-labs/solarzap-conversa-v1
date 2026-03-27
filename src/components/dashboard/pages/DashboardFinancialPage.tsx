@@ -8,7 +8,7 @@ import type { DashboardPayload } from "@/types/dashboard";
 interface DashboardFinancialPageProps {
   data?: DashboardPayload;
   isLoading: boolean;
-  onOpenLeadByName: (leadName: string) => void;
+  onReviewInstallment?: (installment: DashboardPayload["finance"]["upcoming_installments"][number]) => void;
   onViewConversations?: () => void;
 }
 
@@ -18,7 +18,7 @@ const formatCurrency = (value: number) =>
 export function DashboardFinancialPage({
   data,
   isLoading,
-  onOpenLeadByName,
+  onReviewInstallment,
   onViewConversations,
 }: DashboardFinancialPageProps) {
   if (!data) {
@@ -90,16 +90,22 @@ export function DashboardFinancialPage({
     <div className="space-y-6">
       <DashboardMetricGrid items={metrics} className="xl:grid-cols-3" />
 
-      <FinanceSnapshotCard
-        data={data.finance}
-        isLoading={isLoading}
-        maxInstallments={8}
-        mode="financial"
-        onOpenLead={onOpenLeadByName}
-        onViewConversations={onViewConversations}
-      />
-
-      <DashboardCharts data={data.charts} kpis={data.kpis} isLoading={isLoading} mode="financial" />
+      <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
+        <div className="min-w-0">
+          <FinanceSnapshotCard
+            data={data.finance}
+            isLoading={isLoading}
+            maxInstallments={8}
+            mode="financial"
+            listHeightClassName="h-[360px]"
+            onReviewInstallment={onReviewInstallment}
+            onViewConversations={onViewConversations}
+          />
+        </div>
+        <div className="min-w-0">
+          <DashboardCharts data={data.charts} kpis={data.kpis} isLoading={isLoading} mode="financial" />
+        </div>
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowRight, Clock3, ListTodo } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { LeadNextActionBadge } from "@/components/solarzap/LeadNextActionBadge";
 import { PIPELINE_STAGES, type Contact, type LeadTask } from "@/types/solarzap";
 import { buildLeadActionMaps, getLastActionText, getLeadTaskDueState } from "@/lib/leadNextActions";
@@ -13,6 +14,7 @@ interface LeadActionQueuePanelProps {
   isLoading?: boolean;
   teamMode?: boolean;
   limit?: number;
+  listHeightClassName?: string;
   onOpenLead?: (contactId: string) => void;
   onViewConversations?: () => void;
 }
@@ -23,6 +25,7 @@ export function LeadActionQueuePanel({
   isLoading = false,
   teamMode = false,
   limit = 5,
+  listHeightClassName = "h-[320px]",
   onOpenLead,
   onViewConversations,
 }: LeadActionQueuePanelProps) {
@@ -84,7 +87,7 @@ export function LeadActionQueuePanel({
   }
 
   return (
-    <Card className="border-border/50 bg-background/50 shadow-sm">
+    <Card className="h-full border-border/50 bg-background/50 shadow-sm">
       <CardHeader className="space-y-3 pb-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
@@ -138,33 +141,37 @@ export function LeadActionQueuePanel({
               Nenhuma acao vencida ou marcada para hoje neste escopo.
             </div>
           ) : (
-            visiblePriorityRows.map((row) => {
-              const stage = PIPELINE_STAGES[row.contact.pipelineStage];
-              const content = (
-                <div className="w-full rounded-lg border border-border/60 bg-card/60 px-3 py-2.5 text-left transition-colors hover:border-primary/35">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <p className="truncate text-sm font-semibold text-foreground">{row.contact.name}</p>
-                      <p className="truncate text-sm text-foreground">{row.nextAction?.title}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {stage.title} | Ultima: {getLastActionText(row.lastAction)}
-                      </p>
+            <ScrollArea className={listHeightClassName}>
+              <div className="space-y-3 pr-3">
+                {visiblePriorityRows.map((row) => {
+                  const stage = PIPELINE_STAGES[row.contact.pipelineStage];
+                  const content = (
+                    <div className="w-full rounded-lg border border-border/60 bg-card/60 px-3 py-2.5 text-left transition-colors hover:border-primary/35">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="truncate text-sm font-semibold text-foreground">{row.contact.name}</p>
+                          <p className="truncate text-sm text-foreground">{row.nextAction?.title}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {stage.title} | Ultima: {getLastActionText(row.lastAction)}
+                          </p>
+                        </div>
+                        <LeadNextActionBadge task={row.nextAction} />
+                      </div>
                     </div>
-                    <LeadNextActionBadge task={row.nextAction} />
-                  </div>
-                </div>
-              );
+                  );
 
-              if (!onOpenLead) {
-                return <div key={row.contact.id}>{content}</div>;
-              }
+                  if (!onOpenLead) {
+                    return <div key={row.contact.id}>{content}</div>;
+                  }
 
-              return (
-                <button key={row.contact.id} type="button" className="w-full" onClick={() => onOpenLead(row.contact.id)}>
-                  {content}
-                </button>
-              );
-            })
+                  return (
+                    <button key={row.contact.id} type="button" className="w-full" onClick={() => onOpenLead(row.contact.id)}>
+                      {content}
+                    </button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
           )}
         </div>
 

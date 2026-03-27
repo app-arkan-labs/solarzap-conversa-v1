@@ -1,4 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DashboardPayload } from "@/types/dashboard";
 import { format } from "date-fns";
@@ -17,6 +18,7 @@ interface CalendarSummaryProps {
   eventLimit?: number;
   daysAhead?: number;
   showFilter?: boolean;
+  listHeightClassName?: string;
 }
 
 export function CalendarSummaryPanel({
@@ -31,6 +33,7 @@ export function CalendarSummaryPanel({
   eventLimit = 4,
   daysAhead,
   showFilter = false,
+  listHeightClassName = "h-[320px]",
 }: CalendarSummaryProps) {
   if (isLoading || !data) return null;
 
@@ -115,38 +118,42 @@ export function CalendarSummaryPanel({
             Nenhum compromisso encontrado para {summaryLabel.toLowerCase()}.
           </div>
         ) : (
-          visibleEvents.map((event) => {
-            const eventDate = new Date(event.start_at);
-            const statusTone =
-              event.status === "done" || event.status === "completed"
-                ? "bg-emerald-500/10 text-emerald-700"
-                : event.status === "canceled"
-                  ? "bg-rose-500/10 text-rose-700"
-                  : event.status === "no_show"
-                    ? "bg-amber-500/10 text-amber-700"
-                    : "bg-blue-500/10 text-blue-700";
+          <ScrollArea className={listHeightClassName}>
+            <div className="space-y-3 pr-3">
+              {visibleEvents.map((event) => {
+                const eventDate = new Date(event.start_at);
+                const statusTone =
+                  event.status === "done" || event.status === "completed"
+                    ? "bg-emerald-500/10 text-emerald-700"
+                    : event.status === "canceled"
+                      ? "bg-rose-500/10 text-rose-700"
+                      : event.status === "no_show"
+                        ? "bg-amber-500/10 text-amber-700"
+                        : "bg-blue-500/10 text-blue-700";
 
-            return (
-              <div key={event.id} className="rounded-lg border border-border/60 bg-background/70 px-4 py-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{event.title || "Compromisso"}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {event.leads?.nome || "Lead sem nome"} | {event.type || "outro"}
-                    </p>
+                return (
+                  <div key={event.id} className="rounded-lg border border-border/60 bg-background/70 px-4 py-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{event.title || "Compromisso"}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {event.leads?.nome || "Lead sem nome"} | {event.type || "outro"}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                        <span className="text-sm font-medium text-foreground">
+                          {format(eventDate, "dd/MM HH:mm", { locale: ptBR })}
+                        </span>
+                        <span className={`rounded-full px-2 py-1 text-[10px] font-medium uppercase ${statusTone}`}>
+                          {event.status === "no_show" ? "no-show" : event.status}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                    <span className="text-sm font-medium text-foreground">
-                      {format(eventDate, "dd/MM HH:mm", { locale: ptBR })}
-                    </span>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-medium uppercase ${statusTone}`}>
-                      {event.status === "no_show" ? "no-show" : event.status}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            );
-          })
+                );
+              })}
+            </div>
+          </ScrollArea>
         )}
       </CardContent>
     </Card>

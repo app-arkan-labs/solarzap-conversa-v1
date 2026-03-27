@@ -22,6 +22,7 @@ import { GenerateProposalPromptModal } from './GenerateProposalPromptModal';
 import { ProposalReadyModal } from './ProposalReadyModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
 import { FollowUpExhaustedModal, type FollowUpLostReasonKey } from './FollowUpExhaustedModal';
+import { InstallmentActionModal, type InstallmentActionItem } from './InstallmentActionModal';
 import { ConversationActionsSheet } from './ConversationActionsSheet';
 import { Filter, Loader2, Plus, X } from 'lucide-react';
 import { addMinutes, format } from 'date-fns';
@@ -957,8 +958,77 @@ export function SolarZapLayout() {
   const [followUpExhaustedModalOpen, setFollowUpExhaustedModalOpen] = useState(false);
   const [followUpExhaustedLeadId, setFollowUpExhaustedLeadId] = useState<string | null>(null);
   const [followUpExhaustedSubmitting, setFollowUpExhaustedSubmitting] = useState(false);
+  const [installmentActionTarget, setInstallmentActionTarget] = useState<InstallmentActionItem | null>(null);
 
   const { toast } = useToast();
+
+  const handleConfirmInstallmentPaid = useCallback(async (installmentId: string) => {
+    await confirmInstallmentPaid(installmentId);
+    await queryClient.invalidateQueries({ queryKey: ['dashboard-report-client'] });
+  }, [confirmInstallmentPaid, queryClient]);
+
+  const handleRescheduleInstallment = useCallback(async (installmentId: string, newDueOn: string) => {
+    await rescheduleInstallment(installmentId, newDueOn);
+    await queryClient.invalidateQueries({ queryKey: ['dashboard-report-client'] });
+  }, [queryClient, rescheduleInstallment]);
+
+  const autoInstallmentPromptSessionKey = useMemo(() => {
+    if (!orgId || !user?.id) return null;
+    return `solarzap:auto-installment-prompt:${orgId}:${user.id}`;
+  }, [orgId, user?.id]);
+
+  const autoPromptCandidates = useMemo<InstallmentActionItem[]>(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayIso = today.toISOString().slice(0, 10);
+
+    return notifications
+      .filter((notification) => {
+        return (
+          notification.type === 'installment_due_check' &&
+          notification.requiresAction === true &&
+          !!notification.installmentId &&
+          !!notification.dueOn &&
+          notification.dueOn < todayIso
+        );
+      })
+      .map((notification) => ({
+        installmentId: String(notification.installmentId),
+        leadId: notification.contactId || null,
+        leadName: notification.contactName || 'Lead',
+        installmentNo: Number(notification.installmentNo || 0) || 1,
+        dueOn: String(notification.dueOn || '').slice(0, 10),
+        amount: Number(notification.amount || 0),
+        status: 'awaiting_confirmation' as const,
+        source: 'auto' as const,
+      }))
+      .sort((left, right) => left.dueOn.localeCompare(right.dueOn));
+  }, [notifications]);
+
+  const handleReviewInstallmentFromDashboard = useCallback((installment: {
+    id: string;
+    lead_id: number;
+    lead_name: string;
+    installment_no: number;
+    due_on: string;
+    amount: number;
+    status: 'scheduled' | 'awaiting_confirmation';
+  }) => {
+    setInstallmentActionTarget({
+      installmentId: installment.id,
+      leadId: installment.lead_id,
+      leadName: installment.lead_name,
+      installmentNo: installment.installment_no,
+      dueOn: installment.due_on,
+      amount: installment.amount,
+      status: installment.status,
+      source: 'dashboard',
+    });
+  }, []);
+
+  const handleCloseInstallmentAction = useCallback(() => {
+    setInstallmentActionTarget(null);
+  }, []);
 
   const openFollowUpExhaustedForLead = useCallback((leadId: string) => {
     const candidate = contacts.find((contact) => contact.id === leadId);
@@ -987,6 +1057,17 @@ export function SolarZapLayout() {
     activeConversation?.contact?.followUpExhaustedSeen,
     openFollowUpExhaustedForLead,
   ]);
+
+  useEffect(() => {
+    if (!autoInstallmentPromptSessionKey) return;
+    if (installmentActionTarget) return;
+    if (autoPromptCandidates.length === 0) return;
+    if (typeof window === 'undefined') return;
+    if (window.sessionStorage.getItem(autoInstallmentPromptSessionKey) === '1') return;
+
+    setInstallmentActionTarget(autoPromptCandidates[0]);
+    window.sessionStorage.setItem(autoInstallmentPromptSessionKey, '1');
+  }, [autoInstallmentPromptSessionKey, autoPromptCandidates, installmentActionTarget]);
 
   const handleSelectOrganizationFromModal = useCallback(async (nextOrgId: string) => {
     try {
@@ -1954,8 +2035,8 @@ export function SolarZapLayout() {
           onMarkAllAsRead={markAllNotificationsAsRead}
           onDelete={deleteNotification}
           onClearAll={clearAllNotifications}
-          onConfirmInstallmentPaid={confirmInstallmentPaid}
-          onRescheduleInstallment={rescheduleInstallment}
+          onConfirmInstallmentPaid={handleConfirmInstallmentPaid}
+          onRescheduleInstallment={handleRescheduleInstallment}
           onGoToContact={(contactId) => {
             const conv = conversations.find(c => c.id === contactId);
             if (conv) {
@@ -1966,6 +2047,14 @@ export function SolarZapLayout() {
           }}
         />
       </Suspense>
+
+      <InstallmentActionModal
+        open={!!installmentActionTarget}
+        installment={installmentActionTarget}
+        onClose={handleCloseInstallmentAction}
+        onConfirmPaid={handleConfirmInstallmentPaid}
+        onReschedule={handleRescheduleInstallment}
+      />
 
       <div
         className={cn(
@@ -2354,6 +2443,7 @@ export function SolarZapLayout() {
         <Suspense fallback={<TabLoadingFallback label="Carregando dashboard..." />}>
           <DashboardView
             onNavigate={(tab) => handleTabChange(tab as any)}
+            onReviewInstallment={handleReviewInstallmentFromDashboard}
             contacts={contacts}
             leadTasks={leadTasks}
             showLeadNextAction={leadNextActionEnabled}

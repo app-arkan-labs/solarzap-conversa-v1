@@ -28,7 +28,7 @@ export function SourcePerformanceCard({
   const revenueLabel = revenueBasis === "project_paid" ? "faturamento" : "valor fechado";
 
   return (
-    <Card className="border-border/50 bg-background/50 shadow-sm">
+    <Card className="h-full border-border/50 bg-background/50 shadow-sm">
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <CardTitle className="flex items-center gap-2">

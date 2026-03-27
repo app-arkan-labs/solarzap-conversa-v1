@@ -20,7 +20,8 @@ interface DashboardTodayPageProps {
   showLeadNextAction: boolean;
   teamMode: boolean;
   onOpenLeadContact: (contactId: string) => void;
-  onOpenLeadByName: (leadName: string) => void;
+  onOpenLeadById: (leadId: string | number) => void;
+  onReviewInstallment?: (installment: DashboardPayload["finance"]["upcoming_installments"][number]) => void;
   onViewConversations?: () => void;
   onViewCalendar?: () => void;
   onViewSales?: () => void;
@@ -45,14 +46,14 @@ function TodayBottleneckCard({
     : "Sem gargalo";
 
   return (
-    <Card className="border-border/50 bg-background/50 shadow-sm">
+    <Card className="h-full border-border/50 bg-background/50 shadow-sm">
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <CardTitle className="flex items-center gap-2 text-lg">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             Maior gargalo do momento
           </CardTitle>
-          <CardDescription>Etapa que mais precisa destravar para a venda continuar andando.</CardDescription>
+          <CardDescription>Onde a venda mais trava agora.</CardDescription>
         </div>
         {onViewSales ? (
           <Button variant="outline" size="sm" className="rounded-full" onClick={onViewSales}>
@@ -73,7 +74,7 @@ function TodayBottleneckCard({
 
         <div className="space-y-3">
           {bottleneckRows.length > 0 ? (
-            bottleneckRows.map((row) => (
+            bottleneckRows.slice(0, 2).map((row) => (
               <div key={row.stage} className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -106,7 +107,8 @@ export function DashboardTodayPage({
   showLeadNextAction,
   teamMode,
   onOpenLeadContact,
-  onOpenLeadByName,
+  onOpenLeadById,
+  onReviewInstallment,
   onViewConversations,
   onViewCalendar,
   onViewSales,
@@ -141,7 +143,7 @@ export function DashboardTodayPage({
     {
       label: "Acoes vencidas",
       value: String(queueSummary.overdue),
-      helper: "Prioridade absoluta na rotina do dia.",
+      helper: "Comece por aqui.",
       icon: AlertTriangle,
       tone: "text-rose-700",
       bubble: "bg-rose-500/10",
@@ -149,7 +151,7 @@ export function DashboardTodayPage({
     {
       label: "Leads parados",
       value: String(data?.tables.stale_leads.length || 0),
-      helper: "Leads sem avancar de etapa.",
+      helper: "Precisam de retorno.",
       icon: Clock3,
       tone: "text-amber-700",
       bubble: "bg-amber-500/10",
@@ -165,7 +167,7 @@ export function DashboardTodayPage({
     {
       label: "Parcelas vencidas",
       value: String(data?.finance.overdue_count || 0),
-      helper: "Cobranca que ja esta atrasada.",
+      helper: "Cobrar ou confirmar.",
       icon: Wallet,
       tone: "text-rose-700",
       bubble: "bg-rose-500/10",
@@ -180,13 +182,14 @@ export function DashboardTodayPage({
       onOpenLead={onOpenLeadContact}
       onViewConversations={onViewConversations}
       limit={5}
+      listHeightClassName="h-[320px]"
     />
   ) : (
     <ActionSnapshotCard
       funnel={data?.funnel}
       staleLeads={data?.tables.stale_leads}
       teamMode={teamMode}
-      onOpenLead={onOpenLeadByName}
+      onOpenLead={onOpenLeadById}
       onViewConversations={onViewConversations}
     />
   );
@@ -199,7 +202,7 @@ export function DashboardTodayPage({
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Hoje</p>
             <h2 className="text-2xl font-bold tracking-tight text-foreground">O que fazer agora</h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Use este painel para atacar o que esta vencido, responder o que pode esfriar e nao perder compromisso nem cobranca.
+              Priorize o que venceu, o que pode esfriar e o que nao pode passar de hoje.
             </p>
           </div>
 
@@ -241,6 +244,7 @@ export function DashboardTodayPage({
             onViewAll={onViewCalendar}
             daysAhead={3}
             eventLimit={4}
+            listHeightClassName="h-[320px]"
             title="Compromissos"
             description="Agenda de hoje e dos proximos dias para voce nao deixar visita, ligacao ou retorno escapar."
           />
@@ -254,7 +258,8 @@ export function DashboardTodayPage({
             isLoading={isLoading}
             mode="today"
             maxInstallments={4}
-            onOpenLead={onOpenLeadByName}
+            listHeightClassName="h-[300px]"
+            onReviewInstallment={onReviewInstallment}
             onViewConversations={onViewConversations}
           />
         </div>
@@ -277,7 +282,12 @@ export function DashboardTodayPage({
           ) : null}
         </CardHeader>
         <CardContent>
-          <StaleLeadsTable data={data?.tables.stale_leads} isLoading={isLoading} />
+          <StaleLeadsTable
+            data={data?.tables.stale_leads}
+            isLoading={isLoading}
+            onOpenLead={onOpenLeadById}
+            maxHeightClassName="h-[360px]"
+          />
         </CardContent>
       </Card>
     </div>

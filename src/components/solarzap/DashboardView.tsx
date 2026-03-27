@@ -27,10 +27,12 @@ import {
 } from "@/lib/dashboardViews";
 import type { MemberDto } from "@/lib/orgAdminClient";
 import { supabase } from "@/lib/supabase";
+import type { DashboardPayload } from "@/types/dashboard";
 import type { Contact, LeadTask } from "@/types/solarzap";
 
 interface DashboardViewProps {
   onNavigate?: (tab: string) => void;
+  onReviewInstallment?: (installment: DashboardPayload["finance"]["upcoming_installments"][number]) => void;
   contacts?: Contact[];
   leadTasks?: LeadTask[];
   showLeadNextAction?: boolean;
@@ -43,6 +45,7 @@ interface DashboardViewProps {
 
 export function DashboardView({
   onNavigate,
+  onReviewInstallment,
   contacts = [],
   leadTasks = [],
   showLeadNextAction = false,
@@ -124,11 +127,13 @@ export function DashboardView({
     [onNavigate],
   );
 
-  const handleOpenLeadByName = useCallback(
-    (leadName: string) => {
-      navigate(`/app?tab=conversas&search=${encodeURIComponent(leadName)}`);
+  const handleOpenLeadById = useCallback(
+    (leadId: string | number) => {
+      const contactId = String(leadId || "").trim();
+      if (!contactId) return;
+      handleOpenLeadFromQueue(contactId);
     },
-    [navigate],
+    [handleOpenLeadFromQueue],
   );
 
   const handlePeriodChange = (value: string) => {
@@ -195,6 +200,7 @@ export function DashboardView({
             isLoading={isLoading}
             onViewPipeline={handleViewPipeline}
             onViewConversations={handleViewConversations}
+            onOpenLead={handleOpenLeadById}
           />
         );
 
@@ -203,7 +209,7 @@ export function DashboardView({
           <DashboardFinancialPage
             data={data}
             isLoading={isLoading}
-            onOpenLeadByName={handleOpenLeadByName}
+            onReviewInstallment={onReviewInstallment}
             onViewConversations={handleViewConversations}
           />
         );
@@ -229,7 +235,8 @@ export function DashboardView({
             showLeadNextAction={showLeadNextAction}
             teamMode={isTeamMode}
             onOpenLeadContact={handleOpenLeadFromQueue}
-            onOpenLeadByName={handleOpenLeadByName}
+            onOpenLeadById={handleOpenLeadById}
+            onReviewInstallment={onReviewInstallment}
             onViewConversations={handleViewConversations}
             onViewCalendar={handleViewCalendar}
             onViewSales={handleGoToSalesDashboard}

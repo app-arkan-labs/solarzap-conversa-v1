@@ -7,7 +7,7 @@ import { AlertTriangle, ArrowRight, Clock3 } from "lucide-react";
 interface ActionSnapshotCardProps {
   funnel?: DashboardPayload["funnel"];
   staleLeads?: DashboardPayload["tables"]["stale_leads"];
-  onOpenLead?: (leadName: string) => void;
+  onOpenLead?: (leadId: string | number) => void;
   onViewConversations?: () => void;
   teamMode?: boolean;
 }
@@ -23,7 +23,7 @@ export function ActionSnapshotCard({
   const priorityTitle = teamMode ? "Prioridades do time" : "O que fazer agora";
 
   return (
-    <Card className="border-border/50 bg-background/50 shadow-sm">
+    <Card className="h-full border-border/50 bg-background/50 shadow-sm">
       <CardHeader className="space-y-3 pb-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
@@ -101,7 +101,7 @@ export function ActionSnapshotCard({
               }
 
               return (
-                <button key={lead.id} type="button" className="w-full" onClick={() => onOpenLead(lead.name)}>
+                <button key={lead.id} type="button" className="w-full" onClick={() => onOpenLead(lead.id)}>
                   {content}
                 </button>
               );

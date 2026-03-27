@@ -1,10 +1,9 @@
-import { AlertTriangle, ArrowRightLeft, CheckCircle2, Clock3, RadioTower, TimerReset } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, CheckCircle2, Clock3, TimerReset } from "lucide-react";
 
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
 import { DashboardMetricGrid, type DashboardMetricItem } from "@/components/dashboard/DashboardMetricGrid";
 import { FunnelOverview } from "@/components/dashboard/FunnelOverview";
 import { SourcePerformanceCard } from "@/components/dashboard/SourcePerformanceCard";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StaleLeadsTable } from "@/components/dashboard/tables/StaleLeadsTable";
 import type { DashboardPayload } from "@/types/dashboard";
@@ -14,6 +13,7 @@ interface DashboardSalesPageProps {
   isLoading: boolean;
   onViewPipeline?: () => void;
   onViewConversations?: () => void;
+  onOpenLead?: (leadId: string | number) => void;
 }
 
 export function DashboardSalesPage({
@@ -21,6 +21,7 @@ export function DashboardSalesPage({
   isLoading,
   onViewPipeline,
   onViewConversations,
+  onOpenLead,
 }: DashboardSalesPageProps) {
   const metrics: DashboardMetricItem[] = data?.funnel
     ? [
@@ -79,51 +80,31 @@ export function DashboardSalesPage({
         </div>
       </div>
 
-      <DashboardCharts data={data?.charts} kpis={data?.kpis} isLoading={isLoading} mode="commercial" />
-
-      <Card className="border-border/50 bg-background/50 shadow-sm">
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+      <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr] xl:items-start">
+        <Card className="border-border/50 bg-background/50 shadow-sm">
+          <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock3 className="h-4 w-4 text-amber-600" />
               Leads que precisam de atencao
             </CardTitle>
-            <CardDescription>Leads parados e sem andamento que merecem retorno antes de perder a venda.</CardDescription>
-          </div>
-          {onViewConversations ? (
-            <Button variant="outline" size="sm" className="rounded-full" onClick={onViewConversations}>
-              Ver leads
-            </Button>
-          ) : null}
-        </CardHeader>
-        <CardContent>
-          <StaleLeadsTable data={data?.tables.stale_leads} isLoading={isLoading} />
-        </CardContent>
-      </Card>
-
-      {data?.source_performance?.length ? (
-        <Card className="border-border/50 bg-background/50 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <RadioTower className="h-4 w-4 text-sky-600" />
-              Onde agir primeiro
-            </CardTitle>
             <CardDescription>
-              Cruze volume de leads com venda fechada para decidir onde vale insistir, ajustar abordagem ou rever investimento.
+              Leads parados e sem andamento que merecem retorno antes de perder a venda.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {data.source_performance.slice(0, 3).map((row) => (
-              <div key={row.source} className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
-                <p className="text-sm font-semibold text-foreground">{row.label}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {row.leads} leads | {row.won} vendas | {row.conversion_pct.toFixed(1)}% de conversao
-                </p>
-              </div>
-            ))}
+          <CardContent>
+            <StaleLeadsTable
+              data={data?.tables.stale_leads}
+              isLoading={isLoading}
+              onOpenLead={onOpenLead}
+              maxHeightClassName="h-[460px]"
+            />
           </CardContent>
         </Card>
-      ) : null}
+
+        <div className="min-w-0">
+          <DashboardCharts data={data?.charts} kpis={data?.kpis} isLoading={isLoading} mode="commercial" />
+        </div>
+      </div>
     </div>
   );
 }

@@ -162,6 +162,7 @@ export function useNotifications() {
           createdAt,
           isRead: false,
           installmentId: String(row.id),
+          installmentNo,
           dueOn,
           amount,
           cycleNo: Number(row.cycle_no || 0),

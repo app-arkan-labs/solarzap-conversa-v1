@@ -28,6 +28,7 @@ export interface Notification {
   actionUrl?: string;
   actionLabel?: string;
   installmentId?: string;
+  installmentNo?: number;
   dueOn?: string;
   amount?: number;
   cycleNo?: number;
