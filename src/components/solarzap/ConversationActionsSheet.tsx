@@ -26,6 +26,8 @@ type ConversationActionsSheetProps = {
   nextActionByLeadId: Map<string, LeadTask>;
   selectedConversationId?: string | null;
   onSelectConversation?: (conversation: Conversation) => void;
+  actionsScrollTop?: number;
+  onActionsScroll?: (scrollTop: number) => void;
   onSaveRow: (input: {
     contact: Conversation['contact'];
     appointmentId?: string | null;
@@ -74,8 +76,8 @@ type TextEditorState = {
 } | null;
 
 const GRID_TEMPLATE_COLUMNS =
-  'minmax(214px,1.2fr) minmax(118px,1.12fr) minmax(150px,1.26fr) minmax(70px,0.62fr) minmax(176px,1.08fr) minmax(82px,0.56fr) minmax(124px,0.9fr) minmax(110px,0.76fr) minmax(104px,0.78fr) minmax(92px,0.58fr)';
-const GRID_MIN_WIDTH = 1240;
+  'minmax(118px,1.16fr) minmax(146px,1.3fr) minmax(72px,0.64fr) minmax(174px,1.04fr) minmax(82px,0.56fr) minmax(124px,0.9fr) minmax(110px,0.76fr) minmax(104px,0.78fr) minmax(92px,0.58fr)';
+const GRID_MIN_WIDTH = 1060;
 const GRID_HEADER_CLASS = 'h-[54px]';
 const GRID_ROW_CLASS = 'h-[72px]';
 const DEFAULT_DURATION = '30';
@@ -170,6 +172,8 @@ export function ConversationActionsSheet({
   nextActionByLeadId,
   selectedConversationId = null,
   onSelectConversation,
+  actionsScrollTop = 0,
+  onActionsScroll,
   onSaveRow,
 }: ConversationActionsSheetProps) {
   const { user, role, orgId } = useAuth();
@@ -180,6 +184,8 @@ export function ConversationActionsSheet({
   const [responsibleOptions, setResponsibleOptions] = useState<ResponsibleOption[]>([]);
   const [isLoadingResponsibles, setIsLoadingResponsibles] = useState(false);
   const saveLocksRef = useRef<Set<string>>(new Set());
+  const actionsScrollRef = useRef<HTMLDivElement | null>(null);
+  const actionsScrollSyncRef = useRef(false);
   const isAdminOrOwner = role === 'owner' || role === 'admin';
   const currentUserId = typeof user?.id === 'string' ? user.id : '';
   const currentUserLabel = useMemo(() => {
@@ -197,6 +203,22 @@ export function ConversationActionsSheet({
     }
     return nextMap;
   }, [appointments]);
+
+  useEffect(() => {
+    if (!actionsScrollRef.current) return;
+
+    const element = actionsScrollRef.current;
+    if (Math.abs(element.scrollTop - actionsScrollTop) < 1) return;
+
+    actionsScrollSyncRef.current = true;
+    element.scrollTop = actionsScrollTop;
+
+    const timeoutId = window.setTimeout(() => {
+      actionsScrollSyncRef.current = false;
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [actionsScrollTop]);
 
   const sortedAppointmentsByLeadId = useMemo(() => {
     const nextMap = new Map<string, Appointment[]>();
@@ -543,12 +565,19 @@ export function ConversationActionsSheet({
     }
   }, [currentUserId, drafts, onSaveRow, toast, updateDraft]);
 
+  const handleGridScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    if (actionsScrollSyncRef.current) return;
+    onActionsScroll?.(event.currentTarget.scrollTop);
+  }, [onActionsScroll]);
+
   return (
     <>
       <div className="flex h-full min-h-0 flex-col bg-background">
         <div className="min-w-0 flex flex-1 min-h-0 flex-col">
           <div
+            ref={actionsScrollRef}
             className="flex-1 min-h-0 overflow-auto custom-scrollbar"
+            onScroll={handleGridScroll}
           >
             <div style={{ minWidth: GRID_MIN_WIDTH }}>
               <div
@@ -558,7 +587,6 @@ export function ConversationActionsSheet({
                 )}
                 style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
               >
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Lead</div>
                 <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ultima Acao</div>
                 <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proxima Acao</div>
                 <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tipo</div>
@@ -583,27 +611,14 @@ export function ConversationActionsSheet({
                 return (
                   <div
                     key={conversation.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onSelectConversation?.(conversation)}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return;
-                      event.preventDefault();
-                      onSelectConversation?.(conversation);
-                    }}
                     className={cn(
-                      'grid border-b border-border/50 bg-background px-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/35',
+                      'grid border-b border-border/50 bg-background px-2',
                       GRID_ROW_CLASS,
                       draft.isDirty && 'bg-primary/[0.045]',
                       isSelected && 'bg-muted/20',
                     )}
                     style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
                   >
-                  <div className="min-w-0 flex h-full flex-col justify-center border-r border-border/60 px-3 py-2">
-                    <p className="truncate text-sm font-semibold text-foreground">{conversation.contact.name}</p>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">{conversation.contact.phone || 'Sem telefone'}</p>
-                  </div>
-
                   <div className="min-w-0 flex h-full flex-col justify-center border-r border-border/60 px-3 py-2">
                     <p className="line-clamp-2 text-sm font-medium text-foreground">{draft.lastActionTitle}</p>
                     <p className="mt-1 text-[11px] text-muted-foreground">{draft.lastActionMeta || 'Sem historico'}</p>
