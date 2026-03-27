@@ -1246,7 +1246,7 @@ export function ChatArea({
       </div>
 
       {showLeadNextAction && conversation ? (
-        <div className="shrink-0">
+        <div className={cn('shrink-0', isActionsWorkspaceOpen && 'pt-1')}>
           <LeadNextActionInlineBar
             nextAction={nextAction}
             isLoading={leadNextActionLoading}

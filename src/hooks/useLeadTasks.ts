@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -121,6 +121,7 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
   const enabled = options.enabled !== false;
   const leadIds = useMemo(() => normalizeLeadIds(options.leadIds), [options.leadIds]);
   const leadIdsKey = useMemo(() => leadIds.join(','), [leadIds]);
+  const [actionMapsTick, setActionMapsTick] = useState(() => Date.now());
 
   const queryKey = useMemo(
     () => ['lead-tasks', orgId ?? null, user?.id ?? null, leadIdsKey, enabled] as const,
@@ -150,6 +151,17 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
       supabase.removeChannel(channel);
     };
   }, [enabled, orgId, queryClient]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (typeof window === 'undefined') return;
+
+    const intervalId = window.setInterval(() => {
+      setActionMapsTick(Date.now());
+    }, 30_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [enabled]);
 
   const tasksQuery = useQuery({
     queryKey,
@@ -399,7 +411,10 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
     [orgId, queryClient, user],
   );
 
-  const actionMaps = useMemo(() => buildLeadActionMaps(tasksQuery.data || []), [tasksQuery.data]);
+  const actionMaps = useMemo(
+    () => buildLeadActionMaps(tasksQuery.data || [], new Date(actionMapsTick)),
+    [actionMapsTick, tasksQuery.data],
+  );
 
   return {
     tasks: tasksQuery.data || [],

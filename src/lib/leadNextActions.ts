@@ -121,7 +121,7 @@ export const getLastActionText = (task: LeadTask | null | undefined): string => 
   return title.length > 0 ? title : 'Acao concluida';
 };
 
-export const buildLeadActionMaps = (tasks: LeadTask[]) => {
+export const buildLeadActionMaps = (tasks: LeadTask[], now = new Date()) => {
   const nextActionByLeadId = new Map<string, LeadTask>();
   const lastActionByLeadId = new Map<string, LeadTask>();
 
@@ -130,6 +130,15 @@ export const buildLeadActionMaps = (tasks: LeadTask[]) => {
     if (task.taskKind !== 'next_action') continue;
 
     if (task.status === 'open') {
+      const dueState = getLeadTaskDueState(task, now);
+      if (dueState === 'overdue') {
+        const currentLast = lastActionByLeadId.get(leadId) || null;
+        if (compareRecency(currentLast, task, task.dueAt || task.updatedAt)) {
+          lastActionByLeadId.set(leadId, task);
+        }
+        continue;
+      }
+
       const current = nextActionByLeadId.get(leadId) || null;
       if (compareDueAt(current, task)) {
         nextActionByLeadId.set(leadId, task);
