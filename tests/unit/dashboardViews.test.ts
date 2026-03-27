@@ -7,23 +7,22 @@ import {
 } from "@/lib/dashboardViews";
 
 describe("dashboardViews", () => {
-  it("falls back to summary for missing or invalid query values", () => {
-    expect(parseDashboardVisualization(undefined)).toBe("summary");
-    expect(parseDashboardVisualization(null)).toBe("summary");
-    expect(parseDashboardVisualization("")).toBe("summary");
-    expect(parseDashboardVisualization("unknown")).toBe("summary");
+  it("falls back to today for missing or invalid query values", () => {
+    expect(parseDashboardVisualization(undefined)).toBe("today");
+    expect(parseDashboardVisualization(null)).toBe("today");
+    expect(parseDashboardVisualization("")).toBe("today");
+    expect(parseDashboardVisualization("unknown")).toBe("today");
   });
 
   it("parses known view names case-insensitively", () => {
-    expect(parseDashboardVisualization("summary")).toBe("summary");
-    expect(parseDashboardVisualization("COMMERCIAL")).toBe("commercial");
-    expect(parseDashboardVisualization("Agenda")).toBe("agenda");
+    expect(parseDashboardVisualization("today")).toBe("today");
+    expect(parseDashboardVisualization("SALES")).toBe("sales");
     expect(parseDashboardVisualization("financial")).toBe("financial");
     expect(parseDashboardVisualization("losses")).toBe("losses");
   });
 
   it("exposes metadata for every configured view", () => {
-    expect(DASHBOARD_VIEW_OPTIONS).toHaveLength(5);
+    expect(DASHBOARD_VIEW_OPTIONS).toHaveLength(4);
 
     for (const option of DASHBOARD_VIEW_OPTIONS) {
       expect(getDashboardViewMeta(option.value)).toMatchObject({

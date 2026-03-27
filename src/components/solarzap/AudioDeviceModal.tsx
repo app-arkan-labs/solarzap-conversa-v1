@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, Volume2, Check, RefreshCw } from 'lucide-react';
 import {
   Dialog,
@@ -44,14 +44,46 @@ export function AudioDeviceModal({
   const [isTesting, setIsTesting] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const testStreamRef = useRef<MediaStream | null>(null);
+  const testAudioContextRef = useRef<AudioContext | null>(null);
+  const testAnimationFrameRef = useRef<number | null>(null);
+  const testTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cleanupMicrophoneTest = useCallback(() => {
+    if (testAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(testAnimationFrameRef.current);
+      testAnimationFrameRef.current = null;
+    }
+    if (testTimeoutRef.current) {
+      clearTimeout(testTimeoutRef.current);
+      testTimeoutRef.current = null;
+    }
+    if (testStreamRef.current) {
+      testStreamRef.current.getTracks().forEach(track => track.stop());
+      testStreamRef.current = null;
+    }
+    if (testAudioContextRef.current) {
+      void testAudioContextRef.current.close();
+      testAudioContextRef.current = null;
+    }
+    setAudioLevel(0);
+    setIsTesting(false);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    cleanupMicrophoneTest();
+    onClose();
+  }, [cleanupMicrophoneTest, onClose]);
 
   const loadDevices = async () => {
     setIsLoading(true);
     setError(null);
+    cleanupMicrophoneTest();
+    let permissionStream: MediaStream | null = null;
     
     try {
       // Request permission to access media devices
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
       const devices = await navigator.mediaDevices.enumerateDevices();
       
@@ -91,6 +123,7 @@ export function AudioDeviceModal({
       console.error('Error loading devices:', err);
       setError('Não foi possível acessar os dispositivos de áudio. Verifique as permissões do navegador.');
     } finally {
+      permissionStream?.getTracks().forEach(track => track.stop());
       setIsLoading(false);
     }
   };
@@ -98,21 +131,32 @@ export function AudioDeviceModal({
   useEffect(() => {
     if (isOpen) {
       loadDevices();
+      return;
     }
-  }, [isOpen]);
+    cleanupMicrophoneTest();
+  }, [isOpen, cleanupMicrophoneTest]);
+
+  useEffect(() => {
+    return () => {
+      cleanupMicrophoneTest();
+    };
+  }, [cleanupMicrophoneTest]);
 
   // Test microphone input
   const testMicrophone = async () => {
     if (!selectedInput || isTesting) return;
     
+    cleanupMicrophoneTest();
     setIsTesting(true);
     
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { deviceId: selectedInput ? { exact: selectedInput } : undefined }
       });
+      testStreamRef.current = stream;
       
       const audioContext = new AudioContext();
+      testAudioContextRef.current = audioContext;
       const analyser = audioContext.createAnalyser();
       const microphone = audioContext.createMediaStreamSource(stream);
       microphone.connect(analyser);
@@ -121,27 +165,22 @@ export function AudioDeviceModal({
       const bufferLength = analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
       
-      let animationId: number;
       const checkLevel = () => {
         analyser.getByteFrequencyData(dataArray);
         const average = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
         setAudioLevel(Math.min(100, average * 2));
-        animationId = requestAnimationFrame(checkLevel);
+        testAnimationFrameRef.current = requestAnimationFrame(checkLevel);
       };
       
       checkLevel();
       
       // Stop after 3 seconds
-      setTimeout(() => {
-        cancelAnimationFrame(animationId);
-        stream.getTracks().forEach(track => track.stop());
-        audioContext.close();
-        setIsTesting(false);
-        setAudioLevel(0);
+      testTimeoutRef.current = setTimeout(() => {
+        cleanupMicrophoneTest();
       }, 3000);
     } catch (err) {
       console.error('Error testing microphone:', err);
-      setIsTesting(false);
+      cleanupMicrophoneTest();
     }
   };
 
@@ -152,11 +191,11 @@ export function AudioDeviceModal({
     localStorage.setItem('solarzap_audio_configured', 'true');
     
     onConfirm(selectedInput, selectedOutput);
-    onClose();
+    handleClose();
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -258,7 +297,7 @@ export function AudioDeviceModal({
         </div>
 
         <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={handleClose}>
             Cancelar
           </Button>
           <Button onClick={handleConfirm} disabled={isLoading || !!error}>

@@ -8,17 +8,48 @@ import { Calendar as CalendarIcon } from "lucide-react";
 interface CalendarSummaryProps {
   data?: DashboardPayload["calendar"];
   isLoading: boolean;
-  filter: "next_7_days" | "last_7_days";
-  onFilterChange: (val: "next_7_days" | "last_7_days") => void;
+  filter?: "next_7_days" | "last_7_days";
+  onFilterChange?: (val: "next_7_days" | "last_7_days") => void;
   onViewAll?: () => void;
+  title?: string;
+  description?: string;
+  actionLabel?: string;
+  eventLimit?: number;
+  daysAhead?: number;
+  showFilter?: boolean;
 }
 
-export function CalendarSummaryPanel({ data, isLoading, filter, onFilterChange, onViewAll }: CalendarSummaryProps) {
+export function CalendarSummaryPanel({
+  data,
+  isLoading,
+  filter = "next_7_days",
+  onFilterChange,
+  onViewAll,
+  title = "Compromissos",
+  description = "O que voce precisa cumprir hoje e nos proximos dias.",
+  actionLabel = "Ver agenda",
+  eventLimit = 4,
+  daysAhead,
+  showFilter = false,
+}: CalendarSummaryProps) {
   if (isLoading || !data) return null;
 
   const periodLabel = filter === "next_7_days" ? "Proximos 7 dias" : "Ultimos 7 dias";
   const pendingCount = data.scheduled + data.confirmed;
-  const visibleEvents = data.upcoming.slice(0, 4);
+  const cutoffDate = typeof daysAhead === "number" ? new Date() : null;
+  if (cutoffDate) {
+    cutoffDate.setHours(23, 59, 59, 999);
+    cutoffDate.setDate(cutoffDate.getDate() + daysAhead);
+  }
+
+  const visibleEvents = data.upcoming
+    .filter((event) => {
+      if (!cutoffDate) return true;
+      const eventDate = new Date(event.start_at);
+      return eventDate <= cutoffDate;
+    })
+    .slice(0, eventLimit);
+  const summaryLabel = daysAhead ? `Hoje e proximos ${daysAhead} dias` : periodLabel;
 
   return (
     <Card className="h-full min-w-0 border-border/50 bg-background/50 shadow-sm">
@@ -27,9 +58,9 @@ export function CalendarSummaryPanel({ data, isLoading, filter, onFilterChange, 
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2 text-lg">
               <CalendarIcon className="h-4 w-4" />
-              Agenda comercial
+              {title}
             </CardTitle>
-            <CardDescription>Compromissos que pedem atencao no curto prazo.</CardDescription>
+            <CardDescription>{description}</CardDescription>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -38,25 +69,27 @@ export function CalendarSummaryPanel({ data, isLoading, filter, onFilterChange, 
               className="text-xs font-medium text-primary hover:underline"
               type="button"
             >
-              Ver agenda
+              {actionLabel}
             </button>
-            <Select value={filter} onValueChange={(value) => onFilterChange(value as "next_7_days" | "last_7_days")}>
-              <SelectTrigger className="h-8 w-[150px] text-xs">
-                <SelectValue>{periodLabel}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="next_7_days">Proximos 7 dias</SelectItem>
-                <SelectItem value="last_7_days">Ultimos 7 dias</SelectItem>
-              </SelectContent>
-            </Select>
+            {showFilter && onFilterChange ? (
+              <Select value={filter} onValueChange={(value) => onFilterChange(value as "next_7_days" | "last_7_days")}>
+                <SelectTrigger className="h-8 w-[150px] text-xs">
+                  <SelectValue>{periodLabel}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="next_7_days">Proximos 7 dias</SelectItem>
+                  <SelectItem value="last_7_days">Ultimos 7 dias</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
           </div>
         </div>
 
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Eventos</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Compromissos</p>
             <p className="mt-1 text-xl font-semibold text-foreground">{data.total}</p>
-            <p className="text-xs text-muted-foreground">{periodLabel.toLowerCase()}</p>
+            <p className="text-xs text-muted-foreground">{summaryLabel.toLowerCase()}</p>
           </div>
           <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-700">Pendentes</p>
@@ -79,7 +112,7 @@ export function CalendarSummaryPanel({ data, isLoading, filter, onFilterChange, 
       <CardContent className="space-y-3">
         {visibleEvents.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border/60 px-4 py-5 text-sm text-muted-foreground">
-            Nenhum compromisso encontrado para {periodLabel.toLowerCase()}.
+            Nenhum compromisso encontrado para {summaryLabel.toLowerCase()}.
           </div>
         ) : (
           visibleEvents.map((event) => {

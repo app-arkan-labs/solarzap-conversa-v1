@@ -23,12 +23,12 @@ import { ProposalReadyModal } from './ProposalReadyModal';
 import { LeadCommentsModal } from './LeadCommentsModal';
 import { FollowUpExhaustedModal, type FollowUpLostReasonKey } from './FollowUpExhaustedModal';
 import { ConversationActionsSheet } from './ConversationActionsSheet';
-import { Loader2, Plus } from 'lucide-react';
+import { Filter, Loader2, Plus, X } from 'lucide-react';
 import { addMinutes, format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Appointment, Contact, PipelineStage, ChannelFilter, ActiveTab, Conversation, LeadTask } from '@/types/solarzap';
+import { Appointment, CHANNEL_INFO, Contact, PIPELINE_STAGES, PipelineStage, ChannelFilter, ActiveTab, Conversation, LeadTask } from '@/types/solarzap';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppointments } from '@/hooks/useAppointments';
 import { useLeadTasks } from '@/hooks/useLeadTasks';
@@ -44,6 +44,18 @@ import { buildLossReasonSummary, findLossReasonByKey } from '@/hooks/useLossReas
 import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { buildTabBlocker } from '@/lib/billingBlocker';
 import { cn } from '@/lib/utils';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useGuidedTour } from '@/hooks/useGuidedTour';
 import GuidedTour from '@/components/onboarding/GuidedTour';
 import { isMobileMoreTabActive, type SolarZapTabPermissions } from './mobileNavConfig';
@@ -238,6 +250,7 @@ export function SolarZapLayout() {
   const [isConversationActionsSheetOpen, setIsConversationActionsSheetOpen] = useState(false);
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('todos');
   const [stageFilter, setStageFilter] = useState<PipelineStage | 'todos'>('todos');
+  const [isActionsFiltersOpen, setIsActionsFiltersOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [actionsSheetOrderedConversationIds, setActionsSheetOrderedConversationIds] = useState<string[] | null>(null);
@@ -512,6 +525,141 @@ export function SolarZapLayout() {
       return matchesChannel && matchesStage && matchesSearch;
     });
   }, [conversations, channelFilter, stageFilter, searchQuery]);
+
+  const stageFilterOptions = useMemo(() => {
+    const base: Array<{ id: PipelineStage | 'todos'; label: string; icon: string }> = [
+      { id: 'todos', label: 'Todas etapas', icon: '📊' },
+    ];
+    const dynamic = Object.entries(PIPELINE_STAGES).map(([id, config]) => ({
+      id: id as PipelineStage,
+      label: config.title,
+      icon: config.icon,
+    }));
+    return [...base, ...dynamic];
+  }, []);
+
+  const channelFilterOptions = useMemo(() => {
+    const base: Array<{ id: ChannelFilter; label: string }> = [{ id: 'todos', label: 'Todos' }];
+    const dynamic = Object.entries(CHANNEL_INFO).map(([id, config]) => ({
+      id: id as ChannelFilter,
+      label: config.label,
+    }));
+    return [...base, ...dynamic];
+  }, []);
+
+  const hasActiveConversationFilters = stageFilter !== 'todos' || channelFilter !== 'todos';
+  const activeConversationFilterCount = Number(stageFilter !== 'todos') + Number(channelFilter !== 'todos');
+
+  const actionsInlineFilters = useMemo(() => {
+    if (isMobileViewport || !isConversationActionsSheetOpen) return null;
+
+    return (
+      <>
+        <Popover open={isActionsFiltersOpen} onOpenChange={setIsActionsFiltersOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 px-2 text-xs"
+              title="Filtrar leads na planilha"
+            >
+              <Filter className="h-3.5 w-3.5" />
+              Filtros
+              {activeConversationFilterCount > 0 ? (
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                  {activeConversationFilterCount}
+                </span>
+              ) : null}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" sideOffset={8} className="w-72 p-3 space-y-3">
+            <div className="space-y-1.5">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Etapa do funil
+              </p>
+              <Select
+                value={stageFilter}
+                onValueChange={(value) => setStageFilter(value as PipelineStage | 'todos')}
+              >
+                <SelectTrigger className="h-9 bg-background">
+                  <SelectValue placeholder="Selecione a etapa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stageFilterOptions.map((option) => {
+                    const count = option.id === 'todos'
+                      ? conversations.length
+                      : conversations.filter((conversation) => conversation.contact.pipelineStage === option.id).length;
+
+                    return (
+                      <SelectItem key={`inline-stage-${option.id}`} value={option.id}>
+                        {`${option.icon} ${option.label} (${count})`}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Origem do lead
+              </p>
+              <Select
+                value={channelFilter}
+                onValueChange={(value) => setChannelFilter(value as ChannelFilter)}
+              >
+                <SelectTrigger className="h-9 bg-background">
+                  <SelectValue placeholder="Selecione a origem" />
+                </SelectTrigger>
+                <SelectContent>
+                  {channelFilterOptions.map((option) => {
+                    const count = option.id === 'todos'
+                      ? conversations.length
+                      : conversations.filter((conversation) => conversation.contact.channel === option.id).length;
+
+                    return (
+                      <SelectItem key={`inline-channel-${option.id}`} value={option.id}>
+                        {`${option.label} (${count})`}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {hasActiveConversationFilters ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1 px-2 text-xs"
+            onClick={() => {
+              setStageFilter('todos');
+              setChannelFilter('todos');
+            }}
+            title="Limpar filtros"
+          >
+            <X className="h-3.5 w-3.5" />
+            Limpar
+          </Button>
+        ) : null}
+      </>
+    );
+  }, [
+    activeConversationFilterCount,
+    channelFilter,
+    channelFilterOptions,
+    conversations,
+    hasActiveConversationFilters,
+    isActionsFiltersOpen,
+    isConversationActionsSheetOpen,
+    isMobileViewport,
+    stageFilter,
+    stageFilterOptions,
+  ]);
 
   useEffect(() => {
     if (!isConversationActionsSheetOpen) {
@@ -1931,6 +2079,7 @@ export function SolarZapLayout() {
               showActionsToggle={leadNextActionEnabled && !isMobileViewport}
               isActionsOpen={!isMobileViewport && isConversationActionsSheetOpen}
               onToggleActions={handleToggleConversationActionsSheet}
+              nextActionActionsSlot={actionsInlineFilters}
               actionsSheet={!isMobileViewport && isConversationActionsSheetOpen ? (
                 <ConversationActionsSheet
                   conversations={conversationsForActionsSheet}

@@ -695,7 +695,7 @@ export function ConversationList({
             showActionsLayout ? `${ACTIONS_MODE_HEADER_CLASS} bg-background/90 py-0` : 'py-2',
           )}
         >
-          {!showActionsLayout && canViewTeam && onLeadScopeChange ? (
+          {canViewTeam && onLeadScopeChange ? (
             <DropdownMenu
               onOpenChange={(open) => {
                 if (open) {

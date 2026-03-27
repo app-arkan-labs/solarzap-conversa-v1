@@ -84,6 +84,7 @@ interface ChatAreaProps {
   showActionsToggle?: boolean;
   isActionsOpen?: boolean;
   onToggleActions?: () => void;
+  nextActionActionsSlot?: React.ReactNode;
   onCreateLeadNextAction?: (input: {
     leadId: number;
     title: string;
@@ -144,6 +145,7 @@ export function ChatArea({
   showActionsToggle = false,
   isActionsOpen = false,
   onToggleActions,
+  nextActionActionsSlot,
   onCreateLeadNextAction,
   onUpdateLeadNextAction,
   onCompleteLeadNextAction,
@@ -248,8 +250,9 @@ export function ChatArea({
   const documentInputRef = useRef<HTMLInputElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingDurationRef = useRef(0);
+  const isFinalizingRecordingRef = useRef(false);
   const dragCounterRef = useRef(0);
 
   const [activeReactionId, setActiveReactionId] = useState<string | null>(null);
@@ -269,7 +272,8 @@ export function ChatArea({
         recordingIntervalRef.current = null;
       }
       mediaRecorderRef.current = null;
-      audioChunksRef.current = [];
+      recordingDurationRef.current = 0;
+      isFinalizingRecordingRef.current = false;
     };
   }, []);
 
@@ -638,6 +642,14 @@ export function ChatArea({
   };
 
   const startRecordingWithDevice = async (deviceId: string | null) => {
+    if (isRecording || isFinalizingRecordingRef.current) {
+      return;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      return;
+    }
+    let acquiredStream: MediaStream | null = null;
+
     try {
       const constraints: MediaStreamConstraints = {
         audio: deviceId
@@ -648,6 +660,7 @@ export function ChatArea({
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
+        acquiredStream = stream;
       } catch (err) {
         const e = err as { name?: string; message?: string };
         const canFallback = deviceId && (e?.name === 'OverconstrainedError' || e?.name === 'NotFoundError');
@@ -657,6 +670,7 @@ export function ChatArea({
         // If the stored/selected device is no longer available, retry with the default mic.
         console.warn('Selected microphone is unavailable; retrying with default device.', e?.name, e?.message);
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        acquiredStream = stream;
         setSelectedMicrophoneId(null);
         localStorage.removeItem('solarzap_audio_input');
       }
@@ -667,32 +681,39 @@ export function ChatArea({
           ? 'audio/webm; codecs=opus'
           : undefined;
       const mediaRecorder = new MediaRecorder(stream, preferredMime ? { mimeType: preferredMime } : undefined);
+      const sessionChunks: Blob[] = [];
+      let sessionDurationSeconds = 0;
+      const sessionConversationId = conversation?.id || null;
+      const sessionInstanceName = instances.find(i => i.id === selectedInstanceId)?.instance_name;
       mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      recordingDurationRef.current = 0;
+      isFinalizingRecordingRef.current = false;
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+          sessionChunks.push(event.data);
         }
       };
 
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(track => track.stop());
+        acquiredStream = null;
 
         if (recordingIntervalRef.current) {
           clearInterval(recordingIntervalRef.current);
           recordingIntervalRef.current = null;
         }
 
-        const finalDuration = recordingDuration > 0 ? recordingDuration : 1;
+        setIsRecording(false);
+        const finalDuration = sessionDurationSeconds > 0 ? sessionDurationSeconds : 1;
         setRecordingDuration(0);
+        recordingDurationRef.current = 0;
 
-        if (conversation && onSendAudio && audioChunksRef.current.length > 0) {
-          const selectedInstance = instances.find(i => i.id === selectedInstanceId);
+        if (sessionConversationId && onSendAudio && sessionChunks.length > 0) {
           const actualMime = mediaRecorder.mimeType || 'audio/webm';
-          const audioBlob = new Blob(audioChunksRef.current, { type: actualMime });
+          const audioBlob = new Blob(sessionChunks, { type: actualMime });
           try {
-            await onSendAudio(conversation.id, audioBlob, finalDuration, selectedInstance?.instance_name);
+            await onSendAudio(sessionConversationId, audioBlob, finalDuration, sessionInstanceName);
           } catch (error) {
             console.error('Error sending audio:', error);
             toast({
@@ -703,18 +724,29 @@ export function ChatArea({
           }
         }
 
-        audioChunksRef.current = [];
-        mediaRecorderRef.current = null;
+        if (mediaRecorderRef.current === mediaRecorder) {
+          mediaRecorderRef.current = null;
+        }
+        isFinalizingRecordingRef.current = false;
       };
 
       mediaRecorder.start();
       setIsRecording(true);
       setRecordingDuration(0);
+      recordingDurationRef.current = 0;
 
       recordingIntervalRef.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 1);
+        sessionDurationSeconds += 1;
+        recordingDurationRef.current = sessionDurationSeconds;
+        setRecordingDuration(sessionDurationSeconds);
       }, 1000);
     } catch (error) {
+      acquiredStream?.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current = null;
+      isFinalizingRecordingRef.current = false;
+      setIsRecording(false);
+      setRecordingDuration(0);
+      recordingDurationRef.current = 0;
       console.error('Error accessing microphone:', error);
       toast({
         title: "Erro ao acessar microfone",
@@ -726,7 +758,18 @@ export function ChatArea({
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+      isFinalizingRecordingRef.current = true;
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (error) {
+        console.warn('Failed to stop recorder cleanly:', error);
+        const recorderStream = (mediaRecorderRef.current as unknown as { stream?: MediaStream } | null)?.stream;
+        recorderStream?.getTracks().forEach(track => track.stop());
+        mediaRecorderRef.current = null;
+        setRecordingDuration(0);
+        recordingDurationRef.current = 0;
+        isFinalizingRecordingRef.current = false;
+      }
       setIsRecording(false);
       if (recordingIntervalRef.current) {
         clearInterval(recordingIntervalRef.current);
@@ -1253,6 +1296,7 @@ export function ChatArea({
             showActionsToggle={showActionsToggle}
             isActionsOpen={isActionsOpen}
             onToggleActions={onToggleActions}
+            actionsSlot={nextActionActionsSlot}
           />
         </div>
       ) : null}

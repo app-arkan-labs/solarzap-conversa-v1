@@ -1,12 +1,14 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardPayload } from "@/types/dashboard";
-import { AlertTriangle, ArrowRightLeft, CheckCircle2, TimerReset } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 interface FunnelOverviewProps {
   data?: DashboardPayload["funnel"];
   isLoading: boolean;
+  onViewPipeline?: () => void;
 }
 
 const BUSINESS_GROUP_LABELS = {
@@ -16,7 +18,7 @@ const BUSINESS_GROUP_LABELS = {
   saida: "Concluidos",
 } as const;
 
-export function FunnelOverview({ data, isLoading }: FunnelOverviewProps) {
+export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOverviewProps) {
   if (isLoading || !data) return null;
 
   const bottleneckLabel = data.top_bottleneck_stage
@@ -32,59 +34,28 @@ export function FunnelOverview({ data, isLoading }: FunnelOverviewProps) {
 
   return (
     <Card className="border-border/50 bg-background/50 shadow-sm">
-      <CardHeader>
-        <CardTitle>Onde a carteira trava</CardTitle>
-        <CardDescription>Resumo rapido da carteira. Abra os detalhes so quando quiser investigar etapa por etapa.</CardDescription>
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <CardTitle>Onde as vendas travam</CardTitle>
+          <CardDescription>Veja onde existe acumulacao e quais etapas precisam destravar primeiro.</CardDescription>
+        </div>
+        {onViewPipeline ? (
+          <Button variant="outline" size="sm" className="rounded-full" onClick={onViewPipeline}>
+            Ver leads
+          </Button>
+        ) : null}
       </CardHeader>
 
       <CardContent className="space-y-5">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-border/60 bg-background/70 p-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <TimerReset className="h-4 w-4 text-sky-600" />
-              Carteira ativa
-            </div>
-            <p className="mt-2 text-2xl font-bold text-foreground">{data.active}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Leads ainda em processo comercial.</p>
-          </div>
-
-          <div className="rounded-xl border border-border/60 bg-background/70 p-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <ArrowRightLeft className="h-4 w-4 text-sky-600" />
-              Avancos no periodo
-            </div>
-            <p className="mt-2 text-2xl font-bold text-foreground">{data.moved_in_period}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Mudancas de etapa registradas.</p>
-          </div>
-
-          <div className="rounded-xl border border-border/60 bg-background/70 p-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              Vendas fechadas
-            </div>
-            <p className="mt-2 text-2xl font-bold text-foreground">{data.won_in_period}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Negocios ganhos neste periodo.</p>
-          </div>
-
-          <div className="rounded-xl border border-border/60 bg-background/70 p-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              Pedem atencao
-            </div>
-            <p className="mt-2 text-2xl font-bold text-foreground">{data.stale_total}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{bottleneckLabel}</p>
-          </div>
-        </div>
-
         <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-xl border border-border/60 bg-background/70 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-foreground">Resumo da carteira</p>
-                <p className="text-xs text-muted-foreground">Distribuicao atual dos leads ativos e concluidos.</p>
+                <p className="text-sm font-semibold text-foreground">Resumo dos leads</p>
+                <p className="text-xs text-muted-foreground">Distribuicao atual dos leads em andamento e concluidos.</p>
               </div>
               <Badge variant="secondary" className="bg-muted/80 text-muted-foreground">
-                {data.active} ativos
+                {data.active} em andamento
               </Badge>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -103,7 +74,10 @@ export function FunnelOverview({ data, isLoading }: FunnelOverviewProps) {
           </div>
 
           <div className="rounded-xl border border-border/60 bg-background/70 p-4">
-            <p className="text-sm font-semibold text-foreground">Gargalo principal</p>
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              Maior gargalo
+            </div>
             <p className="mt-2 text-lg font-semibold text-foreground">{bottleneckLabel}</p>
             <p className="mt-1 text-sm text-muted-foreground">
               {data.stale_total > 0
@@ -116,8 +90,8 @@ export function FunnelOverview({ data, isLoading }: FunnelOverviewProps) {
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-foreground">Pontos de atencao agora</p>
-              <p className="text-xs text-muted-foreground">Mostramos apenas as etapas que merecem olhar imediato.</p>
+              <p className="text-sm font-semibold text-foreground">Etapas que precisam de atencao</p>
+              <p className="text-xs text-muted-foreground">Mostramos primeiro as etapas com mais atraso e acumulacao.</p>
             </div>
             {priorityRows.length > 0 ? <span className="text-xs text-muted-foreground">{priorityRows.length} etapas com leitura ativa</span> : null}
           </div>
@@ -148,7 +122,7 @@ export function FunnelOverview({ data, isLoading }: FunnelOverviewProps) {
                         </Badge>
                       ) : (
                         <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-700">
-                          fluxo em dia
+                          em dia
                         </Badge>
                       )}
                     </div>

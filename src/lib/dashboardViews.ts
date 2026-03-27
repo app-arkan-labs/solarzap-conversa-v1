@@ -1,4 +1,4 @@
-export type DashboardVisualization = "summary" | "commercial" | "agenda" | "financial" | "losses";
+export type DashboardVisualization = "today" | "sales" | "financial" | "losses";
 
 export const DASHBOARD_VIEW_QUERY_PARAM = "dashboardView";
 
@@ -6,45 +6,45 @@ export const DASHBOARD_VIEW_OPTIONS: Array<{
   value: DashboardVisualization;
   label: string;
   subtitle: string;
+  question: string;
 }> = [
   {
-    value: "summary",
-    label: "Resumo",
-    subtitle: "Entenda em segundos o resultado, as prioridades do dia e o que pede sua atencao agora.",
+    value: "today",
+    label: "Hoje",
+    subtitle: "Priorize o que esta vencido, o que esfriou e o que precisa de retorno agora.",
+    question: "No que preciso agir agora?",
   },
   {
-    value: "commercial",
-    label: "Comercial",
-    subtitle: "Veja onde o funil anda, onde trava e quais leads pedem destravamento comercial.",
-  },
-  {
-    value: "agenda",
-    label: "Agenda",
-    subtitle: "Acompanhe a rotina do time, proximas acoes e compromissos que nao podem esfriar.",
+    value: "sales",
+    label: "Vendas",
+    subtitle: "Entenda onde as vendas travam e o que precisa destravar no funil.",
+    question: "Onde as vendas travam e o que precisa destravar?",
   },
   {
     value: "financial",
     label: "Financeiro",
-    subtitle: "Separe Projeto Pago, recebimentos, lucro realizado e vencimentos sem misturar conceitos.",
+    subtitle: "Separe o que foi faturado, o que entrou, o que vai entrar e o que ja atrasou.",
+    question: "O que entrou, o que vai entrar e o que esta atrasado?",
   },
   {
     value: "losses",
     label: "Perdas",
-    subtitle: "Entenda por que os negocios estao sendo perdidos e onde atacar primeiro para recuperar conversao.",
+    subtitle: "Veja por que os negocios estao se perdendo e onde agir primeiro para recuperar conversao.",
+    question: "Por que os negocios estao sendo perdidos e onde agir primeiro?",
   },
 ];
 
 const DASHBOARD_VIEW_SET = new Set<DashboardVisualization>(DASHBOARD_VIEW_OPTIONS.map((option) => option.value));
 
 export const parseDashboardVisualization = (rawValue: string | null | undefined): DashboardVisualization => {
-  if (!rawValue) return "summary";
+  if (!rawValue) return "today";
 
   const normalized = rawValue.trim().toLowerCase();
   if (DASHBOARD_VIEW_SET.has(normalized as DashboardVisualization)) {
     return normalized as DashboardVisualization;
   }
 
-  return "summary";
+  return "today";
 };
 
 export const getDashboardViewMeta = (view: DashboardVisualization) =>

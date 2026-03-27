@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatLeadTaskDueLabel } from '@/lib/leadNextActions';
@@ -9,6 +10,7 @@ type LeadNextActionInlineBarProps = {
   showActionsToggle?: boolean;
   isActionsOpen?: boolean;
   onToggleActions?: () => void;
+  actionsSlot?: ReactNode;
 };
 
 export function LeadNextActionInlineBar({
@@ -17,6 +19,7 @@ export function LeadNextActionInlineBar({
   showActionsToggle = false,
   isActionsOpen = false,
   onToggleActions,
+  actionsSlot,
 }: LeadNextActionInlineBarProps) {
   const hasScheduledNextAction = Boolean(nextAction?.dueAt);
   const dueLabel = hasScheduledNextAction ? formatLeadTaskDueLabel(nextAction) : '';
@@ -49,6 +52,7 @@ export function LeadNextActionInlineBar({
               : ': nao definida'}
         </span>
       </div>
+      {actionsSlot ? <div className="ml-2 flex items-center gap-2">{actionsSlot}</div> : null}
     </div>
   );
 }

@@ -20,7 +20,7 @@ export function ActionSnapshotCard({
   teamMode = false,
 }: ActionSnapshotCardProps) {
   const items = (staleLeads || []).slice(0, 4);
-  const priorityTitle = teamMode ? "Prioridades do time" : "O que agir hoje";
+  const priorityTitle = teamMode ? "Prioridades do time" : "O que fazer agora";
 
   return (
     <Card className="border-border/50 bg-background/50 shadow-sm">
@@ -36,7 +36,7 @@ export function ActionSnapshotCard({
 
           {onViewConversations ? (
             <Button variant="outline" size="sm" className="gap-2 rounded-full" onClick={onViewConversations}>
-              Abrir em Conversas
+              Abrir conversas
               <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           ) : null}
@@ -53,12 +53,12 @@ export function ActionSnapshotCard({
           <div className="rounded-xl border border-border/60 bg-background/70 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Leads em andamento</p>
             <p className="mt-2 text-2xl font-bold text-foreground">{funnel?.active || 0}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Carteira ainda em processo comercial.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Ainda em processo comercial.</p>
           </div>
           <div className="rounded-xl border border-border/60 bg-background/70 p-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-              Etapa que trava
+              Maior gargalo
             </div>
             <p className="mt-2 text-base font-semibold text-foreground">
               {funnel?.top_bottleneck_stage
@@ -71,8 +71,8 @@ export function ActionSnapshotCard({
 
         <div className="space-y-3">
           <div>
-            <p className="text-sm font-semibold text-foreground">Leads que pedem retorno</p>
-            <p className="text-xs text-muted-foreground">Use este bloco como ponto de partida da rotina comercial.</p>
+            <p className="text-sm font-semibold text-foreground">Leads que precisam de atencao</p>
+            <p className="text-xs text-muted-foreground">Use este bloco como ponto de partida da sua rotina comercial.</p>
           </div>
 
           {items.length === 0 ? (

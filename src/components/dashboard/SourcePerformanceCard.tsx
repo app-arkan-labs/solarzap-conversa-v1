@@ -7,6 +7,8 @@ interface SourcePerformanceCardProps {
   revenueBasis?: DashboardPayload["kpis"]["revenue"]["basis"];
   isLoading: boolean;
   limit?: number;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 const formatCurrency = (value: number) =>
@@ -17,6 +19,8 @@ export function SourcePerformanceCard({
   revenueBasis = "won_deals",
   isLoading,
   limit = 4,
+  actionLabel,
+  onAction,
 }: SourcePerformanceCardProps) {
   if (isLoading || !data) return null;
 
@@ -25,12 +29,19 @@ export function SourcePerformanceCard({
 
   return (
     <Card className="border-border/50 bg-background/50 shadow-sm">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <RadioTower className="h-5 w-5 text-sky-600" />
-          Canais que trazem resultado
-        </CardTitle>
-        <CardDescription>Veja quais canais geram volume e quais realmente viram resultado comercial.</CardDescription>
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <RadioTower className="h-5 w-5 text-sky-600" />
+            Canais que mais vendem
+          </CardTitle>
+          <CardDescription>Veja quais canais geram volume e quais realmente viram venda.</CardDescription>
+        </div>
+        {actionLabel && onAction ? (
+          <button type="button" className="text-xs font-medium text-primary hover:underline" onClick={onAction}>
+            {actionLabel}
+          </button>
+        ) : null}
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
