@@ -76,7 +76,7 @@ type TextEditorState = {
 } | null;
 
 const GRID_TEMPLATE_COLUMNS =
-  'minmax(0,1.15fr) minmax(0,1.28fr) minmax(0,0.62fr) minmax(0,1fr) minmax(0,0.58fr) minmax(0,0.9fr) minmax(0,0.74fr) minmax(0,0.74fr) minmax(0,0.56fr)';
+  'minmax(0,1.05fr) minmax(0,1.15fr) minmax(0,0.52fr) minmax(0,1.28fr) minmax(0,0.50fr) minmax(0,0.82fr) minmax(0,0.62fr) minmax(0,0.62fr) minmax(0,0.44fr)';
 const GRID_HEADER_CLASS = 'h-[54px]';
 const GRID_ROW_CLASS = 'h-[72px]';
 const DEFAULT_DURATION = '30';
@@ -574,29 +574,28 @@ export function ConversationActionsSheet({
       <div className="flex h-full min-h-0 flex-col bg-background">
         <div className="min-w-0 flex flex-1 min-h-0 flex-col">
           <div
+            className={cn(
+              'grid shrink-0 border-b border-border/60 bg-background px-2',
+              GRID_HEADER_CLASS,
+            )}
+            style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
+          >
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ultima Acao</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proxima Acao</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tipo</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Data / Hora</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Duracao</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Responsavel</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Local</div>
+            <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Etapa</div>
+            <div className="flex items-center px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Salvar</div>
+          </div>
+          <div
             ref={actionsScrollRef}
-            className="flex-1 min-h-0 overflow-auto custom-scrollbar"
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar"
             onScroll={handleGridScroll}
           >
             <div className="w-full">
-              <div
-                className={cn(
-                  'sticky top-0 z-10 grid border-b border-border/60 bg-background px-2',
-                  GRID_HEADER_CLASS,
-                )}
-                style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
-              >
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ultima Acao</div>
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proxima Acao</div>
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tipo</div>
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Data / Hora</div>
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Duracao</div>
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Responsavel</div>
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Local</div>
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Etapa</div>
-                <div className="flex items-center px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Salvar</div>
-              </div>
-
               {conversations.map((conversation) => {
                 const leadId = String(conversation.contact.id);
                 const draft = drafts[leadId];
@@ -659,7 +658,7 @@ export function ConversationActionsSheet({
                       value={draft.dateTime}
                       onFocus={() => onSelectConversation?.(conversation)}
                       onChange={(event) => handleFieldChange(leadId, 'dateTime', event.target.value)}
-                      className="h-9 bg-background/80 text-xs"
+                      className="h-9 min-w-0 bg-background/80 px-2 text-xs"
                     />
                   </div>
 

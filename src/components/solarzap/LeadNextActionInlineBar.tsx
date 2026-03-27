@@ -23,7 +23,7 @@ export function LeadNextActionInlineBar({
   const description = hasScheduledNextAction ? String(nextAction?.title || '').trim() : 'nao definida';
 
   return (
-    <div className="flex items-center gap-2 border-b border-border/60 bg-background/35 px-3 py-2">
+    <div className="flex h-11 items-center gap-2 border-b border-border/60 bg-background/35 px-3">
       {showActionsToggle ? (
         <button
           type="button"

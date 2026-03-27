@@ -1870,7 +1870,7 @@ export function SolarZapLayout() {
                   ? undefined
                   : {
                       width: isConversationActionsSheetOpen
-                        ? 'clamp(236px, 20vw, 280px)'
+                        ? 'clamp(210px, 17vw, 248px)'
                         : conversationsSidebarWidth,
                     }
               }

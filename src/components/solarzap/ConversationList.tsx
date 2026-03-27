@@ -474,22 +474,27 @@ export function ConversationList({
   const shouldShowLeadScopeRow = showActionsLayout || (canViewTeam && onLeadScopeChange);
 
   return (
-    <div className="w-full h-full flex flex-col border-r border-border bg-card">
+    <div className="w-full h-full flex flex-col overflow-hidden border-r border-border bg-card">
       {/* Premium Header */}
       <div
         className={cn(
           'border-b border-border/70 bg-[linear-gradient(120deg,hsl(var(--primary)/0.12),transparent_30%,hsl(var(--secondary)/0.10)_100%)] shadow-sm backdrop-blur-sm',
-          showActionsLayout ? 'px-4 pb-3 pt-3' : 'p-4',
+          showActionsLayout ? 'h-[100px] px-3 py-2 flex flex-col justify-between' : 'p-4',
         )}
       >
-        <div className={cn('flex items-center justify-between', showActionsLayout ? 'mb-3' : 'mb-4')}>
+        <div className={cn('flex items-center justify-between', showActionsLayout ? 'mb-0' : 'mb-4')}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
+            <div
+              className={cn(
+                'bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20',
+                showActionsLayout ? 'h-9 w-9 rounded-lg' : 'h-10 w-10 rounded-xl',
+              )}
+            >
               <MessageSquare className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-xl font-bold text-foreground">SolarZap</h1>
+            <h1 className={cn('font-bold text-foreground', showActionsLayout ? 'text-lg' : 'text-xl')}>SolarZap</h1>
           </div>
-          <div className="flex items-center gap-1">
+          <div className={cn('items-center gap-1', showActionsLayout ? 'hidden' : 'flex')}>
             {/* Selection mode toggle - shown when delete or bulk assign is available */}
             {canUseSelectionMode && (
               <button
@@ -646,7 +651,7 @@ export function ConversationList({
             placeholder="Pesquisar"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className={cn('pl-10 bg-background border-0 shadow-sm', showActionsLayout && 'h-10')}
+            className={cn('pl-10 bg-background border-0 shadow-sm', showActionsLayout && 'h-9 text-sm')}
           />
         </div>
       </div>
@@ -879,7 +884,7 @@ export function ConversationList({
         <div className="flex-1 min-h-0">
           <div
             ref={actionsScrollRef}
-            className="h-full overflow-y-auto custom-scrollbar"
+            className="h-full overflow-y-auto overflow-x-hidden custom-scrollbar"
             onScroll={handleCompactActionsScroll}
           >
             {displayConversations.length === 0 ? (
@@ -903,7 +908,7 @@ export function ConversationList({
                       onSelect(conversation);
                     }}
                     className={cn(
-                      `flex ${ACTIONS_MODE_ROW_CLASS} items-center border-b border-border/50 px-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`,
+                      `flex ${ACTIONS_MODE_ROW_CLASS} items-center border-b border-border/50 px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`,
                       isSelected ? 'bg-primary/6' : 'hover:bg-muted/20',
                     )}
                   >
