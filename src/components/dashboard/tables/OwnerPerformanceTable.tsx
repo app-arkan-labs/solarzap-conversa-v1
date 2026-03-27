@@ -3,6 +3,7 @@ import { DashboardPayload } from "@/types/dashboard";
 
 interface OwnerPerformanceProps {
   data?: DashboardPayload["tables"]["owner_performance"];
+  kpis?: DashboardPayload["kpis"];
   isLoading: boolean;
 }
 
@@ -12,21 +13,25 @@ const formatCurrency = (value: number) =>
 const formatMargin = (revenue: number, profit: number) =>
   revenue > 0 ? `${((profit / revenue) * 100).toFixed(1)}%` : "--";
 
-export function OwnerPerformanceTable({ data, isLoading }: OwnerPerformanceProps) {
+export function OwnerPerformanceTable({ data, kpis, isLoading }: OwnerPerformanceProps) {
   if (isLoading) return <div>Carregando...</div>;
   if (!data || data.length === 0) return <div>Sem dados.</div>;
+
+  const profitAvailable = kpis?.profit.available ?? false;
+  const projectPaidBasis = kpis?.revenue.basis === "project_paid";
+  const revenueHeader = projectPaidBasis ? "Faturamento" : "Valor fechado";
 
   return (
     <div className="min-w-0 overflow-x-auto rounded-md border">
       <p className="px-3 py-1.5 text-[10px] text-muted-foreground md:hidden">Arraste para ver mais detalhes -&gt;</p>
-      <Table className="min-w-[720px]">
+      <Table className="min-w-[640px]">
         <TableHeader>
           <TableRow>
             <TableHead>Responsavel</TableHead>
             <TableHead className="text-right">Leads</TableHead>
             <TableHead className="text-right">Vendas</TableHead>
             <TableHead className="text-right">Conversao</TableHead>
-            <TableHead className="text-right">Faturamento</TableHead>
+            <TableHead className="text-right">{revenueHeader}</TableHead>
             <TableHead className="text-right">Ticket medio</TableHead>
           </TableRow>
         </TableHeader>
@@ -36,7 +41,11 @@ export function OwnerPerformanceTable({ data, isLoading }: OwnerPerformanceProps
               <TableCell className="min-w-[200px]">
                 <div className="font-medium text-foreground">{row.name}</div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  Lucro {formatCurrency(row.profit)} | Margem {formatMargin(row.revenue, row.profit)}
+                  {profitAvailable
+                    ? projectPaidBasis
+                      ? `Lucro realizado ${formatCurrency(row.profit)}`
+                      : `Lucro realizado ${formatCurrency(row.profit)} | Margem ${formatMargin(row.revenue, row.profit)}`
+                    : "Lucro realizado aparece quando houver parcelas confirmadas"}
                 </div>
               </TableCell>
               <TableCell className="text-right">{row.leads}</TableCell>

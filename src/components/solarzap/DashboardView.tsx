@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/components/ui/use-toast";
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
 import { ActionSnapshotCard } from "@/components/dashboard/ActionSnapshotCard";
+import { FinanceSnapshotCard } from "@/components/dashboard/FinanceSnapshotCard";
 import { FunnelOverview } from "@/components/dashboard/FunnelOverview";
 import { KpiCards } from "@/components/dashboard/KpiCards";
 import { LossSummaryCard } from "@/components/dashboard/LossSummaryCard";
@@ -67,6 +68,7 @@ export function DashboardView({
   const [calendarFilter, setCalendarFilter] = useState<"next_7_days" | "last_7_days">("next_7_days");
   const [staleLeadsOpen, setStaleLeadsOpen] = useState(false);
   const [lossAnalyticsOpen, setLossAnalyticsOpen] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
 
   const resolvedOwnerUserId = useMemo(() => {
     if (!user) return null;
@@ -178,7 +180,7 @@ export function DashboardView({
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/30">
       <PageHeader
         title="Dashboard"
-        subtitle="Resultado, prioridades e agenda comercial do periodo"
+        subtitle="Veja resultado, prioridades do dia e agenda comercial sem decifrar relatorio."
         icon={BarChart3}
         actionContent={
           <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
@@ -375,32 +377,62 @@ export function DashboardView({
             </div>
           </div>
 
+          <FinanceSnapshotCard data={data?.finance} isLoading={isLoading} />
+
           <FunnelOverview data={data?.funnel} isLoading={isLoading} />
 
-          <div className="grid gap-6 xl:grid-cols-2">
-            <div className="space-y-6">
-              <SourcePerformanceCard data={data?.source_performance} isLoading={isLoading} />
+          <Collapsible
+            open={analysisOpen}
+            onOpenChange={setAnalysisOpen}
+            className="rounded-xl border border-border/50 bg-background/50 shadow-sm"
+          >
+            <div className="flex flex-col gap-2 p-6 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Detalhes para investigar</h3>
+                <p className="text-sm text-muted-foreground">
+                  Abra esta area quando quiser revisar canais, perdas, curvas e desempenho do time.
+                </p>
+              </div>
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" className="w-full justify-between md:w-[240px]">
+                  {analysisOpen ? "Ocultar detalhes" : "Ver detalhes analiticos"}
+                  <ChevronDown className={`h-4 w-4 transition-transform ${analysisOpen ? "rotate-180" : ""}`} />
+                </Button>
+              </CollapsibleTrigger>
             </div>
-            <LossSummaryCard
-              data={data?.loss_summary}
-              isLoading={isLoading}
-              onOpenDetails={() => setLossAnalyticsOpen(true)}
-            />
-          </div>
+            <CollapsibleContent>
+              <div className="space-y-6 px-6 pb-6">
+                <div className="grid gap-6 xl:grid-cols-2">
+                  <div className="space-y-6">
+                    <SourcePerformanceCard
+                      data={data?.source_performance}
+                      revenueBasis={data?.kpis.revenue.basis}
+                      isLoading={isLoading}
+                    />
+                  </div>
+                  <LossSummaryCard
+                    data={data?.loss_summary}
+                    isLoading={isLoading}
+                    onOpenDetails={() => setLossAnalyticsOpen(true)}
+                  />
+                </div>
 
-          <DashboardCharts data={data?.charts} isLoading={isLoading} />
+                <DashboardCharts data={data?.charts} kpis={data?.kpis} isLoading={isLoading} />
 
-          <Card className="border-border/50 bg-background/50 shadow-sm">
-            <CardHeader>
-              <CardTitle>Performance por responsavel</CardTitle>
-              <CardDescription>
-                Veja quem esta puxando resultado no periodo e onde pode ser necessario apoio comercial.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <OwnerPerformanceTable data={ownerPerformanceData} isLoading={isLoading} />
-            </CardContent>
-          </Card>
+                <Card className="border-border/50 bg-background/50 shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Performance por responsavel</CardTitle>
+                    <CardDescription>
+                      Veja quem esta puxando resultado no periodo e onde pode ser necessario apoio comercial.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <OwnerPerformanceTable data={ownerPerformanceData} kpis={data?.kpis} isLoading={isLoading} />
+                  </CardContent>
+                </Card>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
 
           <Collapsible
             open={staleLeadsOpen}

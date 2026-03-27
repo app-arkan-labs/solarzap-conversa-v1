@@ -4,16 +4,18 @@ import { RadioTower } from "lucide-react";
 
 interface SourcePerformanceCardProps {
   data?: DashboardPayload["source_performance"];
+  revenueBasis?: DashboardPayload["kpis"]["revenue"]["basis"];
   isLoading: boolean;
 }
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value || 0);
 
-export function SourcePerformanceCard({ data, isLoading }: SourcePerformanceCardProps) {
+export function SourcePerformanceCard({ data, revenueBasis = "won_deals", isLoading }: SourcePerformanceCardProps) {
   if (isLoading || !data) return null;
 
   const rows = data.slice(0, 4);
+  const revenueLabel = revenueBasis === "project_paid" ? "faturamento" : "valor fechado";
 
   return (
     <Card className="border-border/50 bg-background/50 shadow-sm">
@@ -22,7 +24,7 @@ export function SourcePerformanceCard({ data, isLoading }: SourcePerformanceCard
           <RadioTower className="h-5 w-5 text-sky-600" />
           Canais que trazem resultado
         </CardTitle>
-        <CardDescription>Veja quais canais geram volume e quais realmente viram faturamento.</CardDescription>
+        <CardDescription>Veja quais canais geram volume e quais realmente viram resultado comercial.</CardDescription>
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
@@ -40,7 +42,7 @@ export function SourcePerformanceCard({ data, isLoading }: SourcePerformanceCard
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-foreground">{formatCurrency(row.revenue)}</p>
-                    <p className="text-xs text-muted-foreground">{row.share_revenue_pct.toFixed(1)}% da receita</p>
+                    <p className="text-xs text-muted-foreground">{row.share_revenue_pct.toFixed(1)}% do {revenueLabel}</p>
                   </div>
                 </div>
               </div>

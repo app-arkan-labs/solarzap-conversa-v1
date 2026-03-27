@@ -38,9 +38,9 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
       <div className="space-y-4">
         <Card className="border-border/50 bg-background/80 shadow-sm">
           <CardContent className="p-6">
-            <Skeleton className="h-4 w-32 bg-muted/50" />
-            <Skeleton className="mt-4 h-10 w-52 bg-muted/50" />
-            <Skeleton className="mt-3 h-4 w-64 bg-muted/50" />
+            <Skeleton className="h-4 w-40 bg-muted/50" />
+            <Skeleton className="mt-4 h-10 w-64 bg-muted/50" />
+            <Skeleton className="mt-3 h-4 w-80 bg-muted/50" />
           </CardContent>
         </Card>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -62,9 +62,15 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
 
   const revenueDelta = data.revenue.delta_pct;
   const profitDelta = data.profit.delta_pct;
-  const marginValue = data.revenue.value > 0 ? (data.profit.value / data.revenue.value) * 100 : 0;
+  const profitAvailable = data.profit.available;
+  const marginValue = data.margin.value_pct;
   const cycleTone =
     data.avg_close_days.value <= 15 ? "text-emerald-600" : data.avg_close_days.value <= 30 ? "text-amber-600" : "text-rose-600";
+  const revenueLabel = data.revenue.basis === "project_paid" ? "Faturamento em Projeto Pago" : "Vendas fechadas no periodo";
+  const revenueHelper =
+    data.revenue.basis === "project_paid"
+      ? "Valor total dos projetos que entraram em Projeto Pago no periodo."
+      : "Baseado nas vendas fechadas dentro do periodo.";
 
   const cards = [
     {
@@ -108,45 +114,52 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
   return (
     <div className="space-y-4">
       <Card className="border-border/50 bg-background/80 shadow-sm">
-        <CardContent className="flex flex-col gap-5 p-5 lg:flex-row lg:items-center lg:justify-between lg:p-6">
+        <CardContent className="flex flex-col gap-5 p-5 lg:flex-row lg:items-start lg:justify-between lg:p-6">
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Lucro realizado</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Resultado do periodo</p>
             <div className="flex flex-wrap items-center gap-3">
               <p className="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">
-                {formatCurrency(data.profit.value)}
+                {formatCurrency(data.revenue.value)}
               </p>
-              <div className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${deltaTone(profitDelta)}`}>
-                <DeltaIcon delta={profitDelta} />
-                {formatPercent(profitDelta)}
+              <div className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${deltaTone(revenueDelta)}`}>
+                <DeltaIcon delta={revenueDelta} />
+                {formatPercent(revenueDelta)}
               </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {profitDelta === null
-                ? "Sem base comparavel para lucro neste periodo."
-                : "Comparado com o periodo imediatamente anterior."}
-            </p>
+            <p className="text-sm font-medium text-foreground">{revenueLabel}</p>
+            <p className="text-sm text-muted-foreground">{revenueHelper}</p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Faturamento</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">{formatCurrency(data.revenue.value)}</p>
-              <p className={`mt-1 text-xs ${deltaTone(revenueDelta)}`}>{formatPercent(revenueDelta)} vs antes</p>
-            </div>
-            <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Margem atual</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">
-                {data.revenue.value > 0 ? `${marginValue.toFixed(1)}%` : "--"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {data.revenue.value > 0 ? "Lucro sobre faturamento" : "Sem faturamento no periodo"}
-              </p>
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[420px]">
             <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Em negociacao</p>
               <p className="mt-1 text-lg font-semibold text-foreground">{formatCurrency(data.forecast.value)}</p>
               <p className="mt-1 text-xs text-muted-foreground">{data.forecast.count} oportunidades abertas</p>
             </div>
+            {profitAvailable ? (
+              <>
+                <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Lucro realizado</p>
+                  <p className="mt-1 text-lg font-semibold text-foreground">{formatCurrency(data.profit.value)}</p>
+                  <p className={`mt-1 text-xs ${deltaTone(profitDelta)}`}>{formatPercent(profitDelta)} vs periodo anterior</p>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3 sm:col-span-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Margem da venda</p>
+                  <p className="mt-1 text-lg font-semibold text-foreground">{marginValue !== null ? `${marginValue.toFixed(1)}%` : "--"}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {data.margin.note || "Baseada no valor da venda e no custo informado em Projeto Pago."}
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-xl border border-dashed border-border/60 bg-background/70 px-4 py-3 sm:col-span-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Lucro realizado</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">Sem parcelas confirmadas</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {data.profit.reason || "O lucro realizado aparece conforme as parcelas do Projeto Pago forem confirmadas."}
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

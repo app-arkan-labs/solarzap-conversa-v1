@@ -6,8 +6,7 @@ import {
     buildLossSummary,
     buildSourcePerformance,
 } from "@/lib/dashboardMetrics";
-
-const FINANCE_PROJECT_PAID_FLAG = "finance_project_paid_v1";
+import { normalizeLeadStage } from "@/lib/leadStageNormalization";
 
 const toSafeNumber = (value: unknown): number => {
     const parsed = Number(value ?? 0);
@@ -38,8 +37,15 @@ interface FunnelLeadRow {
 }
 
 interface StageHistoryRow {
+    lead_id: number | string | null;
     to_stage: string | null;
     changed_at: string | null;
+}
+
+interface FinancePlanRow {
+    lead_id: number | string | null;
+    sale_value: number | string | null;
+    project_cost: number | string | null;
 }
 
 interface DealRow {
@@ -57,6 +63,16 @@ interface InstallmentRow {
     profit_amount: number | string | null;
     paid_at: string | null;
     amount?: number | string | null;
+}
+
+interface OpenInstallmentRow {
+    id?: number | string;
+    lead_id: number | string | null;
+    installment_no?: number | string | null;
+    due_on: string | null;
+    amount: number | string | null;
+    status: "scheduled" | "awaiting_confirmation" | "paid" | "canceled" | string | null;
+    leads?: AppointmentUpcomingLeadRow | AppointmentUpcomingLeadRow[] | null;
 }
 
 interface LeadSourceRow {
@@ -128,20 +144,6 @@ export const useDashboardReport = (params: DashboardFilters) => {
             if (!user) throw new Error("User not authenticated");
             const hasOwnerFilter = !!filters && Object.prototype.hasOwnProperty.call(filters, 'owner_user_id');
             const ownerUserId = hasOwnerFilter ? (filters?.owner_user_id ?? null) : user.id;
-            let financeCashMode = false;
-
-            if (orgId) {
-                try {
-                    const { data: flags } = await supabase.rpc("get_org_feature_flags", {
-                        p_org_id: orgId,
-                    });
-                    if (flags && typeof flags === "object" && !Array.isArray(flags)) {
-                        financeCashMode = (flags as Record<string, unknown>)[FINANCE_PROJECT_PAID_FLAG] === true;
-                    }
-                } catch (error) {
-                    console.warn("[useDashboardReport] failed to load org feature flags, using fallback", error);
-                }
-            }
 
             // --- 0. Date Calculations ---
             const periodDuration = end.getTime() - start.getTime();
@@ -153,6 +155,12 @@ export const useDashboardReport = (params: DashboardFilters) => {
             const prevStartIso = prevStart.toISOString();
             const prevEndIso = prevEnd.toISOString();
             const now = new Date();
+            const todayStart = new Date(now);
+            todayStart.setHours(0, 0, 0, 0);
+            const next7Days = new Date(todayStart);
+            next7Days.setDate(next7Days.getDate() + 7);
+            const todayDateIso = todayStart.toISOString().slice(0, 10);
+            const next7DateIso = next7Days.toISOString().slice(0, 10);
 
             const calendarStart = new Date(now);
             const calendarEnd = new Date(now);
@@ -192,11 +200,20 @@ export const useDashboardReport = (params: DashboardFilters) => {
 
             let stageHistoryQ = supabase
                 .from("lead_stage_history")
-                .select("to_stage, changed_at, leads!inner(assigned_to_user_id)")
+                .select("lead_id, to_stage, changed_at, leads!inner(assigned_to_user_id)")
                 .gte("changed_at", startIso)
                 .lte("changed_at", endIso);
             if (ownerUserId) stageHistoryQ = stageHistoryQ.eq("leads.assigned_to_user_id", ownerUserId);
             if (orgId) stageHistoryQ = stageHistoryQ.eq("org_id", orgId);
+
+            let prevProjectPaidHistoryQ = supabase
+                .from("lead_stage_history")
+                .select("lead_id, to_stage, changed_at, leads!inner(assigned_to_user_id)")
+                .gte("changed_at", prevStartIso)
+                .lte("changed_at", prevEndIso)
+                .eq("to_stage", "projeto_pago");
+            if (ownerUserId) prevProjectPaidHistoryQ = prevProjectPaidHistoryQ.eq("leads.assigned_to_user_id", ownerUserId);
+            if (orgId) prevProjectPaidHistoryQ = prevProjectPaidHistoryQ.eq("org_id", orgId);
 
             let ownerLeadIds: number[] | null = null;
             if (ownerUserId) {
@@ -279,6 +296,42 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 prevPaidInstallmentsQ = prevPaidInstallmentsQ.eq("org_id", orgId);
             }
 
+            let scheduledInstallmentsPeriodQ = supabase
+                .from("lead_sale_installments")
+                .select("lead_id, due_on, amount, status")
+                .in("status", ["scheduled", "awaiting_confirmation"])
+                .gte("due_on", startIso.slice(0, 10))
+                .lte("due_on", endIso.slice(0, 10));
+
+            let financeAttentionQ = supabase
+                .from("lead_sale_installments")
+                .select("lead_id, due_on, amount, status")
+                .in("status", ["scheduled", "awaiting_confirmation"])
+                .lte("due_on", next7DateIso);
+
+            let upcomingInstallmentsQ = supabase
+                .from("lead_sale_installments")
+                .select("id, lead_id, installment_no, due_on, amount, status, leads(nome)")
+                .in("status", ["scheduled", "awaiting_confirmation"])
+                .order("due_on", { ascending: true })
+                .limit(5);
+
+            if (shouldForceDealsEmpty) {
+                scheduledInstallmentsPeriodQ = scheduledInstallmentsPeriodQ.in("lead_id", [-1]);
+                financeAttentionQ = financeAttentionQ.in("lead_id", [-1]);
+                upcomingInstallmentsQ = upcomingInstallmentsQ.in("lead_id", [-1]);
+            }
+            if (ownerUserId && ownerLeadIds && ownerLeadIds.length > 0) {
+                scheduledInstallmentsPeriodQ = scheduledInstallmentsPeriodQ.in("lead_id", ownerLeadIds);
+                financeAttentionQ = financeAttentionQ.in("lead_id", ownerLeadIds);
+                upcomingInstallmentsQ = upcomingInstallmentsQ.in("lead_id", ownerLeadIds);
+            }
+            if (orgId) {
+                scheduledInstallmentsPeriodQ = scheduledInstallmentsPeriodQ.eq("org_id", orgId);
+                financeAttentionQ = financeAttentionQ.eq("org_id", orgId);
+                upcomingInstallmentsQ = upcomingInstallmentsQ.eq("org_id", orgId);
+            }
+
             // Forecast scoped to dashboard date range
             let openDealsQ = supabase
                 .from("deals")
@@ -349,6 +402,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 { count: prevLeadsCount },
                 { data: funnelLeadsData, error: funnelLeadsError },
                 { data: stageHistoryRows, error: stageHistoryError },
+                { data: prevProjectPaidHistoryRows, error: prevProjectPaidHistoryError },
                 { data: wonDeals, error: dealsError },
                 { data: prevWonDeals },
                 { data: openDeals },
@@ -358,12 +412,16 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 { data: currentLossRows, error: currentLossError },
                 { data: previousLossRows, error: previousLossError },
                 { data: paidInstallments, error: paidInstallmentsError },
-                { data: prevPaidInstallments, error: prevPaidInstallmentsError }
+                { data: prevPaidInstallments, error: prevPaidInstallmentsError },
+                { data: scheduledInstallmentsPeriodRows, error: scheduledInstallmentsPeriodError },
+                { data: financeAttentionRows, error: financeAttentionError },
+                { data: upcomingInstallmentsRows, error: upcomingInstallmentsError }
             ] = await Promise.all([
                 leadsQ,
                 prevLeadsQ,
                 funnelLeadsQ,
                 stageHistoryQ,
+                prevProjectPaidHistoryQ,
                 wonDealsQ,
                 prevWonDealsQ,
                 openDealsQ,
@@ -372,8 +430,11 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 upcomingAppointmentsQ,
                 currentLossesQ,
                 previousLossesQ,
-                financeCashMode ? paidInstallmentsQ : Promise.resolve({ data: [], error: null }),
-                financeCashMode ? prevPaidInstallmentsQ : Promise.resolve({ data: [], error: null }),
+                paidInstallmentsQ,
+                prevPaidInstallmentsQ,
+                scheduledInstallmentsPeriodQ,
+                financeAttentionQ,
+                upcomingInstallmentsQ,
             ]);
 
             if (leadsError) throw leadsError;
@@ -382,10 +443,14 @@ export const useDashboardReport = (params: DashboardFilters) => {
             if (prevPaidInstallmentsError) throw prevPaidInstallmentsError;
             if (funnelLeadsError) console.warn("[useDashboardReport] failed to load funnel leads", funnelLeadsError);
             if (stageHistoryError) console.warn("[useDashboardReport] failed to load stage history", stageHistoryError);
+            if (prevProjectPaidHistoryError) console.warn("[useDashboardReport] failed to load previous Projeto Pago transitions", prevProjectPaidHistoryError);
             if (appointmentsSummaryError) console.warn("[useDashboardReport] failed to load appointments summary", appointmentsSummaryError);
             if (upcomingAppointmentsError) console.warn("[useDashboardReport] failed to load upcoming appointments", upcomingAppointmentsError);
             if (currentLossError) console.warn("[useDashboardReport] failed to load losses for current period", currentLossError);
             if (previousLossError) console.warn("[useDashboardReport] failed to load losses for previous period", previousLossError);
+            if (scheduledInstallmentsPeriodError) console.warn("[useDashboardReport] failed to load scheduled installments in period", scheduledInstallmentsPeriodError);
+            if (financeAttentionError) console.warn("[useDashboardReport] failed to load finance attention rows", financeAttentionError);
+            if (upcomingInstallmentsError) console.warn("[useDashboardReport] failed to load upcoming installments", upcomingInstallmentsError);
 
             const leadRows = asArray<LeadRow>(leadsData as LeadRow[] | null | undefined);
             const wonDealRows = asArray<DealRow>(wonDeals as DealRow[] | null | undefined);
@@ -396,10 +461,14 @@ export const useDashboardReport = (params: DashboardFilters) => {
             const prevPaidInstallmentsRows = asArray<InstallmentRow>(prevPaidInstallments as InstallmentRow[] | null | undefined);
             const funnelLeadRows = asArray<FunnelLeadRow>(funnelLeadsData as FunnelLeadRow[] | null | undefined);
             const stageHistoryData = asArray<StageHistoryRow>(stageHistoryRows as StageHistoryRow[] | null | undefined);
+            const prevProjectPaidHistoryData = asArray<StageHistoryRow>(prevProjectPaidHistoryRows as StageHistoryRow[] | null | undefined);
             const currentLossData = asArray<LossReasonRow>(currentLossRows as LossReasonRow[] | null | undefined);
             const previousLossData = asArray<LossReasonRow>(previousLossRows as LossReasonRow[] | null | undefined);
             const appointmentsSummaryData = asArray<AppointmentSummaryRow>(appointmentsSummaryRows as AppointmentSummaryRow[] | null | undefined);
             const upcomingAppointmentsData = asArray<AppointmentUpcomingRow>(upcomingAppointmentsRows as AppointmentUpcomingRow[] | null | undefined);
+            const scheduledInstallmentsPeriodData = asArray<OpenInstallmentRow>(scheduledInstallmentsPeriodRows as OpenInstallmentRow[] | null | undefined);
+            const financeAttentionData = asArray<OpenInstallmentRow>(financeAttentionRows as OpenInstallmentRow[] | null | undefined);
+            const upcomingInstallmentsData = asArray<OpenInstallmentRow>(upcomingInstallmentsRows as OpenInstallmentRow[] | null | undefined);
 
             // Fetch Leads for Won Deals to map Source (depends on wonDeals result)
             // We need the `canal` of the leads associated with Won Deals
@@ -418,27 +487,87 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 }
             }
 
-            const paidLeadsMap = new Map<string, LeadSourceRow>();
-            if (financeCashMode && paidInstallmentsRows.length > 0) {
-                const paidLeadIds = Array.from(
-                    new Set(
-                        paidInstallmentsRows
-                            .map((installment) => Number(installment.lead_id))
-                            .filter((id: number) => Number.isFinite(id)),
-                    ),
-                );
+            const buildProjectPaidEventMap = (rows: StageHistoryRow[]) => {
+                const eventMap = new Map<string, string>();
+                rows.forEach((row) => {
+                    const leadId = Number(row.lead_id);
+                    const changedAt = String(row.changed_at || "");
+                    if (!Number.isFinite(leadId) || !changedAt) return;
+                    if (normalizeLeadStage(row.to_stage) !== "projeto_pago") return;
 
-                if (paidLeadIds.length > 0) {
-                    const { data: paidLeads } = await supabase
-                        .from("leads")
-                        .select("id, canal, assigned_to_user_id")
-                        .in("id", paidLeadIds);
-
-                    if (paidLeads) {
-                        asArray<LeadSourceRow>(paidLeads as LeadSourceRow[] | null | undefined).forEach((lead) => {
-                            paidLeadsMap.set(String(lead.id), lead);
-                        });
+                    const key = String(leadId);
+                    const currentChangedAt = eventMap.get(key);
+                    if (!currentChangedAt || changedAt < currentChangedAt) {
+                        eventMap.set(key, changedAt);
                     }
+                });
+                return eventMap;
+            };
+
+            const currentProjectPaidEventMap = buildProjectPaidEventMap(stageHistoryData);
+            const prevProjectPaidEventMap = buildProjectPaidEventMap(prevProjectPaidHistoryData);
+            const allProjectPaidLeadIds = Array.from(
+                new Set([
+                    ...Array.from(currentProjectPaidEventMap.keys()),
+                    ...Array.from(prevProjectPaidEventMap.keys()),
+                ]),
+            )
+                .map((leadId) => Number(leadId))
+                .filter((leadId) => Number.isFinite(leadId));
+
+            const financePlanByLeadId = new Map<string, FinancePlanRow>();
+            const projectPaidLeadsMap = new Map<string, LeadSourceRow>();
+            if (allProjectPaidLeadIds.length > 0) {
+                let financePlansQ = supabase
+                    .from("lead_sale_finance_plans")
+                    .select("lead_id, sale_value, project_cost")
+                    .in("lead_id", allProjectPaidLeadIds);
+                let projectPaidLeadsQ = supabase
+                    .from("leads")
+                    .select("id, canal, created_at, assigned_to_user_id")
+                    .in("id", allProjectPaidLeadIds);
+
+                if (orgId) {
+                    financePlansQ = financePlansQ.eq("org_id", orgId);
+                    projectPaidLeadsQ = projectPaidLeadsQ.eq("org_id", orgId);
+                }
+
+                const [{ data: financePlans }, { data: projectPaidLeads }] = await Promise.all([
+                    financePlansQ,
+                    projectPaidLeadsQ,
+                ]);
+
+                asArray<FinancePlanRow>(financePlans as FinancePlanRow[] | null | undefined).forEach((plan) => {
+                    financePlanByLeadId.set(String(plan.lead_id), plan);
+                });
+
+                asArray<LeadSourceRow>(projectPaidLeads as LeadSourceRow[] | null | undefined).forEach((lead) => {
+                    projectPaidLeadsMap.set(String(lead.id), lead);
+                });
+            }
+
+            const paidLeadsMap = new Map<string, LeadSourceRow>();
+            const paidLeadIds = Array.from(
+                new Set(
+                    paidInstallmentsRows
+                        .map((installment) => Number(installment.lead_id))
+                        .filter((id: number) => Number.isFinite(id)),
+                ),
+            );
+
+            if (paidLeadIds.length > 0) {
+                let paidLeadsQ = supabase
+                    .from("leads")
+                    .select("id, canal, assigned_to_user_id")
+                    .in("id", paidLeadIds);
+                if (orgId) paidLeadsQ = paidLeadsQ.eq("org_id", orgId);
+
+                const { data: paidLeads } = await paidLeadsQ;
+
+                if (paidLeads) {
+                    asArray<LeadSourceRow>(paidLeads as LeadSourceRow[] | null | undefined).forEach((lead) => {
+                        paidLeadsMap.set(String(lead.id), lead);
+                    });
                 }
             }
 
@@ -478,23 +607,17 @@ export const useDashboardReport = (params: DashboardFilters) => {
             const leadsCount = leadRows.length;
             const leadsDelta = prevLeadsCount ? ((leadsCount - prevLeadsCount) / prevLeadsCount) * 100 : 0;
 
-            const wonCount = wonDealRows.length;
+            const wonDealsCount = wonDealRows.length;
             const paidInstallmentsCount = paidInstallmentsRows.length;
 
-            // KPI: Revenue / Profit (cash mode when feature is enabled)
+            // KPI: Revenue / Profit
             const dealsRevenue = wonDealRows.reduce((sum, deal) => sum + toSafeNumber(deal.amount), 0);
             const prevDealsRevenue = prevWonDealRows.reduce((sum, deal) => sum + toSafeNumber(deal.amount), 0);
-            const installmentsRevenue = paidInstallmentsRows.reduce((sum: number, installment) => {
+            const installmentsReceived = paidInstallmentsRows.reduce((sum: number, installment) => {
                 const paidAmount = toSafeNumber(installment.paid_amount);
                 const fallbackAmount = toSafeNumber(installment.amount);
                 return sum + (paidAmount > 0 ? paidAmount : fallbackAmount);
             }, 0);
-            const prevInstallmentsRevenue = prevPaidInstallmentsRows.reduce((sum: number, installment) => {
-                const paidAmount = toSafeNumber(installment.paid_amount);
-                const fallbackAmount = toSafeNumber(installment.amount);
-                return sum + (paidAmount > 0 ? paidAmount : fallbackAmount);
-            }, 0);
-
             const installmentsProfit = paidInstallmentsRows.reduce((sum: number, installment) => {
                 return sum + toSafeNumber(installment.profit_amount);
             }, 0);
@@ -502,19 +625,41 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 return sum + toSafeNumber(installment.profit_amount);
             }, 0);
 
-            const revenue = financeCashMode ? installmentsRevenue : dealsRevenue;
-            const prevRevenue = financeCashMode ? prevInstallmentsRevenue : prevDealsRevenue;
-            const profit = financeCashMode ? installmentsProfit : 0;
-            const prevProfit = financeCashMode ? prevInstallmentsProfit : 0;
+            const sumFinancePlanValue = (leadIds: string[]) =>
+                leadIds.reduce((sum, leadId) => sum + toSafeNumber(financePlanByLeadId.get(leadId)?.sale_value), 0);
+            const sumFinancePlanMargin = (leadIds: string[]) =>
+                leadIds.reduce((sum, leadId) => {
+                    const plan = financePlanByLeadId.get(leadId);
+                    return sum + (toSafeNumber(plan?.sale_value) - toSafeNumber(plan?.project_cost));
+                }, 0);
+
+            const currentProjectPaidLeadIds = Array.from(currentProjectPaidEventMap.keys()).filter((leadId) => financePlanByLeadId.has(leadId));
+            const prevProjectPaidLeadIds = Array.from(prevProjectPaidEventMap.keys()).filter((leadId) => financePlanByLeadId.has(leadId));
+            const hasProjectPaidFinance = currentProjectPaidLeadIds.length > 0 || prevProjectPaidLeadIds.length > 0 || paidInstallmentsRows.length > 0 || prevPaidInstallmentsRows.length > 0;
+            const projectPaidRevenue = sumFinancePlanValue(currentProjectPaidLeadIds);
+            const prevProjectPaidRevenue = sumFinancePlanValue(prevProjectPaidLeadIds);
+            const projectPaidMarginValue = sumFinancePlanMargin(currentProjectPaidLeadIds);
+            const projectPaidCount = currentProjectPaidLeadIds.length;
+
+            const revenue = hasProjectPaidFinance ? projectPaidRevenue : dealsRevenue;
+            const prevRevenue = hasProjectPaidFinance ? prevProjectPaidRevenue : prevDealsRevenue;
+            const profit = hasProjectPaidFinance ? installmentsProfit : 0;
+            const prevProfit = hasProjectPaidFinance ? prevInstallmentsProfit : 0;
+            const profitAvailable = hasProjectPaidFinance;
+            const revenueBasis: "project_paid" | "won_deals" = hasProjectPaidFinance ? "project_paid" : "won_deals";
+            const marginValuePct = hasProjectPaidFinance && projectPaidRevenue > 0
+                ? (projectPaidMarginValue / projectPaidRevenue) * 100
+                : null;
 
             const revenueDelta = prevRevenue > 0 ? ((revenue - prevRevenue) / prevRevenue) * 100 : null;
             const profitDelta = prevProfit > 0 ? ((profit - prevProfit) / prevProfit) * 100 : null;
 
             // KPI: Conversion
-            const conversionRate = leadsCount ? (wonCount / leadsCount) * 100 : 0;
+            const conversionBaseCount = hasProjectPaidFinance ? projectPaidCount : wonDealsCount;
+            const conversionRate = leadsCount ? (conversionBaseCount / leadsCount) * 100 : 0;
 
             // KPI: Ticket Avg
-            const ticketDivisor = financeCashMode ? paidInstallmentsCount : wonCount;
+            const ticketDivisor = hasProjectPaidFinance ? projectPaidCount : wonDealsCount;
             const ticketAverage = ticketDivisor > 0 ? (revenue / ticketDivisor) : 0;
 
             // KPI: Average close cycle in days
@@ -558,11 +703,11 @@ export const useDashboardReport = (params: DashboardFilters) => {
 
             // Chart: Sales by Source
             const salesSourceMap: Record<string, number> = {};
-            const salesSourceTotal = financeCashMode ? paidInstallmentsCount : wonCount;
+            const salesSourceTotal = hasProjectPaidFinance ? projectPaidCount : wonDealsCount;
 
-            if (financeCashMode) {
-                paidInstallmentsRows.forEach((installment) => {
-                    const lead = paidLeadsMap.get(String(installment.lead_id));
+            if (hasProjectPaidFinance) {
+                currentProjectPaidLeadIds.forEach((leadId) => {
+                    const lead = projectPaidLeadsMap.get(String(leadId));
                     const source = lead?.canal || "unknown";
                     salesSourceMap[source] = (salesSourceMap[source] || 0) + 1;
                 });
@@ -584,14 +729,13 @@ export const useDashboardReport = (params: DashboardFilters) => {
 
             const sourcePerformanceRows = buildSourcePerformance(
                 leadRows,
-                financeCashMode
-                    ? paidInstallmentsRows.map((installment) => {
-                        const lead = paidLeadsMap.get(String(installment.lead_id));
-                        const paidAmount = toSafeNumber(installment.paid_amount);
-                        const fallbackAmount = toSafeNumber(installment.amount);
+                hasProjectPaidFinance
+                    ? currentProjectPaidLeadIds.map((leadId) => {
+                        const lead = projectPaidLeadsMap.get(String(leadId));
+                        const plan = financePlanByLeadId.get(String(leadId));
                         return {
                             source: lead?.canal || "unknown",
-                            revenue: paidAmount > 0 ? paidAmount : fallbackAmount,
+                            revenue: toSafeNumber(plan?.sale_value),
                         };
                     })
                     : wonDealRows.map((deal) => {
@@ -643,20 +787,14 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 if (timeBuckets[bucketKey]) timeBuckets[bucketKey].leads++;
             });
 
-            if (financeCashMode) {
-                paidInstallmentsRows.forEach((installment) => {
-                    const paidAt = String(installment.paid_at || "");
-                    if (!paidAt) return;
-                    const key = useDays ? paidAt.slice(0, 10) : paidAt.slice(0, 7);
-                    if (!timeBuckets[key]) return;
-
-                    const paidAmount = toSafeNumber(installment.paid_amount);
-                    const fallbackAmount = toSafeNumber(installment.amount);
-                    const realizedRevenue = paidAmount > 0 ? paidAmount : fallbackAmount;
+            if (hasProjectPaidFinance) {
+                currentProjectPaidEventMap.forEach((changedAt, leadId) => {
+                    const key = useDays ? changedAt.slice(0, 10) : changedAt.slice(0, 7);
+                    const plan = financePlanByLeadId.get(String(leadId));
+                    if (!timeBuckets[key] || !plan) return;
 
                     timeBuckets[key].sales++;
-                    timeBuckets[key].revenue += realizedRevenue;
-                    timeBuckets[key].profit += toSafeNumber(installment.profit_amount);
+                    timeBuckets[key].revenue += toSafeNumber(plan.sale_value);
                 });
             } else {
                 wonDealRows.forEach((deal) => {
@@ -670,6 +808,14 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     }
                 });
             }
+
+            paidInstallmentsRows.forEach((installment) => {
+                const paidAt = String(installment.paid_at || "");
+                if (!paidAt) return;
+                const key = useDays ? paidAt.slice(0, 10) : paidAt.slice(0, 7);
+                if (!timeBuckets[key]) return;
+                timeBuckets[key].profit += toSafeNumber(installment.profit_amount);
+            });
 
             const monthlyChart = Object.values(timeBuckets).map((bucket) => ({
                 ...bucket,
@@ -691,17 +837,23 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 ensureOwner(ownerId).leads += 1;
             });
 
-            if (financeCashMode) {
+            if (hasProjectPaidFinance) {
+                currentProjectPaidLeadIds.forEach((leadId) => {
+                    const lead = projectPaidLeadsMap.get(String(leadId));
+                    const ownerId = String(lead?.assigned_to_user_id || "").trim();
+                    if (!ownerId) return;
+
+                    const ownerStats = ensureOwner(ownerId);
+                    ownerStats.won += 1;
+                    ownerStats.revenue += toSafeNumber(financePlanByLeadId.get(String(leadId))?.sale_value);
+                });
+
                 paidInstallmentsRows.forEach((installment) => {
                     const lead = paidLeadsMap.get(String(installment.lead_id));
                     const ownerId = String(lead?.assigned_to_user_id || "").trim();
                     if (!ownerId) return;
 
                     const ownerStats = ensureOwner(ownerId);
-                    ownerStats.won += 1;
-                    const paidAmount = toSafeNumber(installment.paid_amount);
-                    const fallbackAmount = toSafeNumber(installment.amount);
-                    ownerStats.revenue += paidAmount > 0 ? paidAmount : fallbackAmount;
                     ownerStats.profit += toSafeNumber(installment.profit_amount);
                 });
             } else {
@@ -733,7 +885,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     owner_id: ownerUserId ?? undefined,
                     name: ownerUserId ? ownerLabelFromId(ownerUserId) : "Geral (Organizacao)",
                     leads: leadsCount,
-                    won: wonCount,
+                    won: conversionBaseCount,
                     revenue,
                     profit,
                     conversion: conversionRate,
@@ -764,13 +916,53 @@ export const useDashboardReport = (params: DashboardFilters) => {
             const scheduledAppointments = calendarRows.filter((row) => row.status === "scheduled").length;
             const confirmedAppointments = calendarRows.filter((row) => row.status === "confirmed").length;
 
+            const scheduledInPeriodAmount = scheduledInstallmentsPeriodData.reduce(
+                (sum, installment) => sum + toSafeNumber(installment.amount),
+                0,
+            );
+            const overdueFinanceRows = financeAttentionData.filter((installment) => {
+                const dueOn = String(installment.due_on || "").slice(0, 10);
+                return !!dueOn && dueOn < todayDateIso;
+            });
+            const dueNext7Rows = financeAttentionData.filter((installment) => {
+                const dueOn = String(installment.due_on || "").slice(0, 10);
+                return !!dueOn && dueOn >= todayDateIso && dueOn <= next7DateIso;
+            });
+            const overdueAmount = overdueFinanceRows.reduce((sum, installment) => sum + toSafeNumber(installment.amount), 0);
+            const dueNext7Amount = dueNext7Rows.reduce((sum, installment) => sum + toSafeNumber(installment.amount), 0);
+            const upcomingInstallments = upcomingInstallmentsData.map((row) => {
+                const leadRef = Array.isArray(row.leads) ? row.leads[0] : row.leads;
+                return {
+                    id: String(row.id || `${row.lead_id}-${row.installment_no}-${row.due_on}`),
+                    lead_id: Number(row.lead_id),
+                    lead_name: leadRef?.nome || "Lead",
+                    installment_no: Math.max(1, Number(row.installment_no || 0)),
+                    due_on: String(row.due_on || "").slice(0, 10),
+                    amount: toSafeNumber(row.amount),
+                    status: row.status === "awaiting_confirmation" ? "awaiting_confirmation" : "scheduled",
+                } as DashboardPayload["finance"]["upcoming_installments"][number];
+            });
+
             // Format Objects for Component
             const payload: DashboardPayload = {
                 kpis: {
                     leads: { value: leadsCount, delta_pct: leadsDelta },
-                    conversion: { value_pct: conversionRate, won: wonCount, leads: leadsCount },
-                    revenue: { value: revenue, prev_value: prevRevenue, delta_pct: revenueDelta },
-                    profit: { value: profit, prev_value: prevProfit, delta_pct: profitDelta },
+                    conversion: { value_pct: conversionRate, won: conversionBaseCount, leads: leadsCount },
+                    revenue: { value: revenue, prev_value: prevRevenue, delta_pct: revenueDelta, basis: revenueBasis },
+                    profit: {
+                        value: profit,
+                        prev_value: prevProfit,
+                        delta_pct: profitDelta,
+                        available: profitAvailable,
+                        reason: profitAvailable
+                            ? undefined
+                            : "Lucro realizado aparece quando houver parcelas confirmadas do Projeto Pago.",
+                    },
+                    margin: {
+                        value_pct: marginValuePct,
+                        basis: marginValuePct === null ? null : "sales_margin",
+                        note: marginValuePct === null ? undefined : "Margem calculada pelo valor da venda menos o custo informado no Projeto Pago.",
+                    },
                     avg_close_days: { value: avgCloseDays },
                     ticket_avg: { value: ticketAverage },
                     forecast: { value: forecastValue, count: forecastCount }
@@ -783,6 +975,16 @@ export const useDashboardReport = (params: DashboardFilters) => {
                 funnel: funnelPayload,
                 source_performance: sourcePerformanceRows,
                 loss_summary: lossSummary,
+                finance: {
+                    received_in_period: installmentsReceived,
+                    realized_profit_in_period: installmentsProfit,
+                    scheduled_in_period: scheduledInPeriodAmount,
+                    overdue_amount: overdueAmount,
+                    overdue_count: overdueFinanceRows.length,
+                    due_next_7_days_amount: dueNext7Amount,
+                    due_next_7_days_count: dueNext7Rows.length,
+                    upcoming_installments: upcomingInstallments,
+                },
                 tables: {
                     stale_leads: staleLeadRows.map((lead) => ({
                         id: Number(lead.id),

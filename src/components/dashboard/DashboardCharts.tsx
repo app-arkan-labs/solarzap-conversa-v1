@@ -15,6 +15,7 @@ import {
 
 interface ChartProps {
     data?: DashboardPayload["charts"];
+    kpis?: DashboardPayload["kpis"];
     isLoading: boolean;
 }
 
@@ -25,8 +26,16 @@ const formatCurrency = (value: number): string =>
         maximumFractionDigits: 0,
     }).format(value || 0);
 
-export function DashboardCharts({ data, isLoading }: ChartProps) {
+export function DashboardCharts({ data, kpis, isLoading }: ChartProps) {
     if (isLoading || !data) return null;
+
+    const profitAvailable = kpis?.profit.available ?? false;
+    const revenueBasis = kpis?.revenue.basis ?? "won_deals";
+    const revenueTitle = revenueBasis === "project_paid" ? "Faturamento e lucro realizado" : "Valor fechado por venda";
+    const revenueDescription =
+        revenueBasis === "project_paid"
+            ? "Faturamento entra em Projeto Pago. Lucro realizado entra conforme as parcelas sao confirmadas."
+            : "Valores fechados por data da venda, sem misturar lucro realizado.";
 
     const monthlyData = data.monthly.map((item) => ({
         name: item.month,
@@ -38,7 +47,7 @@ export function DashboardCharts({ data, isLoading }: ChartProps) {
     }));
 
     const hasCommercialData = monthlyData.some((item) => item.leads > 0 || item.sales > 0);
-    const hasFinancialData = monthlyData.some((item) => item.revenue > 0 || item.profit > 0);
+    const hasFinancialData = monthlyData.some((item) => item.revenue > 0 || (profitAvailable && item.profit > 0));
 
     return (
         <div className="grid gap-6 xl:grid-cols-2">
@@ -95,8 +104,8 @@ export function DashboardCharts({ data, isLoading }: ChartProps) {
 
             <Card className="border-border/50 bg-background/50 shadow-sm">
                 <CardHeader>
-                    <CardTitle className="text-foreground">Financeiro realizado</CardTitle>
-                    <CardDescription>Recebimentos e lucro reconhecidos por data do evento financeiro.</CardDescription>
+                    <CardTitle className="text-foreground">{revenueTitle}</CardTitle>
+                    <CardDescription>{revenueDescription}</CardDescription>
                 </CardHeader>
                 <CardContent className="h-[340px]">
                     {hasFinancialData ? (
@@ -119,22 +128,34 @@ export function DashboardCharts({ data, isLoading }: ChartProps) {
                                 <Tooltip
                                     formatter={(value: number, name: string) => [
                                         formatCurrency(Number(value)),
-                                        name === "revenue" ? "Faturamento" : "Lucro",
+                                        name === "revenue"
+                                            ? revenueBasis === "project_paid"
+                                                ? "Faturamento"
+                                                : "Valor fechado"
+                                            : "Lucro",
                                     ]}
                                     labelFormatter={(label) => `Periodo: ${label}`}
                                 />
                                 <Legend
-                                    formatter={(value) => (value === "revenue" ? "Faturamento" : "Lucro")}
+                                    formatter={(value) =>
+                                        value === "revenue"
+                                            ? revenueBasis === "project_paid"
+                                                ? "Faturamento"
+                                                : "Valor fechado"
+                                            : "Lucro realizado"
+                                    }
                                 />
                                 <Area type="monotone" dataKey="revenue" name="revenue" stroke="#16a34a" strokeWidth={2} fill="url(#revenueFill)" />
-                                <Line type="monotone" dataKey="profit" name="profit" stroke="#15803d" strokeWidth={3} dot={false} />
+                                {profitAvailable ? (
+                                    <Line type="monotone" dataKey="profit" name="profit" stroke="#15803d" strokeWidth={3} dot={false} />
+                                ) : null}
                             </AreaChart>
                         </ResponsiveContainer>
                     ) : (
                         <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-background/40 text-center">
                             <p className="text-sm font-medium text-foreground">Sem dados financeiros no periodo</p>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                O grafico fica ativo assim que houver faturamento ou lucro reconhecido no intervalo.
+                                O grafico fica ativo assim que houver valores reconhecidos no intervalo.
                             </p>
                         </div>
                     )}

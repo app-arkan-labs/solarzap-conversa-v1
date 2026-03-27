@@ -13,7 +13,7 @@ const BUSINESS_GROUP_LABELS = {
   topo: "Entrada",
   meio: "Contato e visita",
   fundo: "Proposta e fechamento",
-  saida: "Saidas",
+  saida: "Concluidos",
 } as const;
 
 export function FunnelOverview({ data, isLoading }: FunnelOverviewProps) {
@@ -27,22 +27,22 @@ export function FunnelOverview({ data, isLoading }: FunnelOverviewProps) {
     .filter((row) => row.group !== "saida" && (row.count > 0 || row.entered_in_period > 0))
     .sort((left, right) => right.stale_count - left.stale_count || right.count - left.count || right.entered_in_period - left.entered_in_period);
 
-  const visibleRows = priorityRows.slice(0, 4);
-  const remainingRows = priorityRows.slice(4);
+  const visibleRows = priorityRows.slice(0, 2);
+  const remainingRows = priorityRows.slice(2);
 
   return (
     <Card className="border-border/50 bg-background/50 shadow-sm">
       <CardHeader>
-        <CardTitle>Carteira por etapa</CardTitle>
-        <CardDescription>Veja onde os leads estao, onde travam e o que pede atencao agora.</CardDescription>
+        <CardTitle>Onde a carteira trava</CardTitle>
+        <CardDescription>Resumo rapido da carteira. Abra os detalhes so quando quiser investigar etapa por etapa.</CardDescription>
       </CardHeader>
 
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-5">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-border/60 bg-background/70 p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <TimerReset className="h-4 w-4 text-sky-600" />
-              Leads em andamento
+              Carteira ativa
             </div>
             <p className="mt-2 text-2xl font-bold text-foreground">{data.active}</p>
             <p className="mt-1 text-xs text-muted-foreground">Leads ainda em processo comercial.</p>
@@ -51,10 +51,10 @@ export function FunnelOverview({ data, isLoading }: FunnelOverviewProps) {
           <div className="rounded-xl border border-border/60 bg-background/70 p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <ArrowRightLeft className="h-4 w-4 text-sky-600" />
-              Leads que avancaram
+              Avancos no periodo
             </div>
             <p className="mt-2 text-2xl font-bold text-foreground">{data.moved_in_period}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Mudancas de etapa no periodo.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Mudancas de etapa registradas.</p>
           </div>
 
           <div className="rounded-xl border border-border/60 bg-background/70 p-4">
@@ -76,32 +76,48 @@ export function FunnelOverview({ data, isLoading }: FunnelOverviewProps) {
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {data.by_group.map((group) => (
-            <div key={group.key} className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-xl border border-border/60 bg-background/70 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Resumo da carteira</p>
+                <p className="text-xs text-muted-foreground">Distribuicao atual dos leads ativos e concluidos.</p>
+              </div>
+              <Badge variant="secondary" className="bg-muted/80 text-muted-foreground">
+                {data.active} ativos
+              </Badge>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {data.by_group.map((group) => (
+                <div key={group.key} className="min-w-[120px] rounded-full border border-border/60 bg-background px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     {BUSINESS_GROUP_LABELS[group.key]}
                   </p>
-                  <p className="mt-1 text-2xl font-bold text-foreground">{group.count}</p>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-foreground">{group.count}</span>
+                    <span className="text-xs text-muted-foreground">{group.pct.toFixed(0)}%</span>
+                  </div>
                 </div>
-                <Badge variant="secondary" className="bg-muted/80 text-muted-foreground">
-                  {group.pct.toFixed(0)}%
-                </Badge>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {group.stale_count > 0 ? `${group.stale_count} parados alem do tempo ideal` : "Sem fila critica agora"}
-              </p>
+              ))}
             </div>
-          ))}
+          </div>
+
+          <div className="rounded-xl border border-border/60 bg-background/70 p-4">
+            <p className="text-sm font-semibold text-foreground">Gargalo principal</p>
+            <p className="mt-2 text-lg font-semibold text-foreground">{bottleneckLabel}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {data.stale_total > 0
+                ? `${data.stale_total} leads estao alem do tempo ideal e pedem retorno rapido.`
+                : "Nenhum acumulo relevante agora. A carteira esta andando sem fila critica."}
+            </p>
+          </div>
         </div>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-foreground">Etapas que pedem atencao</p>
-              <p className="text-xs text-muted-foreground">Foco nas etapas com mais volume ou atraso.</p>
+              <p className="text-sm font-semibold text-foreground">Pontos de atencao agora</p>
+              <p className="text-xs text-muted-foreground">Mostramos apenas as etapas que merecem olhar imediato.</p>
             </div>
             {priorityRows.length > 0 ? <span className="text-xs text-muted-foreground">{priorityRows.length} etapas com leitura ativa</span> : null}
           </div>
