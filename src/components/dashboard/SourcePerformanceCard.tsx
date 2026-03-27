@@ -6,15 +6,21 @@ interface SourcePerformanceCardProps {
   data?: DashboardPayload["source_performance"];
   revenueBasis?: DashboardPayload["kpis"]["revenue"]["basis"];
   isLoading: boolean;
+  limit?: number;
 }
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value || 0);
 
-export function SourcePerformanceCard({ data, revenueBasis = "won_deals", isLoading }: SourcePerformanceCardProps) {
+export function SourcePerformanceCard({
+  data,
+  revenueBasis = "won_deals",
+  isLoading,
+  limit = 4,
+}: SourcePerformanceCardProps) {
   if (isLoading || !data) return null;
 
-  const rows = data.slice(0, 4);
+  const rows = data.slice(0, limit);
   const revenueLabel = revenueBasis === "project_paid" ? "faturamento" : "valor fechado";
 
   return (

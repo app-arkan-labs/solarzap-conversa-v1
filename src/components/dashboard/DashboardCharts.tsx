@@ -17,6 +17,7 @@ interface ChartProps {
     data?: DashboardPayload["charts"];
     kpis?: DashboardPayload["kpis"];
     isLoading: boolean;
+    mode?: "all" | "commercial" | "financial";
 }
 
 const formatCurrency = (value: number): string =>
@@ -26,7 +27,7 @@ const formatCurrency = (value: number): string =>
         maximumFractionDigits: 0,
     }).format(value || 0);
 
-export function DashboardCharts({ data, kpis, isLoading }: ChartProps) {
+export function DashboardCharts({ data, kpis, isLoading, mode = "all" }: ChartProps) {
     if (isLoading || !data) return null;
 
     const profitAvailable = kpis?.profit.available ?? false;
@@ -50,7 +51,8 @@ export function DashboardCharts({ data, kpis, isLoading }: ChartProps) {
     const hasFinancialData = monthlyData.some((item) => item.revenue > 0 || (profitAvailable && item.profit > 0));
 
     return (
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className={`grid gap-6 ${mode === "all" ? "xl:grid-cols-2" : ""}`}>
+            {mode !== "financial" ? (
             <Card className="border-border/50 bg-background/50 shadow-sm">
                 <CardHeader>
                     <CardTitle className="text-foreground">Evolucao comercial</CardTitle>
@@ -101,7 +103,9 @@ export function DashboardCharts({ data, kpis, isLoading }: ChartProps) {
                     )}
                 </CardContent>
             </Card>
+            ) : null}
 
+            {mode !== "commercial" ? (
             <Card className="border-border/50 bg-background/50 shadow-sm">
                 <CardHeader>
                     <CardTitle className="text-foreground">{revenueTitle}</CardTitle>
@@ -161,6 +165,7 @@ export function DashboardCharts({ data, kpis, isLoading }: ChartProps) {
                     )}
                 </CardContent>
             </Card>
+            ) : null}
         </div>
     );
 }

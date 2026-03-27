@@ -8,6 +8,7 @@ import { AlertTriangle, CalendarClock, CheckCircle2, Wallet } from "lucide-react
 interface FinanceSnapshotCardProps {
   data?: DashboardPayload["finance"];
   isLoading: boolean;
+  maxInstallments?: number;
 }
 
 const formatCurrency = (value: number) =>
@@ -46,7 +47,7 @@ const dueBadgeLabel = (dueOn: string, status: "scheduled" | "awaiting_confirmati
   };
 };
 
-export function FinanceSnapshotCard({ data, isLoading }: FinanceSnapshotCardProps) {
+export function FinanceSnapshotCard({ data, isLoading, maxInstallments = 6 }: FinanceSnapshotCardProps) {
   if (isLoading || !data) return null;
 
   const hasAnyFinanceData =
@@ -56,6 +57,8 @@ export function FinanceSnapshotCard({ data, isLoading }: FinanceSnapshotCardProp
     data.overdue_count > 0 ||
     data.due_next_7_days_count > 0 ||
     data.upcoming_installments.length > 0;
+
+  const visibleInstallments = data.upcoming_installments.slice(0, maxInstallments);
 
   return (
     <Card className="border-border/50 bg-background/50 shadow-sm">
@@ -130,7 +133,7 @@ export function FinanceSnapshotCard({ data, isLoading }: FinanceSnapshotCardProp
             </div>
           ) : (
             <div className="space-y-3">
-              {data.upcoming_installments.map((installment) => {
+              {visibleInstallments.map((installment) => {
                 const badge = dueBadgeLabel(installment.due_on, installment.status);
                 return (
                   <div key={installment.id} className="rounded-lg border border-border/60 bg-background/70 px-4 py-3">
@@ -151,6 +154,11 @@ export function FinanceSnapshotCard({ data, isLoading }: FinanceSnapshotCardProp
                   </div>
                 );
               })}
+              {data.upcoming_installments.length > visibleInstallments.length ? (
+                <div className="rounded-lg border border-dashed border-border/60 px-4 py-3 text-xs text-muted-foreground">
+                  +{data.upcoming_installments.length - visibleInstallments.length} parcelas restantes fora desta amostra.
+                </div>
+              ) : null}
             </div>
           )}
         </div>
