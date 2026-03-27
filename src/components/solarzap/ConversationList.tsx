@@ -690,7 +690,7 @@ export function ConversationList({
             showActionsLayout ? `${ACTIONS_MODE_HEADER_CLASS} bg-background/90 py-0` : 'py-2',
           )}
         >
-          {canViewTeam && onLeadScopeChange ? (
+          {!showActionsLayout && canViewTeam && onLeadScopeChange ? (
             <DropdownMenu
               onOpenChange={(open) => {
                 if (open) {
@@ -764,7 +764,7 @@ export function ConversationList({
             </DropdownMenu>
           ) : showActionsLayout ? (
             <div className="flex h-9 w-full items-center rounded-md border border-border/60 bg-background px-3 text-sm font-medium text-foreground">
-              Meus leads
+              {leadScopeLabel}
             </div>
           ) : null}
         </div>

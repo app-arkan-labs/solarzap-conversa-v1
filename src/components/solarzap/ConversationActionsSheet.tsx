@@ -76,8 +76,7 @@ type TextEditorState = {
 } | null;
 
 const GRID_TEMPLATE_COLUMNS =
-  'minmax(118px,1.16fr) minmax(146px,1.3fr) minmax(72px,0.64fr) minmax(174px,1.04fr) minmax(82px,0.56fr) minmax(124px,0.9fr) minmax(110px,0.76fr) minmax(104px,0.78fr) minmax(92px,0.58fr)';
-const GRID_MIN_WIDTH = 1060;
+  'minmax(0,1.15fr) minmax(0,1.28fr) minmax(0,0.62fr) minmax(0,1fr) minmax(0,0.58fr) minmax(0,0.9fr) minmax(0,0.74fr) minmax(0,0.74fr) minmax(0,0.56fr)';
 const GRID_HEADER_CLASS = 'h-[54px]';
 const GRID_ROW_CLASS = 'h-[72px]';
 const DEFAULT_DURATION = '30';
@@ -579,7 +578,7 @@ export function ConversationActionsSheet({
             className="flex-1 min-h-0 overflow-auto custom-scrollbar"
             onScroll={handleGridScroll}
           >
-            <div style={{ minWidth: GRID_MIN_WIDTH }}>
+            <div className="w-full">
               <div
                 className={cn(
                   'sticky top-0 z-10 grid border-b border-border/60 bg-background px-2',
