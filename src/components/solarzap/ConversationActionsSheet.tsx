@@ -3,7 +3,6 @@ import { differenceInMinutes, format, isValid } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -712,9 +711,9 @@ export function ConversationActionsSheet({
                   </div>
 
                   <div className="min-w-0 flex h-full items-center border-r border-border/60 px-3 py-2">
-                    <Badge variant="secondary" className="max-w-full truncate text-[11px]">
-                      {stage.icon} {stage.title}
-                    </Badge>
+                    <span className="block w-full truncate text-xs font-medium text-foreground/90" title={stage.title}>
+                      {stage.title}
+                    </span>
                   </div>
 
                   <div className="flex h-full items-center justify-center px-3 py-2">
@@ -722,7 +721,7 @@ export function ConversationActionsSheet({
                       type="button"
                       size="sm"
                       variant={draft.isDirty ? 'default' : 'outline'}
-                      className="h-8 min-w-[84px] text-xs"
+                      className="h-8 min-w-[72px] text-xs"
                       disabled={
                         draft.isSaving ||
                         (!draft.isDirty && Boolean(draft.appointmentId)) ||
