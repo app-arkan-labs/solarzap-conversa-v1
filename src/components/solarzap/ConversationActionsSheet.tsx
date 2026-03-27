@@ -75,7 +75,9 @@ type TextEditorState = {
   placeholder: string;
 } | null;
 
-const GRID_TEMPLATE_COLUMNS = 'minmax(0,1.25fr) minmax(0,1.35fr) minmax(0,0.72fr) minmax(0,1fr) minmax(0,0.58fr) minmax(0,1.02fr) minmax(0,0.8fr) minmax(0,0.86fr) minmax(88px,0.62fr)';
+const GRID_TEMPLATE_COLUMNS =
+  'minmax(118px,1.16fr) minmax(146px,1.3fr) minmax(70px,0.64fr) minmax(162px,1.04fr) minmax(78px,0.56fr) minmax(120px,0.9fr) minmax(106px,0.76fr) minmax(102px,0.78fr) minmax(92px,0.58fr)';
+const GRID_MIN_WIDTH = 1010;
 const GRID_HEADER_CLASS = 'h-[54px]';
 const GRID_ROW_CLASS = 'h-[72px]';
 const DEFAULT_DURATION = '30';
@@ -574,48 +576,49 @@ export function ConversationActionsSheet({
         <div className="min-w-0 flex flex-1 min-h-0 flex-col">
           <div
             ref={actionsScrollRef}
-            className="flex-1 min-h-0 overflow-y-auto custom-scrollbar"
+            className="flex-1 min-h-0 overflow-auto custom-scrollbar"
             onScroll={handleGridScroll}
           >
-            <div
-              className={cn(
-                'sticky top-0 z-10 grid border-b border-border/60 bg-background px-2',
-                GRID_HEADER_CLASS,
-              )}
-              style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
-            >
-              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ultima Acao</div>
-              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proxima Acao</div>
-              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tipo</div>
-              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Data / Hora</div>
-              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Duracao</div>
-              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Responsavel</div>
-              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Local</div>
-              <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Etapa</div>
-              <div className="flex items-center px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Salvar</div>
-            </div>
+            <div style={{ minWidth: GRID_MIN_WIDTH }}>
+              <div
+                className={cn(
+                  'sticky top-0 z-10 grid border-b border-border/60 bg-background px-2',
+                  GRID_HEADER_CLASS,
+                )}
+                style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
+              >
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ultima Acao</div>
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proxima Acao</div>
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tipo</div>
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Data / Hora</div>
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Duracao</div>
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Responsavel</div>
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Local</div>
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Etapa</div>
+                <div className="flex items-center px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Salvar</div>
+              </div>
 
-            {conversations.map((conversation) => {
-              const leadId = String(conversation.contact.id);
-              const draft = drafts[leadId];
-              const stage = PIPELINE_STAGES[conversation.contact.pipelineStage];
+              {conversations.map((conversation) => {
+                const leadId = String(conversation.contact.id);
+                const draft = drafts[leadId];
+                const stage = PIPELINE_STAGES[conversation.contact.pipelineStage];
               const isSelected = selectedConversationId === conversation.id;
               const hasTitle = draft?.title.trim().length > 0;
               const hasLocation = draft?.location.trim().length > 0;
 
               if (!draft) return null;
 
-              return (
-                <div
-                  key={conversation.id}
-                  className={cn(
-                    'grid border-b border-border/50 bg-background px-2',
-                    GRID_ROW_CLASS,
-                    draft.isDirty && 'bg-primary/[0.045]',
-                    isSelected && 'bg-muted/20',
-                  )}
-                  style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
-                >
+                return (
+                  <div
+                    key={conversation.id}
+                    className={cn(
+                      'grid border-b border-border/50 bg-background px-2',
+                      GRID_ROW_CLASS,
+                      draft.isDirty && 'bg-primary/[0.045]',
+                      isSelected && 'bg-muted/20',
+                    )}
+                    style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
+                  >
                   <div className="min-w-0 flex h-full flex-col justify-center border-r border-border/60 px-3 py-2">
                     <p className="line-clamp-2 text-sm font-medium text-foreground">{draft.lastActionTitle}</p>
                     <p className="mt-1 text-[11px] text-muted-foreground">{draft.lastActionMeta || 'Sem historico'}</p>
@@ -739,9 +742,10 @@ export function ConversationActionsSheet({
                       )}
                     </Button>
                   </div>
-                </div>
-              );
-            })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { Component, ReactNode, Suspense, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLeads } from '@/hooks/domain/useLeads';
 import { useChat } from '@/hooks/domain/useChat';
@@ -139,6 +140,7 @@ function TabLoadingFallback({ label }: { label: string }) {
 
 export function SolarZapLayout() {
   const { user, orgId, role, hasMultipleOrganizations, organizations, selectOrganization, signOut } = useAuth();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const canAccessAdmin = role === 'owner' || role === 'admin';
@@ -570,6 +572,13 @@ export function SolarZapLayout() {
   }) => {
     const startAt = input.startAt;
     const endAt = addMinutes(startAt, input.durationMinutes);
+    const invalidateActionDependencies = async () => {
+      if (!orgId) return;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['appointments', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['lead-tasks', orgId] }),
+      ]);
+    };
     const fallbackSave = async () => {
       const existingAppointment =
         input.appointmentId
@@ -687,7 +696,9 @@ export function SolarZapLayout() {
         /upsert_lead_next_action_appointment/i.test(String(error.message || ''));
       if (isMissingRpc) {
         console.warn('[conversation-actions-sheet] RPC not found, using fallback flow', error);
-        return fallbackSave();
+        const savedFallbackAppointment = await fallbackSave();
+        await invalidateActionDependencies();
+        return savedFallbackAppointment;
       }
       throw error;
     }
@@ -718,8 +729,9 @@ export function SolarZapLayout() {
       outcome: null,
     };
 
+    await invalidateActionDependencies();
     return normalizedAppointment;
-  }, [appointments, createAppointment, createNextAction, linkNextActionToAppointment, nextActionByLeadId, orgId, updateAppointment, updateNextAction]);
+  }, [appointments, createAppointment, createNextAction, linkNextActionToAppointment, nextActionByLeadId, orgId, queryClient, updateAppointment, updateNextAction]);
 
   // Set initial selected conversation
   if (!selectedConversation && conversations.length > 0) {
@@ -1858,7 +1870,7 @@ export function SolarZapLayout() {
                   ? undefined
                   : {
                       width: isConversationActionsSheetOpen
-                        ? 'clamp(320px, 29vw, 430px)'
+                        ? 'clamp(250px, 22vw, 300px)'
                         : conversationsSidebarWidth,
                     }
               }

@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Appointment, Contact, LeadTask } from '@/types/solarzap';
 import { useAppointments } from '@/hooks/useAppointments';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { Archive, CalendarIcon, Clock, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -92,16 +93,14 @@ export function EventFeedbackModal({
             });
 
             if (appointment.lead_id) {
-                const { error: commentError } = await import('@/lib/supabase').then((module) =>
-                    module.supabase.from('comentarios_leads').insert([
-                        {
-                            org_id: orgId,
-                            lead_id: appointment.lead_id,
-                            texto: `[Feedback Evento] ${appointment.title}: ${trimmedOutcome}`,
-                            autor: 'Vendedor',
-                        },
-                    ]),
-                );
+                const { error: commentError } = await supabase.from('comentarios_leads').insert([
+                    {
+                        org_id: orgId,
+                        lead_id: appointment.lead_id,
+                        texto: `[Feedback Evento] ${appointment.title}: ${trimmedOutcome}`,
+                        autor: 'Vendedor',
+                    },
+                ]);
 
                 if (commentError) {
                     console.error('Error saving comment:', commentError);
