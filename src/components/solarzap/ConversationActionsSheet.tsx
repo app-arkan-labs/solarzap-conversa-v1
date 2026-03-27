@@ -61,6 +61,7 @@ type ActionSheetDraft = {
   notes: string;
   isDirty: boolean;
   isSaving: boolean;
+  syncLockUntil: number;
 };
 
 type TextEditorField = 'title' | 'location';
@@ -78,6 +79,7 @@ const GRID_TEMPLATE_COLUMNS = 'minmax(0,1.25fr) minmax(0,1.35fr) minmax(0,0.72fr
 const GRID_HEADER_CLASS = 'h-[54px]';
 const GRID_ROW_CLASS = 'h-[72px]';
 const DEFAULT_DURATION = '30';
+const PAST_GRACE_MS = 2 * 60 * 1000;
 const DURATION_OPTIONS = ['15', '30', '45', '60', '90', '120'];
 const TYPE_OPTIONS: Array<{ value: AppointmentType; label: string }> = [
   { value: 'other', label: 'Outro' },
@@ -128,8 +130,38 @@ const getDurationMinutes = (appointment: Appointment | null): string => {
 
 const parseDateTimeInput = (value: string): Date | null => {
   if (!value) return null;
-  const parsed = new Date(value);
-  return isValid(parsed) ? parsed : null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute)
+  ) {
+    return null;
+  }
+
+  const parsed = new Date(year, month - 1, day, hour, minute, 0, 0);
+  if (!isValid(parsed)) return null;
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day ||
+    parsed.getHours() !== hour ||
+    parsed.getMinutes() !== minute
+  ) {
+    return null;
+  }
+
+  return parsed;
 };
 
 export function ConversationActionsSheet({
@@ -149,6 +181,7 @@ export function ConversationActionsSheet({
   const [textEditorValue, setTextEditorValue] = useState('');
   const [responsibleOptions, setResponsibleOptions] = useState<ResponsibleOption[]>([]);
   const [isLoadingResponsibles, setIsLoadingResponsibles] = useState(false);
+  const saveLocksRef = useRef<Set<string>>(new Set());
   const actionsScrollRef = useRef<HTMLDivElement | null>(null);
   const actionsScrollSyncRef = useRef(false);
   const isAdminOrOwner = role === 'owner' || role === 'admin';
@@ -295,6 +328,7 @@ export function ConversationActionsSheet({
       notes: linkedAppointment?.notes?.trim() || nextAction?.notes?.trim() || '',
       isDirty: false,
       isSaving: false,
+      syncLockUntil: 0,
     };
   }, [appointmentsById, currentUserId, nextActionByLeadId, sortedAppointmentsByLeadId]);
 
@@ -313,7 +347,8 @@ export function ConversationActionsSheet({
         }
 
         // Preserve local edits while user is filling the sheet.
-        if (currentDraft.isDirty || currentDraft.isSaving) {
+        const now = Date.now();
+        if (currentDraft.isDirty || currentDraft.isSaving || currentDraft.syncLockUntil > now) {
           nextDrafts[leadId] = {
             ...currentDraft,
             appointmentId: freshDraft.appointmentId,
@@ -423,6 +458,7 @@ export function ConversationActionsSheet({
     const leadId = String(conversation.contact.id);
     const draft = drafts[leadId];
     if (!draft || draft.isSaving) return;
+    if (saveLocksRef.current.has(leadId)) return;
 
     const title = draft.title.trim();
     if (!title) {
@@ -444,7 +480,7 @@ export function ConversationActionsSheet({
       return;
     }
 
-    if (startAt.getTime() < Date.now()) {
+    if (startAt.getTime() < Date.now() - PAST_GRACE_MS) {
       toast({
         title: 'Agendamento no passado',
         description: 'A Proxima Acao precisa ficar em uma data futura.',
@@ -473,6 +509,7 @@ export function ConversationActionsSheet({
       return;
     }
 
+    saveLocksRef.current.add(leadId);
     updateDraft(leadId, (currentDraft) => ({
       ...currentDraft,
       isSaving: true,
@@ -503,6 +540,7 @@ export function ConversationActionsSheet({
         location: savedAppointment.location || draft.location,
         isDirty: false,
         isSaving: false,
+        syncLockUntil: Date.now() + 5000,
       }));
     } catch (error) {
       console.error('[conversation-actions-sheet] failed to save row', {
@@ -520,6 +558,8 @@ export function ConversationActionsSheet({
         description: error instanceof Error ? error.message : 'Nao foi possivel salvar o agendamento.',
         variant: 'destructive',
       });
+    } finally {
+      saveLocksRef.current.delete(leadId);
     }
   }, [currentUserId, drafts, onSaveRow, toast, updateDraft]);
 

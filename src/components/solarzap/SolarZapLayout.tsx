@@ -238,6 +238,7 @@ export function SolarZapLayout() {
   const [stageFilter, setStageFilter] = useState<PipelineStage | 'todos'>('todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [actionsSheetOrderedConversationIds, setActionsSheetOrderedConversationIds] = useState<string[] | null>(null);
   const [conversationsSidebarWidth, setConversationsSidebarWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return CONVERSAS_SIDEBAR_DEFAULT_WIDTH;
     const raw = window.localStorage.getItem(CONVERSAS_SIDEBAR_STORAGE_KEY);
@@ -510,11 +511,34 @@ export function SolarZapLayout() {
     });
   }, [conversations, channelFilter, stageFilter, searchQuery]);
 
+  useEffect(() => {
+    if (!isConversationActionsSheetOpen) {
+      setActionsSheetOrderedConversationIds(null);
+      return;
+    }
+
+    setActionsSheetOrderedConversationIds((current) => {
+      if (current && current.length > 0) return current;
+      return filteredConversations.map((conversation) => conversation.id);
+    });
+  }, [filteredConversations, isConversationActionsSheetOpen]);
+
+  const conversationsForActionsSheet = useMemo(() => {
+    if (!isConversationActionsSheetOpen || !actionsSheetOrderedConversationIds || actionsSheetOrderedConversationIds.length === 0) {
+      return filteredConversations;
+    }
+
+    const byId = new Map(filteredConversations.map((conversation) => [conversation.id, conversation]));
+    return actionsSheetOrderedConversationIds
+      .map((conversationId) => byId.get(conversationId))
+      .filter((conversation): conversation is Conversation => Boolean(conversation));
+  }, [actionsSheetOrderedConversationIds, filteredConversations, isConversationActionsSheetOpen]);
+
   const handleToggleConversationActionsSheet = useCallback(() => {
     if (isMobileViewport) return;
 
     if (!selectedConversation) {
-      const firstConversation = filteredConversations[0] || conversations[0];
+      const firstConversation = conversationsForActionsSheet[0] || filteredConversations[0] || conversations[0];
       if (firstConversation) {
         setSelectedConversation(firstConversation);
         markAsRead(firstConversation.id);
@@ -524,7 +548,7 @@ export function SolarZapLayout() {
     setIsDetailsPanelOpen(false);
     setConversationActionsScrollTop(0);
     setIsConversationActionsSheetOpen((current) => !current);
-  }, [conversations, filteredConversations, isMobileViewport, markAsRead, selectedConversation]);
+  }, [conversations, conversationsForActionsSheet, filteredConversations, isMobileViewport, markAsRead, selectedConversation]);
 
   const handleConversationActionsScroll = useCallback((scrollTop: number) => {
     setConversationActionsScrollTop((current) => (
@@ -546,16 +570,28 @@ export function SolarZapLayout() {
   }) => {
     const startAt = input.startAt;
     const endAt = addMinutes(startAt, input.durationMinutes);
-    const existingAppointment =
-      input.appointmentId
-        ? appointments.find((appointment) => String(appointment.id) === String(input.appointmentId))
-        : null;
-    let resolvedNextActionTaskId = input.nextActionTaskId || nextActionByLeadId.get(String(input.contact.id))?.id || null;
+    const fallbackSave = async () => {
+      const existingAppointment =
+        input.appointmentId
+          ? appointments.find((appointment) => String(appointment.id) === String(input.appointmentId))
+          : null;
+      let resolvedNextActionTaskId = input.nextActionTaskId || nextActionByLeadId.get(String(input.contact.id))?.id || null;
 
-    const savedAppointment = input.appointmentId
-      ? await updateAppointment({
-          id: String(input.appointmentId),
-          data: {
+      const savedAppointment = input.appointmentId
+        ? await updateAppointment({
+            id: String(input.appointmentId),
+            data: {
+              user_id: input.responsibleUserId,
+              lead_id: Number(input.contact.id),
+              title: input.title,
+              type: input.type,
+              start_at: startAt,
+              end_at: endAt,
+              location: input.location || '',
+              notes: input.notes || existingAppointment?.notes || '',
+            },
+          })
+        : await createAppointment({
             user_id: input.responsibleUserId,
             lead_id: Number(input.contact.id),
             title: input.title,
@@ -563,67 +599,126 @@ export function SolarZapLayout() {
             start_at: startAt,
             end_at: endAt,
             location: input.location || '',
-            notes: input.notes || existingAppointment?.notes || '',
-          },
-        })
-      : await createAppointment({
-          user_id: input.responsibleUserId,
-          lead_id: Number(input.contact.id),
-          title: input.title,
-          type: input.type,
-          start_at: startAt,
-          end_at: endAt,
-          location: input.location || '',
-          notes: input.notes || '',
-        });
+            notes: input.notes || '',
+          });
 
-    if (!resolvedNextActionTaskId && orgId) {
-      const { data: existingTaskRow, error: existingTaskError } = await supabase
-        .from('lead_tasks')
-        .select('id')
-        .eq('org_id', orgId)
-        .eq('lead_id', Number(input.contact.id))
-        .eq('status', 'open')
-        .eq('task_kind', 'next_action')
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      if (!resolvedNextActionTaskId && orgId) {
+        const { data: existingTaskRow, error: existingTaskError } = await supabase
+          .from('lead_tasks')
+          .select('id')
+          .eq('org_id', orgId)
+          .eq('lead_id', Number(input.contact.id))
+          .eq('status', 'open')
+          .eq('task_kind', 'next_action')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      if (existingTaskError) {
-        throw existingTaskError;
+        if (existingTaskError) {
+          throw existingTaskError;
+        }
+
+        resolvedNextActionTaskId = existingTaskRow?.id ? String(existingTaskRow.id) : null;
       }
 
-      resolvedNextActionTaskId = existingTaskRow?.id ? String(existingTaskRow.id) : null;
+      if (resolvedNextActionTaskId) {
+        await updateNextAction({
+          taskId: resolvedNextActionTaskId,
+          title: input.title,
+          notes: input.notes || null,
+          dueAt: startAt,
+          channel: 'other',
+          userId: input.responsibleUserId,
+        });
+        await linkNextActionToAppointment({
+          taskId: resolvedNextActionTaskId,
+          appointmentId: String(savedAppointment.id),
+          dueAt: startAt,
+          channel: 'other',
+        });
+      } else {
+        await createNextAction({
+          leadId: Number(input.contact.id),
+          title: input.title,
+          notes: input.notes || null,
+          dueAt: startAt,
+          channel: 'other',
+          userId: input.responsibleUserId,
+          linkedAppointmentId: String(savedAppointment.id),
+        });
+      }
+
+      return savedAppointment;
+    };
+
+    if (!orgId) {
+      return fallbackSave();
     }
 
-    if (resolvedNextActionTaskId) {
-      await updateNextAction({
-        taskId: resolvedNextActionTaskId,
-        title: input.title,
-        notes: input.notes || null,
-        dueAt: startAt,
-        channel: 'other',
-        userId: input.responsibleUserId,
-      });
-      await linkNextActionToAppointment({
-        taskId: resolvedNextActionTaskId,
-        appointmentId: String(savedAppointment.id),
-        dueAt: startAt,
-        channel: 'other',
-      });
-    } else {
-      await createNextAction({
-        leadId: Number(input.contact.id),
-        title: input.title,
-        notes: input.notes || null,
-        dueAt: startAt,
-        channel: 'other',
-        userId: input.responsibleUserId,
-        linkedAppointmentId: String(savedAppointment.id),
-      });
+    type UpsertNextActionAppointmentRpcRow = {
+      appointment_id: number;
+      task_id: string;
+      appointment_user_id: string;
+      appointment_title: string;
+      appointment_type: Appointment['type'];
+      appointment_start_at: string;
+      appointment_end_at: string;
+      appointment_location: string | null;
+      appointment_notes: string | null;
+    };
+
+    const { data, error } = await supabase.rpc('upsert_lead_next_action_appointment', {
+      p_org_id: orgId,
+      p_lead_id: Number(input.contact.id),
+      p_title: input.title,
+      p_type: input.type,
+      p_start_at: startAt.toISOString(),
+      p_end_at: endAt.toISOString(),
+      p_location: input.location || '',
+      p_notes: input.notes || '',
+      p_user_id: input.responsibleUserId,
+      p_appointment_id: input.appointmentId ? Number(input.appointmentId) : null,
+      p_task_id: input.nextActionTaskId || nextActionByLeadId.get(String(input.contact.id))?.id || null,
+    });
+
+    if (error) {
+      const isMissingRpc =
+        String(error.code || '').toUpperCase() === 'PGRST202' ||
+        /upsert_lead_next_action_appointment/i.test(String(error.message || ''));
+      if (isMissingRpc) {
+        console.warn('[conversation-actions-sheet] RPC not found, using fallback flow', error);
+        return fallbackSave();
+      }
+      throw error;
     }
 
-    return savedAppointment;
+    const rows = Array.isArray(data) ? (data as UpsertNextActionAppointmentRpcRow[]) : [];
+    const row = rows[0];
+    if (!row?.appointment_id) {
+      throw new Error('Nao foi possivel confirmar o agendamento salvo.');
+    }
+
+    const appointmentStartAt = row.appointment_start_at || startAt.toISOString();
+    const appointmentEndAt = row.appointment_end_at || endAt.toISOString();
+
+    const normalizedAppointment: Appointment = {
+      id: String(row.appointment_id),
+      user_id: row.appointment_user_id || input.responsibleUserId,
+      lead_id: Number(input.contact.id),
+      title: row.appointment_title || input.title,
+      type: row.appointment_type || input.type,
+      status: 'scheduled',
+      start_at: appointmentStartAt,
+      end_at: appointmentEndAt,
+      location: row.appointment_location || input.location || '',
+      notes: row.appointment_notes || input.notes || '',
+      created_at: appointmentStartAt,
+      updated_at: appointmentStartAt,
+      leads: null,
+      outcome: null,
+    };
+
+    return normalizedAppointment;
   }, [appointments, createAppointment, createNextAction, linkNextActionToAppointment, nextActionByLeadId, orgId, updateAppointment, updateNextAction]);
 
   // Set initial selected conversation
@@ -1770,7 +1865,7 @@ export function SolarZapLayout() {
             >
             <Suspense fallback={<TabLoadingFallback label="Carregando conversas..." />}>
               <ConversationList
-                conversations={filteredConversations}
+                conversations={conversationsForActionsSheet}
                 contacts={contacts}
                 showLeadNextAction={leadNextActionEnabled}
                 nextActionByLeadId={nextActionByLeadId}
@@ -1826,7 +1921,7 @@ export function SolarZapLayout() {
               onToggleActions={handleToggleConversationActionsSheet}
               actionsSheet={!isMobileViewport && isConversationActionsSheetOpen ? (
                 <ConversationActionsSheet
-                  conversations={filteredConversations}
+                  conversations={conversationsForActionsSheet}
                   appointments={appointments}
                   nextActionByLeadId={nextActionByLeadId}
                   selectedConversationId={activeConversation?.id || null}

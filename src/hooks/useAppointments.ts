@@ -75,13 +75,14 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
 
             if (error) {
                 console.error('Error fetching appointments:', error);
-                toast.error('Erro ao buscar agendamentos: ' + error.message);
-                return [];
+                throw error;
             }
 
             return data as Appointment[];
         },
         enabled: !!user && !!orgId,
+        placeholderData: (previousData) => previousData ?? [],
+        retry: 1,
     });
 
     const createAppointment = useMutation({
