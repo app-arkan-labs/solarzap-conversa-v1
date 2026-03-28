@@ -46,6 +46,229 @@ async function resolveOrgIdFromEvent(
   return data?.org_id ?? null;
 }
 
+function extractInternalCrmMetadata(dataObj: Record<string, unknown>): {
+  dealId: string | null;
+  clientId: string | null;
+} {
+  const metadata = (dataObj.metadata || {}) as Record<string, string>;
+  return {
+    dealId: typeof metadata.internal_crm_deal_id === 'string' ? metadata.internal_crm_deal_id : null,
+    clientId: typeof metadata.internal_crm_client_id === 'string' ? metadata.internal_crm_client_id : null,
+  };
+}
+
+function mapStripeSubscriptionStatus(status: string): string {
+  if (status === 'trialing') return 'trialing';
+  if (status === 'active') return 'active';
+  if (status === 'past_due' || status === 'unpaid') return 'past_due';
+  if (status === 'canceled' || status === 'incomplete_expired') return 'canceled';
+  return 'pending';
+}
+
+async function resolveInternalCrmContext(
+  serviceClient: ReturnType<typeof getServiceClient>,
+  stripe: Stripe,
+  event: Stripe.Event,
+): Promise<{ dealId: string | null; clientId: string | null }> {
+  const dataObj = event.data.object as Record<string, unknown>;
+  const direct = extractInternalCrmMetadata(dataObj);
+  if (direct.dealId || direct.clientId) {
+    return direct;
+  }
+
+  const subscriptionId = typeof dataObj.subscription === 'string'
+    ? dataObj.subscription
+    : (dataObj.subscription as Stripe.Subscription | null)?.id;
+
+  if (subscriptionId) {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const metadata = subscription.metadata || {};
+    return {
+      dealId: typeof metadata.internal_crm_deal_id === 'string' ? metadata.internal_crm_deal_id : null,
+      clientId: typeof metadata.internal_crm_client_id === 'string' ? metadata.internal_crm_client_id : null,
+    };
+  }
+
+  return { dealId: null, clientId: null };
+}
+
+async function handleInternalCrmStripeEvent(
+  serviceClient: ReturnType<typeof getServiceClient>,
+  stripe: Stripe,
+  event: Stripe.Event,
+): Promise<boolean> {
+  const schema = serviceClient.schema('internal_crm');
+  const context = await resolveInternalCrmContext(serviceClient, stripe, event);
+  if (!context.dealId && !context.clientId) {
+    return false;
+  }
+
+  const paymentEventsQuery = schema
+    .from('payment_events')
+    .select('id')
+    .eq('provider', 'stripe')
+    .eq('provider_event_id', event.id)
+    .maybeSingle();
+
+  const { data: existingPaymentEvent } = await paymentEventsQuery;
+  if (existingPaymentEvent?.id) {
+    return true;
+  }
+
+  const [{ data: deal }, { data: client }] = await Promise.all([
+    context.dealId ? schema.from('deals').select('*').eq('id', context.dealId).maybeSingle() : Promise.resolve({ data: null }),
+    context.clientId ? schema.from('clients').select('*').eq('id', context.clientId).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+
+  const resolvedDeal = deal?.id ? deal : null;
+  const resolvedClient = client?.id
+    ? client
+    : (resolvedDeal?.client_id ? (await schema.from('clients').select('*').eq('id', resolvedDeal.client_id).maybeSingle()).data : null);
+
+  if (!resolvedClient?.id) {
+    return false;
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const amountTotal = Number(session.amount_total || 0);
+    const subscriptionId = typeof session.subscription === 'string' ? session.subscription : null;
+    const customerId = typeof session.customer === 'string' ? session.customer : null;
+    const orderNumber = session.id;
+
+    const { data: order } = await schema.from('orders').upsert({
+      client_id: resolvedClient.id,
+      deal_id: resolvedDeal?.id || null,
+      order_number: orderNumber,
+      status: 'paid',
+      total_cents: amountTotal,
+      payment_method: 'stripe',
+      paid_at: new Date().toISOString(),
+      metadata: {
+        stripe_checkout_session_id: session.id,
+        stripe_customer_id: customerId,
+      },
+    }, { onConflict: 'order_number' }).select('*').single();
+
+    if (resolvedDeal?.id) {
+      await schema.from('deals').update({
+        status: 'won',
+        payment_method: 'stripe',
+        payment_status: 'paid',
+        checkout_url: null,
+        stripe_checkout_session_id: session.id,
+        stripe_subscription_id: subscriptionId,
+        paid_at: new Date().toISOString(),
+        won_at: resolvedDeal.won_at || new Date().toISOString(),
+        closed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', resolvedDeal.id);
+    }
+
+    await schema.from('clients').update({
+      lifecycle_status: 'customer_onboarding',
+      updated_at: new Date().toISOString(),
+    }).eq('id', resolvedClient.id);
+
+    if (subscriptionId) {
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      const { data: recurringItem } = resolvedDeal?.id
+        ? await schema.from('deal_items').select('product_code').eq('deal_id', resolvedDeal.id).eq('billing_type', 'recurring').limit(1).maybeSingle()
+        : { data: null };
+
+      await schema.from('subscriptions').upsert({
+        client_id: resolvedClient.id,
+        deal_id: resolvedDeal?.id || null,
+        product_code: recurringItem?.product_code || null,
+        status: mapStripeSubscriptionStatus(subscription.status),
+        mrr_cents: resolvedDeal?.mrr_cents || 0,
+        billing_interval: 'month',
+        promise_started_at: new Date().toISOString(),
+        current_period_end: toIso(subscription.current_period_end),
+        stripe_subscription_id: subscription.id,
+        stripe_customer_id: customerId,
+        metadata: {
+          stripe_status: subscription.status,
+        },
+      }, { onConflict: 'stripe_subscription_id' });
+    }
+
+    await schema.from('payment_events').insert({
+      order_id: order?.id || null,
+      deal_id: resolvedDeal?.id || null,
+      provider: 'stripe',
+      provider_event_id: event.id,
+      event_type: event.type,
+      amount_cents: amountTotal,
+      status: 'recorded',
+      payload: event,
+    });
+
+    return true;
+  }
+
+  if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+    const subscription = event.data.object as Stripe.Subscription;
+    await schema.from('subscriptions').update({
+      status: mapStripeSubscriptionStatus(subscription.status),
+      current_period_end: toIso(subscription.current_period_end),
+      updated_at: new Date().toISOString(),
+      metadata: {
+        stripe_status: subscription.status,
+      },
+    }).eq('stripe_subscription_id', subscription.id);
+
+    await schema.from('payment_events').insert({
+      subscription_id: null,
+      deal_id: resolvedDeal?.id || null,
+      provider: 'stripe',
+      provider_event_id: event.id,
+      event_type: event.type,
+      amount_cents: 0,
+      status: 'recorded',
+      payload: event,
+    });
+
+    return true;
+  }
+
+  if (event.type === 'invoice.payment_succeeded' || event.type === 'invoice.payment_failed') {
+    const invoice = event.data.object as Stripe.Invoice;
+    const subscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : null;
+    const status = event.type === 'invoice.payment_succeeded' ? 'recorded' : 'failed';
+    const amountPaid = Number(invoice.amount_paid || invoice.amount_due || 0);
+
+    await schema.from('payment_events').insert({
+      subscription_id: null,
+      deal_id: resolvedDeal?.id || null,
+      provider: 'stripe',
+      provider_event_id: event.id,
+      event_type: event.type,
+      amount_cents: amountPaid,
+      status,
+      payload: event,
+    });
+
+    if (subscriptionId) {
+      await schema.from('subscriptions').update({
+        status: event.type === 'invoice.payment_succeeded' ? 'active' : 'past_due',
+        updated_at: new Date().toISOString(),
+      }).eq('stripe_subscription_id', subscriptionId);
+    }
+
+    if (resolvedDeal?.id) {
+      await schema.from('deals').update({
+        payment_status: event.type === 'invoice.payment_succeeded' ? 'paid' : 'failed',
+        updated_at: new Date().toISOString(),
+      }).eq('id', resolvedDeal.id);
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
 Deno.serve(async (req) => {
   const cors = resolveRequestCors(req);
   const corsHeaders = cors.corsHeaders;
@@ -73,6 +296,11 @@ Deno.serve(async (req) => {
     }
 
     const serviceClient = getServiceClient();
+    const handledInternalCrm = await handleInternalCrmStripeEvent(serviceClient, stripe, event);
+    if (handledInternalCrm) {
+      return json(corsHeaders, 200, { ok: true, scope: 'internal_crm' });
+    }
+
     const orgId = await resolveOrgIdFromEvent(serviceClient, event);
 
     if (!orgId) {

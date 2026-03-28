@@ -88,6 +88,12 @@ verify_jwt = false
 [functions.admin-api]
 verify_jwt = false
 
+[functions.internal-crm-api]
+verify_jwt = false
+
+[functions.internal-crm-broadcast-worker]
+verify_jwt = false
+
 [functions.stripe-checkout]
 verify_jwt = false
 

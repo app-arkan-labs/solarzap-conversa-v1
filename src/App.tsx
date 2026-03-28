@@ -16,6 +16,7 @@ import { extractAuthErrorMetadata, shouldAttemptAuthRecovery } from "@/lib/authS
 import { getPasswordRecoveryRedirectTarget } from "@/lib/passwordRecoveryRedirect";
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
+import { resolveHostAwareRedirect } from "@/lib/hostDetection";
 
 const Index = lazyWithRetry(() => import("./pages/Index"), "app:index");
 const Login = lazyWithRetry(() => import("./pages/Login"), "app:login");
@@ -133,6 +134,12 @@ const App = () => {
     const recoveryRedirectTarget = getPasswordRecoveryRedirectTarget(window.location);
     if (recoveryRedirectTarget) {
       window.location.replace(recoveryRedirectTarget);
+      return null;
+    }
+
+    const hostAwareRedirectTarget = resolveHostAwareRedirect(window.location);
+    if (hostAwareRedirectTarget) {
+      window.location.replace(hostAwareRedirectTarget);
       return null;
     }
   }
