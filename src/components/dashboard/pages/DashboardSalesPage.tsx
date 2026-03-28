@@ -12,7 +12,6 @@ interface DashboardSalesPageProps {
   data?: DashboardPayload;
   isLoading: boolean;
   onViewPipeline?: () => void;
-  onViewConversations?: () => void;
   onOpenLead?: (leadId: string | number) => void;
 }
 
@@ -20,7 +19,6 @@ export function DashboardSalesPage({
   data,
   isLoading,
   onViewPipeline,
-  onViewConversations,
   onOpenLead,
 }: DashboardSalesPageProps) {
   const metrics: DashboardMetricItem[] = data?.funnel
@@ -80,31 +78,27 @@ export function DashboardSalesPage({
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr] xl:items-start">
-        <Card className="border-border/50 bg-background/50 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock3 className="h-4 w-4 text-amber-600" />
-              Leads que precisam de atencao
-            </CardTitle>
-            <CardDescription>
-              Leads parados e sem andamento que merecem retorno antes de perder a venda.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <StaleLeadsTable
-              data={data?.tables.stale_leads}
-              isLoading={isLoading}
-              onOpenLead={onOpenLead}
-              maxHeightClassName="h-[460px]"
-            />
-          </CardContent>
-        </Card>
-
-        <div className="min-w-0">
-          <DashboardCharts data={data?.charts} kpis={data?.kpis} isLoading={isLoading} mode="commercial" />
-        </div>
+      <div className="min-w-0">
+        <DashboardCharts data={data?.charts} kpis={data?.kpis} isLoading={isLoading} mode="commercial" />
       </div>
+
+      <Card className="border-border/50 bg-background/50 shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock3 className="h-4 w-4 text-amber-600" />
+            Leads para retomar
+          </CardTitle>
+          <CardDescription>Negociacoes paradas que merecem contato rapido para nao perder timing.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <StaleLeadsTable
+            data={data?.tables.stale_leads}
+            isLoading={isLoading}
+            onOpenLead={onOpenLead}
+            maxHeightClassName="h-[460px]"
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

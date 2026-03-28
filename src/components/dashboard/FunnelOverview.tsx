@@ -36,8 +36,8 @@ export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOvervi
     <Card className="h-full border-border/50 bg-background/50 shadow-sm">
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <CardTitle>Onde as vendas travam</CardTitle>
-          <CardDescription>Veja onde existe acumulacao e quais etapas precisam destravar primeiro.</CardDescription>
+          <CardTitle>Resumo do funil</CardTitle>
+          <CardDescription>Veja a distribuicao dos leads e as etapas com maior concentracao.</CardDescription>
         </div>
         {onViewPipeline ? (
           <Button variant="outline" size="sm" className="rounded-full" onClick={onViewPipeline}>
@@ -76,7 +76,7 @@ export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOvervi
           <div className="rounded-xl border border-border/60 bg-background/70 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <AlertTriangle className="h-4 w-4 text-amber-600" />
-              Maior gargalo
+              Etapa com mais acumulacao
             </div>
             <p className="mt-2 text-lg font-semibold text-foreground">{bottleneckLabel}</p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -90,8 +90,8 @@ export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOvervi
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-foreground">Etapas que precisam de atencao</p>
-              <p className="text-xs text-muted-foreground">Mostramos primeiro as etapas com mais atraso e acumulacao.</p>
+              <p className="text-sm font-semibold text-foreground">Etapas com maior concentracao</p>
+              <p className="text-xs text-muted-foreground">Mostramos primeiro as etapas com mais atraso e volume parado.</p>
             </div>
             {priorityRows.length > 0 ? <span className="text-xs text-muted-foreground">{priorityRows.length} etapas com leitura ativa</span> : null}
           </div>

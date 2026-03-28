@@ -10,15 +10,15 @@ export const DASHBOARD_VIEW_OPTIONS: Array<{
 }> = [
   {
     value: "today",
-    label: "Hoje",
-    subtitle: "Priorize o que esta vencido, o que esfriou e o que precisa de retorno agora.",
-    question: "No que preciso agir agora?",
+    label: "Geral",
+    subtitle: "Acompanhe os principais numeros do periodo e as filas que precisam de resposta.",
+    question: "Visao geral do comercial e do financeiro.",
   },
   {
     value: "sales",
     label: "Vendas",
-    subtitle: "Entenda onde as vendas travam e o que precisa destravar no funil.",
-    question: "Onde as vendas travam e o que precisa destravar?",
+    subtitle: "Acompanhe o funil, veja os canais com melhor resultado e identifique negociacoes paradas.",
+    question: "Resumo comercial do periodo.",
   },
   {
     value: "financial",

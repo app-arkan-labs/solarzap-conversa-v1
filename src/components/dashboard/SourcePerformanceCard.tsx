@@ -33,9 +33,9 @@ export function SourcePerformanceCard({
         <div>
           <CardTitle className="flex items-center gap-2">
             <RadioTower className="h-5 w-5 text-sky-600" />
-            Canais que mais vendem
+            Resultados por canal
           </CardTitle>
-          <CardDescription>Veja quais canais geram volume e quais realmente viram venda.</CardDescription>
+          <CardDescription>Compare volume, vendas e faturamento por origem.</CardDescription>
         </div>
         {actionLabel && onAction ? (
           <button type="button" className="text-xs font-medium text-primary hover:underline" onClick={onAction}>

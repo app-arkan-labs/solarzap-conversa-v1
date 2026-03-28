@@ -55,8 +55,8 @@ export function DashboardCharts({ data, kpis, isLoading, mode = "all" }: ChartPr
             {mode !== "financial" ? (
             <Card className="border-border/50 bg-background/50 shadow-sm">
                 <CardHeader>
-                    <CardTitle className="text-foreground">Evolucao comercial</CardTitle>
-                    <CardDescription>Leads, vendas e conversao ao longo do periodo selecionado.</CardDescription>
+                    <CardTitle className="text-foreground">Desempenho comercial no periodo</CardTitle>
+                    <CardDescription>Leads, vendas e conversao ao longo do intervalo selecionado.</CardDescription>
                 </CardHeader>
                 <CardContent className="h-[340px]">
                     {hasCommercialData ? (

@@ -1,14 +1,13 @@
-import { useMemo } from "react";
-import { AlertTriangle, ArrowRight, CalendarClock, Clock3, MessageSquare, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Wallet } from "lucide-react";
 
 import { ActionSnapshotCard } from "@/components/dashboard/ActionSnapshotCard";
+import { DashboardMetricGrid, type DashboardMetricItem } from "@/components/dashboard/DashboardMetricGrid";
 import { FinanceSnapshotCard } from "@/components/dashboard/FinanceSnapshotCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarSummaryPanel } from "@/components/dashboard/tables/CalendarSummaryPanel";
 import { LeadActionQueuePanel } from "@/components/dashboard/tables/LeadActionQueuePanel";
 import { StaleLeadsTable } from "@/components/dashboard/tables/StaleLeadsTable";
-import { buildLeadActionMaps, getLeadTaskDueState } from "@/lib/leadNextActions";
 import type { DashboardPayload } from "@/types/dashboard";
 import type { Contact, LeadTask } from "@/types/solarzap";
 
@@ -51,9 +50,9 @@ function TodayBottleneckCard({
         <div>
           <CardTitle className="flex items-center gap-2 text-lg">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
-            Maior gargalo do momento
+            Etapa com maior atraso
           </CardTitle>
-          <CardDescription>Onde a venda mais trava agora.</CardDescription>
+          <CardDescription>Ponto do funil com mais volume parado neste momento.</CardDescription>
         </div>
         {onViewSales ? (
           <Button variant="outline" size="sm" className="rounded-full" onClick={onViewSales}>
@@ -63,7 +62,7 @@ function TodayBottleneckCard({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Onde agir primeiro</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Prioridade no funil</p>
           <p className="mt-2 text-xl font-semibold text-foreground">{bottleneckLabel}</p>
           <p className="mt-1 text-sm text-muted-foreground">
             {funnel.stale_total > 0
@@ -114,65 +113,46 @@ export function DashboardTodayPage({
   onViewSales,
 }: DashboardTodayPageProps) {
   const hasLeadActionQueue = showLeadNextAction && contacts.length > 0 && leadTasks.length > 0;
-  const { nextActionByLeadId } = useMemo(() => buildLeadActionMaps(leadTasks), [leadTasks]);
 
-  const queueSummary = useMemo(
-    () =>
-      contacts.reduce(
-        (acc, contact) => {
-          const task = nextActionByLeadId.get(String(contact.id)) || null;
-          const dueState = getLeadTaskDueState(task);
-          if (dueState === "overdue") acc.overdue += 1;
-          if (dueState === "today") acc.today += 1;
-          return acc;
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value || 0);
+
+  const financialMetrics: DashboardMetricItem[] = data
+    ? [
+        {
+          id: "general-revenue",
+          label: "Faturado",
+          value: formatCurrency(data.kpis.revenue.value),
+          description: "Projetos que entraram em Projeto Pago no periodo.",
+          icon: Wallet,
+          tone: "emerald",
         },
-        { overdue: 0, today: 0 },
-      ),
-    [contacts, nextActionByLeadId],
-  );
-
-  const nextThreeDaysEvents = useMemo(() => {
-    const cutoff = new Date();
-    cutoff.setHours(23, 59, 59, 999);
-    cutoff.setDate(cutoff.getDate() + 3);
-
-    return (data?.calendar.upcoming || []).filter((event) => new Date(event.start_at) <= cutoff);
-  }, [data?.calendar.upcoming]);
-
-  const summaryItems = [
-    {
-      label: "Acoes vencidas",
-      value: String(queueSummary.overdue),
-      helper: "Comece por aqui.",
-      icon: AlertTriangle,
-      tone: "text-rose-700",
-      bubble: "bg-rose-500/10",
-    },
-    {
-      label: "Leads parados",
-      value: String(data?.tables.stale_leads.length || 0),
-      helper: "Precisam de retorno.",
-      icon: Clock3,
-      tone: "text-amber-700",
-      bubble: "bg-amber-500/10",
-    },
-    {
-      label: "Compromissos",
-      value: String(nextThreeDaysEvents.length),
-      helper: "Hoje e proximos 3 dias.",
-      icon: CalendarClock,
-      tone: "text-sky-700",
-      bubble: "bg-sky-500/10",
-    },
-    {
-      label: "Parcelas vencidas",
-      value: String(data?.finance.overdue_count || 0),
-      helper: "Cobrar ou confirmar.",
-      icon: Wallet,
-      tone: "text-rose-700",
-      bubble: "bg-rose-500/10",
-    },
-  ] as const;
+        {
+          id: "general-received",
+          label: "Recebido",
+          value: formatCurrency(data.finance.received_in_period),
+          description: "Valores confirmados no caixa no periodo.",
+          icon: CheckCircle2,
+          tone: "sky",
+        },
+        {
+          id: "general-scheduled",
+          label: "A receber",
+          value: formatCurrency(data.finance.scheduled_in_period),
+          description: "Parcelas previstas dentro do periodo filtrado.",
+          icon: CalendarClock,
+          tone: "cyan",
+        },
+        {
+          id: "general-overdue",
+          label: "Vencido",
+          value: formatCurrency(data.finance.overdue_amount),
+          description: `${data.finance.overdue_count} parcelas aguardando definicao.`,
+          icon: AlertTriangle,
+          tone: "rose",
+        },
+      ]
+    : [];
 
   const actionPanel = hasLeadActionQueue ? (
     <LeadActionQueuePanel
@@ -196,44 +176,7 @@ export function DashboardTodayPage({
 
   return (
     <div className="space-y-6">
-      <Card className="border-border/50 bg-background/70 shadow-sm">
-        <CardContent className="flex flex-col gap-5 p-5 lg:flex-row lg:items-start lg:justify-between lg:p-6">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Hoje</p>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">O que fazer agora</h2>
-            <p className="max-w-2xl text-sm text-muted-foreground">
-              Priorize o que venceu, o que pode esfriar e o que nao pode passar de hoje.
-            </p>
-          </div>
-
-          {onViewConversations ? (
-            <Button className="rounded-full px-5" onClick={onViewConversations}>
-              <MessageSquare className="h-4 w-4" />
-              Abrir conversas
-            </Button>
-          ) : null}
-        </CardContent>
-
-        <CardContent className="grid gap-3 border-t border-border/60 p-5 md:grid-cols-2 xl:grid-cols-4">
-          {summaryItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.label} className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{item.label}</p>
-                    <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">{item.value}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{item.helper}</p>
-                  </div>
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-full ${item.bubble}`}>
-                    <Icon className={`h-4 w-4 ${item.tone}`} />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+      <DashboardMetricGrid items={financialMetrics} />
 
       <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
         <div className="min-w-0">{actionPanel}</div>

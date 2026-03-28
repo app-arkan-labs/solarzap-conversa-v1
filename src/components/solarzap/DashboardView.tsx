@@ -199,7 +199,6 @@ export function DashboardView({
             data={data}
             isLoading={isLoading}
             onViewPipeline={handleViewPipeline}
-            onViewConversations={handleViewConversations}
             onOpenLead={handleOpenLeadById}
           />
         );
