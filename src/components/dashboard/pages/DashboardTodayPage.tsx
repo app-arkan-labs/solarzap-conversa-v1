@@ -1,4 +1,5 @@
-import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Wallet } from "lucide-react";
+import { useMemo } from "react";
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, Wallet } from "lucide-react";
 
 import { ActionSnapshotCard } from "@/components/dashboard/ActionSnapshotCard";
 import { DashboardMetricGrid, type DashboardMetricItem } from "@/components/dashboard/DashboardMetricGrid";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { CalendarSummaryPanel } from "@/components/dashboard/tables/CalendarSummaryPanel";
 import { LeadActionQueuePanel } from "@/components/dashboard/tables/LeadActionQueuePanel";
 import { StaleLeadsTable } from "@/components/dashboard/tables/StaleLeadsTable";
+import { buildLeadActionMaps, getLeadTaskDueState } from "@/lib/leadNextActions";
 import type { DashboardPayload } from "@/types/dashboard";
 import type { Contact, LeadTask } from "@/types/solarzap";
 
@@ -113,11 +115,35 @@ export function DashboardTodayPage({
   onViewSales,
 }: DashboardTodayPageProps) {
   const hasLeadActionQueue = showLeadNextAction && contacts.length > 0 && leadTasks.length > 0;
+  const { nextActionByLeadId } = useMemo(() => buildLeadActionMaps(leadTasks), [leadTasks]);
+
+  const queueSummary = useMemo(
+    () =>
+      contacts.reduce(
+        (acc, contact) => {
+          const task = nextActionByLeadId.get(String(contact.id)) || null;
+          const dueState = getLeadTaskDueState(task);
+          if (dueState === "overdue") acc.overdue += 1;
+          if (dueState === "today") acc.today += 1;
+          return acc;
+        },
+        { overdue: 0, today: 0 },
+      ),
+    [contacts, nextActionByLeadId],
+  );
+
+  const nextThreeDaysEvents = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setHours(23, 59, 59, 999);
+    cutoff.setDate(cutoff.getDate() + 3);
+
+    return (data?.calendar.upcoming || []).filter((event) => new Date(event.start_at) <= cutoff);
+  }, [data?.calendar.upcoming]);
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value || 0);
 
-  const financialMetrics: DashboardMetricItem[] = data
+  const topMetrics: DashboardMetricItem[] = data
     ? [
         {
           id: "general-revenue",
@@ -151,6 +177,38 @@ export function DashboardTodayPage({
           icon: AlertTriangle,
           tone: "rose",
         },
+        {
+          id: "general-overdue-actions",
+          label: "Acoes vencidas",
+          value: String(queueSummary.overdue),
+          description: "Atividades que pedem resposta agora.",
+          icon: AlertTriangle,
+          tone: "rose",
+        },
+        {
+          id: "general-stale-leads",
+          label: "Leads parados",
+          value: String(data.tables.stale_leads.length),
+          description: "Leads sem avancar e pedindo retorno.",
+          icon: Clock3,
+          tone: "amber",
+        },
+        {
+          id: "general-appointments",
+          label: "Compromissos",
+          value: String(nextThreeDaysEvents.length),
+          description: "Hoje e proximos 3 dias.",
+          icon: CalendarClock,
+          tone: "sky",
+        },
+        {
+          id: "general-overdue-installments",
+          label: "Parcelas vencidas",
+          value: String(data.finance.overdue_count),
+          description: "Quantidade de parcelas em atraso.",
+          icon: Wallet,
+          tone: "rose",
+        },
       ]
     : [];
 
@@ -176,7 +234,7 @@ export function DashboardTodayPage({
 
   return (
     <div className="space-y-6">
-      <DashboardMetricGrid items={financialMetrics} />
+      <DashboardMetricGrid items={topMetrics} />
 
       <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
         <div className="min-w-0">{actionPanel}</div>
