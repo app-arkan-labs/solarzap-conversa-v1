@@ -49,7 +49,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthError | null>;
-  signUp: (email: string, password: string) => Promise<AuthError | null>;
+  signUp: (email: string, password: string, metadata?: { display_name?: string; company_name?: string; cpf?: string; cnpj?: string }) => Promise<AuthError | null>;
   resendSignUpConfirmation: (email: string) => Promise<AuthError | null>;
   signOut: () => Promise<void>;
   selectOrganization: (orgId: string, opts?: SelectOrganizationOptions) => Promise<void>;
@@ -976,14 +976,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signUp = async (email: string, password: string): Promise<AuthError | null> => {
+  const signUp = async (
+    email: string,
+    password: string,
+    metadata?: { display_name?: string; company_name?: string; cpf?: string; cnpj?: string },
+  ): Promise<AuthError | null> => {
     try {
-      const redirectUrl = `${window.location.origin}/onboarding`;
+      const redirectUrl = new URL(`${window.location.origin}/onboarding`);
+      // Carry plan hint into the confirmation email redirect so it survives cross-tab
+      const planHint = typeof window !== 'undefined'
+        ? (window.sessionStorage.getItem('checkout_plan_hint') || window.localStorage.getItem('checkout_plan_hint'))
+        : null;
+      if (planHint) redirectUrl.searchParams.set('plan', planHint);
+
+      const userMetadata: Record<string, string> = {};
+      if (metadata?.display_name) userMetadata.display_name = metadata.display_name;
+      if (metadata?.company_name) userMetadata.company_name = metadata.company_name;
+      if (metadata?.cpf) userMetadata.cpf = metadata.cpf;
+      if (metadata?.cnpj) userMetadata.cnpj = metadata.cnpj;
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: redirectUrl,
+          emailRedirectTo: redirectUrl.toString(),
+          ...(Object.keys(userMetadata).length > 0 ? { data: userMetadata } : {}),
         },
       });
       if (error) return error;

@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import {
   Bot,
   Building2,
+  CalendarDays,
   DollarSign,
   Flag,
   Home,
@@ -33,6 +34,7 @@ const crmSidebarItems: SidebarItem[] = [
   { to: '/admin/crm/inbox', label: 'Inbox', icon: MessageSquare },
   { to: '/admin/crm/clients', label: 'Clientes', icon: Building2 },
   { to: '/admin/crm/campaigns', label: 'Campanhas', icon: Megaphone },
+  { to: '/admin/crm/calendar', label: 'Calendarios', icon: CalendarDays },
   { to: '/admin/crm/ai', label: 'IA', icon: Bot },
   { to: '/admin/crm/finance', label: 'Financeiro CRM', icon: DollarSign },
 ];

@@ -6,17 +6,25 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mail, Lock, Loader2, ArrowLeft, Zap, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowLeft, Zap, Eye, EyeOff, User, Building2, CreditCard } from 'lucide-react';
 import { RotatingHeadline } from '@/components/auth/RotatingHeadline';
 import { useToast } from '@/hooks/use-toast';
 import { isAdminHost } from '@/lib/hostDetection';
+import { formatCpf, formatCnpj, cleanCpf, cleanCnpj, isValidCpf, isValidCnpj } from '@/utils/documentValidation';
 
 type ViewMode = 'login' | 'signup' | 'forgot';
 const SIGNUP_AUTO_RESEND_DEFAULT_DELAY_MS = 65_000;
 const MICROSOFT_EMAIL_DOMAINS = new Set(['hotmail.com', 'outlook.com', 'live.com', 'msn.com']);
 const PLAN_STORAGE_KEY = 'checkout_plan_hint';
 const REDIRECT_STORAGE_KEY = 'post_auth_redirect_hint';
+const CHECKOUT_INTENT_KEY = 'checkout_plan_intent';
 const VALID_PLAN_HINTS = new Set(['start', 'pro', 'scale']);
+
+const PLAN_LABELS: Record<string, string> = {
+  start: 'Start',
+  pro: 'Pro',
+  scale: 'Scale',
+};
 
 const normalizePlanHint = (value: string | null) => {
   const normalized = String(value || '').trim().toLowerCase();
@@ -34,6 +42,10 @@ const normalizeRedirectHint = (value: string | null) => {
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [cpf, setCpf] = useState('');
+  const [cnpj, setCnpj] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [view, setView] = useState<ViewMode>('login');
@@ -44,6 +56,10 @@ const Login = () => {
   const autoResendTimerRef = useRef<number | null>(null);
   const adminHost = typeof window !== 'undefined' && isAdminHost(window.location.hostname);
 
+  const planHintFromUrl = normalizePlanHint(searchParams.get('plan'));
+  const trialFromUrl = searchParams.get('trial');
+  const checkoutFromUrl = searchParams.get('checkout');
+
   useEffect(() => {
     const requestedMode = String(searchParams.get('mode') || '').trim().toLowerCase();
     const planHint = normalizePlanHint(searchParams.get('plan'));
@@ -51,6 +67,13 @@ const Login = () => {
 
     if (planHint) {
       window.sessionStorage.setItem(PLAN_STORAGE_KEY, planHint);
+      // Persist to localStorage so the intent survives cross-tab email confirmation
+      window.localStorage.setItem(CHECKOUT_INTENT_KEY, JSON.stringify({
+        plan: planHint,
+        trial: Number(searchParams.get('trial') || 7) || 7,
+        autoCheckout: searchParams.get('checkout') === '1',
+        ts: Date.now(),
+      }));
     }
     if (redirectHint) {
       window.sessionStorage.setItem(REDIRECT_STORAGE_KEY, redirectHint);
@@ -212,19 +235,50 @@ const Login = () => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedName = fullName.trim();
+    const trimmedCompany = companyName.trim();
+    if (trimmedName.length < 3) {
+      toast({ title: 'Nome muito curto', description: 'Informe seu nome completo (mínimo 3 caracteres).', variant: 'destructive' });
+      return;
+    }
+    if (trimmedCompany.length < 2) {
+      toast({ title: 'Nome da empresa obrigatório', description: 'Informe o nome da sua empresa (mínimo 2 caracteres).', variant: 'destructive' });
+      return;
+    }
     if (password.length < 8) {
       toast({ title: 'Senha muito curta', description: 'A senha deve ter pelo menos 8 caracteres.', variant: 'destructive' });
+      return;
+    }
+    const rawCpf = cleanCpf(cpf);
+    if (rawCpf && !isValidCpf(rawCpf)) {
+      toast({ title: 'CPF inválido', description: 'Verifique o CPF informado.', variant: 'destructive' });
+      return;
+    }
+    const rawCnpj = cleanCnpj(cnpj);
+    if (rawCnpj && !isValidCnpj(rawCnpj)) {
+      toast({ title: 'CNPJ inválido', description: 'Verifique o CNPJ informado.', variant: 'destructive' });
       return;
     }
     const normalizedEmail = email.trim().toLowerCase();
     setIsLoading(true);
     try {
-      const error = await signUp(normalizedEmail, password);
+      const error = await signUp(normalizedEmail, password, {
+        display_name: trimmedName,
+        company_name: trimmedCompany,
+        ...(rawCpf ? { cpf: rawCpf } : {}),
+        ...(rawCnpj ? { cnpj: rawCnpj } : {}),
+      });
       if (!error) {
         const planHint = normalizePlanHint(searchParams.get('plan'));
         const redirectHint = normalizeRedirectHint(searchParams.get('redirect'));
         if (planHint) {
           window.sessionStorage.setItem(PLAN_STORAGE_KEY, planHint);
+          window.localStorage.setItem(CHECKOUT_INTENT_KEY, JSON.stringify({
+            plan: planHint,
+            trial: Number(searchParams.get('trial') || 7) || 7,
+            autoCheckout: searchParams.get('checkout') === '1',
+            ts: Date.now(),
+          }));
         }
         if (redirectHint) {
           window.sessionStorage.setItem(REDIRECT_STORAGE_KEY, redirectHint);
@@ -439,8 +493,35 @@ const Login = () => {
 
             {/* ── SIGN UP FORM ── */}
             {view === 'signup' && (
-              <form onSubmit={handleSignUp} className="space-y-5">
-                <div className="space-y-2 text-left animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <form onSubmit={handleSignUp} className="space-y-4">
+                {/* Plan badge when coming from landing page */}
+                {planHintFromUrl && PLAN_LABELS[planHintFromUrl] && (
+                  <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-4 py-2.5 text-sm animate-in fade-in slide-in-from-top-2 duration-500">
+                    <Zap className="h-4 w-4 text-primary flex-shrink-0" />
+                    <span className="text-primary font-medium">
+                      Plano {PLAN_LABELS[planHintFromUrl]} selecionado
+                      {trialFromUrl && Number(trialFromUrl) > 0 ? ` — ${trialFromUrl} dias grátis` : ''}
+                    </span>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 text-left animate-in fade-in slide-in-from-bottom-2 duration-500">
+                  <Label htmlFor="signup-fullname" className="text-foreground font-medium ml-1">Nome completo</Label>
+                  <div className="relative group">
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                    <Input
+                      id="signup-fullname"
+                      type="text"
+                      placeholder="Seu nome completo"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="pl-12 bg-background/85 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-11 rounded-xl transition-all shadow-sm"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-left animate-in fade-in slide-in-from-bottom-2 duration-500">
                   <Label htmlFor="signup-email" className="text-foreground font-medium ml-1">Email</Label>
                   <div className="relative group">
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
@@ -450,23 +531,23 @@ const Login = () => {
                       placeholder="seu@email.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-12 bg-background/85 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-12 rounded-xl transition-all shadow-sm"
+                      className="pl-12 bg-background/85 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-11 rounded-xl transition-all shadow-sm"
                       required
                     />
                   </div>
                 </div>
 
-                <div className="space-y-2 text-left animate-in fade-in slide-in-from-bottom-3 duration-500 delay-75">
+                <div className="space-y-1.5 text-left animate-in fade-in slide-in-from-bottom-3 duration-500 delay-75">
                   <Label htmlFor="signup-password" className="text-foreground font-medium ml-1">Senha</Label>
                   <div className="relative group">
                     <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
                     <Input
                       id="signup-password"
                       type={showPassword ? 'text' : 'password'}
-                      placeholder="Minimo 8 caracteres"
+                      placeholder="Mínimo 8 caracteres"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="pl-12 pr-12 bg-background/85 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-12 rounded-xl transition-all shadow-sm"
+                      className="pl-12 pr-12 bg-background/85 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-11 rounded-xl transition-all shadow-sm"
                       required
                     />
                     <button
@@ -477,6 +558,57 @@ const Login = () => {
                     >
                       {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                     </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-left animate-in fade-in slide-in-from-bottom-3 duration-500 delay-75">
+                  <Label htmlFor="signup-company" className="text-foreground font-medium ml-1">Nome da empresa</Label>
+                  <div className="relative group">
+                    <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                    <Input
+                      id="signup-company"
+                      type="text"
+                      placeholder="Ex: Solar Energy Ltda"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      className="pl-12 bg-background/85 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-11 rounded-xl transition-all shadow-sm"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100">
+                  <div className="space-y-1.5 text-left">
+                    <Label htmlFor="signup-cpf" className="text-foreground font-medium ml-1 text-xs">CPF <span className="text-muted-foreground">(opcional)</span></Label>
+                    <div className="relative group">
+                      <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                      <Input
+                        id="signup-cpf"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="000.000.000-00"
+                        value={cpf}
+                        onChange={(e) => setCpf(formatCpf(e.target.value))}
+                        maxLength={14}
+                        className="pl-10 bg-background/85 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-11 rounded-xl transition-all shadow-sm text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 text-left">
+                    <Label htmlFor="signup-cnpj" className="text-foreground font-medium ml-1 text-xs">CNPJ <span className="text-muted-foreground">(opcional)</span></Label>
+                    <div className="relative group">
+                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                      <Input
+                        id="signup-cnpj"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="00.000.000/0000-00"
+                        value={cnpj}
+                        onChange={(e) => setCnpj(formatCnpj(e.target.value))}
+                        maxLength={18}
+                        className="pl-10 bg-background/85 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-11 rounded-xl transition-all shadow-sm text-sm"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -491,7 +623,7 @@ const Login = () => {
                       Criando conta...
                     </span>
                   ) : (
-                    'Criar Conta'
+                    planHintFromUrl ? 'Criar conta e continuar' : 'Criar Conta'
                   )}
                 </Button>
 

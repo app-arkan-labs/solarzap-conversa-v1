@@ -188,9 +188,33 @@ export default function Pricing() {
     : '';
   const packState = String(searchParams.get('pack') || '').trim();
   const intent = (searchParams.get('intent') === 'reactivate' ? 'reactivate' : 'upgrade') as BillingIntent;
-  const targetPlan = normalizePlanQuery(searchParams.get('target'));
-  const selectedTrialDays = normalizeTrialDays(searchParams.get('trial'));
-  const autoCheckoutRequested = searchParams.get('checkout') === '1';
+
+  // Resolve target plan from URL params, falling back to localStorage intent (cross-tab signup)
+  const urlTargetPlan = normalizePlanQuery(searchParams.get('target'));
+  const urlAutoCheckout = searchParams.get('checkout') === '1';
+  const storedIntent = useMemo(() => {
+    if (urlTargetPlan && urlAutoCheckout) return null; // URL already has intent
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem('checkout_plan_intent') : null;
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { plan?: string; trial?: number; autoCheckout?: boolean; ts?: number };
+      if (parsed.plan && PLAN_ORDER.includes(parsed.plan) && parsed.ts && Date.now() - parsed.ts < 86_400_000) {
+        return parsed;
+      }
+    } catch { /* ignore */ }
+    return null;
+  }, [urlTargetPlan, urlAutoCheckout]);
+
+  // Clean up localStorage intent once consumed
+  useEffect(() => {
+    if (storedIntent) {
+      window.localStorage.removeItem('checkout_plan_intent');
+    }
+  }, [storedIntent]);
+
+  const targetPlan = urlTargetPlan || (storedIntent?.plan && PLAN_ORDER.includes(storedIntent.plan) ? storedIntent.plan : null);
+  const selectedTrialDays = normalizeTrialDays(searchParams.get('trial') ?? (storedIntent?.trial != null ? String(storedIntent.trial) : null));
+  const autoCheckoutRequested = urlAutoCheckout || (storedIntent?.autoCheckout === true);
   const source = String(searchParams.get('source') || '').trim().toLowerCase();
   const sourceLabel = SOURCE_LABELS[source] || null;
   const isNoPlan = !currentPlan || currentPlan === 'free';

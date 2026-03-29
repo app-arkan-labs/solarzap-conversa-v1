@@ -98,11 +98,23 @@ export async function createPlanCheckoutSession(input: {
   successUrl?: string;
   cancelUrl?: string;
 }) {
+  // If no explicit orgName, try to use company_name from user metadata
+  let resolvedOrgName = input.orgName;
+  if (!resolvedOrgName) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const metaCompany = user?.user_metadata?.company_name;
+      if (typeof metaCompany === 'string' && metaCompany.trim()) {
+        resolvedOrgName = metaCompany.trim();
+      }
+    } catch { /* proceed without org name */ }
+  }
+
   const { data, error } = await supabase.functions.invoke('stripe-checkout', {
     body: {
       plan_key: input.planKey,
       ...(input.orgId ? { org_id: input.orgId } : {}),
-      ...(input.orgName ? { org_name: input.orgName } : {}),
+      ...(resolvedOrgName ? { org_name: resolvedOrgName } : {}),
       ...(typeof input.trialDays === 'number' ? { trial_days: input.trialDays } : {}),
       ...(input.successUrl ? { success_url: input.successUrl } : {}),
       ...(input.cancelUrl ? { cancel_url: input.cancelUrl } : {}),

@@ -16,6 +16,7 @@ import InternalCrmClientsPage from '@/modules/internal-crm/pages/InternalCrmClie
 import InternalCrmCampaignsPage from '@/modules/internal-crm/pages/InternalCrmCampaignsPage';
 import InternalCrmAiPage from '@/modules/internal-crm/pages/InternalCrmAiPage';
 import InternalCrmFinancePage from '@/modules/internal-crm/pages/InternalCrmFinancePage';
+import InternalCrmCalendarPage from '@/modules/internal-crm/pages/InternalCrmCalendarPage';
 
 export default function Admin() {
   return (
@@ -36,6 +37,7 @@ export default function Admin() {
         <Route path="crm/inbox" element={<InternalCrmGuard><InternalCrmInboxPage /></InternalCrmGuard>} />
         <Route path="crm/clients" element={<InternalCrmGuard><InternalCrmClientsPage /></InternalCrmGuard>} />
         <Route path="crm/campaigns" element={<InternalCrmGuard><InternalCrmCampaignsPage /></InternalCrmGuard>} />
+        <Route path="crm/calendar" element={<InternalCrmGuard><InternalCrmCalendarPage /></InternalCrmGuard>} />
         <Route path="crm/ai" element={<InternalCrmGuard><InternalCrmAiPage /></InternalCrmGuard>} />
         <Route path="crm/finance" element={<InternalCrmGuard><InternalCrmFinancePage /></InternalCrmGuard>} />
       </Route>

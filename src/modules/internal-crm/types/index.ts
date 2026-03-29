@@ -26,11 +26,17 @@ export type InternalCrmApiAction =
   | 'list_campaigns'
   | 'upsert_campaign'
   | 'update_campaign_status'
+  | 'run_campaign_batch'
   | 'list_ai_settings'
   | 'upsert_ai_settings'
+  | 'enqueue_agent_job'
   | 'process_agent_jobs'
+  | 'list_appointments'
+  | 'upsert_appointment'
   | 'list_finance_summary'
   | 'list_orders'
+  | 'list_customer_snapshot'
+  | 'refresh_customer_snapshot'
   | 'get_linked_public_org_summary'
   | 'provision_customer';
 
@@ -180,6 +186,8 @@ export type InternalCrmDashboardKpis = {
   churned_in_period: number;
   stalled_deals: InternalCrmDealSummary[];
   next_actions: InternalCrmTask[];
+  onboarding_queue: InternalCrmClientSummary[];
+  pending_payments: InternalCrmDealSummary[];
 };
 
 export type InternalCrmCustomerAppLink = {
@@ -292,8 +300,29 @@ export type InternalCrmCampaign = {
   owner_user_id: string | null;
   target_filters: Record<string, unknown>;
   messages: Array<string>;
+  recipients_total?: number;
+  recipients_pending?: number;
+  recipients_sent?: number;
+  recipients_failed?: number;
   created_at: string;
   updated_at: string;
+};
+
+export type InternalCrmAppointment = {
+  id: string;
+  client_id: string;
+  deal_id: string | null;
+  owner_user_id: string | null;
+  title: string;
+  appointment_type: 'call' | 'demo' | 'meeting' | 'visit' | 'other';
+  status: 'scheduled' | 'confirmed' | 'done' | 'canceled' | 'no_show';
+  start_at: string;
+  end_at: string | null;
+  location: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  client_company_name?: string | null;
 };
 
 export type InternalCrmAiSettings = {
@@ -349,6 +378,7 @@ export type InternalCrmFinanceSummary = {
     billing_interval: string;
     current_period_end: string | null;
     stripe_subscription_id: string | null;
+    created_at: string;
   }>;
   payment_events: Array<{
     id: string;
@@ -360,4 +390,21 @@ export type InternalCrmFinanceSummary = {
     status: string;
     created_at: string;
   }>;
+};
+
+export type InternalCrmCustomerSnapshot = {
+  id: string;
+  client_id: string;
+  company_name: string | null;
+  plan_key: string | null;
+  subscription_status: string | null;
+  trial_ends_at: string | null;
+  grace_ends_at: string | null;
+  current_period_end: string | null;
+  member_count: number;
+  whatsapp_instance_count: number;
+  lead_count: number;
+  proposal_count: number;
+  last_synced_at: string | null;
+  updated_at: string;
 };

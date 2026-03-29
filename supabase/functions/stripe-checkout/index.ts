@@ -162,6 +162,24 @@ Deno.serve(async (req) => {
       if (membershipError) {
         return json(corsHeaders, 500, { ok: false, error: `membership_create_failed:${membershipError.message}` });
       }
+
+      // Seed company_profile with data collected during signup (stored in user_metadata)
+      const userMeta = (user as { user_metadata?: Record<string, unknown> }).user_metadata ?? {};
+      const metaCompanyName = typeof userMeta.company_name === 'string' ? userMeta.company_name.trim() : '';
+      const metaCnpj = typeof userMeta.cnpj === 'string' ? userMeta.cnpj.trim() : '';
+      const metaCpf = typeof userMeta.cpf === 'string' ? userMeta.cpf.trim() : '';
+
+      if (metaCompanyName || metaCnpj || metaCpf) {
+        await serviceClient.from('company_profile').upsert(
+          {
+            org_id: orgId,
+            ...(metaCompanyName ? { company_name: metaCompanyName } : {}),
+            ...(metaCnpj ? { cnpj: metaCnpj } : {}),
+            ...(metaCpf ? { owner_cpf: metaCpf } : {}),
+          },
+          { onConflict: 'org_id' },
+        );
+      }
     }
 
     const { data: org } = await serviceClient

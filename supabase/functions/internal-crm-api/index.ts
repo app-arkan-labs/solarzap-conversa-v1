@@ -59,10 +59,16 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   list_campaigns: { minCrmRole: 'read_only', requireMfa: true },
   upsert_campaign: { minCrmRole: 'sales', requireMfa: true },
   update_campaign_status: { minCrmRole: 'sales', requireMfa: true },
+  run_campaign_batch: { minCrmRole: 'sales', requireMfa: true },
   list_ai_settings: { minCrmRole: 'read_only', requireMfa: true },
   upsert_ai_settings: { minCrmRole: 'ops', requireMfa: true },
+  enqueue_agent_job: { minCrmRole: 'sales', requireMfa: true },
+  list_appointments: { minCrmRole: 'read_only', requireMfa: true },
+  upsert_appointment: { minCrmRole: 'sales', requireMfa: true },
   list_finance_summary: { minCrmRole: 'finance', requireMfa: true, financeOnly: true },
   list_orders: { minCrmRole: 'finance', requireMfa: true, financeOnly: true },
+  list_customer_snapshot: { minCrmRole: 'finance', requireMfa: true, financeOnly: true },
+  refresh_customer_snapshot: { minCrmRole: 'ops', requireMfa: true },
   get_linked_public_org_summary: { minCrmRole: 'read_only', requireMfa: true },
   provision_customer: { minCrmRole: 'ops', requireMfa: true },
 };
@@ -328,7 +334,21 @@ async function listPipelineStages(serviceClient: ReturnType<typeof createClient>
 
 async function listDashboardKpis(serviceClient: ReturnType<typeof createClient>, payload: Record<string, unknown>) {
   const periodDays = Math.max(1, Math.min(365, asNumber(payload.period_days, 30)));
-  const sinceIso = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString();
+  const requestedFromDate = asString(payload.from_date);
+  const requestedToDate = asString(payload.to_date);
+
+  const fallbackFromDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
+  const fallbackToDate = new Date();
+
+  const parsedFromDate = requestedFromDate ? new Date(requestedFromDate) : fallbackFromDate;
+  const parsedToDate = requestedToDate ? new Date(requestedToDate) : fallbackToDate;
+
+  const fromDate = Number.isNaN(parsedFromDate.getTime()) ? fallbackFromDate : parsedFromDate;
+  const toDate = Number.isNaN(parsedToDate.getTime()) ? fallbackToDate : parsedToDate;
+  toDate.setUTCHours(23, 59, 59, 999);
+
+  const sinceIso = fromDate.toISOString();
+  const untilIso = toDate.toISOString();
   const schema = crmSchema(serviceClient);
 
   const [
@@ -346,17 +366,17 @@ async function listDashboardKpis(serviceClient: ReturnType<typeof createClient>,
     stalledDeals,
     nextActions,
   ] = await Promise.all([
-    schema.from('clients').select('id', { count: 'exact', head: true }).gte('created_at', sinceIso),
-    schema.from('clients').select('id', { count: 'exact', head: true }).eq('current_stage_code', 'qualificado'),
-    schema.from('deals').select('id', { count: 'exact', head: true }).eq('stage_code', 'demo_agendada'),
-    schema.from('deals').select('id', { count: 'exact', head: true }).eq('stage_code', 'proposta_enviada'),
-    schema.from('deals').select('one_time_total_cents, mrr_cents', { count: 'exact' }).eq('status', 'won').gte('updated_at', sinceIso),
-    schema.from('deals').select('id', { count: 'exact', head: true }).eq('status', 'lost').gte('updated_at', sinceIso),
-    schema.from('deals').select('one_time_total_cents, mrr_cents').eq('status', 'won').gte('updated_at', sinceIso),
+    schema.from('clients').select('id', { count: 'exact', head: true }).gte('created_at', sinceIso).lte('created_at', untilIso),
+    schema.from('clients').select('id', { count: 'exact', head: true }).eq('current_stage_code', 'qualificado').gte('updated_at', sinceIso).lte('updated_at', untilIso),
+    schema.from('deals').select('id', { count: 'exact', head: true }).eq('stage_code', 'demo_agendada').gte('updated_at', sinceIso).lte('updated_at', untilIso),
+    schema.from('deals').select('id', { count: 'exact', head: true }).eq('stage_code', 'proposta_enviada').gte('updated_at', sinceIso).lte('updated_at', untilIso),
+    schema.from('deals').select('one_time_total_cents, mrr_cents', { count: 'exact' }).eq('status', 'won').gte('updated_at', sinceIso).lte('updated_at', untilIso),
+    schema.from('deals').select('id', { count: 'exact', head: true }).eq('status', 'lost').gte('updated_at', sinceIso).lte('updated_at', untilIso),
+    schema.from('deals').select('one_time_total_cents, mrr_cents').eq('status', 'won').gte('updated_at', sinceIso).lte('updated_at', untilIso),
     schema.from('subscriptions').select('mrr_cents').in('status', ['trialing', 'active']),
     schema.from('clients').select('id', { count: 'exact', head: true }).eq('lifecycle_status', 'customer_onboarding'),
     schema.from('clients').select('id', { count: 'exact', head: true }).eq('lifecycle_status', 'churn_risk'),
-    schema.from('clients').select('id', { count: 'exact', head: true }).eq('lifecycle_status', 'churned').gte('updated_at', sinceIso),
+    schema.from('clients').select('id', { count: 'exact', head: true }).eq('lifecycle_status', 'churned').gte('updated_at', sinceIso).lte('updated_at', untilIso),
     schema.from('deals').select('id, client_id, title, stage_code, status, probability, expected_close_at, one_time_total_cents, mrr_cents, payment_method, payment_status, checkout_url, stripe_checkout_session_id, paid_at, won_at, notes, lost_reason, created_at, updated_at').eq('status', 'open').lt('updated_at', sinceIso).order('updated_at', { ascending: true }).limit(10),
     schema.from('tasks').select('id, client_id, deal_id, owner_user_id, title, notes, due_at, status, task_kind, completed_at').eq('status', 'open').order('due_at', { ascending: true, nullsFirst: false }).limit(10),
   ]);
@@ -383,6 +403,10 @@ async function listDashboardKpis(serviceClient: ReturnType<typeof createClient>,
   const lostCount = Number(lostDeals.count || 0);
   const wonRows = wonRevenue.data || [];
   const activeSubscriptionsRows = activeSubscriptions.data || [];
+  const onboardingQueue = (await listClients(serviceClient, { lifecycle_status: 'customer_onboarding' })).slice(0, 8);
+  const pendingPayments = (await listDeals(serviceClient, { status: 'won' }))
+    .filter((deal) => String(deal.payment_status || '') === 'pending')
+    .slice(0, 8);
 
   return {
     leads_in_period: Number(leadsCount.count || 0),
@@ -398,6 +422,8 @@ async function listDashboardKpis(serviceClient: ReturnType<typeof createClient>,
     churned_in_period: Number(churnedInPeriod.count || 0),
     stalled_deals: stalledDeals.data || [],
     next_actions: nextActions.data || [],
+    onboarding_queue: onboardingQueue,
+    pending_payments: pendingPayments,
   };
 }
 
@@ -937,6 +963,41 @@ function resolveInternalWebhookUrl() {
   return `${supabaseUrl.replace(/\/$/, '')}/functions/v1/internal-crm-api?action=webhook_inbound`;
 }
 
+async function invokeInternalEdgeFunction(functionName: string, payload: Record<string, unknown>) {
+  const { supabaseUrl, supabaseServiceRoleKey } = getSupabaseEnv();
+  const internalApiKey = String(Deno.env.get('EDGE_INTERNAL_API_KEY') || '').trim();
+
+  const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/functions/v1/${functionName}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: supabaseServiceRoleKey,
+      Authorization: `Bearer ${supabaseServiceRoleKey}`,
+      ...(internalApiKey ? { 'x-internal-api-key': internalApiKey } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const responsePayload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw {
+      status: 502,
+      code: 'internal_edge_function_failed',
+      details: responsePayload,
+    };
+  }
+
+  if (isRecord(responsePayload) && responsePayload.ok === false) {
+    throw {
+      status: 502,
+      code: 'internal_edge_function_failed',
+      details: responsePayload,
+    };
+  }
+
+  return isRecord(responsePayload) ? responsePayload : { ok: true };
+}
+
 async function listInstances(serviceClient: ReturnType<typeof createClient>) {
   const { data, error } = await crmSchema(serviceClient)
     .from('whatsapp_instances')
@@ -1192,16 +1253,49 @@ async function appendMessage(
 }
 
 async function listCampaigns(serviceClient: ReturnType<typeof createClient>) {
-  const { data, error } = await crmSchema(serviceClient)
+  const schema = crmSchema(serviceClient);
+  const { data, error } = await schema
     .from('broadcast_campaigns')
     .select('*')
     .order('updated_at', { ascending: false });
 
   if (error) throw { status: 500, code: 'campaigns_query_failed', error };
-  return (data || []).map((campaign) => ({
-    ...campaign,
-    messages: Array.isArray(campaign.messages) ? campaign.messages : [],
-  }));
+
+  const campaigns = data || [];
+  if (campaigns.length === 0) return [];
+
+  const campaignIds = campaigns.map((campaign) => String(campaign.id));
+  const { data: recipients, error: recipientsError } = await schema
+    .from('broadcast_recipients')
+    .select('campaign_id, status')
+    .in('campaign_id', campaignIds);
+
+  if (recipientsError) throw { status: 500, code: 'campaign_recipients_query_failed', error: recipientsError };
+
+  const counters = new Map<string, { total: number; pending: number; sent: number; failed: number }>();
+  for (const row of recipients || []) {
+    const campaignId = String(row.campaign_id || '');
+    if (!campaignId) continue;
+    const current = counters.get(campaignId) || { total: 0, pending: 0, sent: 0, failed: 0 };
+    current.total += 1;
+    const status = String(row.status || 'pending');
+    if (status === 'pending') current.pending += 1;
+    if (status === 'sent') current.sent += 1;
+    if (status === 'failed') current.failed += 1;
+    counters.set(campaignId, current);
+  }
+
+  return campaigns.map((campaign) => {
+    const count = counters.get(String(campaign.id)) || { total: 0, pending: 0, sent: 0, failed: 0 };
+    return {
+      ...campaign,
+      messages: Array.isArray(campaign.messages) ? campaign.messages : [],
+      recipients_total: count.total,
+      recipients_pending: count.pending,
+      recipients_sent: count.sent,
+      recipients_failed: count.failed,
+    };
+  });
 }
 
 async function upsertCampaign(
@@ -1295,6 +1389,234 @@ async function updateCampaignStatus(
   });
 
   return { ok: true, campaign: data };
+}
+
+async function runCampaignBatch(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const campaignId = asString(payload.campaign_id);
+  const batchSize = Math.max(1, Math.min(50, asNumber(payload.batch_size, 20)));
+
+  let campaignBefore: Record<string, unknown> | null = null;
+  let effectiveCampaignId = campaignId;
+
+  if (campaignId) {
+    const { data: existingCampaign, error: campaignError } = await schema
+      .from('broadcast_campaigns')
+      .select('*')
+      .eq('id', campaignId)
+      .maybeSingle();
+
+    if (campaignError) throw { status: 500, code: 'campaign_query_failed', error: campaignError };
+    if (!existingCampaign?.id) throw { status: 404, code: 'not_found' };
+
+    campaignBefore = existingCampaign;
+    if (String(existingCampaign.status || '') !== 'running') {
+      const { data: updatedCampaign, error: updateError } = await schema
+        .from('broadcast_campaigns')
+        .update({
+          status: 'running',
+          started_at: existingCampaign.started_at || nowIso(),
+          finished_at: null,
+          updated_at: nowIso(),
+        })
+        .eq('id', campaignId)
+        .select('*')
+        .single();
+
+      if (updateError || !updatedCampaign?.id) {
+        throw { status: 500, code: 'campaign_status_update_failed', error: updateError };
+      }
+      effectiveCampaignId = String(updatedCampaign.id);
+    }
+  }
+
+  const workerResult = await invokeInternalEdgeFunction('internal-crm-broadcast-worker', {
+    campaign_id: effectiveCampaignId,
+    batch_size: batchSize,
+  });
+
+  await writeAuditLog(serviceClient, identity, 'run_campaign_batch', req, {
+    target_type: 'campaign',
+    target_id: effectiveCampaignId,
+    before: campaignBefore,
+    after: {
+      campaign_id: effectiveCampaignId,
+      batch_size: batchSize,
+      worker_result: workerResult,
+    },
+  });
+
+  return {
+    ok: true,
+    campaign_id: effectiveCampaignId,
+    batch_size: batchSize,
+    worker_result: workerResult,
+  };
+}
+
+async function listAppointments(serviceClient: ReturnType<typeof createClient>, payload: Record<string, unknown>) {
+  const schema = crmSchema(serviceClient);
+  const dateFrom = asString(payload.date_from);
+  const dateTo = asString(payload.date_to);
+
+  let query = schema.from('appointments').select('*').order('start_at', { ascending: true });
+
+  if (dateFrom) {
+    const parsedFrom = new Date(dateFrom);
+    if (Number.isNaN(parsedFrom.getTime())) throw { status: 400, code: 'invalid_payload' };
+    query = query.gte('start_at', parsedFrom.toISOString());
+  }
+
+  if (dateTo) {
+    const parsedTo = new Date(dateTo);
+    if (Number.isNaN(parsedTo.getTime())) throw { status: 400, code: 'invalid_payload' };
+    parsedTo.setUTCHours(23, 59, 59, 999);
+    query = query.lte('start_at', parsedTo.toISOString());
+  }
+
+  const status = asString(payload.status);
+  if (status) query = query.eq('status', status);
+
+  const ownerUserId = asString(payload.owner_user_id);
+  if (ownerUserId) query = query.eq('owner_user_id', ownerUserId);
+
+  const clientId = asString(payload.client_id);
+  if (clientId) query = query.eq('client_id', clientId);
+
+  const { data, error } = await query.limit(500);
+  if (error) throw { status: 500, code: 'appointments_query_failed', error };
+
+  const appointments = data || [];
+  if (appointments.length === 0) return [];
+
+  const clientIds = Array.from(
+    new Set(
+      appointments
+        .map((appointment) => asString(appointment.client_id))
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+
+  if (clientIds.length === 0) return appointments;
+
+  const { data: clients, error: clientsError } = await schema
+    .from('clients')
+    .select('id, company_name')
+    .in('id', clientIds);
+
+  if (clientsError) throw { status: 500, code: 'appointment_clients_query_failed', error: clientsError };
+
+  const clientMap = new Map<string, string>();
+  for (const client of clients || []) {
+    clientMap.set(String(client.id), String(client.company_name || ''));
+  }
+
+  return appointments.map((appointment) => ({
+    ...appointment,
+    client_company_name: clientMap.get(String(appointment.client_id || '')) || null,
+  }));
+}
+
+async function upsertAppointment(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const appointmentId = asString(payload.appointment_id);
+  const clientId = asString(payload.client_id);
+  const title = asString(payload.title);
+  const startAtRaw = asString(payload.start_at);
+  const endAtRaw = asString(payload.end_at);
+
+  if (!clientId || !title || !startAtRaw) throw { status: 400, code: 'invalid_payload' };
+
+  const parsedStartAt = new Date(startAtRaw);
+  if (Number.isNaN(parsedStartAt.getTime())) throw { status: 400, code: 'invalid_payload' };
+
+  let parsedEndAt: Date | null = null;
+  if (endAtRaw) {
+    parsedEndAt = new Date(endAtRaw);
+    if (Number.isNaN(parsedEndAt.getTime())) throw { status: 400, code: 'invalid_payload' };
+  }
+
+  const before = appointmentId
+    ? (await schema.from('appointments').select('*').eq('id', appointmentId).maybeSingle()).data
+    : null;
+
+  const { data, error } = await schema.from('appointments').upsert({
+    id: appointmentId || undefined,
+    client_id: clientId,
+    deal_id: asString(payload.deal_id),
+    owner_user_id: asString(payload.owner_user_id) || identity.user_id,
+    title,
+    appointment_type: asString(payload.appointment_type) || 'meeting',
+    status: asString(payload.status) || 'scheduled',
+    start_at: parsedStartAt.toISOString(),
+    end_at: parsedEndAt ? parsedEndAt.toISOString() : null,
+    location: asString(payload.location),
+    notes: asString(payload.notes),
+    metadata: isRecord(payload.metadata) ? payload.metadata : {},
+  }).select('*').single();
+
+  if (error || !data?.id) throw { status: 500, code: 'appointment_upsert_failed', error };
+
+  await schema.from('clients').update({ updated_at: nowIso() }).eq('id', clientId);
+
+  await writeAuditLog(serviceClient, identity, 'upsert_appointment', req, {
+    target_type: 'appointment',
+    target_id: String(data.id),
+    client_id: clientId,
+    deal_id: asString(data.deal_id),
+    before,
+    after: data,
+  });
+
+  return { ok: true, appointment: data };
+}
+
+async function enqueueAgentJob(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const jobType = asString(payload.job_type);
+  const allowedJobTypes = new Set(['qualification', 'follow_up', 'broadcast_assistant', 'onboarding']);
+  if (!jobType || !allowedJobTypes.has(jobType)) throw { status: 400, code: 'invalid_payload' };
+
+  const scheduledAtRaw = asString(payload.scheduled_at) || nowIso();
+  const parsedScheduledAt = new Date(scheduledAtRaw);
+  if (Number.isNaN(parsedScheduledAt.getTime())) throw { status: 400, code: 'invalid_payload' };
+
+  const { data, error } = await schema.from('scheduled_agent_jobs').insert({
+    job_type: jobType,
+    client_id: asString(payload.client_id),
+    conversation_id: asString(payload.conversation_id),
+    deal_id: asString(payload.deal_id),
+    status: 'pending',
+    scheduled_at: parsedScheduledAt.toISOString(),
+    payload: isRecord(payload.payload) ? payload.payload : {},
+  }).select('*').single();
+
+  if (error || !data?.id) throw { status: 500, code: 'agent_job_insert_failed', error };
+
+  await writeAuditLog(serviceClient, identity, 'enqueue_agent_job', req, {
+    target_type: 'agent_job',
+    target_id: String(data.id),
+    client_id: asString(data.client_id),
+    deal_id: asString(data.deal_id),
+    after: data,
+  });
+
+  return { ok: true, job: data };
 }
 
 async function listAiSettings(serviceClient: ReturnType<typeof createClient>) {
@@ -1400,6 +1722,132 @@ async function listFinanceSummary(serviceClient: ReturnType<typeof createClient>
     orders,
     subscriptions,
     payment_events: paymentEvents,
+  };
+}
+
+async function listCustomerSnapshot(
+  serviceClient: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+) {
+  const schema = crmSchema(serviceClient);
+  const clientId = asString(payload.client_id);
+
+  let query = schema
+    .from('customer_app_snapshot')
+    .select('*')
+    .order('updated_at', { ascending: false })
+    .limit(100);
+
+  if (clientId) {
+    query = query.eq('client_id', clientId);
+  }
+
+  const { data: snapshots, error } = await query;
+  if (error) throw { status: 500, code: 'snapshot_query_failed', error };
+
+  const rows = snapshots || [];
+  const clientIds = rows.map((row) => asString(row.client_id)).filter(Boolean) as string[];
+
+  let companyByClientId = new Map<string, string | null>();
+  if (clientIds.length > 0) {
+    const { data: clients } = await schema
+      .from('clients')
+      .select('id, company_name')
+      .in('id', clientIds);
+
+    companyByClientId = new Map((clients || []).map((row) => [String(row.id), asString(row.company_name)]));
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    company_name: companyByClientId.get(String(row.client_id)) || null,
+  }));
+}
+
+async function refreshCustomerSnapshot(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const clientId = asString(payload.client_id);
+
+  let linksQuery = schema
+    .from('customer_app_links')
+    .select('client_id, linked_public_org_id')
+    .not('linked_public_org_id', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(200);
+
+  if (clientId) {
+    linksQuery = linksQuery.eq('client_id', clientId);
+  }
+
+  const { data: links, error: linksError } = await linksQuery;
+  if (linksError) throw { status: 500, code: 'snapshot_links_query_failed', error: linksError };
+
+  const failures: Array<{ client_id: string; reason: string }> = [];
+  const updatedClientIds: string[] = [];
+
+  for (const link of links || []) {
+    const linkedOrgId = asString(link.linked_public_org_id);
+    const linkedClientId = asString(link.client_id);
+    if (!linkedOrgId || !linkedClientId) continue;
+
+    try {
+      const { data, error } = await serviceClient.rpc('crm_bridge_org_summary', { p_org_id: linkedOrgId });
+      if (error) {
+        failures.push({ client_id: linkedClientId, reason: 'bridge_query_failed' });
+        continue;
+      }
+
+      const payloadData = Array.isArray(data) ? data[0] : data;
+      const found = isRecord(payloadData) && asBoolean(payloadData.found, false);
+      const org = isRecord(payloadData) && isRecord(payloadData.org) ? payloadData.org : {};
+      const stats = isRecord(payloadData) && isRecord(payloadData.stats) ? payloadData.stats : {};
+
+      const { error: upsertError } = await schema.from('customer_app_snapshot').upsert({
+        client_id: linkedClientId,
+        plan_key: found ? asString(org.plan) : null,
+        subscription_status: found ? asString(org.subscription_status) : null,
+        trial_ends_at: found ? asString(org.trial_ends_at) : null,
+        grace_ends_at: found ? asString(org.grace_ends_at) : null,
+        current_period_end: found ? asString(org.current_period_end) : null,
+        member_count: found ? asNumber(stats.member_count, 0) : 0,
+        whatsapp_instance_count: found ? asNumber(stats.instance_count, 0) : 0,
+        lead_count: found ? asNumber(stats.lead_count, 0) : 0,
+        proposal_count: found ? asNumber(stats.proposal_count, 0) : 0,
+        last_synced_at: nowIso(),
+        payload: isRecord(payloadData) ? payloadData : {},
+      }, { onConflict: 'client_id' });
+
+      if (upsertError) {
+        failures.push({ client_id: linkedClientId, reason: 'snapshot_upsert_failed' });
+        continue;
+      }
+
+      updatedClientIds.push(linkedClientId);
+    } catch {
+      failures.push({ client_id: linkedClientId, reason: 'snapshot_refresh_failed' });
+    }
+  }
+
+  await writeAuditLog(serviceClient, identity, 'refresh_customer_snapshot', req, {
+    target_type: 'snapshot',
+    target_id: clientId || null,
+    client_id: clientId || null,
+    after: {
+      updated_count: updatedClientIds.length,
+      failed_count: failures.length,
+    },
+  });
+
+  return {
+    ok: true,
+    updated_count: updatedClientIds.length,
+    failed_count: failures.length,
+    failures,
   };
 }
 
@@ -1885,14 +2333,26 @@ async function dispatchUserAction(
       return await upsertCampaign(serviceClient, identity, payload, req);
     case 'update_campaign_status':
       return await updateCampaignStatus(serviceClient, identity, payload, req);
+    case 'run_campaign_batch':
+      return await runCampaignBatch(serviceClient, identity, payload, req);
     case 'list_ai_settings':
       return { ok: true, settings: await listAiSettings(serviceClient) };
     case 'upsert_ai_settings':
       return await upsertAiSettings(serviceClient, identity, payload, req);
+    case 'enqueue_agent_job':
+      return await enqueueAgentJob(serviceClient, identity, payload, req);
+    case 'list_appointments':
+      return { ok: true, appointments: await listAppointments(serviceClient, payload) };
+    case 'upsert_appointment':
+      return await upsertAppointment(serviceClient, identity, payload, req);
     case 'list_finance_summary':
       return { ok: true, summary: await listFinanceSummary(serviceClient) };
     case 'list_orders':
       return { ok: true, summary: await listFinanceSummary(serviceClient) };
+    case 'list_customer_snapshot':
+      return { ok: true, snapshots: await listCustomerSnapshot(serviceClient, payload) };
+    case 'refresh_customer_snapshot':
+      return await refreshCustomerSnapshot(serviceClient, identity, payload, req);
     case 'get_linked_public_org_summary':
       return { ok: true, summary: await getLinkedPublicOrgSummary(serviceClient, payload) };
     case 'provision_customer':

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type {
+  InternalCrmAppointment,
   InternalCrmAiSettings,
   InternalCrmApiAction,
   InternalCrmApiErrorCode,
@@ -10,6 +11,7 @@ import type {
   InternalCrmClientSummary,
   InternalCrmConversationDetail,
   InternalCrmConversationSummary,
+  InternalCrmCustomerSnapshot,
   InternalCrmDashboardKpis,
   InternalCrmDealSummary,
   InternalCrmFinanceSummary,
@@ -397,7 +399,9 @@ export const internalCrmQueryKeys = {
   conversationDetail: (conversationId: string) => ['internal-crm', 'conversation-detail', conversationId] as const,
   campaigns: () => ['internal-crm', 'campaigns'] as const,
   ai: () => ['internal-crm', 'ai'] as const,
+  appointments: (params: Record<string, unknown>) => ['internal-crm', 'appointments', params] as const,
   finance: () => ['internal-crm', 'finance'] as const,
+  customerSnapshot: () => ['internal-crm', 'customer-snapshot'] as const,
 };
 
 export function useInternalCrmWhoAmI(options?: { enabled?: boolean }) {
@@ -428,7 +432,9 @@ export function useInternalCrmPipelineStages(options?: { enabled?: boolean }) {
   });
 }
 
-export function useInternalCrmDashboard(params: { period_days?: number } = {}) {
+export function useInternalCrmDashboard(
+  params: { period_days?: number; from_date?: string; to_date?: string } = {},
+) {
   return useQuery({
     queryKey: internalCrmQueryKeys.dashboard(params),
     queryFn: () => invokeInternalCrmApi<{ ok: true; kpis: InternalCrmDashboardKpis }>({ action: 'list_dashboard_kpis', ...params }),
@@ -526,10 +532,38 @@ export function useInternalCrmAi(options?: { enabled?: boolean }) {
   });
 }
 
+export function useInternalCrmAppointments(params: {
+  date_from?: string;
+  date_to?: string;
+  status?: string;
+  owner_user_id?: string;
+  client_id?: string;
+} = {}) {
+  return useQuery({
+    queryKey: internalCrmQueryKeys.appointments(params),
+    queryFn: () =>
+      invokeInternalCrmApi<{ ok: true; appointments: InternalCrmAppointment[] }>({
+        action: 'list_appointments',
+        ...params,
+      }),
+  });
+}
+
 export function useInternalCrmFinance(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: internalCrmQueryKeys.finance(),
     queryFn: () => invokeInternalCrmApi<{ ok: true; summary: InternalCrmFinanceSummary }>({ action: 'list_finance_summary' }),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useInternalCrmCustomerSnapshot(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: internalCrmQueryKeys.customerSnapshot(),
+    queryFn: () =>
+      invokeInternalCrmApi<{ ok: true; snapshots: InternalCrmCustomerSnapshot[] }>({
+        action: 'list_customer_snapshot',
+      }),
     enabled: options?.enabled ?? true,
   });
 }

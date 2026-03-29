@@ -36,6 +36,42 @@ const ORG_ERROR_DESCRIPTION_BY_KIND = {
     'Sua sessao esta ativa, mas nao foi possivel carregar o contexto da organizacao. Isso pode acontecer por uma falha temporaria de conexao.',
 } as const;
 
+const CHECKOUT_INTENT_KEY = 'checkout_plan_intent';
+const PLAN_STORAGE_KEY = 'checkout_plan_hint';
+const VALID_PLAN_HINTS = new Set(['start', 'pro', 'scale']);
+
+/**
+ * Build a /pricing redirect that preserves any checkout intent
+ * stored in sessionStorage or localStorage (from the landing page flow).
+ */
+function buildPricingRedirectWithIntent(): string {
+  if (typeof window === 'undefined') return '/pricing';
+
+  // 1) Try sessionStorage (same-tab)
+  const sessionPlan = window.sessionStorage.getItem(PLAN_STORAGE_KEY);
+  if (sessionPlan && VALID_PLAN_HINTS.has(sessionPlan)) {
+    return `/pricing?target=${sessionPlan}&trial=7&checkout=1`;
+  }
+
+  // 2) Try localStorage (cross-tab)
+  try {
+    const raw = window.localStorage.getItem(CHECKOUT_INTENT_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { plan?: string; trial?: number; autoCheckout?: boolean; ts?: number };
+      if (parsed.plan && VALID_PLAN_HINTS.has(parsed.plan)) {
+        // Only use if less than 24 hours old
+        if (parsed.ts && Date.now() - parsed.ts < 86_400_000) {
+          const trial = parsed.trial ?? 7;
+          return `/pricing?target=${parsed.plan}&trial=${trial}&checkout=1`;
+        }
+        window.localStorage.removeItem(CHECKOUT_INTENT_KEY);
+      }
+    }
+  } catch { /* ignore parse errors */ }
+
+  return '/pricing';
+}
+
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRoles }) => {
   const { user, loading, role, orgId, orgStatus, suspensionReason, signOut, orgResolutionStatus, orgResolutionError, organizations } = useAuth();
   const { toast } = useToast();
@@ -88,7 +124,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
     if (organizations.length > 1) {
       return <Navigate to="/select-organization" replace />;
     }
-    return <Navigate to="/pricing" replace />;
+    return <Navigate to={buildPricingRedirectWithIntent()} replace />;
   }
 
   if (!orgId) {
@@ -102,7 +138,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
         </div>
       );
     }
-    if (orgResolutionStatus !== 'error') return <Navigate to="/pricing" replace />;
+    if (orgResolutionStatus !== 'error') return <Navigate to={buildPricingRedirectWithIntent()} replace />;
 
     const errorKind = orgResolutionError?.kind ?? 'transient';
     const errorTitle = ORG_ERROR_TITLE_BY_KIND[errorKind];

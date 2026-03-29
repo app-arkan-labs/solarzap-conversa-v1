@@ -7,24 +7,134 @@ $ORG_ID = $env:ORG_ID
 $SMOKE_EMAIL = $env:SMOKE_TEST_EMAIL
 $SMOKE_PASSWORD = $env:SMOKE_TEST_PASSWORD
 
-if ([string]::IsNullOrWhiteSpace($SUPABASE_URL)) { throw "Missing SUPABASE_URL env var" }
-if ([string]::IsNullOrWhiteSpace($SERVICE_KEY)) { throw "Missing SUPABASE_SERVICE_ROLE_KEY env var" }
-if ([string]::IsNullOrWhiteSpace($ANON_KEY)) { throw "Missing SUPABASE_ANON_KEY env var" }
-if ([string]::IsNullOrWhiteSpace($ACCESS_TOKEN)) { throw "Missing SUPABASE_ACCESS_TOKEN env var" }
+$missingRemoteEnv = @()
+if ([string]::IsNullOrWhiteSpace($SUPABASE_URL)) { $missingRemoteEnv += 'SUPABASE_URL' }
+if ([string]::IsNullOrWhiteSpace($SERVICE_KEY)) { $missingRemoteEnv += 'SUPABASE_SERVICE_ROLE_KEY' }
+if ([string]::IsNullOrWhiteSpace($ANON_KEY)) { $missingRemoteEnv += 'SUPABASE_ANON_KEY' }
+if ([string]::IsNullOrWhiteSpace($ACCESS_TOKEN)) { $missingRemoteEnv += 'SUPABASE_ACCESS_TOKEN' }
+
+$hasRemoteCoreEnv = $missingRemoteEnv.Count -eq 0
 
 $hasOrgId = -not [string]::IsNullOrWhiteSpace($ORG_ID)
 $hasSmokeCreds = -not [string]::IsNullOrWhiteSpace($SMOKE_EMAIL) -and -not [string]::IsNullOrWhiteSpace($SMOKE_PASSWORD)
-$fullMode = $hasOrgId -and $hasSmokeCreds
+$fullMode = $hasRemoteCoreEnv -and $hasOrgId -and $hasSmokeCreds
 
 Write-Host "===== SOLARZAP FINAL SMOKE TESTS ====="
 Write-Host ""
 
-if (-not $fullMode) {
+if (-not $hasRemoteCoreEnv) {
+  Write-Host "[INFO] Running in LOCAL mode (missing remote env vars: $($missingRemoteEnv -join ', '))."
+  Write-Host "[INFO] Remote Supabase smoke checks were skipped; local isolation and type-safety checks will run."
+} elseif (-not $fullMode) {
   Write-Host "[INFO] Running in LITE mode (missing ORG_ID and/or SMOKE_TEST credentials)."
   Write-Host "[INFO] Full business-flow tests are skipped; critical auth and function health checks still run."
 }
 
 $pass = 0; $fail = 0; $info = 0
+
+function Test-InternalCrmIsolationBoundary {
+  $internalCrmApiPath = Join-Path $PSScriptRoot "..\\supabase\\functions\\internal-crm-api\\index.ts"
+  $bridgeRpcPath = Join-Path $PSScriptRoot "..\\supabase\\migrations\\20260328000500_internal_crm_bridge_rpc.sql"
+  $result = [ordered]@{ ok = $true; findings = @() }
+
+  if (-not (Test-Path $internalCrmApiPath)) {
+    $result.ok = $false
+    $result.findings += "missing file: supabase/functions/internal-crm-api/index.ts"
+    return $result
+  }
+
+  if (-not (Test-Path $bridgeRpcPath)) {
+    $result.ok = $false
+    $result.findings += "missing file: supabase/migrations/20260328000500_internal_crm_bridge_rpc.sql"
+    return $result
+  }
+
+  $apiContent = Get-Content -Path $internalCrmApiPath -Raw -Encoding UTF8
+  $bridgeContent = Get-Content -Path $bridgeRpcPath -Raw -Encoding UTF8
+
+  $forbiddenApiPatterns = @(
+    @{ pattern = 'serviceClient\.from\('; label = "direct serviceClient.from(...) in internal-crm-api" },
+    @{ pattern = 'serviceClient\.schema\(\s*[''\"]public[''\"]\s*\)\.from\('; label = "serviceClient.schema('public').from(...) in internal-crm-api" },
+    @{ pattern = '\.from\(\s*[''\"]organizations[''\"]\s*\)'; label = "forbidden table organizations in internal-crm-api" },
+    @{ pattern = '\.from\(\s*[''\"]organization_members[''\"]\s*\)'; label = "forbidden table organization_members in internal-crm-api" },
+    @{ pattern = '\.from\(\s*[''\"]leads[''\"]\s*\)'; label = "forbidden table leads in internal-crm-api" },
+    @{ pattern = '\.from\(\s*[''\"]propostas[''\"]\s*\)'; label = "forbidden table propostas in internal-crm-api" },
+    @{ pattern = '\.from\(\s*[''\"]interacoes[''\"]\s*\)'; label = "forbidden table interacoes in internal-crm-api" },
+    @{ pattern = '\.from\(\s*[''\"]lead_attribution[''\"]\s*\)'; label = "forbidden table lead_attribution in internal-crm-api" },
+    @{ pattern = '\.from\(\s*[''\"]attribution_touchpoints[''\"]\s*\)'; label = "forbidden table attribution_touchpoints in internal-crm-api" },
+    @{ pattern = '\.from\(\s*[''\"]conversion_events[''\"]\s*\)'; label = "forbidden table conversion_events in internal-crm-api" }
+  )
+
+  foreach ($entry in $forbiddenApiPatterns) {
+    if ($apiContent -match $entry.pattern) {
+      $result.findings += $entry.label
+    }
+  }
+
+  if ($apiContent -notmatch '(?s)function\s+crmSchema\s*\([^)]*\)\s*\{\s*return\s+serviceClient\.schema\(\s*[''\"]internal_crm[''\"]\s*\);\s*\}') {
+    $result.findings += "crmSchema(...) is not pinned to internal_crm"
+  }
+
+  $forbiddenBridgePatterns = @(
+    @{ pattern = '\bINSERT\s+INTO\s+public\.'; label = "bridge mutation INSERT INTO public.*" },
+    @{ pattern = '\bUPDATE\s+public\.'; label = "bridge mutation UPDATE public.*" },
+    @{ pattern = '\bDELETE\s+FROM\s+public\.'; label = "bridge mutation DELETE FROM public.*" },
+    @{ pattern = '\bTRUNCATE\s+(?:TABLE\s+)?public\.'; label = "bridge mutation TRUNCATE public.*" },
+    @{ pattern = '\bMERGE\s+INTO\s+public\.'; label = "bridge mutation MERGE INTO public.*" }
+  )
+
+  foreach ($entry in $forbiddenBridgePatterns) {
+    if ($bridgeContent -match $entry.pattern) {
+      $result.findings += $entry.label
+    }
+  }
+
+  if ($result.findings.Count -gt 0) {
+    $result.ok = $false
+  }
+
+  return $result
+}
+
+if (-not $hasRemoteCoreEnv) {
+  $boundaryCheck = Test-InternalCrmIsolationBoundary
+  if ($boundaryCheck.ok) {
+    Write-Host "[PASS] LOCAL01 internal CRM B2B/B2C boundary guard"; $pass++
+  } else {
+    Write-Host "[FAIL] LOCAL01 internal CRM B2B/B2C boundary guard: $($boundaryCheck.findings -join '; ')"; $fail++
+  }
+
+  try {
+    & npm run test:boundary
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host "[PASS] LOCAL02 npm run test:boundary"; $pass++
+    } else {
+      Write-Host "[FAIL] LOCAL02 npm run test:boundary (exit=$LASTEXITCODE)"; $fail++
+    }
+  } catch {
+    Write-Host "[FAIL] LOCAL02 npm run test:boundary: $_"; $fail++
+  }
+
+  try {
+    & npm run typecheck
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host "[PASS] LOCAL03 npm run typecheck"; $pass++
+    } else {
+      Write-Host "[FAIL] LOCAL03 npm run typecheck (exit=$LASTEXITCODE)"; $fail++
+    }
+  } catch {
+    Write-Host "[FAIL] LOCAL03 npm run typecheck: $_"; $fail++
+  }
+
+  Write-Host ""
+  Write-Host "===== LOCAL RESULTS: $pass PASS, $fail FAIL, $info INFO ====="
+  if ($fail -eq 0) {
+    Write-Host "LOCAL SMOKE PASSED" -ForegroundColor Green
+  } else {
+    Write-Host "$fail TEST(S) FAILED" -ForegroundColor Red
+  }
+  exit $fail
+}
 
 if (-not $fullMode) {
   try {
@@ -77,6 +187,13 @@ if (-not $fullMode) {
   } catch {
     $code = $_.Exception.Response.StatusCode.value__
     Write-Host "[FAIL] L05 broadcast-worker ($code)"; $fail++
+  }
+
+  $boundaryCheck = Test-InternalCrmIsolationBoundary
+  if ($boundaryCheck.ok) {
+    Write-Host "[PASS] L06 internal CRM B2B/B2C boundary guard"; $pass++
+  } else {
+    Write-Host "[FAIL] L06 internal CRM B2B/B2C boundary guard: $($boundaryCheck.findings -join '; ')"; $fail++
   }
 
   Write-Host ""
@@ -491,6 +608,13 @@ try {
     Write-Host "[FAIL] T25 scan_notification_runtime_health retorno inesperado"; $fail++
   }
 } catch { Write-Host "[FAIL] T25 scan_notification_runtime_health: $_"; $fail++ }
+
+$boundaryCheck = Test-InternalCrmIsolationBoundary
+if ($boundaryCheck.ok) {
+  Write-Host "[PASS] T26 internal CRM B2B/B2C boundary guard"; $pass++
+} else {
+  Write-Host "[FAIL] T26 internal CRM B2B/B2C boundary guard: $($boundaryCheck.findings -join '; ')"; $fail++
+}
 
 Write-Host ""
 Write-Host "===== RESULTS: $pass PASS, $fail FAIL, $info INFO ====="

@@ -141,6 +141,12 @@ export default function Onboarding() {
           public_phone: String(data.public_phone || ''),
           public_whatsapp: String(data.public_whatsapp || ''),
         });
+      } else if (user?.user_metadata?.company_name) {
+        // Pre-fill from signup metadata when company_profile is empty
+        setCompanyDraft((prev) => ({
+          ...prev,
+          company_name: prev.company_name || String(user.user_metadata.company_name || ''),
+        }));
       }
       setCompanyLoaded(true);
     })();

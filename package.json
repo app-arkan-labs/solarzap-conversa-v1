@@ -10,6 +10,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",
+    "test:boundary": "vitest run tests/unit/internalCrmBoundaryGuard.test.ts",
     "test:golden": "vitest run tests/golden",
     "lint": "eslint .",
     "preview": "vite preview"
