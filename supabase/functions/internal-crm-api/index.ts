@@ -1,5 +1,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  generateAvailableSlotsForType,
+  isSlotWithinWindow,
+  normalizeAppointmentTypeForWindow,
+  normalizeAppointmentWindowConfig,
+  overlapsBusyRange,
+} from '../_shared/appointmentScheduling.ts';
 import { resolveRequestCors } from '../_shared/cors.ts';
+import {
+  buildTrackingSnapshot,
+  resolveOrgPrimaryUserId,
+  syncInternalCrmTrackingBridge,
+  syncTrackingBridgeFromDeal,
+} from '../_shared/internalCrmTrackingBridge.ts';
 import { validateServiceInvocationAuth } from '../_shared/invocationAuth.ts';
 import { getStripeClient, resolveAppUrl } from '../_shared/stripe.ts';
 
@@ -90,7 +103,14 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   provision_customer: { minCrmRole: 'ops', requireMfa: true },
 };
 
-const INTERNAL_ONLY_ACTIONS = new Set(['webhook_inbound', 'process_agent_jobs', 'process_automation_runs']);
+const INTERNAL_ONLY_ACTIONS = new Set([
+  'webhook_inbound',
+  'process_agent_jobs',
+  'process_automation_runs',
+  'lp_public_intake',
+  'lp_public_list_slots',
+  'lp_public_book_slot',
+]);
 
 function json(status: number, body: Record<string, unknown>, headers: Record<string, string>) {
   return new Response(JSON.stringify(body), {
@@ -283,6 +303,14 @@ function normalizeTextArray(value: unknown): string[] {
   return value
     .map((item) => String(item ?? '').trim())
     .filter(Boolean);
+}
+
+function buildServiceActorIdentity(userId: string | null): AdminIdentity {
+  return {
+    user_id: userId || '00000000-0000-0000-0000-000000000000',
+    system_role: 'ops',
+    crm_role: 'ops',
+  };
 }
 
 function addMinutesIso(input: string, minutes: number): string {
@@ -1011,6 +1039,14 @@ async function upsertDeal(
     })
     .eq('id', clientId);
 
+  if (!before || before.stage_code !== dealData.stage_code) {
+    await syncTrackingBridgeFromDeal(serviceClient, {
+      internalDealId: String(dealData.id),
+      stageCode: asString(dealData.stage_code),
+      syncedAt: nowIso(),
+    });
+  }
+
   await writeAuditLog(serviceClient, identity, 'upsert_deal', req, {
     target_type: 'deal',
     target_id: String(dealData.id),
@@ -1045,6 +1081,12 @@ async function moveDealStage(
     changed_by_user_id: identity.user_id,
     closed_product_code: asString(payload.closed_product_code),
     lost_reason: asString(payload.lost_reason),
+  });
+
+  await syncTrackingBridgeFromDeal(serviceClient, {
+    internalDealId: dealId,
+    stageCode: asString(data.stage_code),
+    syncedAt: nowIso(),
   });
 
   if (resolveBlueprintStageCode(stageCode, 'novo_lead') === 'fechou') {
@@ -2450,6 +2492,286 @@ async function listAppointments(serviceClient: ReturnType<typeof createClient>, 
   }));
 }
 
+async function resolveLandingFormFunnel(
+  serviceClient: ReturnType<typeof createClient>,
+  funnelSlug: string | null,
+) {
+  if (!funnelSlug) throw { status: 400, code: 'invalid_payload' };
+
+  const { data, error } = await crmSchema(serviceClient)
+    .from('landing_form_funnels')
+    .select('*')
+    .eq('funnel_slug', funnelSlug)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error) throw { status: 500, code: 'landing_funnel_query_failed', error };
+  if (!data?.funnel_slug) throw { status: 404, code: 'landing_funnel_not_found' };
+  return data as Record<string, unknown>;
+}
+
+async function resolveLandingFunnelOwnerUserId(
+  serviceClient: ReturnType<typeof createClient>,
+  funnel: Record<string, unknown>,
+) {
+  const directOwnerUserId =
+    asString(funnel.owner_user_id) ||
+    asString(funnel.linked_public_user_id);
+  if (directOwnerUserId) return directOwnerUserId;
+
+  const orgId = asString(funnel.linked_public_org_id);
+  if (!orgId) return null;
+
+  return resolveOrgPrimaryUserId(serviceClient, orgId);
+}
+
+async function listPublicLandingSlots(
+  serviceClient: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+) {
+  const funnel = await resolveLandingFormFunnel(serviceClient, asString(payload.funnel_slug));
+  const ownerUserId = await resolveLandingFunnelOwnerUserId(serviceClient, funnel);
+  if (!ownerUserId) throw { status: 409, code: 'landing_funnel_incomplete' };
+
+  const timezone = asString(payload.timezone) || asString(funnel.timezone) || 'America/Sao_Paulo';
+  const appointmentType = normalizeAppointmentTypeForWindow(payload.appointment_type || funnel.appointment_type);
+  const slotDurationMinutes = clamp(
+    asNumber(payload.duration_minutes, asNumber(funnel.slot_duration_minutes, 30)),
+    5,
+    240,
+  );
+  const slotLimit = clamp(asNumber(payload.limit, asNumber(funnel.slot_limit, 8)), 1, 48);
+  const slotLookaheadDays = clamp(
+    asNumber(payload.lookahead_days, asNumber(funnel.slot_lookahead_days, 14)),
+    1,
+    90,
+  );
+  const slotConfig = normalizeAppointmentWindowConfig(funnel.slot_config);
+
+  const busyRanges: Array<{ startMs: number; endMs: number }> = [];
+  const now = new Date();
+  const queryFrom = new Date(now.getTime() - (4 * 60 * 60 * 1000)).toISOString();
+
+  const { data: appointments, error: appointmentsError } = await crmSchema(serviceClient)
+    .from('appointments')
+    .select('id, start_at, end_at, status')
+    .eq('owner_user_id', ownerUserId)
+    .in('status', ['scheduled', 'confirmed'])
+    .gte('start_at', queryFrom)
+    .order('start_at', { ascending: true })
+    .limit(500);
+
+  if (appointmentsError) throw { status: 500, code: 'landing_slots_query_failed', error: appointmentsError };
+
+  for (const appointment of appointments || []) {
+    const start = new Date(String(appointment.start_at || ''));
+    const endRaw = asString(appointment.end_at);
+    const end = endRaw
+      ? new Date(endRaw)
+      : new Date(start.getTime() + (slotDurationMinutes * 60_000));
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
+    busyRanges.push({ startMs: start.getTime(), endMs: end.getTime() });
+  }
+
+  return {
+    ok: true,
+    funnel_slug: asString(funnel.funnel_slug),
+    owner_user_id: ownerUserId,
+    timezone,
+    appointment_type: appointmentType,
+    duration_minutes: slotDurationMinutes,
+    slots: generateAvailableSlotsForType({
+      now,
+      timeZone: timezone,
+      windowRule: slotConfig[appointmentType],
+      busyRanges,
+      slotMinutes: slotDurationMinutes,
+      limit: slotLimit,
+      lookaheadDays: slotLookaheadDays,
+    }),
+  };
+}
+
+async function handlePublicLpIntake(
+  serviceClient: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const funnel = await resolveLandingFormFunnel(serviceClient, asString(payload.funnel_slug));
+  const ownerUserId = await resolveLandingFunnelOwnerUserId(serviceClient, funnel);
+  if (!ownerUserId) throw { status: 409, code: 'landing_funnel_incomplete' };
+
+  const linkedPublicOrgId = asString(payload.linked_public_org_id) || asString(funnel.linked_public_org_id);
+  const linkedPublicUserId =
+    asString(payload.linked_public_user_id) ||
+    asString(funnel.linked_public_user_id) ||
+    ownerUserId;
+
+  const identity = buildServiceActorIdentity(ownerUserId);
+  const trackingSnapshot = buildTrackingSnapshot(isRecord(payload.tracking) ? payload.tracking : null);
+  const intakeResult = await intakeLandingLead(serviceClient, identity, {
+    ...payload,
+    owner_user_id: ownerUserId,
+    linked_public_org_id: linkedPublicOrgId,
+    linked_public_user_id: linkedPublicUserId,
+    tracking: trackingSnapshot,
+    form_payload: mergeRecord(payload.form_payload, {
+      form_session_id: asString(payload.form_session_id),
+      funnel_slug: asString(payload.funnel_slug),
+    }),
+  }, req);
+
+  const bridge = linkedPublicOrgId && intakeResult.client?.id
+    ? await syncInternalCrmTrackingBridge({
+        supabase: serviceClient,
+        internalClientId: String(intakeResult.client.id),
+        internalDealId: asString(intakeResult.deal?.id),
+        stageCode: asString(intakeResult.deal?.stage_code) || 'novo_lead',
+        linkedPublicOrgId,
+        linkedPublicUserId,
+        ownerUserId,
+        attributionSnapshot: trackingSnapshot,
+      })
+    : { ok: true, bridge: null, publicLeadId: null, skippedReason: 'missing_linked_org' };
+
+  return {
+    ...intakeResult,
+    bridge,
+    linked_public_org_id: linkedPublicOrgId,
+    linked_public_user_id: linkedPublicUserId,
+  };
+}
+
+async function handlePublicLpBookSlot(
+  serviceClient: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const funnel = await resolveLandingFormFunnel(serviceClient, asString(payload.funnel_slug));
+  const ownerUserId = await resolveLandingFunnelOwnerUserId(serviceClient, funnel);
+  if (!ownerUserId) throw { status: 409, code: 'landing_funnel_incomplete' };
+
+  const clientId = asString(payload.client_id);
+  const dealId = asString(payload.deal_id);
+  const appointmentStartAtRaw = asString(payload.appointment_start_at);
+  if (!clientId || !dealId || !appointmentStartAtRaw) throw { status: 400, code: 'invalid_payload' };
+
+  const appointmentStartAt = new Date(appointmentStartAtRaw);
+  if (Number.isNaN(appointmentStartAt.getTime()) || appointmentStartAt.getTime() <= Date.now()) {
+    throw { status: 400, code: 'invalid_payload' };
+  }
+
+  const timezone = asString(payload.timezone) || asString(funnel.timezone) || 'America/Sao_Paulo';
+  const appointmentTypeRaw = asString(payload.appointment_type) || asString(funnel.appointment_type) || 'call';
+  const appointmentWindowType = normalizeAppointmentTypeForWindow(appointmentTypeRaw);
+  const durationMinutes = clamp(
+    asNumber(payload.duration_minutes, asNumber(funnel.slot_duration_minutes, 30)),
+    5,
+    240,
+  );
+  const slotConfig = normalizeAppointmentWindowConfig(funnel.slot_config);
+
+  if (!isSlotWithinWindow(appointmentStartAt.toISOString(), appointmentWindowType, slotConfig, timezone, durationMinutes)) {
+    throw { status: 409, code: 'slot_unavailable' };
+  }
+
+  const appointmentEndAt = new Date(appointmentStartAt.getTime() + (durationMinutes * 60_000));
+  const queryFrom = new Date(Date.now() - (4 * 60 * 60 * 1000)).toISOString();
+  const { data: appointments, error: appointmentsError } = await crmSchema(serviceClient)
+    .from('appointments')
+    .select('id, start_at, end_at, status')
+    .eq('owner_user_id', ownerUserId)
+    .in('status', ['scheduled', 'confirmed'])
+    .gte('start_at', queryFrom)
+    .order('start_at', { ascending: true })
+    .limit(500);
+
+  if (appointmentsError) throw { status: 500, code: 'landing_slots_query_failed', error: appointmentsError };
+
+  const busyRanges = (appointments || []).map((appointment) => {
+    const start = new Date(String(appointment.start_at || ''));
+    const endRaw = asString(appointment.end_at);
+    const end = endRaw
+      ? new Date(endRaw)
+      : new Date(start.getTime() + (durationMinutes * 60_000));
+    return { startMs: start.getTime(), endMs: end.getTime() };
+  }).filter((range) => Number.isFinite(range.startMs) && Number.isFinite(range.endMs));
+
+  if (overlapsBusyRange(appointmentStartAt.getTime(), appointmentEndAt.getTime(), busyRanges)) {
+    throw { status: 409, code: 'slot_unavailable' };
+  }
+
+  const identity = buildServiceActorIdentity(ownerUserId);
+  const trackingSnapshot = buildTrackingSnapshot(isRecord(payload.tracking) ? payload.tracking : null);
+  const client = (await crmSchema(serviceClient)
+    .from('clients')
+    .select('company_name, primary_contact_name')
+    .eq('id', clientId)
+    .maybeSingle()).data;
+
+  const title = asString(payload.title) || `Chamada ARKAN - ${asString(client?.company_name) || asString(client?.primary_contact_name) || 'Lead LP'}`;
+  const meetingLink = asString(payload.meeting_link) || asString(funnel.meeting_link);
+  const appointmentResult = await upsertAppointment(serviceClient, identity, {
+    client_id: clientId,
+    deal_id: dealId,
+    owner_user_id: ownerUserId,
+    title,
+    appointment_type: appointmentTypeRaw,
+    status: 'scheduled',
+    start_at: appointmentStartAt.toISOString(),
+    end_at: appointmentEndAt.toISOString(),
+    location: meetingLink,
+    metadata: {
+      meeting_link: meetingLink,
+      form_session_id: asString(payload.form_session_id),
+      funnel_slug: asString(payload.funnel_slug),
+      timezone,
+    },
+  }, req);
+
+  let syncedAppointment = appointmentResult.appointment;
+  let syncedEventLink: string | null = null;
+  try {
+    const connection = await getGoogleCalendarConnection(serviceClient, ownerUserId);
+    if (connection) {
+      const syncResult = await syncAppointmentGoogleCalendar(serviceClient, identity, {
+        appointment_id: String(appointmentResult.appointment.id),
+      }, req);
+      syncedAppointment = syncResult.appointment;
+      syncedEventLink = asString(syncResult.event?.html_link);
+    }
+  } catch {
+    // Best-effort sync: the internal appointment remains valid even if Google sync fails.
+  }
+
+  const linkedPublicOrgId = asString(payload.linked_public_org_id) || asString(funnel.linked_public_org_id);
+  const linkedPublicUserId =
+    asString(payload.linked_public_user_id) ||
+    asString(funnel.linked_public_user_id) ||
+    ownerUserId;
+
+  const bridge = linkedPublicOrgId
+    ? await syncInternalCrmTrackingBridge({
+        supabase: serviceClient,
+        internalClientId: clientId,
+        internalDealId: dealId,
+        stageCode: 'chamada_agendada',
+        linkedPublicOrgId,
+        linkedPublicUserId,
+        ownerUserId,
+        attributionSnapshot: trackingSnapshot,
+      })
+    : { ok: true, bridge: null, publicLeadId: null, skippedReason: 'missing_linked_org' };
+
+  return {
+    ok: true,
+    appointment: syncedAppointment,
+    stage_code: 'chamada_agendada',
+    meeting_link: syncedEventLink || meetingLink,
+    bridge,
+  };
+}
+
 async function upsertAppointment(
   serviceClient: ReturnType<typeof createClient>,
   identity: AdminIdentity,
@@ -2512,6 +2834,12 @@ async function upsertAppointment(
       stage_code: appointmentStageCode,
       notes: `appointment_status:${String(data.status || '')}`,
       changed_by_user_id: identity.user_id,
+    });
+
+    await syncTrackingBridgeFromDeal(serviceClient, {
+      internalDealId: String(dealForAppointment.id),
+      stageCode: appointmentStageCode,
+      syncedAt: nowIso(),
     });
   }
 
@@ -3562,6 +3890,10 @@ async function intakeLandingLead(
   const primaryContactName = asString(payload.primary_contact_name) || asString(payload.nome) || companyName;
   const primaryPhone = normalizePhone(payload.primary_phone || payload.phone || payload.whatsapp);
   const primaryEmail = asString(payload.primary_email) || asString(payload.email);
+  const linkedPublicOrgId = asString(payload.linked_public_org_id);
+  const linkedPublicUserId = asString(payload.linked_public_user_id);
+  const trackingSnapshot = buildTrackingSnapshot(isRecord(payload.tracking) ? payload.tracking : null);
+  const suppressAutomation = asBoolean(payload.suppress_automation, false);
   if (!companyName || !primaryPhone) throw { status: 400, code: 'invalid_payload' };
 
   const hasScheduledCall = asBoolean(payload.has_scheduled_call, Boolean(asString(payload.scheduled_at) || asString(payload.appointment_start_at)));
@@ -3586,6 +3918,8 @@ async function intakeLandingLead(
       current_stage_code: hasScheduledCall ? 'chamada_agendada' : 'novo_lead',
       lifecycle_status: 'lead',
       last_contact_at: nowIso(),
+      linked_public_org_id: linkedPublicOrgId,
+      linked_public_user_id: linkedPublicUserId,
       metadata: asRecord(payload.client_metadata),
     }).select('*').single()).data;
   } else {
@@ -3597,6 +3931,8 @@ async function intakeLandingLead(
       source_channel: 'landing_page',
       owner_user_id: asString(payload.owner_user_id) || asString(client.owner_user_id) || identity.user_id,
       current_stage_code: hasScheduledCall ? 'chamada_agendada' : resolveBlueprintStageCode(client.current_stage_code, 'novo_lead'),
+      linked_public_org_id: linkedPublicOrgId || asString(client.linked_public_org_id),
+      linked_public_user_id: linkedPublicUserId || asString(client.linked_public_user_id),
       updated_at: nowIso(),
       metadata: mergeRecord(client.metadata, payload.client_metadata),
     }).eq('id', client.id).select('*').single()).data;
@@ -3620,6 +3956,7 @@ async function intakeLandingLead(
     scheduling_link: asString(payload.link_agendamento) || asString(payload.scheduling_link),
     meeting_link: asString(payload.link_reuniao) || asString(payload.meeting_link),
     form_payload: asRecord(payload.form_payload),
+    attribution: trackingSnapshot,
   });
 
   const dealStageCode = hasScheduledCall ? 'chamada_agendada' : 'novo_lead';
@@ -3654,7 +3991,7 @@ async function intakeLandingLead(
       deal_id: deal.id,
       owner_user_id: asString(payload.owner_user_id) || identity.user_id,
       title: asString(payload.appointment_title) || `Chamada ARKAN - ${companyName}`,
-      appointment_type: 'call',
+      appointment_type: asString(payload.appointment_type) || 'call',
       status: 'scheduled',
       start_at: parsedAppointmentAt.toISOString(),
       location: asString(payload.link_reuniao) || asString(payload.meeting_link),
@@ -3684,15 +4021,17 @@ async function intakeLandingLead(
     event_key: `lp_form_submitted:${String(client.id)}:${nowIso()}`,
   };
 
-  const automation = [
-    await queueAutomationEvent(serviceClient, 'lp_form_submitted', intakePayload, { processDueNow: true }),
-  ];
+  const automation = suppressAutomation
+    ? []
+    : [
+        await queueAutomationEvent(serviceClient, 'lp_form_submitted', intakePayload, { processDueNow: true }),
+      ];
 
-  if (appointment?.id) {
+  if (!suppressAutomation && appointment?.id) {
     automation.push(await queueAutomationEvent(serviceClient, 'appointment_scheduled', {
       ...intakePayload,
       appointment_id: String(appointment.id),
-      appointment_type: 'call',
+      appointment_type: asString(appointment.appointment_type) || 'call',
       appointment_start_at: appointment.start_at,
       event_at: appointment.start_at,
       event_key: `appointment_scheduled:${String(appointment.id)}:${appointment.start_at}`,
@@ -5361,6 +5700,21 @@ Deno.serve(async (req) => {
 
       if (action === 'process_automation_runs') {
         const result = await processAutomationRuns(serviceClient);
+        return json(200, result, responseHeaders);
+      }
+
+      if (action === 'lp_public_intake') {
+        const result = await handlePublicLpIntake(serviceClient, payload, req);
+        return json(200, result, responseHeaders);
+      }
+
+      if (action === 'lp_public_list_slots') {
+        const result = await listPublicLandingSlots(serviceClient, payload);
+        return json(200, result, responseHeaders);
+      }
+
+      if (action === 'lp_public_book_slot') {
+        const result = await handlePublicLpBookSlot(serviceClient, payload, req);
         return json(200, result, responseHeaders);
       }
 

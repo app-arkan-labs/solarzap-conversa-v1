@@ -91,6 +91,9 @@ verify_jwt = false
 [functions.internal-crm-api]
 verify_jwt = false
 
+[functions.lp-popup-intake]
+verify_jwt = false
+
 [functions.internal-crm-broadcast-worker]
 verify_jwt = false
 
