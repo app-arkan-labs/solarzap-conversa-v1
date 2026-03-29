@@ -3,6 +3,7 @@ import {
   internalCrmQueryKeys,
   useInternalCrmAppointments,
   useInternalCrmClients,
+  useInternalCrmGoogleCalendarStatus,
   useInternalCrmMutation,
 } from '@/modules/internal-crm/hooks/useInternalCrmApi';
 
@@ -41,6 +42,7 @@ export function useInternalCrmCalendar(filters: InternalCrmCalendarFilters) {
 
   const appointmentsQuery = useInternalCrmAppointments(params);
   const clientsQuery = useInternalCrmClients({});
+  const googleCalendarQuery = useInternalCrmGoogleCalendarStatus();
 
   const upsertAppointmentMutation = useInternalCrmMutation({
     invalidate: [
@@ -50,10 +52,36 @@ export function useInternalCrmCalendar(filters: InternalCrmCalendarFilters) {
     ],
   });
 
+  const googleCalendarActionMutation = useInternalCrmMutation({
+    invalidate: [
+      internalCrmQueryKeys.googleCalendar(),
+      internalCrmQueryKeys.appointments({}),
+    ],
+  });
+
+  const importGoogleEventsMutation = useInternalCrmMutation({
+    invalidate: [
+      internalCrmQueryKeys.googleCalendar(),
+      internalCrmQueryKeys.appointments({}),
+      internalCrmQueryKeys.dashboard({}),
+    ],
+  });
+
+  const syncAppointmentGoogleMutation = useInternalCrmMutation({
+    invalidate: [
+      internalCrmQueryKeys.googleCalendar(),
+      internalCrmQueryKeys.appointments({}),
+    ],
+  });
+
   return {
     params,
     appointmentsQuery,
     clientsQuery,
+    googleCalendarQuery,
     upsertAppointmentMutation,
+    googleCalendarActionMutation,
+    importGoogleEventsMutation,
+    syncAppointmentGoogleMutation,
   };
 }

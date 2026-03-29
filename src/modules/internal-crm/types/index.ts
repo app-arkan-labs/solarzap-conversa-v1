@@ -30,9 +30,16 @@ export type InternalCrmApiAction =
   | 'list_ai_settings'
   | 'upsert_ai_settings'
   | 'enqueue_agent_job'
+  | 'run_agent_jobs'
+  | 'list_ai_action_logs'
   | 'process_agent_jobs'
   | 'list_appointments'
   | 'upsert_appointment'
+  | 'get_google_calendar_status'
+  | 'get_google_calendar_oauth_url'
+  | 'disconnect_google_calendar'
+  | 'sync_appointment_google_calendar'
+  | 'import_google_calendar_events'
   | 'list_finance_summary'
   | 'list_orders'
   | 'list_customer_snapshot'
@@ -320,9 +327,39 @@ export type InternalCrmAppointment = {
   end_at: string | null;
   location: string | null;
   notes: string | null;
+  source: 'internal' | 'google';
+  google_event_id: string | null;
+  google_calendar_id: string | null;
+  google_sync_status: 'not_synced' | 'synced' | 'error' | 'disconnected';
+  google_last_synced_at: string | null;
+  google_sync_error: string | null;
   created_at: string;
   updated_at: string;
   client_company_name?: string | null;
+};
+
+export type InternalCrmAiActionLog = {
+  id: string;
+  job_id: string | null;
+  client_id: string | null;
+  action_type: string;
+  status: 'pending' | 'completed' | 'failed' | 'skipped';
+  input_payload: Record<string, unknown>;
+  output_payload: Record<string, unknown>;
+  created_at: string;
+  client_company_name?: string | null;
+};
+
+export type InternalCrmGoogleCalendarStatus = {
+  ok: true;
+  connected: boolean;
+  connection: null | {
+    account_email: string | null;
+    account_name: string | null;
+    calendar_id: string;
+    token_expires_at: string | null;
+    connected_at: string | null;
+  };
 };
 
 export type InternalCrmAiSettings = {

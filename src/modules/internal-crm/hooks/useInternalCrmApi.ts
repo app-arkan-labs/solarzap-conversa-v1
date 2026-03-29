@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/
 import { supabase } from '@/lib/supabase';
 import type {
   InternalCrmAppointment,
+  InternalCrmAiActionLog,
   InternalCrmAiSettings,
   InternalCrmApiAction,
   InternalCrmApiErrorCode,
@@ -15,6 +16,7 @@ import type {
   InternalCrmDashboardKpis,
   InternalCrmDealSummary,
   InternalCrmFinanceSummary,
+  InternalCrmGoogleCalendarStatus,
   InternalCrmProduct,
   InternalCrmStage,
   InternalCrmTask,
@@ -399,7 +401,9 @@ export const internalCrmQueryKeys = {
   conversationDetail: (conversationId: string) => ['internal-crm', 'conversation-detail', conversationId] as const,
   campaigns: () => ['internal-crm', 'campaigns'] as const,
   ai: () => ['internal-crm', 'ai'] as const,
+  aiActionLogs: (params: Record<string, unknown>) => ['internal-crm', 'ai-action-logs', params] as const,
   appointments: (params: Record<string, unknown>) => ['internal-crm', 'appointments', params] as const,
+  googleCalendar: () => ['internal-crm', 'google-calendar'] as const,
   finance: () => ['internal-crm', 'finance'] as const,
   customerSnapshot: () => ['internal-crm', 'customer-snapshot'] as const,
 };
@@ -532,6 +536,18 @@ export function useInternalCrmAi(options?: { enabled?: boolean }) {
   });
 }
 
+export function useInternalCrmAiActionLogs(params: { limit?: number } = {}, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: internalCrmQueryKeys.aiActionLogs(params),
+    queryFn: () =>
+      invokeInternalCrmApi<{ ok: true; logs: InternalCrmAiActionLog[] }>({
+        action: 'list_ai_action_logs',
+        ...params,
+      }),
+    enabled: options?.enabled ?? true,
+  });
+}
+
 export function useInternalCrmAppointments(params: {
   date_from?: string;
   date_to?: string;
@@ -546,6 +562,15 @@ export function useInternalCrmAppointments(params: {
         action: 'list_appointments',
         ...params,
       }),
+  });
+}
+
+export function useInternalCrmGoogleCalendarStatus(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: internalCrmQueryKeys.googleCalendar(),
+    queryFn: () => invokeInternalCrmApi<InternalCrmGoogleCalendarStatus>({ action: 'get_google_calendar_status' }),
+    enabled: options?.enabled ?? true,
+    staleTime: 30_000,
   });
 }
 

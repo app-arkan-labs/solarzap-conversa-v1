@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, ClipboardCheck, Loader2, Pencil } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarDays, ChevronLeft, ChevronRight, ClipboardCheck, Link2, Loader2, Pencil, RefreshCw, Unlink } from 'lucide-react';
 import { PageHeader } from '@/components/solarzap/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -63,6 +63,21 @@ function defaultStartAtForDay(day: Date): string {
   return defaultStart.toISOString();
 }
 
+function googleSyncStatusLabel(status: InternalCrmAppointment['google_sync_status'] | null | undefined): string {
+  switch (status) {
+    case 'synced':
+      return 'Google sincronizado';
+    case 'error':
+      return 'Erro Google';
+    case 'disconnected':
+      return 'Google desconectado';
+    case 'not_synced':
+      return 'Nao sincronizado';
+    default:
+      return 'Nao sincronizado';
+  }
+}
+
 export function InternalCrmCalendarView() {
   const { toast } = useToast();
   const [monthAnchor, setMonthAnchor] = useState(() => {
@@ -78,6 +93,32 @@ export function InternalCrmCalendarView() {
   const [feedbackAppointment, setFeedbackAppointment] = useState<InternalCrmAppointment | null>(null);
   const [defaultStartAt, setDefaultStartAt] = useState<string | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const googleStatus = params.get('google_calendar');
+    const message = params.get('message');
+    if (!googleStatus) return;
+
+    if (googleStatus === 'connected') {
+      toast({
+        title: 'Google Calendar conectado',
+        description: message || 'Sincronizacao habilitada para o CRM interno.',
+      });
+    } else if (googleStatus === 'error') {
+      toast({
+        title: 'Falha na conexao Google Calendar',
+        description: message || 'Nao foi possivel concluir a autenticacao.',
+        variant: 'destructive',
+      });
+    }
+
+    params.delete('google_calendar');
+    params.delete('message');
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, '', nextUrl);
+  }, [toast]);
+
   const calendarModule = useInternalCrmCalendar({
     monthAnchor,
     status: statusFilter === 'all' ? undefined : statusFilter,
@@ -86,6 +127,9 @@ export function InternalCrmCalendarView() {
 
   const appointments = calendarModule.appointmentsQuery.data?.appointments || [];
   const clients = calendarModule.clientsQuery.data?.clients || [];
+  const googleCalendarStatus = calendarModule.googleCalendarQuery.data;
+  const googleConnection = googleCalendarStatus?.connection || null;
+  const isGoogleConnected = Boolean(googleCalendarStatus?.connected);
 
   const calendarCells = useMemo(() => buildCalendarCells(monthAnchor), [monthAnchor]);
 
@@ -137,11 +181,30 @@ export function InternalCrmCalendarView() {
 
   async function handleSaveAppointment(payload: Record<string, unknown>) {
     try {
-      await calendarModule.upsertAppointmentMutation.mutateAsync({
+      const result = (await calendarModule.upsertAppointmentMutation.mutateAsync({
         action: 'upsert_appointment',
         ...payload,
+      })) as { ok: true; appointment: InternalCrmAppointment };
+
+      let googleSyncWarning = false;
+
+      if (isGoogleConnected && result.appointment?.id) {
+        try {
+          await calendarModule.syncAppointmentGoogleMutation.mutateAsync({
+            action: 'sync_appointment_google_calendar',
+            appointment_id: result.appointment.id,
+          });
+        } catch {
+          googleSyncWarning = true;
+        }
+      }
+
+      toast({
+        title: 'Compromisso salvo',
+        description: googleSyncWarning
+          ? 'Agenda salva, mas houve falha ao sincronizar com Google Calendar.'
+          : 'Agenda atualizada com sucesso.',
       });
-      toast({ title: 'Compromisso salvo', description: 'Agenda atualizada com sucesso.' });
       setAppointmentModalOpen(false);
       setEditingAppointment(null);
       setDefaultStartAt(null);
@@ -149,6 +212,91 @@ export function InternalCrmCalendarView() {
       toast({
         title: 'Falha ao salvar compromisso',
         description: 'Nao foi possivel salvar o evento no calendario interno.',
+        variant: 'destructive',
+      });
+    }
+  }
+
+  async function handleConnectGoogleCalendar() {
+    try {
+      const result = (await calendarModule.googleCalendarActionMutation.mutateAsync({
+        action: 'get_google_calendar_oauth_url',
+        redirect_url: window.location.origin,
+      })) as { ok: true; auth_url: string };
+
+      if (!result.auth_url) {
+        throw new Error('auth_url_missing');
+      }
+
+      window.location.href = result.auth_url;
+    } catch {
+      toast({
+        title: 'Falha ao conectar Google Calendar',
+        description: 'Nao foi possivel iniciar o fluxo OAuth agora.',
+        variant: 'destructive',
+      });
+    }
+  }
+
+  async function handleDisconnectGoogleCalendar() {
+    try {
+      await calendarModule.googleCalendarActionMutation.mutateAsync({
+        action: 'disconnect_google_calendar',
+      });
+
+      toast({
+        title: 'Google Calendar desconectado',
+        description: 'A sincronizacao automatica foi interrompida.',
+      });
+    } catch {
+      toast({
+        title: 'Falha ao desconectar Google Calendar',
+        description: 'Nao foi possivel remover a conexao no momento.',
+        variant: 'destructive',
+      });
+    }
+  }
+
+  async function handleImportGoogleEvents() {
+    try {
+      const result = (await calendarModule.importGoogleEventsMutation.mutateAsync({
+        action: 'import_google_calendar_events',
+        date_from: calendarModule.params.date_from,
+        date_to: calendarModule.params.date_to,
+      })) as {
+        ok: true;
+        imported_count: number;
+        updated_count: number;
+      };
+
+      toast({
+        title: 'Agenda importada do Google',
+        description: `${result.imported_count} novo(s), ${result.updated_count} atualizado(s).`,
+      });
+    } catch {
+      toast({
+        title: 'Falha ao importar agenda do Google',
+        description: 'Nao foi possivel sincronizar eventos neste periodo.',
+        variant: 'destructive',
+      });
+    }
+  }
+
+  async function handleSyncAppointment(appointment: InternalCrmAppointment) {
+    try {
+      await calendarModule.syncAppointmentGoogleMutation.mutateAsync({
+        action: 'sync_appointment_google_calendar',
+        appointment_id: appointment.id,
+      });
+
+      toast({
+        title: 'Compromisso sincronizado',
+        description: 'Evento enviado para o Google Calendar.',
+      });
+    } catch {
+      toast({
+        title: 'Falha ao sincronizar compromisso',
+        description: 'Nao foi possivel enviar este evento para o Google Calendar.',
         variant: 'destructive',
       });
     }
@@ -220,6 +368,50 @@ export function InternalCrmCalendarView() {
         clients={clients}
         onCreateAppointment={() => openCreateAppointment()}
       />
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 p-4">
+        <div>
+          <p className="text-sm font-semibold">Google Calendar</p>
+          <p className="text-xs text-muted-foreground">
+            {isGoogleConnected
+              ? `Conectado como ${googleConnection?.account_email || 'conta Google'}`
+              : 'Conecte para sincronizar compromissos e importar eventos.'}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {isGoogleConnected ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => void handleImportGoogleEvents()}
+                disabled={calendarModule.importGoogleEventsMutation.isPending}
+              >
+                {calendarModule.importGoogleEventsMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Importar eventos
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={() => void handleDisconnectGoogleCalendar()}
+                disabled={calendarModule.googleCalendarActionMutation.isPending}
+              >
+                <Unlink className="mr-2 h-4 w-4" />
+                Desconectar
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => void handleConnectGoogleCalendar()}
+              disabled={calendarModule.googleCalendarActionMutation.isPending}
+            >
+              {calendarModule.googleCalendarActionMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
+              Conectar Google Calendar
+            </Button>
+          )}
+        </div>
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <Card>
@@ -317,7 +509,15 @@ export function InternalCrmCalendarView() {
                         {appointment.client_company_name || 'Cliente nao identificado'}
                       </p>
                     </div>
-                    <TokenBadge token={appointment.status} />
+                    <div className="flex flex-col items-end gap-1">
+                      <TokenBadge token={appointment.status} />
+                      {isGoogleConnected ? (
+                        <TokenBadge
+                          token={appointment.google_sync_status}
+                          label={googleSyncStatusLabel(appointment.google_sync_status)}
+                        />
+                      ) : null}
+                    </div>
                   </div>
 
                   <p className="text-xs text-muted-foreground">
@@ -330,6 +530,17 @@ export function InternalCrmCalendarView() {
                       <Pencil className="mr-2 h-3.5 w-3.5" />
                       Editar
                     </Button>
+                    {isGoogleConnected ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleSyncAppointment(appointment)}
+                        disabled={calendarModule.syncAppointmentGoogleMutation.isPending}
+                      >
+                        {calendarModule.syncAppointmentGoogleMutation.isPending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-2 h-3.5 w-3.5" />}
+                        Sincronizar Google
+                      </Button>
+                    ) : null}
                     <Button
                       variant="outline"
                       size="sm"

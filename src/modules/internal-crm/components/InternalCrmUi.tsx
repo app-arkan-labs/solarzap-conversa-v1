@@ -77,14 +77,17 @@ function badgeVariantByToken(token: string): string {
     case 'paid':
     case 'healthy':
     case 'on_track':
+    case 'synced':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     case 'pending':
     case 'attention':
     case 'at_risk':
+    case 'not_synced':
       return 'bg-yellow-100 text-yellow-800 border-yellow-200';
     case 'failed':
     case 'risk':
     case 'overdue':
+    case 'disconnected':
       return 'bg-rose-100 text-rose-800 border-rose-200';
     default:
       return 'bg-muted text-muted-foreground border-border';

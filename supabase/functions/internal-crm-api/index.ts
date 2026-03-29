@@ -63,8 +63,15 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   list_ai_settings: { minCrmRole: 'read_only', requireMfa: true },
   upsert_ai_settings: { minCrmRole: 'ops', requireMfa: true },
   enqueue_agent_job: { minCrmRole: 'sales', requireMfa: true },
+  run_agent_jobs: { minCrmRole: 'ops', requireMfa: true },
+  list_ai_action_logs: { minCrmRole: 'read_only', requireMfa: true },
   list_appointments: { minCrmRole: 'read_only', requireMfa: true },
   upsert_appointment: { minCrmRole: 'sales', requireMfa: true },
+  get_google_calendar_status: { minCrmRole: 'read_only', requireMfa: true },
+  get_google_calendar_oauth_url: { minCrmRole: 'ops', requireMfa: true },
+  disconnect_google_calendar: { minCrmRole: 'ops', requireMfa: true },
+  sync_appointment_google_calendar: { minCrmRole: 'sales', requireMfa: true },
+  import_google_calendar_events: { minCrmRole: 'sales', requireMfa: true },
   list_finance_summary: { minCrmRole: 'finance', requireMfa: true, financeOnly: true },
   list_orders: { minCrmRole: 'finance', requireMfa: true, financeOnly: true },
   list_customer_snapshot: { minCrmRole: 'finance', requireMfa: true, financeOnly: true },
@@ -998,6 +1005,218 @@ async function invokeInternalEdgeFunction(functionName: string, payload: Record<
   return isRecord(responsePayload) ? responsePayload : { ok: true };
 }
 
+type GoogleCalendarConnection = {
+  user_id: string;
+  account_email: string | null;
+  account_name: string | null;
+  access_token: string;
+  refresh_token: string | null;
+  token_expires_at: string | null;
+  scope: string | null;
+  calendar_id: string;
+  connected_at: string | null;
+};
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function safeAsOrigin(value: string | null, fallbackOrigin: string): string {
+  if (!value) return fallbackOrigin;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return fallbackOrigin;
+  }
+}
+
+function resolveGoogleProviderConfigRecord(input: unknown): Record<string, unknown> {
+  if (Array.isArray(input)) {
+    const first = input.find((entry) => isRecord(entry));
+    return isRecord(first) ? first : {};
+  }
+
+  return isRecord(input) ? input : {};
+}
+
+async function resolveGoogleOAuthConfig(serviceClient: ReturnType<typeof createClient>) {
+  const envClientId = asString(Deno.env.get('GOOGLE_CLIENT_ID')) || asString(Deno.env.get('GOOGLE_ADS_CLIENT_ID'));
+  const envClientSecret =
+    asString(Deno.env.get('GOOGLE_CLIENT_SECRET')) || asString(Deno.env.get('GOOGLE_ADS_CLIENT_SECRET'));
+
+  if (envClientId && envClientSecret) {
+    return {
+      clientId: envClientId,
+      clientSecret: envClientSecret,
+    };
+  }
+
+  const { data, error } = await serviceClient.rpc('get_provider_config', { p_provider: 'google' });
+  if (error) {
+    throw { status: 500, code: 'google_oauth_config_failed', error };
+  }
+
+  const config = resolveGoogleProviderConfigRecord(data);
+  const clientId = envClientId || asString(config.client_id) || asString(config.app_id);
+  const clientSecret = envClientSecret || asString(config.client_secret) || asString(config.app_secret);
+
+  if (!clientId || !clientSecret) {
+    throw { status: 500, code: 'google_oauth_config_missing' };
+  }
+
+  return { clientId, clientSecret };
+}
+
+function normalizeGoogleCalendarConnection(row: Record<string, unknown>): GoogleCalendarConnection {
+  return {
+    user_id: String(row.user_id || ''),
+    account_email: asString(row.account_email),
+    account_name: asString(row.account_name),
+    access_token: asString(row.access_token) || '',
+    refresh_token: asString(row.refresh_token),
+    token_expires_at: asString(row.token_expires_at),
+    scope: asString(row.scope),
+    calendar_id: asString(row.calendar_id) || 'primary',
+    connected_at: asString(row.connected_at),
+  };
+}
+
+async function getGoogleCalendarConnection(
+  serviceClient: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<GoogleCalendarConnection | null> {
+  const { data, error } = await crmSchema(serviceClient)
+    .from('google_calendar_connections')
+    .select('user_id, account_email, account_name, access_token, refresh_token, token_expires_at, scope, calendar_id, connected_at')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    throw { status: 500, code: 'google_calendar_connection_query_failed', error };
+  }
+
+  if (!isRecord(data)) return null;
+  return normalizeGoogleCalendarConnection(data);
+}
+
+async function refreshGoogleCalendarAccessToken(
+  serviceClient: ReturnType<typeof createClient>,
+  connection: GoogleCalendarConnection,
+): Promise<GoogleCalendarConnection> {
+  const now = Date.now();
+  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
+  if (connection.access_token && expiresAt > now + 120_000) {
+    return connection;
+  }
+
+  if (!connection.refresh_token) {
+    throw { status: 409, code: 'google_calendar_reauth_required' };
+  }
+
+  const { clientId, clientSecret } = await resolveGoogleOAuthConfig(serviceClient);
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: connection.refresh_token,
+      grant_type: 'refresh_token',
+    }),
+  });
+
+  const tokenPayload = await tokenResponse.json().catch(() => ({}));
+  const refreshedAccessToken = isRecord(tokenPayload) ? asString(tokenPayload.access_token) : null;
+  if (!tokenResponse.ok || !refreshedAccessToken) {
+    throw {
+      status: 502,
+      code: 'google_calendar_token_refresh_failed',
+      details: tokenPayload,
+    };
+  }
+
+  const refreshedRefreshToken = isRecord(tokenPayload) ? asString(tokenPayload.refresh_token) : null;
+  const expiresInSeconds = isRecord(tokenPayload) ? clamp(asNumber(tokenPayload.expires_in, 3600), 60, 86_400) : 3600;
+  const nextExpiresAtIso = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+
+  const { data, error } = await crmSchema(serviceClient)
+    .from('google_calendar_connections')
+    .update({
+      access_token: refreshedAccessToken,
+      refresh_token: refreshedRefreshToken || connection.refresh_token,
+      token_expires_at: nextExpiresAtIso,
+      scope: isRecord(tokenPayload) ? asString(tokenPayload.scope) || connection.scope : connection.scope,
+      updated_at: nowIso(),
+    })
+    .eq('user_id', connection.user_id)
+    .select('user_id, account_email, account_name, access_token, refresh_token, token_expires_at, scope, calendar_id, connected_at')
+    .single();
+
+  if (error || !isRecord(data)) {
+    throw { status: 500, code: 'google_calendar_connection_update_failed', error };
+  }
+
+  return normalizeGoogleCalendarConnection(data);
+}
+
+async function googleCalendarRequest(
+  accessToken: string,
+  path: string,
+  options: RequestInit = {},
+): Promise<Record<string, unknown>> {
+  const response = await fetch(`https://www.googleapis.com/calendar/v3${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw {
+      status: 502,
+      code: 'google_calendar_request_failed',
+      details: payload,
+    };
+  }
+
+  return isRecord(payload) ? payload : {};
+}
+
+function mapGoogleEventStatusToAppointmentStatus(
+  googleStatus: string,
+  endAtIso: string | null,
+): 'scheduled' | 'confirmed' | 'done' | 'canceled' | 'no_show' {
+  if (googleStatus === 'cancelled') return 'canceled';
+  if (endAtIso) {
+    const parsedEnd = new Date(endAtIso);
+    if (!Number.isNaN(parsedEnd.getTime()) && parsedEnd.getTime() < Date.now()) {
+      return 'done';
+    }
+  }
+  return googleStatus === 'confirmed' ? 'confirmed' : 'scheduled';
+}
+
+function buildGoogleEventDescription(
+  appointment: Record<string, unknown>,
+  client: Record<string, unknown> | null,
+): string {
+  const chunks: string[] = [];
+  const clientName = asString(client?.company_name) || asString(appointment.client_company_name);
+  const contactName = asString(client?.primary_contact_name);
+  const contactEmail = asString(client?.primary_email);
+  const notes = asString(appointment.notes);
+
+  if (clientName) chunks.push(`Cliente: ${clientName}`);
+  if (contactName) chunks.push(`Contato: ${contactName}`);
+  if (contactEmail) chunks.push(`Email: ${contactEmail}`);
+  if (notes) chunks.push(`\nNotas internas:\n${notes}`);
+
+  return chunks.join('\n').trim();
+}
+
 async function listInstances(serviceClient: ReturnType<typeof createClient>) {
   const { data, error } = await crmSchema(serviceClient)
     .from('whatsapp_instances')
@@ -1581,6 +1800,467 @@ async function upsertAppointment(
   return { ok: true, appointment: data };
 }
 
+async function getGoogleCalendarStatus(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+) {
+  const connection = await getGoogleCalendarConnection(serviceClient, identity.user_id);
+  return {
+    ok: true,
+    connected: Boolean(connection),
+    connection: connection
+      ? {
+          account_email: connection.account_email,
+          account_name: connection.account_name,
+          calendar_id: connection.calendar_id,
+          token_expires_at: connection.token_expires_at,
+          connected_at: connection.connected_at,
+        }
+      : null,
+  };
+}
+
+async function getGoogleCalendarOAuthUrl(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+) {
+  const { clientId } = await resolveGoogleOAuthConfig(serviceClient);
+  const { supabaseUrl } = getSupabaseEnv();
+  const appOriginFallback = safeAsOrigin(resolveAppUrl(), 'http://localhost:5173');
+  const redirectOrigin = safeAsOrigin(asString(payload.redirect_url), appOriginFallback);
+  const redirectUri = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/internal-crm-google-callback`;
+
+  const scope = [
+    'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'openid',
+  ].join(' ');
+
+  const state = btoa(
+    JSON.stringify({
+      source: 'internal_crm_google_calendar',
+      user_id: identity.user_id,
+      redirect_url: redirectOrigin,
+      nonce: crypto.randomUUID(),
+      issued_at: nowIso(),
+    }),
+  );
+
+  const authUrl =
+    `https://accounts.google.com/o/oauth2/v2/auth?` +
+    `client_id=${encodeURIComponent(clientId)}&` +
+    `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+    `response_type=code&` +
+    `scope=${encodeURIComponent(scope)}&` +
+    `access_type=offline&` +
+    `prompt=consent&` +
+    `state=${encodeURIComponent(state)}`;
+
+  return {
+    ok: true,
+    auth_url: authUrl,
+    redirect_uri: redirectUri,
+  };
+}
+
+async function disconnectGoogleCalendar(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const before = await getGoogleCalendarConnection(serviceClient, identity.user_id);
+
+  const { error } = await schema
+    .from('google_calendar_connections')
+    .delete()
+    .eq('user_id', identity.user_id);
+
+  if (error) throw { status: 500, code: 'google_calendar_disconnect_failed', error };
+
+  await schema
+    .from('appointments')
+    .update({
+      google_sync_status: 'disconnected',
+      google_sync_error: 'calendar_disconnected',
+      google_last_synced_at: nowIso(),
+      updated_at: nowIso(),
+    })
+    .eq('owner_user_id', identity.user_id)
+    .not('google_event_id', 'is', null);
+
+  await writeAuditLog(serviceClient, identity, 'disconnect_google_calendar', req, {
+    target_type: 'google_calendar_connection',
+    target_id: identity.user_id,
+    after: { disconnected: Boolean(before) },
+  });
+
+  return {
+    ok: true,
+    disconnected: Boolean(before),
+  };
+}
+
+async function syncAppointmentGoogleCalendar(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const appointmentId = asString(payload.appointment_id);
+  if (!appointmentId) throw { status: 400, code: 'invalid_payload' };
+
+  const { data: appointment, error: appointmentError } = await schema
+    .from('appointments')
+    .select('*')
+    .eq('id', appointmentId)
+    .maybeSingle();
+
+  if (appointmentError) throw { status: 500, code: 'appointment_query_failed', error: appointmentError };
+  if (!appointment?.id) throw { status: 404, code: 'not_found' };
+
+  const connection = await getGoogleCalendarConnection(serviceClient, identity.user_id);
+  if (!connection) throw { status: 409, code: 'google_calendar_not_connected' };
+
+  let refreshedConnection = connection;
+  try {
+    refreshedConnection = await refreshGoogleCalendarAccessToken(serviceClient, connection);
+  } catch (error) {
+    await schema
+      .from('appointments')
+      .update({
+        google_sync_status: 'error',
+        google_sync_error: 'google_calendar_reauth_required',
+        google_last_synced_at: nowIso(),
+        updated_at: nowIso(),
+      })
+      .eq('id', appointmentId);
+    throw error;
+  }
+
+  const { data: client } = await schema
+    .from('clients')
+    .select('id, company_name, primary_contact_name, primary_email')
+    .eq('id', appointment.client_id)
+    .maybeSingle();
+
+  const calendarId = asString(payload.calendar_id) || refreshedConnection.calendar_id || 'primary';
+  const notifyAttendees = asBoolean(payload.notify_attendees, false);
+  const createMeet = asBoolean(payload.create_meet, false);
+  const summary = asString(payload.summary) || asString(appointment.title) || 'Compromisso CRM Interno';
+  const startAtIso = asString(appointment.start_at);
+  const endAtIso = asString(appointment.end_at) ||
+    (startAtIso ? new Date(new Date(startAtIso).getTime() + 60 * 60 * 1000).toISOString() : null);
+
+  if (!startAtIso || !endAtIso) throw { status: 400, code: 'invalid_payload' };
+
+  const eventPayload: Record<string, unknown> = {
+    summary,
+    description: buildGoogleEventDescription(appointment, isRecord(client) ? client : null),
+    location: asString(appointment.location),
+    start: {
+      dateTime: startAtIso,
+      timeZone: 'America/Sao_Paulo',
+    },
+    end: {
+      dateTime: endAtIso,
+      timeZone: 'America/Sao_Paulo',
+    },
+    attendees: asString(client?.primary_email) ? [{ email: asString(client?.primary_email) }] : [],
+    extendedProperties: {
+      private: {
+        internal_crm_appointment_id: String(appointment.id),
+        internal_crm_client_id: String(appointment.client_id),
+      },
+    },
+  };
+
+  if (createMeet) {
+    eventPayload.conferenceData = {
+      createRequest: {
+        requestId: crypto.randomUUID(),
+        conferenceSolutionKey: { type: 'hangoutsMeet' },
+      },
+    };
+  }
+
+  const sendUpdates = notifyAttendees ? 'all' : 'none';
+  const conferenceParam = createMeet ? '&conferenceDataVersion=1' : '';
+
+  try {
+    const existingEventId = asString(appointment.google_event_id);
+    const eventResponse = existingEventId
+      ? await googleCalendarRequest(
+          refreshedConnection.access_token,
+          `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(existingEventId)}?sendUpdates=${sendUpdates}${conferenceParam}`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify(eventPayload),
+          },
+        )
+      : await googleCalendarRequest(
+          refreshedConnection.access_token,
+          `/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=${sendUpdates}${conferenceParam}`,
+          {
+            method: 'POST',
+            body: JSON.stringify(eventPayload),
+          },
+        );
+
+    const googleEventId = asString(eventResponse.id);
+    if (!googleEventId) {
+      throw { status: 502, code: 'google_calendar_event_id_missing', details: eventResponse };
+    }
+
+    const { data: updatedAppointment, error: updateError } = await schema
+      .from('appointments')
+      .update({
+        owner_user_id: asString(appointment.owner_user_id) || identity.user_id,
+        source: asString(appointment.source) || 'internal',
+        google_event_id: googleEventId,
+        google_calendar_id: calendarId,
+        google_sync_status: 'synced',
+        google_last_synced_at: nowIso(),
+        google_sync_error: null,
+        updated_at: nowIso(),
+      })
+      .eq('id', appointmentId)
+      .select('*')
+      .single();
+
+    if (updateError || !updatedAppointment?.id) {
+      throw { status: 500, code: 'appointment_google_sync_update_failed', error: updateError };
+    }
+
+    await writeAuditLog(serviceClient, identity, 'sync_appointment_google_calendar', req, {
+      target_type: 'appointment',
+      target_id: appointmentId,
+      client_id: asString(updatedAppointment.client_id),
+      deal_id: asString(updatedAppointment.deal_id),
+      after: {
+        google_event_id: googleEventId,
+        google_calendar_id: calendarId,
+        html_link: asString(eventResponse.htmlLink),
+      },
+    });
+
+    return {
+      ok: true,
+      appointment: updatedAppointment,
+      event: {
+        id: googleEventId,
+        html_link: asString(eventResponse.htmlLink),
+        status: asString(eventResponse.status),
+      },
+    };
+  } catch (error) {
+    const syncError = asString((error as Record<string, unknown>)?.message) || 'google_calendar_sync_failed';
+    await schema
+      .from('appointments')
+      .update({
+        google_sync_status: 'error',
+        google_sync_error: syncError,
+        google_last_synced_at: nowIso(),
+        updated_at: nowIso(),
+      })
+      .eq('id', appointmentId);
+
+    throw error;
+  }
+}
+
+async function importGoogleCalendarEvents(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const connection = await getGoogleCalendarConnection(serviceClient, identity.user_id);
+  if (!connection) throw { status: 409, code: 'google_calendar_not_connected' };
+
+  const refreshedConnection = await refreshGoogleCalendarAccessToken(serviceClient, connection);
+  const calendarId = asString(payload.calendar_id) || refreshedConnection.calendar_id || 'primary';
+
+  const now = new Date();
+  const fallbackFrom = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const fallbackTo = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const fromDate = asString(payload.date_from) ? new Date(String(payload.date_from)) : fallbackFrom;
+  const toDate = asString(payload.date_to) ? new Date(String(payload.date_to)) : fallbackTo;
+  if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+    throw { status: 400, code: 'invalid_payload' };
+  }
+
+  const maxResults = clamp(asNumber(payload.max_results, 100), 10, 250);
+  const params = new URLSearchParams({
+    singleEvents: 'true',
+    orderBy: 'startTime',
+    timeMin: fromDate.toISOString(),
+    timeMax: toDate.toISOString(),
+    maxResults: String(maxResults),
+  });
+
+  const googleEventsPayload = await googleCalendarRequest(
+    refreshedConnection.access_token,
+    `/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
+    { method: 'GET' },
+  );
+
+  const eventItems = Array.isArray(googleEventsPayload.items)
+    ? googleEventsPayload.items.filter((item): item is Record<string, unknown> => isRecord(item))
+    : [];
+
+  const defaultClientId = asString(payload.default_client_id);
+  const { data: clientsByEmail } = await schema
+    .from('clients')
+    .select('id, primary_email')
+    .not('primary_email', 'is', null)
+    .limit(1000);
+
+  const emailToClientId = new Map<string, string>();
+  for (const client of clientsByEmail || []) {
+    const email = asString(client.primary_email);
+    if (!email) continue;
+    emailToClientId.set(email.toLowerCase(), String(client.id));
+  }
+
+  let importedCount = 0;
+  let updatedCount = 0;
+  let canceledCount = 0;
+  let skippedCount = 0;
+
+  for (const event of eventItems) {
+    const eventId = asString(event.id);
+    if (!eventId) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const { data: existingAppointment } = await schema
+      .from('appointments')
+      .select('*')
+      .eq('owner_user_id', identity.user_id)
+      .eq('google_calendar_id', calendarId)
+      .eq('google_event_id', eventId)
+      .maybeSingle();
+
+    const eventStatus = asString(event.status) || 'confirmed';
+    if (eventStatus === 'cancelled') {
+      if (existingAppointment?.id) {
+        await schema
+          .from('appointments')
+          .update({
+            status: 'canceled',
+            google_sync_status: 'synced',
+            google_last_synced_at: nowIso(),
+            google_sync_error: null,
+            updated_at: nowIso(),
+          })
+          .eq('id', existingAppointment.id);
+        canceledCount += 1;
+      } else {
+        skippedCount += 1;
+      }
+      continue;
+    }
+
+    const start = isRecord(event.start) ? event.start : {};
+    const end = isRecord(event.end) ? event.end : {};
+    const startAt = asString(start.dateTime);
+    const endAt = asString(end.dateTime);
+    if (!startAt) {
+      skippedCount += 1;
+      continue;
+    }
+
+    let clientId = defaultClientId || asString(existingAppointment?.client_id);
+    if (!clientId) {
+      const attendees = Array.isArray(event.attendees) ? event.attendees : [];
+      for (const attendee of attendees) {
+        if (!isRecord(attendee)) continue;
+        const attendeeEmail = asString(attendee.email);
+        if (!attendeeEmail) continue;
+        const matchedClientId = emailToClientId.get(attendeeEmail.toLowerCase());
+        if (matchedClientId) {
+          clientId = matchedClientId;
+          break;
+        }
+      }
+    }
+
+    if (!clientId) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const normalizedEndAt = endAt || new Date(new Date(startAt).getTime() + 60 * 60 * 1000).toISOString();
+    const appointmentStatus = mapGoogleEventStatusToAppointmentStatus(eventStatus, normalizedEndAt);
+
+    const upsertPayload = {
+      id: asString(existingAppointment?.id) || undefined,
+      client_id: clientId,
+      deal_id: asString(existingAppointment?.deal_id),
+      owner_user_id: identity.user_id,
+      title: asString(event.summary) || 'Compromisso Google Calendar',
+      appointment_type: asString(payload.default_appointment_type) || asString(existingAppointment?.appointment_type) || 'meeting',
+      status: appointmentStatus,
+      start_at: new Date(startAt).toISOString(),
+      end_at: new Date(normalizedEndAt).toISOString(),
+      location: asString(event.location),
+      notes: asString(event.description),
+      source: 'google',
+      google_event_id: eventId,
+      google_calendar_id: calendarId,
+      google_sync_status: 'synced',
+      google_last_synced_at: nowIso(),
+      google_sync_error: null,
+    };
+
+    const { data: appointment, error: upsertError } = await schema
+      .from('appointments')
+      .upsert(upsertPayload)
+      .select('*')
+      .single();
+
+    if (upsertError || !appointment?.id) {
+      skippedCount += 1;
+      continue;
+    }
+
+    if (existingAppointment?.id) {
+      updatedCount += 1;
+    } else {
+      importedCount += 1;
+    }
+  }
+
+  await writeAuditLog(serviceClient, identity, 'import_google_calendar_events', req, {
+    target_type: 'google_calendar_connection',
+    target_id: identity.user_id,
+    after: {
+      calendar_id: calendarId,
+      imported_count: importedCount,
+      updated_count: updatedCount,
+      canceled_count: canceledCount,
+      skipped_count: skippedCount,
+    },
+  });
+
+  return {
+    ok: true,
+    calendar_id: calendarId,
+    total_events: eventItems.length,
+    imported_count: importedCount,
+    updated_count: updatedCount,
+    canceled_count: canceledCount,
+    skipped_count: skippedCount,
+  };
+}
+
 async function enqueueAgentJob(
   serviceClient: ReturnType<typeof createClient>,
   identity: AdminIdentity,
@@ -1643,6 +2323,37 @@ async function listAiSettings(serviceClient: ReturnType<typeof createClient>) {
     stage_configs: stageConfigs || [],
     pending_jobs: pendingJobs || [],
   };
+}
+
+async function listAiActionLogs(serviceClient: ReturnType<typeof createClient>, payload: Record<string, unknown>) {
+  const schema = crmSchema(serviceClient);
+  const limit = clamp(asNumber(payload.limit, 50), 1, 200);
+
+  const { data, error } = await schema
+    .from('ai_action_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw { status: 500, code: 'ai_action_logs_query_failed', error };
+
+  const rows = data || [];
+  if (rows.length === 0) return [];
+
+  const clientIds = Array.from(
+    new Set(rows.map((row) => asString(row.client_id)).filter((id): id is string => Boolean(id))),
+  );
+
+  let clientNameById = new Map<string, string>();
+  if (clientIds.length > 0) {
+    const { data: clients } = await schema.from('clients').select('id, company_name').in('id', clientIds);
+    clientNameById = new Map((clients || []).map((client) => [String(client.id), String(client.company_name || '')]));
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    client_company_name: asString(row.client_id) ? clientNameById.get(String(row.client_id)) || null : null,
+  }));
 }
 
 async function upsertAiSettings(
@@ -2225,53 +2936,401 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
 }
 
 async function processAgentJobs(serviceClient: ReturnType<typeof createClient>) {
+  return processAgentJobsWithOptions(serviceClient, {});
+}
+
+async function resolveConnectedInternalCrmInstance(
+  schema: ReturnType<typeof crmSchema>,
+  preferredInstanceId: string | null,
+) {
+  if (preferredInstanceId) {
+    const { data: preferred } = await schema
+      .from('whatsapp_instances')
+      .select('id, instance_name, status')
+      .eq('id', preferredInstanceId)
+      .eq('status', 'connected')
+      .maybeSingle();
+
+    if (preferred?.id) return preferred;
+  }
+
+  const { data: fallback } = await schema
+    .from('whatsapp_instances')
+    .select('id, instance_name, status')
+    .eq('status', 'connected')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return fallback || null;
+}
+
+async function executeBroadcastAssistantJob(
+  serviceClient: ReturnType<typeof createClient>,
+  job: Record<string, unknown>,
+  aiSettings: Record<string, unknown>,
+) {
   const schema = crmSchema(serviceClient);
+  const payload = isRecord(job.payload) ? job.payload : {};
+
+  if (!asBoolean(aiSettings.is_enabled, false) || !asBoolean(aiSettings.broadcast_assistant_enabled, false)) {
+    return {
+      status: 'completed',
+      skipped: true,
+      reason: 'broadcast_assistant_disabled',
+    };
+  }
+
+  const targetFilters = isRecord(payload.target_filters) ? payload.target_filters : {};
+  const explicitClientIds = Array.isArray(payload.client_ids)
+    ? payload.client_ids.map((value) => asString(value)).filter((value): value is string => Boolean(value))
+    : [];
+
+  const maxRecipients = clamp(
+    asNumber(payload.max_recipients, asNumber(targetFilters.max_recipients, 100)),
+    1,
+    500,
+  );
+
+  const connectedInstance = await resolveConnectedInternalCrmInstance(
+    schema,
+    asString(payload.whatsapp_instance_id),
+  );
+
+  if (!connectedInstance?.id) {
+    return {
+      status: 'failed',
+      reason: 'no_connected_whatsapp_instance',
+    };
+  }
+
+  let clientsQuery = schema
+    .from('clients')
+    .select('id, company_name, primary_phone, current_stage_code, lifecycle_status, owner_user_id')
+    .order('updated_at', { ascending: false });
+
+  if (explicitClientIds.length > 0) {
+    clientsQuery = clientsQuery.in('id', explicitClientIds);
+  } else {
+    const stageCode = asString(targetFilters.stage_code);
+    if (stageCode) clientsQuery = clientsQuery.eq('current_stage_code', stageCode);
+
+    const lifecycleStatus = asString(targetFilters.lifecycle_status);
+    if (lifecycleStatus) clientsQuery = clientsQuery.eq('lifecycle_status', lifecycleStatus);
+
+    const ownerUserId = asString(targetFilters.owner_user_id);
+    if (ownerUserId) clientsQuery = clientsQuery.eq('owner_user_id', ownerUserId);
+
+    const sourceChannel = asString(targetFilters.source_channel);
+    if (sourceChannel) clientsQuery = clientsQuery.eq('source_channel', sourceChannel);
+  }
+
+  const { data: clients, error: clientsError } = await clientsQuery.limit(maxRecipients);
+  if (clientsError) {
+    return {
+      status: 'failed',
+      reason: 'clients_query_failed',
+    };
+  }
+
+  const uniquePhoneSet = new Set<string>();
+  const recipients = (clients || [])
+    .map((client) => ({
+      client_id: String(client.id),
+      recipient_name: asString(client.company_name),
+      recipient_phone: normalizePhone(client.primary_phone),
+    }))
+    .filter((recipient) => {
+      if (!recipient.recipient_phone) return false;
+      if (uniquePhoneSet.has(recipient.recipient_phone)) return false;
+      uniquePhoneSet.add(recipient.recipient_phone);
+      return true;
+    });
+
+  if (recipients.length === 0) {
+    return {
+      status: 'completed',
+      skipped: true,
+      reason: 'no_recipients_after_filters',
+    };
+  }
+
+  const messages = Array.isArray(payload.messages)
+    ? payload.messages
+        .map((item) => asString(item))
+        .filter((item): item is string => Boolean(item))
+    : [];
+
+  const fallbackMessage =
+    asString(payload.message_template) ||
+    asString(payload.message) ||
+    'Ola {{name}}, temos uma oportunidade para acelerar seus resultados com o SolarZap.';
+
+  if (messages.length === 0 && fallbackMessage) {
+    messages.push(fallbackMessage);
+  }
+
+  if (messages.length === 0) {
+    return {
+      status: 'failed',
+      reason: 'missing_campaign_message',
+    };
+  }
+
+  const { data: campaign, error: campaignError } = await schema
+    .from('broadcast_campaigns')
+    .insert({
+      name: asString(payload.campaign_name) || `IA campaign ${new Date().toISOString()}`,
+      whatsapp_instance_id: connectedInstance.id,
+      owner_user_id: asString(job.client_id) ? null : asString(payload.owner_user_id),
+      target_filters: targetFilters,
+      messages,
+      status: 'running',
+      started_at: nowIso(),
+      updated_at: nowIso(),
+    })
+    .select('*')
+    .single();
+
+  if (campaignError || !campaign?.id) {
+    return {
+      status: 'failed',
+      reason: 'campaign_insert_failed',
+    };
+  }
+
+  const { error: recipientsError } = await schema.from('broadcast_recipients').insert(
+    recipients.map((recipient) => ({
+      campaign_id: campaign.id,
+      client_id: recipient.client_id,
+      recipient_name: recipient.recipient_name,
+      recipient_phone: recipient.recipient_phone,
+      status: 'pending',
+      payload: {
+        source: 'ai_broadcast_assistant',
+        scheduled_agent_job_id: String(job.id || ''),
+      },
+    })),
+  );
+
+  if (recipientsError) {
+    return {
+      status: 'failed',
+      reason: 'campaign_recipients_insert_failed',
+    };
+  }
+
+  const workerResult = await invokeInternalEdgeFunction('internal-crm-broadcast-worker', {
+    campaign_id: campaign.id,
+    batch_size: clamp(asNumber(payload.batch_size, 20), 1, 50),
+  });
+
+  return {
+    status: 'completed',
+    campaign_id: String(campaign.id),
+    recipients_count: recipients.length,
+    worker_result: workerResult,
+  };
+}
+
+async function executeStandardAgentJob(
+  serviceClient: ReturnType<typeof createClient>,
+  job: Record<string, unknown>,
+  aiSettings: Record<string, unknown>,
+) {
+  const schema = crmSchema(serviceClient);
+  const payload = isRecord(job.payload) ? job.payload : {};
+  const clientId = asString(job.client_id);
+  const jobType = asString(job.job_type) || 'unknown';
+
+  if (jobType === 'qualification' && (!asBoolean(aiSettings.is_enabled, false) || !asBoolean(aiSettings.qualification_enabled, false))) {
+    return { status: 'completed', skipped: true, reason: 'qualification_disabled' };
+  }
+
+  if (jobType === 'follow_up' && (!asBoolean(aiSettings.is_enabled, false) || !asBoolean(aiSettings.follow_up_enabled, false))) {
+    return { status: 'completed', skipped: true, reason: 'follow_up_disabled' };
+  }
+
+  if (jobType === 'onboarding' && (!asBoolean(aiSettings.is_enabled, false) || !asBoolean(aiSettings.onboarding_assistant_enabled, false))) {
+    return { status: 'completed', skipped: true, reason: 'onboarding_disabled' };
+  }
+
+  if (clientId && jobType === 'qualification') {
+    await schema
+      .from('clients')
+      .update({
+        current_stage_code: asString(payload.target_stage_code) || 'qualificado',
+        updated_at: nowIso(),
+      })
+      .eq('id', clientId);
+  }
+
+  if (clientId && jobType === 'onboarding') {
+    await schema
+      .from('clients')
+      .update({
+        lifecycle_status: 'customer_onboarding',
+        updated_at: nowIso(),
+      })
+      .eq('id', clientId);
+  }
+
+  if (clientId) {
+    const taskTitle =
+      asString(payload.task_title) ||
+      (jobType === 'qualification'
+        ? 'Revisar cliente qualificado automaticamente'
+        : jobType === 'follow_up'
+          ? 'Executar follow-up sugerido por IA'
+          : 'Acompanhar onboarding sugerido por IA');
+
+    const taskNotes =
+      asString(payload.task_notes) ||
+      `Job ${jobType} processado em ${nowIso()} com automacao interna do CRM.`;
+
+    await schema.from('tasks').insert({
+      client_id: clientId,
+      deal_id: asString(job.deal_id),
+      owner_user_id: null,
+      title: taskTitle,
+      notes: taskNotes,
+      due_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+      status: 'open',
+      task_kind: jobType === 'onboarding' ? 'onboarding' : 'follow_up',
+    });
+  }
+
+  return {
+    status: 'completed',
+    job_type: jobType,
+    client_id: clientId,
+  };
+}
+
+async function processAgentJobsWithOptions(
+  serviceClient: ReturnType<typeof createClient>,
+  options: { limit?: number },
+) {
+  const schema = crmSchema(serviceClient);
+  const limit = clamp(asNumber(options.limit, 20), 1, 50);
+  const aiSettings = await listAiSettings(serviceClient);
+
   const { data: jobs, error } = await schema
     .from('scheduled_agent_jobs')
     .select('*')
     .eq('status', 'pending')
     .lte('scheduled_at', nowIso())
     .order('scheduled_at', { ascending: true })
-    .limit(20);
+    .limit(limit);
 
   if (error) throw { status: 500, code: 'agent_jobs_query_failed', error };
 
   const processedIds: string[] = [];
+  const failedJobs: Array<{ job_id: string; reason: string }> = [];
+
   for (const job of jobs || []) {
-    const note = `Job ${job.job_type} processado automaticamente em ${nowIso()}`;
-    await schema.from('ai_action_logs').insert({
-      job_id: job.id,
-      client_id: job.client_id,
-      action_type: job.job_type,
-      status: 'completed',
-      input_payload: job.payload || {},
-      output_payload: { note },
-    });
+    const jobId = String(job.id || '');
+    const inputPayload = isRecord(job.payload) ? job.payload : {};
 
-    if (job.client_id) {
-      await schema.from('tasks').insert({
+    try {
+      await schema
+        .from('scheduled_agent_jobs')
+        .update({ status: 'processing', updated_at: nowIso() })
+        .eq('id', job.id);
+
+      const outcome = asString(job.job_type) === 'broadcast_assistant'
+        ? await executeBroadcastAssistantJob(serviceClient, job, aiSettings)
+        : await executeStandardAgentJob(serviceClient, job, aiSettings);
+
+      const finalStatus = asString(outcome.status) === 'failed' ? 'failed' : 'completed';
+      const failureReason = asString(outcome.reason) || asString(outcome.error) || null;
+
+      await schema
+        .from('scheduled_agent_jobs')
+        .update({
+          status: finalStatus,
+          processed_at: nowIso(),
+          attempts: asNumber(job.attempts, 0) + 1,
+          last_error: finalStatus === 'failed' ? failureReason : null,
+          payload: {
+            ...inputPayload,
+            last_result: outcome,
+            last_processed_at: nowIso(),
+          },
+          updated_at: nowIso(),
+        })
+        .eq('id', job.id);
+
+      await schema.from('ai_action_logs').insert({
+        job_id: job.id,
         client_id: job.client_id,
-        deal_id: job.deal_id,
-        owner_user_id: null,
-        title: `Revisar job de IA: ${job.job_type}`,
-        notes: note,
-        due_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-        status: 'open',
-        task_kind: 'follow_up',
+        action_type: job.job_type,
+        status: finalStatus === 'completed' ? 'completed' : 'failed',
+        input_payload: inputPayload,
+        output_payload: outcome,
       });
+
+      if (finalStatus === 'completed') {
+        processedIds.push(jobId);
+      } else {
+        failedJobs.push({ job_id: jobId, reason: failureReason || 'agent_job_failed' });
+      }
+    } catch (error) {
+      const reason = asString((error as { message?: unknown }).message) || 'agent_job_failed';
+
+      await schema
+        .from('scheduled_agent_jobs')
+        .update({
+          status: 'failed',
+          processed_at: nowIso(),
+          attempts: asNumber(job.attempts, 0) + 1,
+          last_error: reason,
+          updated_at: nowIso(),
+        })
+        .eq('id', job.id);
+
+      await schema.from('ai_action_logs').insert({
+        job_id: job.id,
+        client_id: job.client_id,
+        action_type: job.job_type,
+        status: 'failed',
+        input_payload: inputPayload,
+        output_payload: { error: reason },
+      });
+
+      failedJobs.push({ job_id: jobId, reason });
     }
-
-    await schema.from('scheduled_agent_jobs').update({
-      status: 'completed',
-      processed_at: nowIso(),
-      attempts: asNumber(job.attempts, 0) + 1,
-      updated_at: nowIso(),
-    }).eq('id', job.id);
-
-    processedIds.push(String(job.id));
   }
 
-  return { ok: true, processed_job_ids: processedIds };
+  return {
+    ok: true,
+    processed_job_ids: processedIds,
+    failed_jobs: failedJobs,
+    processed_count: processedIds.length,
+    failed_count: failedJobs.length,
+  };
+}
+
+async function runAgentJobs(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const result = await processAgentJobsWithOptions(serviceClient, {
+    limit: asNumber(payload.limit, 20),
+  });
+
+  await writeAuditLog(serviceClient, identity, 'run_agent_jobs', req, {
+    target_type: 'agent_job_batch',
+    target_id: identity.user_id,
+    after: {
+      processed_count: result.processed_count,
+      failed_count: result.failed_count,
+    },
+  });
+
+  return result;
 }
 
 async function dispatchUserAction(
@@ -2341,10 +3400,24 @@ async function dispatchUserAction(
       return await upsertAiSettings(serviceClient, identity, payload, req);
     case 'enqueue_agent_job':
       return await enqueueAgentJob(serviceClient, identity, payload, req);
+    case 'run_agent_jobs':
+      return await runAgentJobs(serviceClient, identity, payload, req);
+    case 'list_ai_action_logs':
+      return { ok: true, logs: await listAiActionLogs(serviceClient, payload) };
     case 'list_appointments':
       return { ok: true, appointments: await listAppointments(serviceClient, payload) };
     case 'upsert_appointment':
       return await upsertAppointment(serviceClient, identity, payload, req);
+    case 'get_google_calendar_status':
+      return await getGoogleCalendarStatus(serviceClient, identity);
+    case 'get_google_calendar_oauth_url':
+      return await getGoogleCalendarOAuthUrl(serviceClient, identity, payload);
+    case 'disconnect_google_calendar':
+      return await disconnectGoogleCalendar(serviceClient, identity, req);
+    case 'sync_appointment_google_calendar':
+      return await syncAppointmentGoogleCalendar(serviceClient, identity, payload, req);
+    case 'import_google_calendar_events':
+      return await importGoogleCalendarEvents(serviceClient, identity, payload, req);
     case 'list_finance_summary':
       return { ok: true, summary: await listFinanceSummary(serviceClient) };
     case 'list_orders':

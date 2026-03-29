@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bot, Save } from 'lucide-react';
+import { Bot, Loader2, PlayCircle, Save } from 'lucide-react';
 import { PageHeader } from '@/components/solarzap/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { TokenBadge, formatDateTime } from '@/modules/internal-crm/components/InternalCrmUi';
 import { InternalCrmAiJobsList } from '@/modules/internal-crm/components/ai/InternalCrmAiJobsList';
 import { InternalCrmAiStageConfig } from '@/modules/internal-crm/components/ai/InternalCrmAiStageConfig';
 import { useInternalCrmAiModule } from '@/modules/internal-crm/hooks/useInternalCrmAi';
@@ -96,6 +97,26 @@ export function InternalCrmAiView() {
     }
   }
 
+  async function handleRunJobsNow() {
+    try {
+      const result = await aiModule.runAgentJobsMutation.mutateAsync({
+        action: 'run_agent_jobs',
+        limit: 20,
+      });
+
+      toast({
+        title: 'Jobs processados',
+        description: `${result.processed_count} concluido(s), ${result.failed_count} com falha.`,
+      });
+    } catch {
+      toast({
+        title: 'Falha ao processar fila',
+        description: 'Nao foi possivel executar os jobs de IA agora.',
+        variant: 'destructive',
+      });
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -160,6 +181,15 @@ export function InternalCrmAiView() {
               <Save className="mr-2 h-4 w-4" />
               Salvar configuracao
             </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => void handleRunJobsNow()}
+              disabled={aiModule.runAgentJobsMutation.isPending}
+            >
+              {aiModule.runAgentJobsMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlayCircle className="mr-2 h-4 w-4" />}
+              Processar jobs agora
+            </Button>
           </CardContent>
         </Card>
 
@@ -188,6 +218,29 @@ export function InternalCrmAiView() {
                 isPending={aiModule.enqueueAgentJobMutation.isPending}
                 onEnqueue={handleEnqueueJob}
               />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Ultimas acoes da IA</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(aiModule.aiActionLogsQuery.data?.logs || []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sem registros recentes de processamento.</p>
+              ) : (
+                (aiModule.aiActionLogsQuery.data?.logs || []).map((log) => (
+                  <div key={log.id} className="rounded-xl border border-border/70 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium">{log.action_type}</p>
+                      <TokenBadge token={log.status} />
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {log.client_company_name || 'Sem cliente vinculado'} - {formatDateTime(log.created_at)}
+                    </p>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
         </div>
