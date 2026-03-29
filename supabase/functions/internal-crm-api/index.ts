@@ -56,6 +56,8 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   list_conversations: { minCrmRole: 'read_only', requireMfa: true },
   get_conversation_detail: { minCrmRole: 'read_only', requireMfa: true },
   append_message: { minCrmRole: 'cs', requireMfa: true },
+  mark_conversation_read: { minCrmRole: 'read_only', requireMfa: true },
+  update_conversation_status: { minCrmRole: 'cs', requireMfa: true },
   list_campaigns: { minCrmRole: 'read_only', requireMfa: true },
   upsert_campaign: { minCrmRole: 'sales', requireMfa: true },
   update_campaign_status: { minCrmRole: 'sales', requireMfa: true },
@@ -1350,9 +1352,33 @@ async function listConversations(serviceClient: ReturnType<typeof createClient>,
   const rows = data || [];
   if (rows.length === 0) return [];
   const clientIds = rows.map((row) => row.client_id).filter(Boolean);
-  const { data: clients } = await schema.from('clients').select('id, company_name, primary_contact_name, primary_phone').in('id', clientIds);
+  const conversationIds = rows.map((row) => String(row.id)).filter(Boolean);
+
+  const [{ data: clients }, { data: unreadMessages, error: unreadError }] = await Promise.all([
+    schema
+      .from('clients')
+      .select('id, company_name, primary_contact_name, primary_phone, primary_email, current_stage_code, lifecycle_status, source_channel, next_action, next_action_at')
+      .in('id', clientIds),
+    conversationIds.length > 0
+      ? schema
+          .from('messages')
+          .select('conversation_id')
+          .in('conversation_id', conversationIds)
+          .eq('direction', 'inbound')
+          .is('read_at', null)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (unreadError) throw { status: 500, code: 'conversation_unread_query_failed', error: unreadError };
+
   const clientMap = new Map<string, Record<string, unknown>>();
   for (const client of clients || []) clientMap.set(String(client.id), client);
+  const unreadCountByConversationId = new Map<string, number>();
+  for (const unreadMessage of unreadMessages || []) {
+    const conversationId = String(unreadMessage.conversation_id || '');
+    if (!conversationId) continue;
+    unreadCountByConversationId.set(conversationId, (unreadCountByConversationId.get(conversationId) || 0) + 1);
+  }
 
   return rows.map((row) => {
     const client = clientMap.get(String(row.client_id || ''));
@@ -1361,6 +1387,13 @@ async function listConversations(serviceClient: ReturnType<typeof createClient>,
       client_company_name: asString(client?.company_name),
       primary_contact_name: asString(client?.primary_contact_name),
       primary_phone: asString(client?.primary_phone),
+      primary_email: asString(client?.primary_email),
+      current_stage_code: asString(client?.current_stage_code),
+      lifecycle_status: asString(client?.lifecycle_status),
+      source_channel: asString(client?.source_channel),
+      next_action: asString(client?.next_action),
+      next_action_at: asString(client?.next_action_at),
+      unread_count: unreadCountByConversationId.get(String(row.id || '')) || 0,
     };
   });
 }
@@ -1469,6 +1502,103 @@ async function appendMessage(
   });
 
   return { ok: true, message: data };
+}
+
+async function markConversationRead(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const conversationId = asString(payload.conversation_id);
+  if (!conversationId) throw { status: 400, code: 'invalid_payload' };
+
+  const schema = crmSchema(serviceClient);
+  const readAt = nowIso();
+  const { data, error } = await schema
+    .from('messages')
+    .update({ read_at: readAt, delivery_status: 'read' })
+    .eq('conversation_id', conversationId)
+    .eq('direction', 'inbound')
+    .is('read_at', null)
+    .select('id');
+
+  if (error) throw { status: 500, code: 'conversation_mark_read_failed', error };
+
+  await writeAuditLog(serviceClient, identity, 'mark_conversation_read', req, {
+    target_type: 'conversation',
+    target_id: conversationId,
+    after: {
+      read_count: (data || []).length,
+      read_at: readAt,
+    },
+  });
+
+  return {
+    ok: true,
+    read_count: (data || []).length,
+    read_at: readAt,
+  };
+}
+
+async function updateConversationStatus(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const conversationId = asString(payload.conversation_id);
+  if (!conversationId) throw { status: 400, code: 'invalid_payload' };
+
+  const schema = crmSchema(serviceClient);
+  const { data: before, error: beforeError } = await schema
+    .from('conversations')
+    .select('*')
+    .eq('id', conversationId)
+    .maybeSingle();
+
+  if (beforeError) throw { status: 500, code: 'conversation_query_failed', error: beforeError };
+  if (!before?.id) throw { status: 404, code: 'not_found' };
+
+  const updatePayload: Record<string, unknown> = {
+    updated_at: nowIso(),
+  };
+
+  const status = asString(payload.status);
+  if (status) {
+    if (!['open', 'resolved', 'archived'].includes(status)) throw { status: 400, code: 'invalid_payload' };
+    updatePayload.status = status;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'assigned_to_user_id')) {
+    updatePayload.assigned_to_user_id = asString(payload.assigned_to_user_id);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'subject')) {
+    updatePayload.subject = asString(payload.subject);
+  }
+
+  const { data, error } = await schema
+    .from('conversations')
+    .update(updatePayload)
+    .eq('id', conversationId)
+    .select('*')
+    .single();
+
+  if (error || !data?.id) throw { status: 500, code: 'conversation_update_failed', error };
+
+  await writeAuditLog(serviceClient, identity, 'update_conversation_status', req, {
+    target_type: 'conversation',
+    target_id: conversationId,
+    client_id: asString(data.client_id),
+    before,
+    after: data,
+  });
+
+  return {
+    ok: true,
+    conversation: data,
+  };
 }
 
 async function listCampaigns(serviceClient: ReturnType<typeof createClient>) {
@@ -3386,6 +3516,10 @@ async function dispatchUserAction(
       return await getConversationDetail(serviceClient, payload);
     case 'append_message':
       return await appendMessage(serviceClient, identity, payload, req);
+    case 'mark_conversation_read':
+      return await markConversationRead(serviceClient, identity, payload, req);
+    case 'update_conversation_status':
+      return await updateConversationStatus(serviceClient, identity, payload, req);
     case 'list_campaigns':
       return { ok: true, campaigns: await listCampaigns(serviceClient) };
     case 'upsert_campaign':

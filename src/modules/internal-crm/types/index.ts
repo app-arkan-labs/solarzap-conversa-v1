@@ -22,6 +22,8 @@ export type InternalCrmApiAction =
   | 'list_conversations'
   | 'get_conversation_detail'
   | 'append_message'
+  | 'mark_conversation_read'
+  | 'update_conversation_status'
   | 'webhook_inbound'
   | 'list_campaigns'
   | 'upsert_campaign'
@@ -271,6 +273,13 @@ export type InternalCrmConversationSummary = {
   client_company_name?: string | null;
   primary_contact_name?: string | null;
   primary_phone?: string | null;
+  primary_email?: string | null;
+  current_stage_code?: string | null;
+  lifecycle_status?: 'lead' | 'customer_onboarding' | 'active_customer' | 'churn_risk' | 'churned';
+  source_channel?: string | null;
+  next_action?: string | null;
+  next_action_at?: string | null;
+  unread_count?: number;
 };
 
 export type InternalCrmMessage = {

@@ -50,6 +50,28 @@ export function MetricCard(props: {
 
 function badgeVariantByToken(token: string): string {
   switch (token) {
+    case 'open':
+    case 'whatsapp':
+    case 'scheduled':
+    case 'call':
+    case 'demo':
+      return 'bg-sky-100 text-sky-800 border-sky-200';
+    case 'resolved':
+    case 'meeting':
+    case 'confirmed':
+      return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    case 'archived':
+    case 'manual_note':
+    case 'other':
+      return 'bg-zinc-200 text-zinc-800 border-zinc-300';
+    case 'visit':
+      return 'bg-orange-100 text-orange-800 border-orange-200';
+    case 'done':
+      return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    case 'canceled':
+    case 'failed':
+    case 'no_show':
+      return 'bg-rose-100 text-rose-800 border-rose-200';
     case 'lead':
     case 'lead_entrante':
       return 'bg-sky-100 text-sky-800 border-sky-200';
@@ -84,7 +106,6 @@ function badgeVariantByToken(token: string): string {
     case 'at_risk':
     case 'not_synced':
       return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-    case 'failed':
     case 'risk':
     case 'overdue':
     case 'disconnected':
