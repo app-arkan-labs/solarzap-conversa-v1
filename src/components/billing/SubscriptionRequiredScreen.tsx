@@ -46,7 +46,7 @@ export default function SubscriptionRequiredScreen() {
         </h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
           {isPastDue
-            ? 'Sua última cobrança não foi processada. Atualize sua forma de pagamento para restaurar o acesso completo.'
+            ? 'Sua ultima cobranca nao foi processada e o periodo de tolerancia ja expirou. Corrija sua forma de pagamento na Stripe para restaurar o acesso completo.'
             : 'Seu acesso está temporariamente limitado. Escolha um plano ou regularize o pagamento para voltar ao fluxo normal.'}
         </p>
 
@@ -61,7 +61,7 @@ export default function SubscriptionRequiredScreen() {
             <li className="flex items-start gap-2">
               <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-amber-500" />
               {isPastDue
-                ? 'Atualize o pagamento para restaurar acesso imediato'
+                ? 'Corrija o pagamento na Stripe para restaurar o acesso imediato'
                 : 'Escolha um plano para desbloquear todas as funcionalidades'}
             </li>
           </ul>
@@ -77,7 +77,7 @@ export default function SubscriptionRequiredScreen() {
               disabled={openingPortal}
             >
               <CreditCard className="h-4 w-4" />
-              {openingPortal ? 'Abrindo portal...' : 'Atualizar pagamento'}
+              {openingPortal ? 'Abrindo Stripe...' : 'Corrigir pagamento na Stripe'}
             </Button>
           ) : (
             <Button

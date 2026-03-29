@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -115,12 +115,35 @@ function normalizePlanQuery(value: string | null) {
   return PLAN_ORDER.includes(normalized) ? normalized : null;
 }
 
-function getPlanActionLabel(targetPlan: string, currentPlan: string | null, intent: BillingIntent) {
+function normalizeTrialDays(value: string | null) {
+  const normalized = Number(String(value || '').trim());
+  if (normalized === 0 || normalized === 7 || normalized === 30) {
+    return normalized;
+  }
+  return 7;
+}
+
+function buildBillingPath(planKey: string, trialDays = 7, autoCheckout = false) {
+  const params = new URLSearchParams({
+    target: planKey,
+    trial: String(trialDays),
+  });
+  if (autoCheckout) {
+    params.set('checkout', '1');
+  }
+  return `/billing?${params.toString()}`;
+}
+
+function getTrialActionLabel(trialDays: number) {
+  return trialDays > 0 ? `Testar gratis por ${trialDays} dias` : 'Assinar agora';
+}
+
+function getPlanActionLabel(targetPlan: string, currentPlan: string | null, intent: BillingIntent, trialDays: number) {
   if (intent === 'reactivate' && targetPlan === currentPlan) return 'Reativar plano';
   if (targetPlan === currentPlan) return 'Plano atual';
   const currentRank = PLAN_RANK[currentPlan ?? 'free'] ?? 0;
   const targetRank = PLAN_RANK[targetPlan] ?? 0;
-  if (!currentPlan || currentPlan === 'free') return 'Testar gratis por 7 dias';
+  if (!currentPlan || currentPlan === 'free') return getTrialActionLabel(trialDays);
   if (targetRank > currentRank) return 'Fazer upgrade';
   if (targetRank < currentRank) return 'Fazer downgrade';
   return 'Selecionar plano';
@@ -139,6 +162,7 @@ export default function Pricing() {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { user, orgId } = useAuth();
+  const autoCheckoutRef = useRef<string | null>(null);
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
   const [planCatalog, setPlanCatalog] = useState<PlanRow[]>([]);
@@ -158,9 +182,15 @@ export default function Pricing() {
   const billingStatus = String(billing?.subscription_status || '').toLowerCase();
   // Plano só é considerado "atual" se a subscription foi de fato confirmada (não pending_checkout)
   const currentPlan = billingStatus === 'pending_checkout' ? null : rawPlan;
-  const checkoutState = String(searchParams.get('checkout') || '').trim();
+  const checkoutStateParam = String(searchParams.get('checkout') || '').trim();
+  const checkoutState = ['success', 'cancel', 'plan_updated', 'payment_recovery'].includes(checkoutStateParam)
+    ? checkoutStateParam
+    : '';
+  const packState = String(searchParams.get('pack') || '').trim();
   const intent = (searchParams.get('intent') === 'reactivate' ? 'reactivate' : 'upgrade') as BillingIntent;
   const targetPlan = normalizePlanQuery(searchParams.get('target'));
+  const selectedTrialDays = normalizeTrialDays(searchParams.get('trial'));
+  const autoCheckoutRequested = searchParams.get('checkout') === '1';
   const source = String(searchParams.get('source') || '').trim().toLowerCase();
   const sourceLabel = SOURCE_LABELS[source] || null;
   const isNoPlan = !currentPlan || currentPlan === 'free';
@@ -216,9 +246,19 @@ export default function Pricing() {
     return () => { isMounted = false; };
   }, []);
 
-  const handleUpgrade = async (planKey: string) => {
+  const trialLinks = useMemo(
+    () => PLAN_ORDER.map((planKey) => ({
+      planKey,
+      label: PLAN_DISPLAY[planKey]?.label || planKey,
+      to: buildBillingPath(planKey, 7, true),
+    })),
+    [],
+  );
+
+  const handleUpgrade = useCallback(async (planKey: string, trialDays = selectedTrialDays) => {
     if (!user) {
-      navigate(`/login?plan=${encodeURIComponent(planKey)}&mode=signup`);
+      const redirect = buildBillingPath(planKey, trialDays, true);
+      navigate(`/login?plan=${encodeURIComponent(planKey)}&mode=signup&redirect=${encodeURIComponent(redirect)}`);
       return;
     }
     try {
@@ -226,6 +266,7 @@ export default function Pricing() {
       const url = await createPlanCheckoutSession({
         planKey,
         orgId,
+        trialDays,
         successUrl: `${window.location.origin}/onboarding?checkout=success`,
         cancelUrl: `${window.location.origin}/billing?checkout=cancel`,
       });
@@ -235,7 +276,17 @@ export default function Pricing() {
     } finally {
       setBusyPlan(null);
     }
-  };
+  }, [navigate, orgId, selectedTrialDays, toast, user]);
+
+  useEffect(() => {
+    if (!autoCheckoutRequested || !targetPlan || !user) return;
+
+    const runKey = `${targetPlan}:${selectedTrialDays}`;
+    if (autoCheckoutRef.current === runKey) return;
+    autoCheckoutRef.current = runKey;
+
+    void handleUpgrade(targetPlan, selectedTrialDays);
+  }, [autoCheckoutRequested, handleUpgrade, selectedTrialDays, targetPlan, user]);
 
   const handleOpenPortal = async () => {
     try {
@@ -262,15 +313,36 @@ export default function Pricing() {
         {/* Checkout feedback */}
         {checkoutState && (
           <div className={`mb-8 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm backdrop-blur-sm ${
-            checkoutState === 'success'
+            checkoutState === 'success' || checkoutState === 'plan_updated'
               ? 'border-primary/30 bg-primary/10 text-primary'
               : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
           }`}>
-            {checkoutState === 'success' ? <Check className="h-5 w-5 flex-shrink-0" /> : <X className="h-5 w-5 flex-shrink-0" />}
+            {checkoutState === 'success' || checkoutState === 'plan_updated'
+              ? <Check className="h-5 w-5 flex-shrink-0" />
+              : <X className="h-5 w-5 flex-shrink-0" />}
             <span>
               {checkoutState === 'success'
                 ? 'Assinatura iniciada com sucesso! A confirmação final virá pelo webhook da Stripe.'
-                : 'Checkout cancelado. Nenhuma cobrança foi aplicada.'}
+                : checkoutState === 'plan_updated'
+                  ? 'Plano atualizado com sucesso. Se houver cobrança proporcional, a confirmação final virá pelo webhook da Stripe.'
+                  : checkoutState === 'payment_recovery'
+                    ? 'Você voltou do portal da Stripe. Se já corrigiu o pagamento, aguarde a confirmação automática.'
+                    : 'Checkout cancelado. Nenhuma cobrança foi aplicada.'}
+            </span>
+          </div>
+        )}
+
+        {packState && (
+          <div className={`mb-8 flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm backdrop-blur-sm ${
+            packState === 'success'
+              ? 'border-primary/30 bg-primary/10 text-primary'
+              : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+          }`}>
+            {packState === 'success' ? <Check className="h-5 w-5 flex-shrink-0" /> : <X className="h-5 w-5 flex-shrink-0" />}
+            <span>
+              {packState === 'success'
+                ? 'Compra do pack concluída. A recarga será refletida automaticamente após o webhook da Stripe.'
+                : 'Compra do pack cancelada. Nenhuma cobrança foi aplicada.'}
             </span>
           </div>
         )}
@@ -348,6 +420,26 @@ export default function Pricing() {
             <div className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary sm:flex-shrink-0">
               <Clock className="h-4 w-4" />
               R$ 0,00 por 7 dias
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-10 rounded-3xl border border-border/60 bg-card/82 p-6 backdrop-blur-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-foreground">Links diretos do trial de 7 dias</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Cada link abaixo abre a versao correta da `/billing` e inicia o checkout Stripe do plano escolhido.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {trialLinks.map((link) => (
+                <Button key={link.planKey} asChild variant="outline" className="border-primary/20 bg-background/90">
+                  <Link to={link.to}>
+                    Trial 7 dias {link.label}
+                  </Link>
+                </Button>
+              ))}
             </div>
           </div>
         </div>
@@ -458,7 +550,7 @@ export default function Pricing() {
                         ? 'border border-border bg-background text-muted-foreground hover:bg-accent'
                         : `${display?.buttonGradient ?? ''} text-white shadow-lg hover:shadow-xl`
                     }`}
-                    onClick={() => !isDisabled && handleUpgrade(key)}
+                    onClick={() => !isDisabled && handleUpgrade(key, selectedTrialDays)}
                     disabled={isDisabled || busyPlan === key}
                   >
                     {busyPlan === key ? (
@@ -473,7 +565,7 @@ export default function Pricing() {
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">
-                        {getPlanActionLabel(key, currentPlan, intent)}
+                        {getPlanActionLabel(key, currentPlan, intent, selectedTrialDays)}
                         <ArrowRight className="h-4 w-4" />
                       </span>
                     )}

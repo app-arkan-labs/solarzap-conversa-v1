@@ -1,3 +1,4 @@
+import Stripe from 'npm:stripe';
 import { resolveRequestCors } from '../_shared/cors.ts';
 import {
   appendBillingTimeline,
@@ -10,9 +11,31 @@ type CheckoutPayload = {
   org_id?: string;
   org_name?: string;
   plan_key?: string;
+  trial_days?: number;
   success_url?: string;
   cancel_url?: string;
 };
+
+function normalizeTrialDays(raw: unknown): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 7;
+
+  const rounded = Math.round(parsed);
+  if (rounded === 0 || rounded === 7 || rounded === 30) {
+    return rounded;
+  }
+
+  return 7;
+}
+
+function buildBillingReturnUrl(appUrl: string, checkoutState: string, targetPlan?: string | null) {
+  const url = new URL('/billing', appUrl);
+  url.searchParams.set('checkout', checkoutState);
+  if (targetPlan) {
+    url.searchParams.set('target', targetPlan);
+  }
+  return url.toString();
+}
 
 function json(corsHeaders: Record<string, string>, status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
@@ -53,6 +76,7 @@ Deno.serve(async (req) => {
     if (!planKey) {
       return json(corsHeaders, 400, { ok: false, error: 'missing_plan_key' });
     }
+    const trialDays = normalizeTrialDays(payload.trial_days);
 
     const { data: plan, error: planError } = await serviceClient
       .from('_admin_subscription_plans')
@@ -142,7 +166,7 @@ Deno.serve(async (req) => {
 
     const { data: org } = await serviceClient
       .from('organizations')
-      .select('id, name, stripe_subscription_id, stripe_checkout_session_id')
+      .select('id, name, plan, subscription_status, stripe_subscription_id, stripe_checkout_session_id, stripe_price_id')
       .eq('id', orgId)
       .single();
 
@@ -172,6 +196,95 @@ Deno.serve(async (req) => {
     const appUrl = resolveAppUrl();
     const successUrl = payload.success_url || `${appUrl}/welcome?checkout=success`;
     const cancelUrl = payload.cancel_url || `${appUrl}/billing?checkout=cancel`;
+    const currentStatus = String(org?.subscription_status || '').trim().toLowerCase();
+    const currentPlanKey = String(org?.plan || '').trim().toLowerCase();
+    const currentStripePriceId = String(org?.stripe_price_id || '').trim();
+
+    if (org?.stripe_subscription_id && stripePriceId && (currentStatus === 'active' || currentStatus === 'trialing')) {
+      const noOpUrl = buildBillingReturnUrl(appUrl, 'plan_updated', String(plan.plan_key));
+      if (currentPlanKey === String(plan.plan_key) && currentStripePriceId === stripePriceId) {
+        return json(corsHeaders, 200, {
+          ok: true,
+          org_id: orgId,
+          trial_days: 0,
+          checkout_url: noOpUrl,
+          checkout_session_id: null,
+        });
+      }
+
+      try {
+        const subscription = await stripe.subscriptions.retrieve(String(org.stripe_subscription_id));
+        const subscriptionItem = subscription.items.data.find((item) => {
+          const itemPriceId = typeof item.price === 'string' ? item.price : item.price?.id;
+          return itemPriceId === currentStripePriceId;
+        }) || subscription.items.data[0];
+
+        if (subscriptionItem?.id) {
+          const updatedSubscription = await stripe.subscriptions.update(String(org.stripe_subscription_id), {
+            items: [
+              {
+                id: subscriptionItem.id,
+                price: stripePriceId,
+                quantity: subscriptionItem.quantity ?? 1,
+              },
+            ],
+            proration_behavior: 'always_invoice',
+            payment_behavior: 'pending_if_incomplete',
+            metadata: {
+              ...(subscription.metadata || {}),
+              org_id: orgId,
+              plan_key: String(plan.plan_key),
+            },
+            expand: ['latest_invoice'],
+          });
+
+          await appendBillingTimeline(
+            serviceClient,
+            orgId,
+            'subscription_plan_change_requested',
+            {
+              from_plan_key: currentPlanKey || null,
+              to_plan_key: plan.plan_key,
+              stripe_subscription_id: updatedSubscription.id,
+            },
+            'user',
+          );
+
+          const latestInvoice = updatedSubscription.latest_invoice && typeof updatedSubscription.latest_invoice !== 'string'
+            ? updatedSubscription.latest_invoice as Stripe.Invoice
+            : null;
+          const hostedInvoiceUrl = String(latestInvoice?.hosted_invoice_url || '').trim();
+
+          return json(corsHeaders, 200, {
+            ok: true,
+            org_id: orgId,
+            trial_days: 0,
+            checkout_url: hostedInvoiceUrl || noOpUrl,
+            checkout_session_id: null,
+          });
+        }
+      } catch (subscriptionUpdateError) {
+        console.warn('subscription_plan_change_fallback_to_checkout', {
+          org_id: orgId,
+          error: subscriptionUpdateError instanceof Error ? subscriptionUpdateError.message : String(subscriptionUpdateError),
+        });
+      }
+    }
+
+    if (org?.stripe_subscription_id && (currentStatus === 'past_due' || currentStatus === 'unpaid')) {
+      const portalSession = await stripe.billingPortal.sessions.create({
+        customer: stripeCustomerId,
+        return_url: buildBillingReturnUrl(appUrl, 'payment_recovery', String(plan.plan_key)),
+      });
+
+      return json(corsHeaders, 200, {
+        ok: true,
+        org_id: orgId,
+        trial_days: 0,
+        checkout_url: portalSession.url,
+        checkout_session_id: null,
+      });
+    }
 
     const lineItems = stripePriceId
       ? [{ price: stripePriceId, quantity: 1 }]
@@ -199,14 +312,16 @@ Deno.serve(async (req) => {
         plan_key: String(plan.plan_key),
         user_id: user.id,
         role: userRole,
+        trial_days: String(trialDays),
       },
       payment_method_collection: 'always',
       allow_promotion_codes: true,
       subscription_data: {
-        trial_period_days: 7,
+        ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
         metadata: {
           org_id: orgId,
           plan_key: String(plan.plan_key),
+          trial_days: String(trialDays),
         },
       },
     });
@@ -229,6 +344,7 @@ Deno.serve(async (req) => {
       {
         plan_key: plan.plan_key,
         stripe_checkout_session_id: session.id,
+        trial_days: trialDays,
       },
       'user',
     );
@@ -236,6 +352,7 @@ Deno.serve(async (req) => {
     return json(corsHeaders, 200, {
       ok: true,
       org_id: orgId,
+      trial_days: trialDays,
       checkout_url: session.url,
       checkout_session_id: session.id,
     });

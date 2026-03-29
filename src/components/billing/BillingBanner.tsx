@@ -1,10 +1,37 @@
 import { AlertTriangle, Clock, ArrowRight } from 'lucide-react';
 import { OrgBillingInfo } from '@/hooks/useOrgBilling';
 import { useNavigate } from 'react-router-dom';
+import { createBillingPortalSession } from '@/hooks/useOrgBilling';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { useState } from 'react';
 
 export default function BillingBanner({ billing }: { billing: OrgBillingInfo | null | undefined }) {
   const navigate = useNavigate();
+  const { orgId } = useAuth();
+  const { toast } = useToast();
+  const [openingPortal, setOpeningPortal] = useState(false);
   if (!billing) return null;
+
+  const graceDays = billing.grace_ends_at
+    ? Math.max(0, Math.ceil((new Date(billing.grace_ends_at).getTime() - Date.now()) / 86_400_000))
+    : null;
+
+  const handlePortal = async () => {
+    try {
+      setOpeningPortal(true);
+      const url = await createBillingPortalSession(orgId);
+      window.location.href = url;
+    } catch (error) {
+      toast({
+        title: 'Portal indisponivel',
+        description: error instanceof Error ? error.message : 'Erro inesperado ao abrir a Stripe.',
+        variant: 'destructive',
+      });
+    } finally {
+      setOpeningPortal(false);
+    }
+  };
 
   if (billing.subscription_status === 'past_due' || billing.subscription_status === 'unpaid') {
     return (
@@ -13,14 +40,16 @@ export default function BillingBanner({ billing }: { billing: OrgBillingInfo | n
           <AlertTriangle className="h-4 w-4 flex-shrink-0" />
           <span>
             <span className="font-medium">Pagamento pendente.</span>{' '}
-            Atualize sua assinatura para restaurar acesso total.
+            {graceDays && graceDays > 0
+              ? `Corrija sua forma de pagamento em ate ${graceDays} dia${graceDays > 1 ? 's' : ''} para evitar bloqueio total.`
+              : 'Corrija sua forma de pagamento para restaurar o acesso total.'}
           </span>
         </span>
         <button
-          onClick={() => navigate('/billing')}
+          onClick={() => { void handlePortal(); }}
           className="inline-flex flex-shrink-0 items-center gap-1 rounded-md bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800 transition-colors hover:bg-red-200"
         >
-          Resolver <ArrowRight className="h-3 w-3" />
+          {openingPortal ? 'Abrindo...' : <>Corrigir pagamento <ArrowRight className="h-3 w-3" /></>}
         </button>
       </div>
     );

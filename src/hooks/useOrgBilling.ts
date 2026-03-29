@@ -94,6 +94,7 @@ export async function createPlanCheckoutSession(input: {
   planKey: string;
   orgId?: string | null;
   orgName?: string;
+  trialDays?: number;
   successUrl?: string;
   cancelUrl?: string;
 }) {
@@ -102,6 +103,7 @@ export async function createPlanCheckoutSession(input: {
       plan_key: input.planKey,
       ...(input.orgId ? { org_id: input.orgId } : {}),
       ...(input.orgName ? { org_name: input.orgName } : {}),
+      ...(typeof input.trialDays === 'number' ? { trial_days: input.trialDays } : {}),
       ...(input.successUrl ? { success_url: input.successUrl } : {}),
       ...(input.cancelUrl ? { cancel_url: input.cancelUrl } : {}),
     },

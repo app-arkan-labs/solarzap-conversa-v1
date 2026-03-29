@@ -201,8 +201,8 @@ export const buildSubscriptionIssueBlocker = (input: {
       title: input.title || 'Atualize o pagamento para continuar',
       description:
         input.description ||
-        'Seu acesso está limitado por uma cobrança pendente. Atualize a forma de pagamento para liberar a funcionalidade.',
-      primaryLabel: 'Atualizar pagamento',
+        'Seu acesso está limitado por uma cobrança pendente. Você tem até 7 dias de tolerância para corrigir a forma de pagamento na Stripe antes do bloqueio total.',
+      primaryLabel: 'Corrigir pagamento',
       primaryAction: 'billing_portal',
       targetPlan: currentPlan,
       billingIntent: null,

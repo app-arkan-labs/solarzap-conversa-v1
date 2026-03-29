@@ -15,6 +15,170 @@ function toIso(ts?: number | null): string | null {
   return new Date(ts * 1000).toISOString();
 }
 
+function mapPublicSubscriptionStatus(status: string): string {
+  if (status === 'trialing') return 'trialing';
+  if (status === 'active') return 'active';
+  if (status === 'past_due') return 'past_due';
+  if (status === 'unpaid') return 'unpaid';
+  if (status === 'incomplete') return 'pending_checkout';
+  if (status === 'canceled' || status === 'incomplete_expired') return 'canceled';
+  return 'active';
+}
+
+type PublicPlanRow = {
+  plan_key: string;
+  limits: Record<string, unknown> | null;
+  stripe_price_id: string | null;
+};
+
+type PublicAddonRow = {
+  addon_key: string;
+  addon_type: string;
+  limit_key: string;
+  stripe_price_id: string | null;
+};
+
+function extractStripePriceId(item: Stripe.SubscriptionItem): string | null {
+  if (typeof item.price === 'string') return item.price;
+  return item.price?.id ?? null;
+}
+
+async function syncPublicCatalogFromSubscription(
+  serviceClient: ReturnType<typeof getServiceClient>,
+  orgId: string,
+  subscription: Stripe.Subscription,
+): Promise<{ plan: PublicPlanRow | null }> {
+  const items = subscription.items.data || [];
+  const priceIds = Array.from(
+    new Set(
+      items
+        .map((item) => extractStripePriceId(item))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  if (priceIds.length < 1) {
+    return { plan: null };
+  }
+
+  const [{ data: plans }, { data: addons }] = await Promise.all([
+    serviceClient
+      .from('_admin_subscription_plans')
+      .select('plan_key, limits, stripe_price_id')
+      .eq('is_active', true)
+      .in('stripe_price_id', priceIds),
+    serviceClient
+      .from('_admin_addon_catalog')
+      .select('addon_key, addon_type, limit_key, stripe_price_id')
+      .eq('is_active', true)
+      .in('stripe_price_id', priceIds),
+  ]);
+
+  const planByPrice = new Map<string, PublicPlanRow>();
+  for (const plan of plans ?? []) {
+    const priceId = String(plan.stripe_price_id || '').trim();
+    if (!priceId) continue;
+    planByPrice.set(priceId, {
+      plan_key: String(plan.plan_key || ''),
+      limits: (typeof plan.limits === 'object' && plan.limits && !Array.isArray(plan.limits) ? plan.limits : {}) as Record<string, unknown>,
+      stripe_price_id: priceId,
+    });
+  }
+
+  const addonByPrice = new Map<string, PublicAddonRow>();
+  for (const addon of addons ?? []) {
+    const priceId = String(addon.stripe_price_id || '').trim();
+    if (!priceId) continue;
+    addonByPrice.set(priceId, {
+      addon_key: String(addon.addon_key || ''),
+      addon_type: String(addon.addon_type || ''),
+      limit_key: String(addon.limit_key || ''),
+      stripe_price_id: priceId,
+    });
+  }
+
+  let matchedPlan: PublicPlanRow | null = null;
+  const recurringAddons: Array<{
+    addon_key: string;
+    quantity: number;
+    stripe_subscription_item_id: string;
+  }> = [];
+
+  for (const item of items) {
+    const priceId = extractStripePriceId(item);
+    if (!priceId) continue;
+
+    const plan = planByPrice.get(priceId);
+    if (plan && !matchedPlan) {
+      matchedPlan = plan;
+      continue;
+    }
+
+    const addon = addonByPrice.get(priceId);
+    if (addon?.addon_type === 'recurring' && item.id) {
+      recurringAddons.push({
+        addon_key: addon.addon_key,
+        quantity: Math.max(1, Number(item.quantity || 1)),
+        stripe_subscription_item_id: String(item.id),
+      });
+    }
+  }
+
+  if (matchedPlan) {
+    await serviceClient
+      .from('organizations')
+      .update({
+        plan: matchedPlan.plan_key,
+        plan_limits: matchedPlan.limits ?? {},
+        stripe_price_id: matchedPlan.stripe_price_id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', orgId);
+  }
+
+  const { data: existingAddonSubscriptions } = await serviceClient
+    .from('addon_subscriptions')
+    .select('id, stripe_subscription_item_id')
+    .eq('org_id', orgId)
+    .eq('status', 'active');
+
+  const activeItemIds = new Set(recurringAddons.map((item) => item.stripe_subscription_item_id));
+  const staleIds = (existingAddonSubscriptions ?? [])
+    .filter((row) => {
+      const itemId = String(row.stripe_subscription_item_id || '').trim();
+      return itemId && !activeItemIds.has(itemId);
+    })
+    .map((row) => String(row.id));
+
+  if (staleIds.length > 0) {
+    await serviceClient
+      .from('addon_subscriptions')
+      .update({
+        status: 'canceled',
+        canceled_at: new Date().toISOString(),
+      })
+      .in('id', staleIds);
+  }
+
+  if (recurringAddons.length > 0) {
+    await serviceClient
+      .from('addon_subscriptions')
+      .upsert(
+        recurringAddons.map((addon) => ({
+          org_id: orgId,
+          addon_key: addon.addon_key,
+          quantity: addon.quantity,
+          stripe_subscription_item_id: addon.stripe_subscription_item_id,
+          status: 'active',
+          canceled_at: null,
+        })),
+        { onConflict: 'stripe_subscription_item_id' },
+      );
+  }
+
+  return { plan: matchedPlan };
+}
+
 function creditTypeFromAddonLimit(limitKey: string): string | null {
   if (limitKey === 'broadcast_credits') return 'broadcast_credits';
   if (limitKey === 'ai_requests') return 'ai_requests';
@@ -345,37 +509,52 @@ Deno.serve(async (req) => {
         const planKey = String(metadata.plan_key || 'free');
         const subscriptionId = typeof session.subscription === 'string' ? session.subscription : null;
         const customerId = typeof session.customer === 'string' ? session.customer : null;
+        const requestedTrialDays = Math.max(0, Number(metadata.trial_days || 0));
 
         let periodEnd: string | null = null;
         let trialEnd: string | null = null;
+        let nextStatus = requestedTrialDays > 0 ? 'trialing' : 'active';
+        let resolvedPlanKey = planKey;
+        let resolvedStripePriceId: string | null = null;
         if (subscriptionId) {
           const sub = await stripe.subscriptions.retrieve(subscriptionId);
           periodEnd = toIso(sub.current_period_end);
           trialEnd = toIso(sub.trial_end);
+          nextStatus = mapPublicSubscriptionStatus(sub.status);
+
+          const syncedCatalog = await syncPublicCatalogFromSubscription(serviceClient, orgId, sub);
+          if (syncedCatalog.plan?.plan_key) {
+            resolvedPlanKey = syncedCatalog.plan.plan_key;
+            resolvedStripePriceId = syncedCatalog.plan.stripe_price_id;
+          }
         }
 
         const { data: planRow } = await serviceClient
           .from('_admin_subscription_plans')
           .select('plan_key, limits, features')
-          .eq('plan_key', planKey)
+          .eq('plan_key', resolvedPlanKey)
           .maybeSingle();
 
-        const trialStartedAt = new Date().toISOString();
-        const fallbackTrialEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const trialStartedAt = nextStatus === 'trialing' ? new Date().toISOString() : null;
+        const fallbackTrialEnd = requestedTrialDays > 0
+          ? new Date(Date.now() + requestedTrialDays * 24 * 60 * 60 * 1000).toISOString()
+          : null;
 
         await serviceClient
           .from('organizations')
           .update({
-            plan: planKey,
+            plan: resolvedPlanKey,
             plan_limits: (planRow?.limits ?? {}) as Record<string, unknown>,
-            subscription_status: 'trialing',
+            subscription_status: nextStatus,
             onboarding_state: 'active',
             stripe_subscription_id: subscriptionId,
             stripe_customer_id: customerId,
+            stripe_price_id: resolvedStripePriceId,
             current_period_end: periodEnd,
             grace_ends_at: null,
             trial_started_at: trialStartedAt,
-            trial_ends_at: trialEnd ?? fallbackTrialEnd,
+            trial_ends_at: nextStatus === 'trialing' ? (trialEnd ?? fallbackTrialEnd) : null,
+            trial_days: requestedTrialDays,
             updated_at: new Date().toISOString(),
           })
           .eq('id', orgId);
@@ -389,15 +568,19 @@ Deno.serve(async (req) => {
         }
 
         await appendBillingTimeline(serviceClient, orgId, 'checkout_completed', {
-          plan_key: planKey,
+          plan_key: resolvedPlanKey,
           stripe_subscription_id: subscriptionId,
           stripe_customer_id: customerId,
+          stripe_price_id: resolvedStripePriceId,
+          trial_days: requestedTrialDays,
         }, 'stripe_webhook');
 
-        await appendBillingTimeline(serviceClient, orgId, 'trial_started', {
-          plan_key: planKey,
-          trial_ends_at: trialEnd ?? fallbackTrialEnd,
-        }, 'stripe_webhook');
+        if (nextStatus === 'trialing') {
+          await appendBillingTimeline(serviceClient, orgId, 'trial_started', {
+            plan_key: resolvedPlanKey,
+            trial_ends_at: trialEnd ?? fallbackTrialEnd,
+          }, 'stripe_webhook');
+        }
       }
 
       if (mode === 'payment') {
@@ -448,19 +631,27 @@ Deno.serve(async (req) => {
       const subscription = event.data.object as Stripe.Subscription;
       const subscriptionStatus = subscription.status;
       const periodEnd = toIso(subscription.current_period_end);
+      const trialStart = toIso(subscription.trial_start);
+      const trialEnd = toIso(subscription.trial_end);
 
-      let nextStatus = 'active';
-      if (subscriptionStatus === 'past_due' || subscriptionStatus === 'unpaid') nextStatus = 'past_due';
-      if (subscriptionStatus === 'canceled' || subscriptionStatus === 'incomplete_expired') nextStatus = 'canceled';
+      const nextStatus = mapPublicSubscriptionStatus(subscriptionStatus);
+      const syncedCatalog = await syncPublicCatalogFromSubscription(serviceClient, orgId, subscription);
 
       await serviceClient
         .from('organizations')
         .update({
+          ...(syncedCatalog.plan?.plan_key ? {
+            plan: syncedCatalog.plan.plan_key,
+            plan_limits: syncedCatalog.plan.limits ?? {},
+            stripe_price_id: syncedCatalog.plan.stripe_price_id,
+          } : {}),
           subscription_status: nextStatus,
           current_period_end: periodEnd,
+          trial_started_at: nextStatus === 'trialing' ? trialStart : null,
+          trial_ends_at: nextStatus === 'trialing' ? trialEnd : null,
           grace_ends_at:
-            nextStatus === 'past_due'
-              ? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+            nextStatus === 'past_due' || nextStatus === 'unpaid'
+              ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
               : null,
           updated_at: new Date().toISOString(),
         })
@@ -470,6 +661,8 @@ Deno.serve(async (req) => {
         stripe_subscription_id: subscription.id,
         stripe_status: subscriptionStatus,
         mapped_status: nextStatus,
+        plan_key: syncedCatalog.plan?.plan_key ?? null,
+        stripe_price_id: syncedCatalog.plan?.stripe_price_id ?? null,
       }, 'stripe_webhook');
     }
 
@@ -478,7 +671,7 @@ Deno.serve(async (req) => {
         .from('organizations')
         .update({
           subscription_status: 'past_due',
-          grace_ends_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+          grace_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('id', orgId);
@@ -521,6 +714,12 @@ Deno.serve(async (req) => {
           } : {}),
         })
         .eq('id', orgId);
+
+      await serviceClient
+        .from('billing_alerts')
+        .update({ resolved_at: new Date().toISOString() })
+        .eq('org_id', orgId)
+        .is('resolved_at', null);
 
       if (wasSuspended) {
         // Restore campaigns that were auto-paused by suspension

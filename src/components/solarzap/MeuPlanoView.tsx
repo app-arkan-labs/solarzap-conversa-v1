@@ -98,7 +98,7 @@ function daysUntil(date: string | null | undefined) {
 /* ── component ──────────────────────────────────────────────────── */
 
 export function MeuPlanoView() {
-  const { user, role } = useAuth();
+  const { user, role, orgId } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -167,6 +167,7 @@ export function MeuPlanoView() {
       const target = targetKey || (planKey === 'free' ? 'start' : 'pro');
       const checkoutUrl = await createPlanCheckoutSession({
         planKey: target,
+        orgId,
         successUrl: `${window.location.origin}/welcome?checkout=success`,
         cancelUrl: `${window.location.origin}/billing?checkout=cancel`,
       });
@@ -176,19 +177,19 @@ export function MeuPlanoView() {
     } finally {
       setBillingBusy(false);
     }
-  }, [planKey, toast]);
+  }, [orgId, planKey, toast]);
 
   const handleOpenBillingPortal = useCallback(async () => {
     try {
       setBillingBusy(true);
-      const portalUrl = await createBillingPortalSession();
+      const portalUrl = await createBillingPortalSession(orgId);
       window.location.href = portalUrl;
     } catch (err: unknown) {
       toast({ title: 'Portal indisponível', description: err instanceof Error ? err.message : 'Tente novamente.', variant: 'destructive' });
     } finally {
       setBillingBusy(false);
     }
-  }, [toast]);
+  }, [orgId, toast]);
 
   const handleLegacyMigration = useCallback(async () => {
     try {
@@ -206,13 +207,13 @@ export function MeuPlanoView() {
   const handleCancelConfirm = useCallback(async () => {
     setCancelStep('processing');
     try {
-      const portalUrl = await createBillingPortalSession();
+      const portalUrl = await createBillingPortalSession(orgId);
       window.location.href = portalUrl;
     } catch {
       toast({ title: 'Não foi possível cancelar', description: 'Tente novamente ou entre em contato com o suporte.', variant: 'destructive' });
       setCancelStep('confirm');
     }
-  }, [toast]);
+  }, [orgId, toast]);
 
   /* ── render data ── */
 
@@ -481,7 +482,9 @@ export function MeuPlanoView() {
               <div className="flex-1">
                 <p className="text-sm font-semibold text-red-800">Pagamento pendente</p>
                 <p className="mt-0.5 text-xs text-red-700">
-                  Atualize seus dados de pagamento para evitar a suspensão do plano.
+                  {graceDays && graceDays > 0
+                    ? `Você tem ${graceDays} dia${graceDays > 1 ? 's' : ''} para corrigir o pagamento na Stripe antes do bloqueio total.`
+                    : 'Corrija o pagamento na Stripe para restaurar o acesso completo.'}
                 </p>
                 {isAdminOrOwner && (
                   <Button
@@ -492,7 +495,7 @@ export function MeuPlanoView() {
                     className="mt-3 w-full border-red-300 text-red-700 hover:bg-red-100 sm:w-auto"
                   >
                     <CreditCard className="h-3.5 w-3.5 mr-1.5" />
-                    Atualizar pagamento
+                    Corrigir pagamento na Stripe
                   </Button>
                 )}
               </div>
