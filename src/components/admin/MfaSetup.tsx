@@ -20,6 +20,7 @@ export default function MfaSetup() {
   const { toast } = useToast();
   const [loadingEnroll, setLoadingEnroll] = useState(false);
   const [loadingVerify, setLoadingVerify] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
   const [enrollment, setEnrollment] = useState<EnrollmentState | null>(null);
   const [code, setCode] = useState('');
   const [showSecret, setShowSecret] = useState(false);
@@ -90,7 +91,8 @@ export default function MfaSetup() {
         title: 'MFA configurado',
         description: 'Sessão elevada para AAL2. Acesso admin liberado.',
       });
-      navigate('/admin', { replace: true });
+      setRedirecting(true);
+      window.location.replace('/admin');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Código MFA inválido';
       toast({
@@ -144,6 +146,12 @@ export default function MfaSetup() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {redirecting ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Redirecionando para o painel admin...
+            </div>
+          ) : null}
           {!enrollment ? (
             <Button className="w-full" onClick={handleEnroll} disabled={loadingEnroll}>
               {loadingEnroll ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Gerar QR TOTP'}

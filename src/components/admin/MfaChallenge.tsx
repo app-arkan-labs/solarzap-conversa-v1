@@ -13,6 +13,7 @@ export default function MfaChallenge() {
   const { toast } = useToast();
   const [loadingFactors, setLoadingFactors] = useState(true);
   const [loadingVerify, setLoadingVerify] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
   const [factorId, setFactorId] = useState<string | null>(null);
   const [code, setCode] = useState('');
 
@@ -59,6 +60,30 @@ export default function MfaChallenge() {
     };
   }, [toast]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const redirectIfElevated = async () => {
+      try {
+        const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (error) throw error;
+
+        if (mounted && data?.currentLevel === 'aal2') {
+          setRedirecting(true);
+          window.location.replace('/admin');
+        }
+      } catch {
+        // noop
+      }
+    };
+
+    void redirectIfElevated();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleVerify = async () => {
     if (!factorId) return;
 
@@ -84,7 +109,8 @@ export default function MfaChallenge() {
         title: 'MFA validado',
         description: 'Sessão elevada para AAL2.',
       });
-      navigate('/admin', { replace: true });
+      setRedirecting(true);
+      window.location.replace('/admin');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Código MFA inválido';
       toast({
@@ -110,6 +136,12 @@ export default function MfaChallenge() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {redirecting ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Redirecionando para o painel admin...
+            </div>
+          ) : null}
           {loadingFactors ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
