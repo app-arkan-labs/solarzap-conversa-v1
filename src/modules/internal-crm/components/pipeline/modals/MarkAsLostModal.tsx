@@ -21,15 +21,15 @@ export function MarkAsLostModal(props: MarkAsLostModalProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
-            Marcar como perdido
+            Marcar como nao fechou
           </DialogTitle>
           <DialogDescription>
-            Informe o motivo da perda para o deal {props.dealTitle || 'selecionado'}.
+            Informe o motivo comercial para o deal {props.dealTitle || 'selecionado'}.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-2">
-          <Label>Motivo da perda</Label>
+          <Label>Motivo</Label>
           <Textarea
             rows={4}
             value={props.lostReason}
@@ -43,7 +43,7 @@ export function MarkAsLostModal(props: MarkAsLostModalProps) {
             Cancelar
           </Button>
           <Button onClick={props.onConfirm} disabled={props.isSubmitting || !props.lostReason.trim()}>
-            Confirmar perda
+            Confirmar
           </Button>
         </DialogFooter>
       </DialogContent>

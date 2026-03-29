@@ -19,10 +19,57 @@ import {
 } from '@/modules/internal-crm/hooks/useInternalCrmApi';
 import type { InternalCrmDealSummary } from '@/modules/internal-crm/types';
 
+function getRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+function getText(value: unknown): string {
+  return typeof value === 'string' ? value : value == null ? '' : String(value);
+}
+
 function createEmptyDraft(): DealDraft {
   return {
     ...EMPTY_DEAL_DRAFT,
     items: EMPTY_DEAL_DRAFT.items.map((item) => ({ ...item })),
+  };
+}
+
+function createDraftFromDeal(deal: InternalCrmDealSummary): DealDraft {
+  const commercialContext = getRecord(deal.commercial_context);
+
+  return {
+    id: deal.id,
+    client_id: deal.client_id,
+    title: deal.title,
+    stage_code: deal.stage_code || 'novo_lead',
+    probability: deal.probability,
+    primary_offer_code: deal.primary_offer_code || '',
+    closed_product_code: deal.closed_product_code || '',
+    mentorship_variant: deal.mentorship_variant || '',
+    software_status: deal.software_status,
+    landing_page_status: deal.landing_page_status,
+    traffic_status: deal.traffic_status,
+    trial_status: deal.trial_status,
+    next_offer_code: deal.next_offer_code || '',
+    next_offer_at: deal.next_offer_at || '',
+    mentorship_sessions_completed:
+      commercialContext.mentorship_sessions_completed == null
+        ? ''
+        : String(commercialContext.mentorship_sessions_completed),
+    last_declined_offer_code: getText(commercialContext.last_declined_offer_code),
+    trial_ends_at: getText(commercialContext.trial_ends_at),
+    scheduling_link: getText(commercialContext.scheduling_link),
+    meeting_link: getText(commercialContext.meeting_link),
+    notes: deal.notes || '',
+    items: deal.items?.length
+      ? deal.items.map((item) => ({
+          product_code: item.product_code,
+          billing_type: item.billing_type,
+          payment_method: item.payment_method,
+          unit_price_cents: item.unit_price_cents,
+          quantity: item.quantity,
+        }))
+      : EMPTY_DEAL_DRAFT.items.map((item) => ({ ...item })),
   };
 }
 
@@ -47,18 +94,28 @@ export function InternalCrmPipelineView() {
   const pipeline = useInternalCrmPipeline({ search, stage_code: stageCode, status });
   const clientsQuery = useInternalCrmClients();
 
-  const upsertDealMutation = useInternalCrmMutation({
+  const upsertDealMutation = useInternalCrmMutation<{ ok: true; deal: { id: string } }>({
     invalidate: [['internal-crm', 'deals'], ['internal-crm', 'clients'], ['internal-crm', 'dashboard']],
-    onSuccess: async () => {
-      toast({ title: 'Deal salvo', description: 'A oportunidade foi atualizada no pipeline interno.' });
-      setDialogOpen(false);
-      setDraft(createEmptyDraft());
-      setOwnerUserId('');
-    },
+  });
+
+  const updateCommercialStateMutation = useInternalCrmMutation({
+    invalidate: [
+      ['internal-crm', 'deals'],
+      ['internal-crm', 'clients'],
+      ['internal-crm', 'dashboard'],
+      ['internal-crm', 'tasks'],
+      ['internal-crm', 'automation-runs'],
+    ],
   });
 
   const moveDealMutation = useInternalCrmMutation({
-    invalidate: [['internal-crm', 'deals'], ['internal-crm', 'clients'], ['internal-crm', 'dashboard']],
+    invalidate: [
+      ['internal-crm', 'deals'],
+      ['internal-crm', 'clients'],
+      ['internal-crm', 'dashboard'],
+      ['internal-crm', 'tasks'],
+      ['internal-crm', 'automation-runs'],
+    ],
   });
 
   const checkoutMutation = useInternalCrmMutation({
@@ -75,6 +132,26 @@ export function InternalCrmPipelineView() {
   const canSaveDeal = useMemo(() => {
     return draft.client_id.trim().length > 0 && draft.title.trim().length > 0;
   }, [draft.client_id, draft.title]);
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) {
+      setDraft(createEmptyDraft());
+      setOwnerUserId('');
+    }
+  };
+
+  const openNewDealDialog = () => {
+    setDraft(createEmptyDraft());
+    setOwnerUserId('');
+    setDialogOpen(true);
+  };
+
+  const openEditDealDialog = (deal: InternalCrmDealSummary) => {
+    setDraft(createDraftFromDeal(deal));
+    setOwnerUserId(deal.owner_user_id || '');
+    setDialogOpen(true);
+  };
 
   const handleSaveDeal = async () => {
     if (!canSaveDeal) {
@@ -94,8 +171,9 @@ export function InternalCrmPipelineView() {
         quantity: Math.max(1, Number(item.quantity || 1)),
       }));
 
-    await upsertDealMutation.mutateAsync({
+    const savedDeal = await upsertDealMutation.mutateAsync({
       action: 'upsert_deal',
+      deal_id: draft.id,
       client_id: draft.client_id,
       title: draft.title,
       owner_user_id: ownerUserId || undefined,
@@ -104,16 +182,49 @@ export function InternalCrmPipelineView() {
       notes: draft.notes,
       items: normalizedItems,
     });
+
+    const mentorshipSessionsCompleted = draft.mentorship_sessions_completed.trim();
+
+    await updateCommercialStateMutation.mutateAsync({
+      action: 'update_deal_commercial_state',
+      deal_id: savedDeal.deal.id,
+      primary_offer_code: draft.primary_offer_code || null,
+      closed_product_code: draft.closed_product_code || null,
+      mentorship_variant: draft.mentorship_variant || null,
+      software_status: draft.software_status,
+      landing_page_status: draft.landing_page_status,
+      traffic_status: draft.traffic_status,
+      trial_status: draft.trial_status,
+      next_offer_code: draft.next_offer_code || null,
+      next_offer_at: draft.next_offer_at || null,
+      commercial_context: {
+        mentorship_sessions_completed:
+          mentorshipSessionsCompleted.length > 0 ? Math.max(0, Number(mentorshipSessionsCompleted || 0)) : null,
+        last_declined_offer_code: draft.last_declined_offer_code.trim() || null,
+        trial_ends_at: draft.trial_ends_at || null,
+        scheduling_link: draft.scheduling_link.trim() || null,
+        meeting_link: draft.meeting_link.trim() || null,
+      },
+    });
+
+    toast({
+      title: draft.id ? 'Deal atualizado' : 'Deal salvo',
+      description: 'A oportunidade foi sincronizada com a esteira comercial interna.',
+    });
+    handleDialogOpenChange(false);
   };
 
   const markDealWon = async (deal: InternalCrmDealSummary) => {
+    const closedProductCode = deal.closed_product_code || deal.primary_offer_code || deal.items?.[0]?.product_code;
+
     await moveDealMutation.mutateAsync({
       action: 'move_deal_stage',
       deal_id: deal.id,
-      stage_code: 'ganho',
-      notes: 'Marcado como ganho no pipeline interno.',
+      stage_code: 'fechou',
+      notes: 'Marcado como fechou no pipeline interno.',
+      closed_product_code: closedProductCode,
     });
-    toast({ title: 'Deal ganho', description: 'O negócio foi movido para ganho.' });
+    toast({ title: 'Deal fechado', description: 'O negocio foi movido para Fechou.' });
   };
 
   const confirmLostDeal = async () => {
@@ -121,12 +232,13 @@ export function InternalCrmPipelineView() {
     await moveDealMutation.mutateAsync({
       action: 'move_deal_stage',
       deal_id: selectedDeal.id,
-      stage_code: 'perdido',
-      notes: lostReason,
+      stage_code: 'nao_fechou',
+      notes: lostReason || 'Marcado como nao fechou no pipeline interno.',
+      lost_reason: lostReason || null,
     });
     setLostModalOpen(false);
     setLostReason('');
-    toast({ title: 'Deal perdido', description: 'O negócio foi movido para perdido com motivo registrado.' });
+    toast({ title: 'Deal nao fechou', description: 'O negocio foi movido para Nao Fechou com motivo registrado.' });
   };
 
   const handleGenerateCheckout = async () => {
@@ -145,7 +257,7 @@ export function InternalCrmPipelineView() {
         subtitle="Kanban comercial interno para velocidade de fechamento e provisionamento."
         icon={KanbanSquare}
         actionContent={
-          <Button onClick={() => setDialogOpen(true)}>
+          <Button onClick={openNewDealDialog}>
             <Plus className="mr-2 h-4 w-4" />
             Novo deal
           </Button>
@@ -200,6 +312,7 @@ export function InternalCrmPipelineView() {
                   <div key={deal.id} draggable onDragStart={() => setDraggingDealId(deal.id)}>
                     <DealCard
                       deal={deal}
+                      onEditDeal={openEditDealDialog}
                       onMarkWon={markDealWon}
                       onMarkLost={(row) => {
                         setSelectedDeal(row);
@@ -225,7 +338,7 @@ export function InternalCrmPipelineView() {
 
       <EditDealModal
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={handleDialogOpenChange}
         draft={draft}
         onDraftChange={setDraft}
         clients={clientsQuery.data?.clients || []}
@@ -234,7 +347,7 @@ export function InternalCrmPipelineView() {
         ownerUserId={ownerUserId}
         onOwnerUserIdChange={setOwnerUserId}
         onSave={handleSaveDeal}
-        isSaving={upsertDealMutation.isPending}
+        isSaving={upsertDealMutation.isPending || updateCommercialStateMutation.isPending}
       />
 
       <MarkAsLostModal

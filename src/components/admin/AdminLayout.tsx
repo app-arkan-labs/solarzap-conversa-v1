@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bot,
+  CircuitBoard,
   Building2,
   CalendarDays,
   DollarSign,
@@ -34,6 +35,7 @@ const crmSidebarItems: SidebarItem[] = [
   { to: '/admin/crm/inbox', label: 'Inbox', icon: MessageSquare },
   { to: '/admin/crm/clients', label: 'Clientes', icon: Building2 },
   { to: '/admin/crm/campaigns', label: 'Campanhas', icon: Megaphone },
+  { to: '/admin/crm/automations', label: 'Automacoes', icon: CircuitBoard },
   { to: '/admin/crm/calendar', label: 'Calendarios', icon: CalendarDays },
   { to: '/admin/crm/ai', label: 'IA', icon: Bot },
   { to: '/admin/crm/finance', label: 'Financeiro CRM', icon: DollarSign },

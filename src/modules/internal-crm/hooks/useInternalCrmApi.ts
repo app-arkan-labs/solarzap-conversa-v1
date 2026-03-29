@@ -4,6 +4,9 @@ import type {
   InternalCrmAppointment,
   InternalCrmAiActionLog,
   InternalCrmAiSettings,
+  InternalCrmAutomationRule,
+  InternalCrmAutomationRun,
+  InternalCrmAutomationSettings,
   InternalCrmApiAction,
   InternalCrmApiErrorCode,
   InternalCrmApiRequest,
@@ -400,6 +403,9 @@ export const internalCrmQueryKeys = {
   conversations: (params: Record<string, unknown>) => ['internal-crm', 'conversations', params] as const,
   conversationDetail: (conversationId: string) => ['internal-crm', 'conversation-detail', conversationId] as const,
   campaigns: () => ['internal-crm', 'campaigns'] as const,
+  automationRules: () => ['internal-crm', 'automation-rules'] as const,
+  automationRuns: (params: Record<string, unknown>) => ['internal-crm', 'automation-runs', params] as const,
+  automationSettings: () => ['internal-crm', 'automation-settings'] as const,
   ai: () => ['internal-crm', 'ai'] as const,
   aiActionLogs: (params: Record<string, unknown>) => ['internal-crm', 'ai-action-logs', params] as const,
   appointments: (params: Record<string, unknown>) => ['internal-crm', 'appointments', params] as const,
@@ -524,6 +530,33 @@ export function useInternalCrmCampaigns(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: internalCrmQueryKeys.campaigns(),
     queryFn: () => invokeInternalCrmApi<{ ok: true; campaigns: InternalCrmCampaign[] }>({ action: 'list_campaigns' }),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useInternalCrmAutomationRules(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: internalCrmQueryKeys.automationRules(),
+    queryFn: () => invokeInternalCrmApi<{ ok: true; rules: InternalCrmAutomationRule[] }>({ action: 'list_automation_rules' }),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useInternalCrmAutomationRuns(
+  params: { status?: string; client_id?: string; deal_id?: string; limit?: number } = {},
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: internalCrmQueryKeys.automationRuns(params),
+    queryFn: () => invokeInternalCrmApi<{ ok: true; runs: InternalCrmAutomationRun[] }>({ action: 'list_automation_runs', ...params }),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useInternalCrmAutomationSettings(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: internalCrmQueryKeys.automationSettings(),
+    queryFn: () => invokeInternalCrmApi<{ ok: true; settings: InternalCrmAutomationSettings }>({ action: 'get_automation_settings' }),
     enabled: options?.enabled ?? true,
   });
 }

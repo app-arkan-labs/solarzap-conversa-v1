@@ -50,6 +50,14 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   create_deal_checkout_link: { minCrmRole: 'sales', requireMfa: true },
   list_tasks: { minCrmRole: 'read_only', requireMfa: true },
   upsert_task: { minCrmRole: 'sales', requireMfa: true },
+  list_automation_rules: { minCrmRole: 'read_only', requireMfa: true },
+  upsert_automation_rule: { minCrmRole: 'ops', requireMfa: true },
+  list_automation_runs: { minCrmRole: 'read_only', requireMfa: true },
+  test_automation_rule: { minCrmRole: 'ops', requireMfa: true },
+  get_automation_settings: { minCrmRole: 'read_only', requireMfa: true },
+  upsert_automation_settings: { minCrmRole: 'ops', requireMfa: true },
+  update_deal_commercial_state: { minCrmRole: 'sales', requireMfa: true },
+  intake_landing_lead: { minCrmRole: 'sales', requireMfa: true },
   list_instances: { minCrmRole: 'read_only', requireMfa: true },
   upsert_instance: { minCrmRole: 'ops', requireMfa: true },
   connect_instance: { minCrmRole: 'ops', requireMfa: true },
@@ -82,7 +90,7 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   provision_customer: { minCrmRole: 'ops', requireMfa: true },
 };
 
-const INTERNAL_ONLY_ACTIONS = new Set(['webhook_inbound', 'process_agent_jobs']);
+const INTERNAL_ONLY_ACTIONS = new Set(['webhook_inbound', 'process_agent_jobs', 'process_automation_runs']);
 
 function json(status: number, body: Record<string, unknown>, headers: Record<string, string>) {
   return new Response(JSON.stringify(body), {
@@ -160,6 +168,215 @@ function resolveRequestIp(req: Request): string | null {
   const forwarded = req.headers.get('x-forwarded-for') || '';
   const first = forwarded.split(',').map((item) => item.trim()).find(Boolean);
   return first || null;
+}
+
+const INTERNAL_CRM_AUTOMATION_SCOPE_KEY = 'default';
+const LEGACY_STAGE_CODE_MAP: Record<string, string> = {
+  lead_entrante: 'novo_lead',
+  contato_iniciado: 'respondeu',
+  qualificado: 'respondeu',
+  demo_agendada: 'chamada_agendada',
+  proposta_enviada: 'negociacao',
+  aguardando_pagamento: 'negociacao',
+  ganho: 'fechou',
+  perdido: 'nao_fechou',
+};
+const BLUEPRINT_STAGE_DEFAULT_PROBABILITY: Record<string, number> = {
+  novo_lead: 5,
+  respondeu: 15,
+  chamada_agendada: 35,
+  chamada_realizada: 55,
+  nao_compareceu: 20,
+  negociacao: 75,
+  fechou: 100,
+  nao_fechou: 5,
+};
+const MENTORSHIP_SESSION_TARGET: Record<string, number> = {
+  mentoria_1000_1_encontro: 1,
+  mentoria_1500_4_encontros: 4,
+  mentoria_2000_premium: 5,
+  mentoria_3x1000_pos_software: 3,
+  mentoria_4x1200_pos_trial: 4,
+};
+
+function formatPtBrDateTime(value: unknown): string {
+  const raw = asString(value);
+  if (!raw) return '';
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'America/Sao_Paulo',
+  }).format(parsed);
+}
+
+function formatPtBrTime(value: unknown): string {
+  const raw = asString(value);
+  if (!raw) return '';
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Sao_Paulo',
+  }).format(parsed);
+}
+
+function humanizeToken(value: unknown): string {
+  const raw = asString(value);
+  if (!raw) return '';
+  return raw
+    .split('_')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+function resolveBlueprintStageCode(value: unknown, fallback = 'novo_lead'): string {
+  const raw = asString(value);
+  if (!raw) return fallback;
+  return LEGACY_STAGE_CODE_MAP[raw] || raw;
+}
+
+function resolveDealStatusForStage(stageCode: unknown, fallback = 'open'): 'open' | 'won' | 'lost' {
+  const resolvedStageCode = resolveBlueprintStageCode(stageCode, 'novo_lead');
+  if (resolvedStageCode === 'fechou') return 'won';
+  if (resolvedStageCode === 'nao_fechou') return 'lost';
+  if (fallback === 'won' || fallback === 'lost') return 'open';
+  return fallback === 'lost' ? 'lost' : fallback === 'won' ? 'won' : 'open';
+}
+
+function resolveLifecycleStatusForStage(
+  stageCode: unknown,
+  dealStatus: unknown,
+  fallback = 'lead',
+): 'lead' | 'customer_onboarding' | 'active_customer' | 'churn_risk' | 'churned' {
+  const resolvedStageCode = resolveBlueprintStageCode(stageCode, 'novo_lead');
+  const resolvedDealStatus = resolveDealStatusForStage(resolvedStageCode, asString(dealStatus) || 'open');
+  if (resolvedDealStatus === 'won') return 'customer_onboarding';
+  if (resolvedStageCode === 'nao_fechou' || resolvedDealStatus === 'lost') return 'lead';
+  if (['lead', 'customer_onboarding', 'active_customer', 'churn_risk', 'churned'].includes(fallback)) {
+    return fallback as 'lead' | 'customer_onboarding' | 'active_customer' | 'churn_risk' | 'churned';
+  }
+  return 'lead';
+}
+
+function resolveStageProbability(stageCode: unknown, fallback = 0): number {
+  const resolvedStageCode = resolveBlueprintStageCode(stageCode, 'novo_lead');
+  return BLUEPRINT_STAGE_DEFAULT_PROBABILITY[resolvedStageCode] ?? fallback;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function mergeRecord(base: unknown, patch: unknown): Record<string, unknown> {
+  return {
+    ...asRecord(base),
+    ...asRecord(patch),
+  };
+}
+
+function normalizeTextArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item ?? '').trim())
+    .filter(Boolean);
+}
+
+function addMinutesIso(input: string, minutes: number): string {
+  const parsed = new Date(input);
+  if (Number.isNaN(parsed.getTime())) return nowIso();
+  return new Date(parsed.getTime() + (minutes * 60_000)).toISOString();
+}
+
+function normalizeTemplateValue(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+}
+
+function buildInternalCrmUrl(clientId?: string | null): string {
+  const appUrl = safeAsOrigin(resolveAppUrl(), 'http://localhost:5173');
+  const base = appUrl.replace(/\/$/, '');
+  if (clientId) return `${base}/admin/crm/clients?client=${clientId}`;
+  return `${base}/admin/crm/pipeline`;
+}
+
+function renderAutomationTemplate(template: string | null, payload: Record<string, unknown>): string | null {
+  const source = asString(template);
+  if (!source) return null;
+  return source.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_match, rawKey) => {
+    const key = String(rawKey || '').trim();
+    return normalizeTemplateValue(payload[key]);
+  });
+}
+
+function conditionMatches(expected: unknown, actual: unknown): boolean {
+  if (expected == null) return actual == null;
+  if (Array.isArray(expected)) {
+    const expectedValues = expected.map((item) => normalizeTemplateValue(item)).filter(Boolean);
+    if (Array.isArray(actual)) {
+      const actualValues = actual.map((item) => normalizeTemplateValue(item));
+      return expectedValues.some((value) => actualValues.includes(value));
+    }
+    return expectedValues.includes(normalizeTemplateValue(actual));
+  }
+
+  if (typeof expected === 'boolean') return asBoolean(actual, !expected) === expected;
+  if (typeof expected === 'number') return asNumber(actual, Number.NaN) === expected;
+
+  return normalizeTemplateValue(expected).toLowerCase() === normalizeTemplateValue(actual).toLowerCase();
+}
+
+function automationConditionMatches(condition: Record<string, unknown>, payload: Record<string, unknown>): boolean {
+  for (const [key, expected] of Object.entries(condition)) {
+    if (!conditionMatches(expected, payload[key])) return false;
+  }
+  return true;
+}
+
+function resolveAutomationScheduledAt(rule: Record<string, unknown>, payload: Record<string, unknown>): string {
+  const metadata = asRecord(rule.metadata);
+  const anchor = asString(metadata.schedule_anchor) || 'event_time';
+
+  let baseAt = asString(payload.event_at) || nowIso();
+  if (anchor === 'appointment_start' && asString(payload.appointment_start_at)) {
+    baseAt = asString(payload.appointment_start_at) || baseAt;
+  }
+  if (anchor === 'trial_end_at' && asString(payload.trial_ends_at)) {
+    baseAt = asString(payload.trial_ends_at) || baseAt;
+  }
+
+  const baseDate = new Date(baseAt);
+  if (Number.isNaN(baseDate.getTime())) return nowIso();
+
+  const shifted = new Date(baseDate.getTime() + (asNumber(rule.delay_minutes, 0) * 60_000));
+  if (shifted.getTime() < Date.now()) return nowIso();
+  return shifted.toISOString();
+}
+
+function buildAutomationEventKey(eventType: string, payload: Record<string, unknown>): string {
+  const explicit = asString(payload.event_key);
+  if (explicit) return explicit;
+
+  return [
+    eventType,
+    asString(payload.client_id),
+    asString(payload.deal_id),
+    asString(payload.appointment_id),
+    asString(payload.conversation_id),
+    asString(payload.anchor_key),
+    asString(payload.event_at),
+  ].filter(Boolean).join(':');
+}
+
+function mentorshipTargetFromVariant(variant: unknown): number {
+  const normalized = asString(variant);
+  if (!normalized) return 0;
+  return MENTORSHIP_SESSION_TARGET[normalized] || 0;
 }
 
 function getSupabaseEnv() {
@@ -376,9 +593,9 @@ async function listDashboardKpis(serviceClient: ReturnType<typeof createClient>,
     nextActions,
   ] = await Promise.all([
     schema.from('clients').select('id', { count: 'exact', head: true }).gte('created_at', sinceIso).lte('created_at', untilIso),
-    schema.from('clients').select('id', { count: 'exact', head: true }).eq('current_stage_code', 'qualificado').gte('updated_at', sinceIso).lte('updated_at', untilIso),
-    schema.from('deals').select('id', { count: 'exact', head: true }).eq('stage_code', 'demo_agendada').gte('updated_at', sinceIso).lte('updated_at', untilIso),
-    schema.from('deals').select('id', { count: 'exact', head: true }).eq('stage_code', 'proposta_enviada').gte('updated_at', sinceIso).lte('updated_at', untilIso),
+    schema.from('clients').select('id', { count: 'exact', head: true }).eq('current_stage_code', 'respondeu').gte('updated_at', sinceIso).lte('updated_at', untilIso),
+    schema.from('deals').select('id', { count: 'exact', head: true }).eq('stage_code', 'chamada_agendada').gte('updated_at', sinceIso).lte('updated_at', untilIso),
+    schema.from('deals').select('id', { count: 'exact', head: true }).eq('stage_code', 'negociacao').gte('updated_at', sinceIso).lte('updated_at', untilIso),
     schema.from('deals').select('one_time_total_cents, mrr_cents', { count: 'exact' }).eq('status', 'won').gte('updated_at', sinceIso).lte('updated_at', untilIso),
     schema.from('deals').select('id', { count: 'exact', head: true }).eq('status', 'lost').gte('updated_at', sinceIso).lte('updated_at', untilIso),
     schema.from('deals').select('one_time_total_cents, mrr_cents').eq('status', 'won').gte('updated_at', sinceIso).lte('updated_at', untilIso),
@@ -584,7 +801,7 @@ async function upsertClient(
     primary_email: asString(payload.primary_email),
     source_channel: asString(payload.source_channel),
     owner_user_id: asString(payload.owner_user_id) || identity.user_id,
-    current_stage_code: asString(payload.current_stage_code) || 'lead_entrante',
+    current_stage_code: resolveBlueprintStageCode(payload.current_stage_code, 'novo_lead'),
     lifecycle_status: asString(payload.lifecycle_status) || 'lead',
     last_contact_at: asString(payload.last_contact_at),
     next_action: asString(payload.next_action),
@@ -721,9 +938,9 @@ async function upsertDeal(
     client_id: clientId,
     title,
     owner_user_id: asString(payload.owner_user_id) || identity.user_id,
-    stage_code: asString(payload.stage_code) || before?.stage_code || 'lead_entrante',
-    status: asString(payload.status) || before?.status || 'open',
-    probability: Math.max(0, Math.min(100, asNumber(payload.probability, before?.probability || 0))),
+    stage_code: resolveBlueprintStageCode(payload.stage_code, resolveBlueprintStageCode(before?.stage_code, 'novo_lead')),
+    status: resolveDealStatusForStage(payload.stage_code || before?.stage_code, asString(payload.status) || before?.status || 'open'),
+    probability: Math.max(0, Math.min(100, asNumber(payload.probability, resolveStageProbability(payload.stage_code || before?.stage_code, before?.probability || 0)))),
     expected_close_at: asString(payload.expected_close_at),
     notes: asString(payload.notes),
     lost_reason: asString(payload.lost_reason),
@@ -731,6 +948,19 @@ async function upsertDeal(
     paid_at: asString(payload.paid_at),
     won_at: asString(payload.won_at),
     closed_at: asString(payload.closed_at),
+    primary_offer_code: asString(payload.primary_offer_code) || before?.primary_offer_code || null,
+    closed_product_code: asString(payload.closed_product_code) || before?.closed_product_code || null,
+    mentorship_variant: asString(payload.mentorship_variant) || before?.mentorship_variant || null,
+    software_status: asString(payload.software_status) || before?.software_status || 'not_offered',
+    landing_page_status: asString(payload.landing_page_status) || before?.landing_page_status || 'not_offered',
+    traffic_status: asString(payload.traffic_status) || before?.traffic_status || 'not_offered',
+    trial_status: asString(payload.trial_status) || before?.trial_status || 'not_offered',
+    next_offer_code: asString(payload.next_offer_code) || before?.next_offer_code || null,
+    next_offer_at: asString(payload.next_offer_at) || before?.next_offer_at || null,
+    last_automation_key: asString(payload.last_automation_key) || before?.last_automation_key || null,
+    commercial_context: Object.prototype.hasOwnProperty.call(payload, 'commercial_context')
+      ? mergeRecord(before?.commercial_context, payload.commercial_context)
+      : asRecord(before?.commercial_context),
   };
 
   const { data: dealData, error: dealError } = await schema
@@ -807,48 +1037,34 @@ async function moveDealStage(
   const { data: before, error: beforeError } = await schema.from('deals').select('*').eq('id', dealId).maybeSingle();
   if (beforeError) throw { status: 500, code: 'deal_query_failed', error: beforeError };
   if (!before?.id) throw { status: 404, code: 'not_found' };
-
-  const status =
-    stageCode === 'ganho' ? 'won' :
-    stageCode === 'perdido' ? 'lost' :
-    asString(payload.status) || 'open';
-
-  const updatePayload = {
+  const data = await applyDealStageChange(schema, {
+    deal: before,
     stage_code: stageCode,
-    status,
-    probability: Math.max(0, Math.min(100, asNumber(payload.probability, before.probability))),
-    won_at: status === 'won' ? nowIso() : before.won_at,
-    closed_at: status === 'won' || status === 'lost' ? nowIso() : null,
-    payment_status:
-      status === 'won' && before.payment_method === 'manual'
-        ? 'paid'
-        : before.payment_status,
-    paid_at:
-      status === 'won' && before.payment_method === 'manual'
-        ? nowIso()
-        : before.paid_at,
-  };
-
-  const { data, error } = await schema.from('deals').update(updatePayload).eq('id', dealId).select('*').single();
-  if (error || !data?.id) throw { status: 500, code: 'deal_move_failed', error };
-
-  await schema.from('clients').update({
-    current_stage_code: stageCode,
-    lifecycle_status:
-      status === 'won' ? 'customer_onboarding' :
-      stageCode === 'perdido' ? 'lead' :
-      undefined,
-    updated_at: nowIso(),
-  }).eq('id', before.client_id);
-
-  await schema.from('stage_history').insert({
-    client_id: before.client_id,
-    deal_id: dealId,
-    from_stage_code: before.stage_code,
-    to_stage_code: stageCode,
-    changed_by_user_id: identity.user_id,
+    probability: Math.max(0, Math.min(100, asNumber(payload.probability, resolveStageProbability(stageCode, before.probability)))),
     notes: asString(payload.notes),
+    changed_by_user_id: identity.user_id,
+    closed_product_code: asString(payload.closed_product_code),
+    lost_reason: asString(payload.lost_reason),
   });
+
+  if (resolveBlueprintStageCode(stageCode, 'novo_lead') === 'fechou') {
+    await queueAutomationEvent(serviceClient, 'deal_closed', {
+      client_id: String(before.client_id || ''),
+      deal_id: dealId,
+      closed_product_code: asString(payload.closed_product_code) || asString(data.closed_product_code),
+      event_at: nowIso(),
+      event_key: `deal_closed:${dealId}:${nowIso()}`,
+    }, { processDueNow: true });
+  }
+
+  if (resolveBlueprintStageCode(stageCode, 'novo_lead') === 'nao_fechou') {
+    await queueAutomationEvent(serviceClient, 'deal_not_closed', {
+      client_id: String(before.client_id || ''),
+      deal_id: dealId,
+      event_at: nowIso(),
+      event_key: `deal_not_closed:${dealId}:${nowIso()}`,
+    }, { processDueNow: true });
+  }
 
   await writeAuditLog(serviceClient, identity, 'move_deal_stage', req, {
     target_type: 'deal',
@@ -933,6 +1149,369 @@ async function upsertTask(
   });
 
   return { ok: true, task: data };
+}
+
+async function applyDealStageChange(
+  schema: ReturnType<typeof crmSchema>,
+  params: {
+    deal: Record<string, unknown>;
+    stage_code: string;
+    probability?: number;
+    notes?: string | null;
+    changed_by_user_id?: string | null;
+    closed_product_code?: string | null;
+    lost_reason?: string | null;
+  },
+) {
+  const before = params.deal;
+  const dealId = asString(before.id);
+  const clientId = asString(before.client_id);
+  const stageCode = resolveBlueprintStageCode(params.stage_code, resolveBlueprintStageCode(before.stage_code, 'novo_lead'));
+  const status = resolveDealStatusForStage(stageCode, asString(before.status) || 'open');
+  const updatePayload: Record<string, unknown> = {
+    stage_code: stageCode,
+    status,
+    probability: Math.max(0, Math.min(100, params.probability ?? resolveStageProbability(stageCode, asNumber(before.probability, 0)))),
+    updated_at: nowIso(),
+  };
+
+  if (status === 'won') {
+    updatePayload.won_at = asString(before.won_at) || nowIso();
+    updatePayload.closed_at = asString(before.closed_at) || nowIso();
+    if (asString(before.payment_method) === 'manual') {
+      updatePayload.payment_status = 'paid';
+      updatePayload.paid_at = asString(before.paid_at) || nowIso();
+    }
+  } else if (status === 'lost') {
+    updatePayload.closed_at = asString(before.closed_at) || nowIso();
+  } else {
+    updatePayload.closed_at = null;
+  }
+
+  if (params.closed_product_code) updatePayload.closed_product_code = params.closed_product_code;
+  if (params.lost_reason) updatePayload.lost_reason = params.lost_reason;
+
+  const { data, error } = await schema.from('deals').update(updatePayload).eq('id', dealId).select('*').single();
+  if (error || !data?.id) throw { status: 500, code: 'deal_move_failed', error };
+
+  if (clientId) {
+    await schema.from('clients').update({
+      current_stage_code: stageCode,
+      lifecycle_status: resolveLifecycleStatusForStage(stageCode, status, asString(before.lifecycle_status) || 'lead'),
+      updated_at: nowIso(),
+    }).eq('id', clientId);
+  }
+
+  if (stageCode !== asString(before.stage_code)) {
+    await schema.from('stage_history').insert({
+      client_id: clientId,
+      deal_id: dealId,
+      from_stage_code: resolveBlueprintStageCode(before.stage_code, 'novo_lead'),
+      to_stage_code: stageCode,
+      changed_by_user_id: params.changed_by_user_id || null,
+      notes: params.notes || null,
+    });
+  }
+
+  return data;
+}
+
+async function getAutomationSettingsRecord(serviceClient: ReturnType<typeof createClient>) {
+  const schema = crmSchema(serviceClient);
+  const { data, error } = await schema
+    .from('automation_settings')
+    .select('*')
+    .eq('scope_key', INTERNAL_CRM_AUTOMATION_SCOPE_KEY)
+    .maybeSingle();
+
+  if (error) throw { status: 500, code: 'automation_settings_query_failed', error };
+
+  return data || {
+    scope_key: INTERNAL_CRM_AUTOMATION_SCOPE_KEY,
+    default_whatsapp_instance_id: null,
+    admin_notification_numbers: [],
+    notification_cooldown_minutes: 60,
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  };
+}
+
+async function resolveAutomationContextEntities(
+  serviceClient: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+) {
+  const schema = crmSchema(serviceClient);
+  const dealId = asString(payload.deal_id);
+  const appointmentId = asString(payload.appointment_id);
+  const conversationId = asString(payload.conversation_id);
+
+  const [dealResult, appointmentResult, conversationResult] = await Promise.all([
+    dealId ? schema.from('deals').select('*').eq('id', dealId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    appointmentId ? schema.from('appointments').select('*').eq('id', appointmentId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    conversationId ? schema.from('conversations').select('*').eq('id', conversationId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (dealResult.error || appointmentResult.error || conversationResult.error) {
+    throw { status: 500, code: 'automation_context_query_failed' };
+  }
+
+  const effectiveClientId =
+    asString(payload.client_id) ||
+    asString(dealResult.data?.client_id) ||
+    asString(appointmentResult.data?.client_id) ||
+    asString(conversationResult.data?.client_id);
+
+  const clientResult = effectiveClientId
+    ? await schema.from('clients').select('*').eq('id', effectiveClientId).maybeSingle()
+    : { data: null, error: null };
+
+  if (clientResult.error) throw { status: 500, code: 'automation_context_client_query_failed', error: clientResult.error };
+
+  return {
+    client: clientResult.data || null,
+    deal: dealResult.data || null,
+    appointment: appointmentResult.data || null,
+    conversation: conversationResult.data || null,
+  };
+}
+
+function buildAutomationTemplatePayload(
+  context: {
+    client: Record<string, unknown> | null;
+    deal: Record<string, unknown> | null;
+    appointment: Record<string, unknown> | null;
+    conversation: Record<string, unknown> | null;
+  },
+  payload: Record<string, unknown>,
+  eventType: string,
+) {
+  const client = context.client || {};
+  const deal = context.deal || {};
+  const appointment = context.appointment || {};
+  const conversation = context.conversation || {};
+  const commercialContext = asRecord(deal.commercial_context);
+  const appointmentMetadata = asRecord(appointment.metadata);
+  const stageCode = resolveBlueprintStageCode(
+    payload.stage_code || deal.stage_code || client.current_stage_code,
+    'novo_lead',
+  );
+  const appointmentStartAt = asString(payload.appointment_start_at) || asString(appointment.start_at);
+  const effectiveOfferCode = asString(payload.offer_code) || asString(deal.next_offer_code);
+  const closedProductCode = asString(payload.closed_product_code) || asString(deal.closed_product_code) || asString(deal.primary_offer_code);
+
+  return {
+    client_id: asString(payload.client_id) || asString(client.id),
+    deal_id: asString(payload.deal_id) || asString(deal.id),
+    appointment_id: asString(payload.appointment_id) || asString(appointment.id),
+    conversation_id: asString(payload.conversation_id) || asString(conversation.id),
+    event_type: eventType,
+    event_at: asString(payload.event_at) || nowIso(),
+    appointment_start_at: appointmentStartAt,
+    appointment_type: asString(payload.appointment_type) || asString(appointment.appointment_type),
+    whatsapp_instance_id:
+      asString(payload.whatsapp_instance_id) ||
+      asString(conversation.whatsapp_instance_id) ||
+      asString(appointmentMetadata.whatsapp_instance_id),
+    nome:
+      asString(payload.nome) ||
+      asString(client.primary_contact_name) ||
+      asString(client.company_name) ||
+      'Lead',
+    empresa: asString(payload.empresa) || asString(client.company_name) || '',
+    etapa: asString(payload.etapa) || humanizeToken(stageCode),
+    stage_code: stageCode,
+    crm_url: asString(payload.crm_url) || buildInternalCrmUrl(asString(client.id)),
+    link_agendamento:
+      asString(payload.link_agendamento) ||
+      asString(commercialContext.scheduling_link) ||
+      asString(appointmentMetadata.scheduling_link) ||
+      buildInternalCrmUrl(asString(client.id)),
+    link_reuniao:
+      asString(payload.link_reuniao) ||
+      asString(appointmentMetadata.meeting_link) ||
+      asString(commercialContext.meeting_link),
+    data_hora: asString(payload.data_hora) || formatPtBrDateTime(appointmentStartAt),
+    hora: asString(payload.hora) || formatPtBrTime(appointmentStartAt),
+    produto_fechado: asString(payload.produto_fechado) || humanizeToken(closedProductCode),
+    closed_product_code: closedProductCode,
+    offer_code: effectiveOfferCode,
+    trial_ends_at: asString(payload.trial_ends_at) || asString(commercialContext.trial_ends_at),
+    has_scheduled_call: asBoolean(
+      payload.has_scheduled_call,
+      Boolean(asString(appointment.id) && ['scheduled', 'confirmed'].includes(asString(appointment.status) || 'scheduled')),
+    ),
+    primary_phone: asString(payload.primary_phone) || asString(client.primary_phone),
+    primary_email: asString(payload.primary_email) || asString(client.primary_email),
+    commercial_context: commercialContext,
+    appointment_metadata: appointmentMetadata,
+    ...commercialContext,
+    ...appointmentMetadata,
+    ...payload,
+  };
+}
+
+async function cancelPendingAutomationRunsForEvent(
+  serviceClient: ReturnType<typeof createClient>,
+  eventType: string,
+  payload: Record<string, unknown>,
+) {
+  const schema = crmSchema(serviceClient);
+  const appointmentId = asString(payload.appointment_id);
+  const dealId = asString(payload.deal_id);
+  const conversationId = asString(payload.conversation_id);
+  const clientId = asString(payload.client_id);
+
+  if (!appointmentId && !dealId && !conversationId && !clientId) return 0;
+
+  let query = schema
+    .from('automation_runs')
+    .select('id, automation_id, client_id, deal_id, appointment_id, conversation_id')
+    .in('status', ['pending', 'processing'])
+    .order('scheduled_at', { ascending: true })
+    .limit(200);
+
+  if (appointmentId) query = query.eq('appointment_id', appointmentId);
+  else if (dealId) query = query.eq('deal_id', dealId);
+  else if (conversationId) query = query.eq('conversation_id', conversationId);
+  else if (clientId) query = query.eq('client_id', clientId);
+
+  const { data: runs, error } = await query;
+  if (error) throw { status: 500, code: 'automation_runs_query_failed', error };
+  if (!runs || runs.length === 0) return 0;
+
+  const automationIds = Array.from(new Set(runs.map((run) => asString(run.automation_id)).filter((id): id is string => Boolean(id))));
+  if (automationIds.length === 0) return 0;
+
+  const { data: rules, error: rulesError } = await schema
+    .from('automation_rules')
+    .select('id, cancel_on_event_types')
+    .in('id', automationIds);
+
+  if (rulesError) throw { status: 500, code: 'automation_rules_query_failed', error: rulesError };
+
+  const cancelableRuleIds = new Set(
+    (rules || [])
+      .filter((rule) => normalizeTextArray(rule.cancel_on_event_types).includes(eventType))
+      .map((rule) => String(rule.id)),
+  );
+
+  const cancelIds = runs
+    .filter((run) => cancelableRuleIds.has(String(run.automation_id || '')))
+    .map((run) => String(run.id));
+
+  if (cancelIds.length === 0) return 0;
+
+  const { error: cancelError } = await schema
+    .from('automation_runs')
+    .update({
+      status: 'canceled',
+      processed_at: nowIso(),
+      result_payload: { canceled_by_event: eventType },
+      updated_at: nowIso(),
+    })
+    .in('id', cancelIds);
+
+  if (cancelError) throw { status: 500, code: 'automation_runs_cancel_failed', error: cancelError };
+  return cancelIds.length;
+}
+
+async function queueAutomationEvent(
+  serviceClient: ReturnType<typeof createClient>,
+  eventType: string,
+  payload: Record<string, unknown>,
+  options: { processDueNow?: boolean } = {},
+) {
+  const schema = crmSchema(serviceClient);
+  const context = await resolveAutomationContextEntities(serviceClient, payload);
+  const eventPayload = buildAutomationTemplatePayload(context, payload, eventType);
+
+  await cancelPendingAutomationRunsForEvent(serviceClient, eventType, eventPayload);
+
+  const { data: rules, error } = await schema
+    .from('automation_rules')
+    .select('*')
+    .eq('trigger_event', eventType)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true });
+
+  if (error) throw { status: 500, code: 'automation_rules_query_failed', error };
+
+  const queuedRunIds: string[] = [];
+  const dueRunIds: string[] = [];
+  const skippedAutomationKeys: string[] = [];
+
+  for (const rule of rules || []) {
+    if (!automationConditionMatches(asRecord(rule.condition), eventPayload)) {
+      skippedAutomationKeys.push(String(rule.automation_key || ''));
+      continue;
+    }
+
+    const scheduledAt = resolveAutomationScheduledAt(rule, eventPayload);
+    const eventKey = buildAutomationEventKey(eventType, {
+      ...eventPayload,
+      anchor_key: asString(payload.anchor_key) || asString(eventPayload.offer_code) || asString(rule.automation_key),
+    });
+    const dedupeKey = `${asString(rule.automation_key) || String(rule.id)}:${eventKey}`;
+
+    const { data: run, error: runError } = await schema
+      .from('automation_runs')
+      .insert({
+        automation_id: rule.id,
+        automation_key: rule.automation_key,
+        client_id: asString(eventPayload.client_id),
+        deal_id: asString(eventPayload.deal_id),
+        appointment_id: asString(eventPayload.appointment_id),
+        conversation_id: asString(eventPayload.conversation_id),
+        trigger_event: eventType,
+        channel: rule.channel,
+        scheduled_at: scheduledAt,
+        dedupe_key: dedupeKey,
+        payload: mergeRecord(eventPayload, {
+          automation_name: asString(rule.name),
+          automation_key: asString(rule.automation_key),
+          template_body: renderAutomationTemplate(asString(rule.template), eventPayload),
+          rule_metadata: asRecord(rule.metadata),
+          event_key: eventKey,
+        }),
+      })
+      .select('*')
+      .single();
+
+    if (runError) {
+      if (String((runError as { code?: unknown }).code || '') === '23505') {
+        skippedAutomationKeys.push(String(rule.automation_key || ''));
+        continue;
+      }
+      throw { status: 500, code: 'automation_run_insert_failed', error: runError };
+    }
+
+    queuedRunIds.push(String(run.id));
+    await schema
+      .from('automation_rules')
+      .update({ last_run_at: nowIso(), last_run_status: 'pending', updated_at: nowIso() })
+      .eq('id', rule.id);
+
+    if (asString(eventPayload.deal_id)) {
+      await schema
+        .from('deals')
+        .update({ last_automation_key: asString(rule.automation_key), updated_at: nowIso() })
+        .eq('id', asString(eventPayload.deal_id));
+    }
+
+    if (new Date(scheduledAt).getTime() <= Date.now()) {
+      dueRunIds.push(String(run.id));
+    }
+  }
+
+  const processed = dueRunIds.length > 0 && options.processDueNow !== false
+    ? await processAutomationRunsWithOptions(serviceClient, { runIds: dueRunIds, limit: dueRunIds.length })
+    : null;
+
+  return {
+    queued_run_ids: queuedRunIds,
+    skipped_automation_keys: skippedAutomationKeys,
+    processed,
+  };
 }
 
 function getEvolutionEnv() {
@@ -1918,6 +2497,79 @@ async function upsertAppointment(
 
   await schema.from('clients').update({ updated_at: nowIso() }).eq('id', clientId);
 
+  const dealForAppointment = data.deal_id
+    ? (await schema.from('deals').select('*').eq('id', data.deal_id).maybeSingle()).data
+    : null;
+
+  const appointmentStageCode =
+    data.status === 'no_show' ? 'nao_compareceu' :
+    data.status === 'done' ? 'chamada_realizada' :
+    ['scheduled', 'confirmed'].includes(String(data.status || '')) ? 'chamada_agendada' : null;
+
+  if (dealForAppointment?.id && appointmentStageCode) {
+    await applyDealStageChange(schema, {
+      deal: dealForAppointment,
+      stage_code: appointmentStageCode,
+      notes: `appointment_status:${String(data.status || '')}`,
+      changed_by_user_id: identity.user_id,
+    });
+  }
+
+  const appointmentEventAt = asString(data.start_at) || nowIso();
+  const appointmentEventBase = {
+    client_id: clientId,
+    deal_id: asString(data.deal_id),
+    appointment_id: String(data.id),
+    appointment_type: asString(data.appointment_type) || 'call',
+    appointment_start_at: asString(data.start_at),
+    link_reuniao: asString(asRecord(data.metadata).meeting_link),
+    link_agendamento: asString(asRecord(data.metadata).scheduling_link),
+  };
+
+  const beforeStartAt = asString(before?.start_at);
+  const isRescheduled = Boolean(before?.id) && beforeStartAt !== asString(data.start_at);
+  const statusChanged = Boolean(before?.id) && asString(before?.status) !== asString(data.status);
+
+  if (!before?.id || isRescheduled || (statusChanged && ['scheduled', 'confirmed'].includes(String(data.status || '')))) {
+    if (isRescheduled) {
+      await queueAutomationEvent(serviceClient, 'appointment_rescheduled', {
+        ...appointmentEventBase,
+        event_at: appointmentEventAt,
+        event_key: `appointment_rescheduled:${String(data.id)}:${appointmentEventAt}`,
+      }, { processDueNow: true });
+    }
+
+    await queueAutomationEvent(serviceClient, 'appointment_scheduled', {
+      ...appointmentEventBase,
+      event_at: appointmentEventAt,
+      event_key: `appointment_scheduled:${String(data.id)}:${appointmentEventAt}`,
+    }, { processDueNow: true });
+  }
+
+  if (statusChanged && String(data.status || '') === 'canceled') {
+    await queueAutomationEvent(serviceClient, 'appointment_canceled', {
+      ...appointmentEventBase,
+      event_at: nowIso(),
+      event_key: `appointment_canceled:${String(data.id)}:${nowIso()}`,
+    }, { processDueNow: true });
+  }
+
+  if (statusChanged && String(data.status || '') === 'done') {
+    await queueAutomationEvent(serviceClient, 'appointment_done', {
+      ...appointmentEventBase,
+      event_at: nowIso(),
+      event_key: `appointment_done:${String(data.id)}:${nowIso()}`,
+    }, { processDueNow: true });
+  }
+
+  if (statusChanged && String(data.status || '') === 'no_show') {
+    await queueAutomationEvent(serviceClient, 'appointment_no_show', {
+      ...appointmentEventBase,
+      event_at: nowIso(),
+      event_key: `appointment_no_show:${String(data.id)}:${nowIso()}`,
+    }, { processDueNow: true });
+  }
+
   await writeAuditLog(serviceClient, identity, 'upsert_appointment', req, {
     target_type: 'appointment',
     target_id: String(data.id),
@@ -2534,6 +3186,540 @@ async function upsertAiSettings(
   return { ok: true, settings: await listAiSettings(serviceClient) };
 }
 
+function deriveOfferReadyEvents(
+  beforeDeal: Record<string, unknown>,
+  afterDeal: Record<string, unknown>,
+  payload: Record<string, unknown>,
+) {
+  const events: Array<{ offer_code: string; event_at: string }> = [];
+  const beforeContext = asRecord(beforeDeal.commercial_context);
+  const afterContext = asRecord(afterDeal.commercial_context);
+  const now = nowIso();
+
+  const explicitOfferCode = asString(payload.offer_code) || asString(payload.next_offer_code);
+  if (explicitOfferCode) {
+    events.push({
+      offer_code: explicitOfferCode,
+      event_at: asString(payload.offer_at) || asString(payload.next_offer_at) || now,
+    });
+  }
+
+  const beforeSessions = asNumber(beforeContext.mentorship_sessions_completed, 0);
+  const afterSessions = asNumber(afterContext.mentorship_sessions_completed, 0);
+  const mentorshipVariant = asString(afterDeal.mentorship_variant);
+  const targetSessions = mentorshipTargetFromVariant(mentorshipVariant);
+  if (mentorshipVariant === 'mentoria_1000_1_encontro' && afterSessions >= 1 && beforeSessions < 1) {
+    events.push({ offer_code: 'upgrade_mentoria_500', event_at: now });
+  }
+  if (targetSessions > 0 && afterSessions >= targetSessions && beforeSessions < targetSessions) {
+    events.push({ offer_code: 'solarzap_plan', event_at: now });
+  }
+
+  const beforeSoftware = asString(beforeDeal.software_status) || 'not_offered';
+  const afterSoftware = asString(afterDeal.software_status) || beforeSoftware;
+  if (['accepted', 'signed'].includes(afterSoftware) && !['accepted', 'signed'].includes(beforeSoftware)) {
+    events.push({ offer_code: 'landing_page', event_at: now });
+    events.push({ offer_code: 'mentoria_3x1000', event_at: addMinutesIso(now, 7 * 24 * 60) });
+  }
+
+  const beforeLanding = asString(beforeDeal.landing_page_status) || 'not_offered';
+  const afterLanding = asString(afterDeal.landing_page_status) || beforeLanding;
+  if (afterLanding === 'delivered' && beforeLanding !== 'delivered') {
+    events.push({ offer_code: 'trafego_pago', event_at: now });
+  }
+  if (afterLanding === 'declined' && beforeLanding !== 'declined') {
+    events.push({ offer_code: 'trafego_after_lp_declined', event_at: addMinutesIso(now, 7 * 24 * 60) });
+  }
+
+  const beforeTrial = asString(beforeDeal.trial_status) || 'not_offered';
+  const afterTrial = asString(afterDeal.trial_status) || beforeTrial;
+  if (afterTrial === 'accepted' && beforeTrial !== 'accepted') {
+    events.push({
+      offer_code: 'mentoria_4x1200',
+      event_at: asString(afterContext.trial_ends_at) || addMinutesIso(now, 7 * 24 * 60),
+    });
+  }
+
+  const beforeDeclinedOffer = asString(beforeContext.last_declined_offer_code);
+  const afterDeclinedOffer = asString(afterContext.last_declined_offer_code);
+  if (afterDeclinedOffer === 'mentoria_3x1000' && beforeDeclinedOffer !== 'mentoria_3x1000') {
+    events.push({
+      offer_code: 'landing_page_after_mentoria_declined',
+      event_at: addMinutesIso(now, 3 * 24 * 60),
+    });
+  }
+
+  const unique = new Map<string, { offer_code: string; event_at: string }>();
+  for (const event of events) {
+    unique.set(`${event.offer_code}:${event.event_at}`, event);
+  }
+
+  return Array.from(unique.values()).sort((left, right) => {
+    const leftTime = new Date(left.event_at).getTime();
+    const rightTime = new Date(right.event_at).getTime();
+    return leftTime - rightTime;
+  });
+}
+
+async function listAutomationRules(serviceClient: ReturnType<typeof createClient>) {
+  const { data, error } = await crmSchema(serviceClient)
+    .from('automation_rules')
+    .select('*')
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (error) throw { status: 500, code: 'automation_rules_query_failed', error };
+  return data || [];
+}
+
+async function upsertAutomationRule(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const automationId = asString(payload.automation_id) || asString(payload.id);
+  const automationKey = asString(payload.automation_key);
+  const before = automationId
+    ? (await schema.from('automation_rules').select('*').eq('id', automationId).maybeSingle()).data
+    : automationKey
+      ? (await schema.from('automation_rules').select('*').eq('automation_key', automationKey).maybeSingle()).data
+      : null;
+
+  const effectiveAutomationKey = automationKey || asString(before?.automation_key) || `custom_${crypto.randomUUID()}`;
+  const triggerEvent = asString(payload.trigger_event) || asString(before?.trigger_event);
+  const channel = asString(payload.channel) || asString(before?.channel);
+  const name = asString(payload.name) || asString(before?.name);
+  if (!effectiveAutomationKey || !triggerEvent || !channel || !name) throw { status: 400, code: 'invalid_payload' };
+
+  const { data, error } = await schema.from('automation_rules').upsert({
+    id: automationId || asString(before?.id) || undefined,
+    automation_key: effectiveAutomationKey,
+    name,
+    description: Object.prototype.hasOwnProperty.call(payload, 'description') ? asString(payload.description) : asString(before?.description),
+    trigger_event: triggerEvent,
+    condition: Object.prototype.hasOwnProperty.call(payload, 'condition') ? asRecord(payload.condition) : asRecord(before?.condition),
+    channel,
+    delay_minutes: Object.prototype.hasOwnProperty.call(payload, 'delay_minutes') ? asNumber(payload.delay_minutes, 0) : asNumber(before?.delay_minutes, 0),
+    template: Object.prototype.hasOwnProperty.call(payload, 'template') ? asString(payload.template) : asString(before?.template),
+    is_active: Object.prototype.hasOwnProperty.call(payload, 'is_active') ? asBoolean(payload.is_active, true) : asBoolean(before?.is_active, true),
+    is_system: Object.prototype.hasOwnProperty.call(payload, 'is_system') ? asBoolean(payload.is_system, false) : asBoolean(before?.is_system, false),
+    sort_order: Object.prototype.hasOwnProperty.call(payload, 'sort_order') ? asNumber(payload.sort_order, 0) : asNumber(before?.sort_order, 0),
+    cancel_on_event_types: Object.prototype.hasOwnProperty.call(payload, 'cancel_on_event_types')
+      ? normalizeTextArray(payload.cancel_on_event_types)
+      : normalizeTextArray(before?.cancel_on_event_types),
+    metadata: Object.prototype.hasOwnProperty.call(payload, 'metadata') ? asRecord(payload.metadata) : asRecord(before?.metadata),
+  }).select('*').single();
+
+  if (error || !data?.id) throw { status: 500, code: 'automation_rule_upsert_failed', error };
+
+  await writeAuditLog(serviceClient, identity, 'upsert_automation_rule', req, {
+    target_type: 'automation_rule',
+    target_id: String(data.id),
+    before,
+    after: data,
+  });
+
+  return { ok: true, rule: data };
+}
+
+async function listAutomationRuns(serviceClient: ReturnType<typeof createClient>, payload: Record<string, unknown>) {
+  const schema = crmSchema(serviceClient);
+  let query = schema
+    .from('automation_runs')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  const status = asString(payload.status);
+  if (status) query = query.eq('status', status);
+  const clientId = asString(payload.client_id);
+  if (clientId) query = query.eq('client_id', clientId);
+  const dealId = asString(payload.deal_id);
+  if (dealId) query = query.eq('deal_id', dealId);
+
+  const limit = clamp(asNumber(payload.limit, 100), 1, 200);
+  const { data, error } = await query.limit(limit);
+  if (error) throw { status: 500, code: 'automation_runs_query_failed', error };
+
+  const rows = data || [];
+  if (rows.length === 0) return [];
+
+  const automationIds = Array.from(new Set(rows.map((row) => asString(row.automation_id)).filter((id): id is string => Boolean(id))));
+  const clientIds = Array.from(new Set(rows.map((row) => asString(row.client_id)).filter((id): id is string => Boolean(id))));
+  const [{ data: rules }, { data: clients }] = await Promise.all([
+    automationIds.length > 0
+      ? schema.from('automation_rules').select('id, name').in('id', automationIds)
+      : Promise.resolve({ data: [], error: null }),
+    clientIds.length > 0
+      ? schema.from('clients').select('id, company_name').in('id', clientIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const ruleNameById = new Map((rules || []).map((rule) => [String(rule.id), asString(rule.name)]));
+  const clientNameById = new Map((clients || []).map((client) => [String(client.id), asString(client.company_name)]));
+
+  return rows.map((row) => ({
+    ...row,
+    automation_name: ruleNameById.get(String(row.automation_id || '')) || null,
+    client_company_name: clientNameById.get(String(row.client_id || '')) || null,
+  }));
+}
+
+async function getAutomationSettings(serviceClient: ReturnType<typeof createClient>) {
+  return getAutomationSettingsRecord(serviceClient);
+}
+
+async function upsertAutomationSettings(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const before = await getAutomationSettingsRecord(serviceClient);
+  const { data, error } = await schema.from('automation_settings').upsert({
+    scope_key: INTERNAL_CRM_AUTOMATION_SCOPE_KEY,
+    default_whatsapp_instance_id: Object.prototype.hasOwnProperty.call(payload, 'default_whatsapp_instance_id')
+      ? asString(payload.default_whatsapp_instance_id)
+      : asString(before.default_whatsapp_instance_id),
+    admin_notification_numbers: Object.prototype.hasOwnProperty.call(payload, 'admin_notification_numbers')
+      ? normalizeTextArray(payload.admin_notification_numbers).map((value) => normalizePhone(value)).filter(Boolean)
+      : normalizeTextArray(before.admin_notification_numbers),
+    notification_cooldown_minutes: Object.prototype.hasOwnProperty.call(payload, 'notification_cooldown_minutes')
+      ? clamp(asNumber(payload.notification_cooldown_minutes, 60), 1, 1440)
+      : clamp(asNumber(before.notification_cooldown_minutes, 60), 1, 1440),
+  }).select('*').single();
+
+  if (error || !data?.scope_key) throw { status: 500, code: 'automation_settings_upsert_failed', error };
+
+  await writeAuditLog(serviceClient, identity, 'upsert_automation_settings', req, {
+    target_type: 'automation_settings',
+    target_id: String(data.scope_key),
+    before,
+    after: data,
+  });
+
+  return { ok: true, settings: data };
+}
+
+async function updateDealCommercialState(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const dealId = asString(payload.deal_id);
+  if (!dealId) throw { status: 400, code: 'invalid_payload' };
+
+  const { data: before, error: beforeError } = await schema.from('deals').select('*').eq('id', dealId).maybeSingle();
+  if (beforeError) throw { status: 500, code: 'deal_query_failed', error: beforeError };
+  if (!before?.id) throw { status: 404, code: 'not_found' };
+
+  const commercialContext = Object.prototype.hasOwnProperty.call(payload, 'commercial_context')
+    ? mergeRecord(before.commercial_context, payload.commercial_context)
+    : asRecord(before.commercial_context);
+
+  const patch: Record<string, unknown> = {
+    updated_at: nowIso(),
+    commercial_context: commercialContext,
+  };
+  if (Object.prototype.hasOwnProperty.call(payload, 'primary_offer_code')) patch.primary_offer_code = asString(payload.primary_offer_code);
+  if (Object.prototype.hasOwnProperty.call(payload, 'closed_product_code')) patch.closed_product_code = asString(payload.closed_product_code);
+  if (Object.prototype.hasOwnProperty.call(payload, 'mentorship_variant')) patch.mentorship_variant = asString(payload.mentorship_variant);
+  if (Object.prototype.hasOwnProperty.call(payload, 'software_status')) patch.software_status = asString(payload.software_status) || 'not_offered';
+  if (Object.prototype.hasOwnProperty.call(payload, 'landing_page_status')) patch.landing_page_status = asString(payload.landing_page_status) || 'not_offered';
+  if (Object.prototype.hasOwnProperty.call(payload, 'traffic_status')) patch.traffic_status = asString(payload.traffic_status) || 'not_offered';
+  if (Object.prototype.hasOwnProperty.call(payload, 'trial_status')) patch.trial_status = asString(payload.trial_status) || 'not_offered';
+  if (Object.prototype.hasOwnProperty.call(payload, 'last_automation_key')) patch.last_automation_key = asString(payload.last_automation_key);
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'next_offer_code')) {
+    patch.next_offer_code = asString(payload.next_offer_code);
+    patch.next_offer_at = asString(payload.next_offer_at);
+  }
+
+  const { data: updatedDeal, error } = await schema.from('deals').update(patch).eq('id', dealId).select('*').single();
+  if (error || !updatedDeal?.id) throw { status: 500, code: 'deal_commercial_update_failed', error };
+
+  const derivedOffers = deriveOfferReadyEvents(before, updatedDeal, payload);
+  let finalDeal = updatedDeal;
+
+  if (!Object.prototype.hasOwnProperty.call(payload, 'next_offer_code') && derivedOffers.length > 0) {
+    const nextOffer = derivedOffers[0];
+    const { data: nextOfferDeal, error: nextOfferError } = await schema
+      .from('deals')
+      .update({
+        next_offer_code: nextOffer.offer_code,
+        next_offer_at: nextOffer.event_at,
+        updated_at: nowIso(),
+      })
+      .eq('id', dealId)
+      .select('*')
+      .single();
+
+    if (nextOfferError || !nextOfferDeal?.id) throw { status: 500, code: 'deal_next_offer_update_failed', error: nextOfferError };
+    finalDeal = nextOfferDeal;
+  }
+
+  const automationResults = [];
+  for (const offer of derivedOffers) {
+    automationResults.push(await queueAutomationEvent(serviceClient, 'offer_ready', {
+      client_id: asString(finalDeal.client_id),
+      deal_id: String(finalDeal.id),
+      offer_code: offer.offer_code,
+      event_at: offer.event_at,
+      event_key: `offer_ready:${dealId}:${offer.offer_code}:${offer.event_at}`,
+      anchor_key: offer.offer_code,
+    }, { processDueNow: true }));
+  }
+
+  await writeAuditLog(serviceClient, identity, 'update_deal_commercial_state', req, {
+    target_type: 'deal',
+    target_id: dealId,
+    client_id: String(finalDeal.client_id || ''),
+    deal_id: dealId,
+    before,
+    after: finalDeal,
+  });
+
+  return {
+    ok: true,
+    deal: finalDeal,
+    automation: automationResults,
+  };
+}
+
+async function testAutomationRule(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const automationId = asString(payload.automation_id);
+  const automationKey = asString(payload.automation_key);
+
+  const { data: rule, error: ruleError } = automationId
+    ? await schema.from('automation_rules').select('*').eq('id', automationId).maybeSingle()
+    : await schema.from('automation_rules').select('*').eq('automation_key', automationKey).maybeSingle();
+
+  if (ruleError) throw { status: 500, code: 'automation_rule_query_failed', error: ruleError };
+  if (!rule?.id) throw { status: 404, code: 'not_found' };
+
+  const context = await resolveAutomationContextEntities(serviceClient, payload);
+  const templatePayload = buildAutomationTemplatePayload(context, payload, asString(rule.trigger_event) || 'manual_test');
+
+  const { data: run, error } = await schema.from('automation_runs').insert({
+    automation_id: rule.id,
+    automation_key: rule.automation_key,
+    client_id: asString(templatePayload.client_id),
+    deal_id: asString(templatePayload.deal_id),
+    appointment_id: asString(templatePayload.appointment_id),
+    conversation_id: asString(templatePayload.conversation_id),
+    trigger_event: rule.trigger_event,
+    channel: rule.channel,
+    scheduled_at: nowIso(),
+    dedupe_key: `test:${String(rule.id)}:${crypto.randomUUID()}`,
+    payload: mergeRecord(templatePayload, {
+      automation_name: asString(rule.name),
+      automation_key: asString(rule.automation_key),
+      template_body: renderAutomationTemplate(asString(rule.template), templatePayload),
+      event_key: `test:${String(rule.id)}`,
+      rule_metadata: asRecord(rule.metadata),
+    }),
+  }).select('*').single();
+
+  if (error || !run?.id) throw { status: 500, code: 'automation_test_insert_failed', error };
+
+  const processed = await processAutomationRunsWithOptions(serviceClient, { runIds: [String(run.id)], limit: 1 });
+  const { data: finalRun } = await schema.from('automation_runs').select('*').eq('id', run.id).maybeSingle();
+
+  await writeAuditLog(serviceClient, identity, 'test_automation_rule', req, {
+    target_type: 'automation_rule',
+    target_id: String(rule.id),
+    client_id: asString(finalRun?.client_id),
+    deal_id: asString(finalRun?.deal_id),
+    after: finalRun,
+  });
+
+  return {
+    ok: true,
+    rule,
+    run: finalRun || run,
+    processed,
+  };
+}
+
+async function intakeLandingLead(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const companyName = asString(payload.company_name) || asString(payload.nome_empresa) || asString(payload.nome) || 'Lead LP';
+  const primaryContactName = asString(payload.primary_contact_name) || asString(payload.nome) || companyName;
+  const primaryPhone = normalizePhone(payload.primary_phone || payload.phone || payload.whatsapp);
+  const primaryEmail = asString(payload.primary_email) || asString(payload.email);
+  if (!companyName || !primaryPhone) throw { status: 400, code: 'invalid_payload' };
+
+  const hasScheduledCall = asBoolean(payload.has_scheduled_call, Boolean(asString(payload.scheduled_at) || asString(payload.appointment_start_at)));
+  const appointmentStartAt = asString(payload.scheduled_at) || asString(payload.appointment_start_at);
+
+  let client = null;
+  const contactLookup = await schema.from('client_contacts').select('*').eq('phone', primaryPhone).maybeSingle();
+  if (contactLookup.data?.client_id) {
+    client = (await schema.from('clients').select('*').eq('id', contactLookup.data.client_id).maybeSingle()).data;
+  }
+  if (!client?.id && primaryEmail) {
+    client = (await schema.from('clients').select('*').eq('primary_email', primaryEmail).maybeSingle()).data;
+  }
+  if (!client?.id) {
+    client = (await schema.from('clients').insert({
+      company_name: companyName,
+      primary_contact_name: primaryContactName,
+      primary_phone: primaryPhone,
+      primary_email: primaryEmail,
+      source_channel: 'landing_page',
+      owner_user_id: asString(payload.owner_user_id) || identity.user_id,
+      current_stage_code: hasScheduledCall ? 'chamada_agendada' : 'novo_lead',
+      lifecycle_status: 'lead',
+      last_contact_at: nowIso(),
+      metadata: asRecord(payload.client_metadata),
+    }).select('*').single()).data;
+  } else {
+    client = (await schema.from('clients').update({
+      company_name: companyName,
+      primary_contact_name: primaryContactName,
+      primary_phone: primaryPhone,
+      primary_email: primaryEmail,
+      source_channel: 'landing_page',
+      owner_user_id: asString(payload.owner_user_id) || asString(client.owner_user_id) || identity.user_id,
+      current_stage_code: hasScheduledCall ? 'chamada_agendada' : resolveBlueprintStageCode(client.current_stage_code, 'novo_lead'),
+      updated_at: nowIso(),
+      metadata: mergeRecord(client.metadata, payload.client_metadata),
+    }).eq('id', client.id).select('*').single()).data;
+  }
+
+  if (!client?.id) throw { status: 500, code: 'landing_lead_client_upsert_failed' };
+
+  await ensurePrimaryContactForClient(schema, client);
+
+  const existingDeal = (await schema
+    .from('deals')
+    .select('*')
+    .eq('client_id', client.id)
+    .eq('status', 'open')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()).data;
+
+  const dealCommercialContext = mergeRecord(existingDeal?.commercial_context, {
+    source: 'landing_page',
+    scheduling_link: asString(payload.link_agendamento) || asString(payload.scheduling_link),
+    meeting_link: asString(payload.link_reuniao) || asString(payload.meeting_link),
+    form_payload: asRecord(payload.form_payload),
+  });
+
+  const dealStageCode = hasScheduledCall ? 'chamada_agendada' : 'novo_lead';
+  const { data: deal, error: dealError } = await schema.from('deals').upsert({
+    id: asString(payload.deal_id) || asString(existingDeal?.id) || undefined,
+    client_id: client.id,
+    title: asString(payload.deal_title) || `Oportunidade ARKAN - ${companyName}`,
+    owner_user_id: asString(payload.owner_user_id) || asString(existingDeal?.owner_user_id) || identity.user_id,
+    stage_code: dealStageCode,
+    status: resolveDealStatusForStage(dealStageCode, asString(existingDeal?.status) || 'open'),
+    probability: resolveStageProbability(dealStageCode, asNumber(existingDeal?.probability, 0)),
+    expected_close_at: appointmentStartAt,
+    primary_offer_code: asString(payload.primary_offer_code) || asString(existingDeal?.primary_offer_code) || 'landing_page',
+    commercial_context: dealCommercialContext,
+    updated_at: nowIso(),
+  }).select('*').single();
+
+  if (dealError || !deal?.id) throw { status: 500, code: 'landing_lead_deal_upsert_failed', error: dealError };
+
+  await schema.from('clients').update({
+    current_stage_code: dealStageCode,
+    updated_at: nowIso(),
+  }).eq('id', client.id);
+
+  let appointment = null;
+  if (hasScheduledCall && appointmentStartAt) {
+    const parsedAppointmentAt = new Date(appointmentStartAt);
+    if (Number.isNaN(parsedAppointmentAt.getTime())) throw { status: 400, code: 'invalid_payload' };
+
+    const { data: appointmentData, error: appointmentError } = await schema.from('appointments').insert({
+      client_id: client.id,
+      deal_id: deal.id,
+      owner_user_id: asString(payload.owner_user_id) || identity.user_id,
+      title: asString(payload.appointment_title) || `Chamada ARKAN - ${companyName}`,
+      appointment_type: 'call',
+      status: 'scheduled',
+      start_at: parsedAppointmentAt.toISOString(),
+      location: asString(payload.link_reuniao) || asString(payload.meeting_link),
+      metadata: {
+        meeting_link: asString(payload.link_reuniao) || asString(payload.meeting_link),
+        scheduling_link: asString(payload.link_agendamento) || asString(payload.scheduling_link),
+      },
+    }).select('*').single();
+
+    if (appointmentError || !appointmentData?.id) throw { status: 500, code: 'landing_lead_appointment_insert_failed', error: appointmentError };
+    appointment = appointmentData;
+  }
+
+  const intakePayload = {
+    client_id: String(client.id),
+    deal_id: String(deal.id),
+    appointment_id: asString(appointment?.id),
+    nome: primaryContactName,
+    empresa: companyName,
+    primary_phone: primaryPhone,
+    primary_email: primaryEmail,
+    has_scheduled_call: hasScheduledCall,
+    link_agendamento: asString(payload.link_agendamento) || asString(payload.scheduling_link),
+    link_reuniao: asString(payload.link_reuniao) || asString(payload.meeting_link),
+    appointment_start_at: appointment?.start_at,
+    event_at: nowIso(),
+    event_key: `lp_form_submitted:${String(client.id)}:${nowIso()}`,
+  };
+
+  const automation = [
+    await queueAutomationEvent(serviceClient, 'lp_form_submitted', intakePayload, { processDueNow: true }),
+  ];
+
+  if (appointment?.id) {
+    automation.push(await queueAutomationEvent(serviceClient, 'appointment_scheduled', {
+      ...intakePayload,
+      appointment_id: String(appointment.id),
+      appointment_type: 'call',
+      appointment_start_at: appointment.start_at,
+      event_at: appointment.start_at,
+      event_key: `appointment_scheduled:${String(appointment.id)}:${appointment.start_at}`,
+    }, { processDueNow: true }));
+  }
+
+  await writeAuditLog(serviceClient, identity, 'intake_landing_lead', req, {
+    target_type: 'client',
+    target_id: String(client.id),
+    client_id: String(client.id),
+    deal_id: String(deal.id),
+    after: {
+      client,
+      deal,
+      appointment,
+    },
+  });
+
+  return {
+    ok: true,
+    client,
+    deal,
+    appointment,
+    automation,
+  };
+}
+
 async function listFinanceSummary(serviceClient: ReturnType<typeof createClient>) {
   const schema = crmSchema(serviceClient);
   const [ordersResult, subscriptionsResult, paymentEventsResult, dealsResult] = await Promise.all([
@@ -2984,7 +4170,7 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
       primary_phone: phone,
       source_channel: 'whatsapp',
       owner_user_id: null,
-      current_stage_code: 'lead_entrante',
+      current_stage_code: 'novo_lead',
       lifecycle_status: 'lead',
       last_contact_at: nowIso(),
     }).select('*').single();
@@ -3058,7 +4244,7 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
   await schema.from('clients').update({
     primary_phone: client.primary_phone || phone,
     last_contact_at: message.created_at,
-    current_stage_code: client.current_stage_code === 'lead_entrante' ? 'contato_iniciado' : client.current_stage_code,
+    current_stage_code: resolveBlueprintStageCode(client.current_stage_code, 'novo_lead') === 'novo_lead' ? 'respondeu' : resolveBlueprintStageCode(client.current_stage_code, 'novo_lead'),
     updated_at: nowIso(),
   }).eq('id', client.id);
 
@@ -3093,6 +4279,533 @@ async function resolveConnectedInternalCrmInstance(
     .maybeSingle();
 
   return fallback || null;
+}
+
+async function ensurePrimaryContactForClient(
+  schema: ReturnType<typeof crmSchema>,
+  client: Record<string, unknown>,
+) {
+  const clientId = asString(client.id);
+  if (!clientId) return null;
+
+  const { data: existing } = await schema
+    .from('client_contacts')
+    .select('*')
+    .eq('client_id', clientId)
+    .eq('is_primary', true)
+    .maybeSingle();
+
+  if (existing?.id) return existing;
+
+  const { data } = await schema
+    .from('client_contacts')
+    .insert({
+      client_id: clientId,
+      name: asString(client.primary_contact_name) || asString(client.company_name) || 'Contato principal',
+      phone: normalizePhone(client.primary_phone) || null,
+      email: asString(client.primary_email),
+      role_label: 'Contato principal',
+      is_primary: true,
+    })
+    .select('*')
+    .single();
+
+  return data || null;
+}
+
+async function ensureWhatsappConversationForClient(
+  schema: ReturnType<typeof crmSchema>,
+  client: Record<string, unknown>,
+  instanceId: string,
+) {
+  const clientId = asString(client.id);
+  if (!clientId) return null;
+
+  const { data: existing } = await schema
+    .from('conversations')
+    .select('*')
+    .eq('client_id', clientId)
+    .eq('channel', 'whatsapp')
+    .eq('whatsapp_instance_id', instanceId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing?.id) return existing;
+
+  const contact = await ensurePrimaryContactForClient(schema, client);
+  const { data } = await schema
+    .from('conversations')
+    .insert({
+      client_id: clientId,
+      contact_id: asString(contact?.id),
+      whatsapp_instance_id: instanceId,
+      channel: 'whatsapp',
+      status: 'open',
+      subject: asString(client.company_name) || asString(client.primary_contact_name) || 'CRM interno',
+      last_message_at: nowIso(),
+      last_message_preview: null,
+    })
+    .select('*')
+    .single();
+
+  return data || null;
+}
+
+async function isAutomationRunInCooldown(
+  schema: ReturnType<typeof crmSchema>,
+  settings: Record<string, unknown>,
+  run: Record<string, unknown>,
+) {
+  if (asString(run.channel) !== 'whatsapp_admin') return false;
+
+  const cooldownMinutes = clamp(asNumber(settings.notification_cooldown_minutes, 60), 1, 1440);
+  const threshold = new Date(Date.now() - (cooldownMinutes * 60_000)).toISOString();
+
+  let query = schema
+    .from('automation_runs')
+    .select('id')
+    .eq('automation_key', asString(run.automation_key) || '')
+    .eq('status', 'completed')
+    .gte('processed_at', threshold)
+    .neq('id', asString(run.id) || '');
+
+  if (asString(run.client_id)) query = query.eq('client_id', asString(run.client_id));
+  else if (asString(run.deal_id)) query = query.eq('deal_id', asString(run.deal_id));
+  else return false;
+
+  const { data } = await query.limit(1).maybeSingle();
+  return Boolean(data?.id);
+}
+
+async function createAutomationTaskFromRule(
+  schema: ReturnType<typeof crmSchema>,
+  rule: Record<string, unknown>,
+  run: Record<string, unknown>,
+  templatePayload: Record<string, unknown>,
+) {
+  const metadata = mergeRecord(asRecord(rule.metadata), asRecord(asRecord(run.payload).rule_metadata));
+  const shouldCreateTask = asBoolean(metadata.create_task, asString(rule.channel) === 'internal_task');
+  if (!shouldCreateTask) return null;
+
+  const titleSource =
+    asString(metadata.task_title) ||
+    asString(templatePayload.task_title) ||
+    asString(rule.name) ||
+    'Acompanhar automacao';
+  const notesSource =
+    asString(metadata.task_notes) ||
+    asString(templatePayload.task_notes) ||
+    asString(asRecord(run.payload).template_body) ||
+    asString(rule.description);
+
+  const title = renderAutomationTemplate(titleSource, templatePayload) || titleSource;
+  const notes = notesSource ? renderAutomationTemplate(notesSource, templatePayload) || notesSource : null;
+
+  const { data, error } = await schema
+    .from('tasks')
+    .insert({
+      client_id: asString(run.client_id),
+      deal_id: asString(run.deal_id),
+      owner_user_id: null,
+      title,
+      notes,
+      due_at: asString(templatePayload.task_due_at) || asString(run.scheduled_at) || nowIso(),
+      status: 'open',
+      task_kind: asString(metadata.task_kind) || (asString(rule.channel) === 'internal_task' ? 'system' : 'next_action'),
+      metadata: {
+        automation_run_id: asString(run.id),
+        automation_key: asString(run.automation_key),
+        trigger_event: asString(run.trigger_event),
+      },
+    })
+    .select('*')
+    .single();
+
+  if (error || !data?.id) throw { status: 500, code: 'automation_task_insert_failed', error };
+
+  if (data.client_id && String(data.task_kind || '') === 'next_action') {
+    await schema.from('clients').update({
+      next_action: data.title,
+      next_action_at: data.due_at,
+      updated_at: nowIso(),
+    }).eq('id', data.client_id);
+  }
+
+  return data;
+}
+
+async function dispatchAutomationWhatsappLead(
+  schema: ReturnType<typeof crmSchema>,
+  settings: Record<string, unknown>,
+  run: Record<string, unknown>,
+  context: {
+    client: Record<string, unknown> | null;
+  },
+  bodyText: string | null,
+  templatePayload: Record<string, unknown>,
+) {
+  const phone = normalizePhone(templatePayload.primary_phone || context.client?.primary_phone);
+  if (!phone) {
+    return { status: 'failed', reason: 'missing_client_phone' };
+  }
+
+  const connectedInstance = await resolveConnectedInternalCrmInstance(
+    schema,
+    asString(templatePayload.whatsapp_instance_id) || asString(settings.default_whatsapp_instance_id),
+  );
+
+  if (!connectedInstance?.id || !connectedInstance.instance_name) {
+    return { status: 'failed', reason: 'no_connected_whatsapp_instance' };
+  }
+
+  if (!bodyText) {
+    return { status: 'skipped', reason: 'missing_message_body' };
+  }
+
+  const sendResponse = await evolutionRequest(`/message/sendText/${connectedInstance.instance_name}`, {
+    method: 'POST',
+    body: JSON.stringify({ number: phone, text: bodyText }),
+  });
+
+  const conversation = context.client
+    ? await ensureWhatsappConversationForClient(schema, context.client, String(connectedInstance.id))
+    : null;
+
+  if (conversation?.id) {
+    const { data: message, error: messageError } = await schema.from('messages').insert({
+      conversation_id: conversation.id,
+      whatsapp_instance_id: connectedInstance.id,
+      direction: 'outbound',
+      body: bodyText,
+      message_type: 'text',
+      wa_message_id: asString(sendResponse?.key?.id),
+      remote_jid: normalizeRemoteJid(phone),
+      delivery_status: 'sent',
+      metadata: {
+        source: 'automation',
+        automation_run_id: asString(run.id),
+        automation_key: asString(run.automation_key),
+      },
+    }).select('*').single();
+
+    if (messageError || !message?.id) throw { status: 500, code: 'automation_message_insert_failed', error: messageError };
+
+    await schema.from('conversations').update({
+      last_message_at: message.created_at,
+      last_message_preview: bodyText,
+      updated_at: nowIso(),
+    }).eq('id', conversation.id);
+
+    if (context.client?.id) {
+      await schema.from('clients').update({
+        last_contact_at: message.created_at,
+        updated_at: nowIso(),
+      }).eq('id', context.client.id);
+    }
+  }
+
+  return {
+    status: 'completed',
+    delivered_count: 1,
+    instance_id: String(connectedInstance.id),
+    wa_message_id: asString(sendResponse?.key?.id),
+  };
+}
+
+async function dispatchAutomationWhatsappAdmin(
+  schema: ReturnType<typeof crmSchema>,
+  settings: Record<string, unknown>,
+  run: Record<string, unknown>,
+  bodyText: string | null,
+  templatePayload: Record<string, unknown>,
+) {
+  const numbers = normalizeTextArray(settings.admin_notification_numbers)
+    .map((value) => normalizePhone(value))
+    .filter(Boolean);
+
+  if (numbers.length === 0) {
+    return { status: 'skipped', reason: 'admin_numbers_not_configured' };
+  }
+
+  const connectedInstance = await resolveConnectedInternalCrmInstance(
+    schema,
+    asString(templatePayload.whatsapp_instance_id) || asString(settings.default_whatsapp_instance_id),
+  );
+
+  if (!connectedInstance?.id || !connectedInstance.instance_name) {
+    return { status: 'failed', reason: 'no_connected_whatsapp_instance' };
+  }
+
+  if (!bodyText) {
+    return { status: 'skipped', reason: 'missing_message_body' };
+  }
+
+  const deliveries: Array<Record<string, unknown>> = [];
+  const failures: Array<Record<string, unknown>> = [];
+
+  for (const number of numbers) {
+    try {
+      const sendResponse = await evolutionRequest(`/message/sendText/${connectedInstance.instance_name}`, {
+        method: 'POST',
+        body: JSON.stringify({ number, text: bodyText }),
+      });
+      deliveries.push({ number, wa_message_id: asString(sendResponse?.key?.id) });
+    } catch (error) {
+      failures.push({
+        number,
+        reason: asString((error as { message?: unknown }).message) || 'admin_whatsapp_send_failed',
+      });
+    }
+  }
+
+  if (deliveries.length === 0) {
+    return {
+      status: 'failed',
+      reason: asString(failures[0]?.reason) || 'admin_whatsapp_send_failed',
+      failures,
+    };
+  }
+
+  return {
+    status: 'completed',
+    delivered_count: deliveries.length,
+    failed_count: failures.length,
+    deliveries,
+    failures,
+    instance_id: String(connectedInstance.id),
+  };
+}
+
+async function executeAutomationRun(
+  serviceClient: ReturnType<typeof createClient>,
+  run: Record<string, unknown>,
+  rule: Record<string, unknown>,
+  settings: Record<string, unknown>,
+) {
+  const schema = crmSchema(serviceClient);
+  const runPayload = asRecord(run.payload);
+  const context = await resolveAutomationContextEntities(serviceClient, runPayload);
+  const templatePayload = buildAutomationTemplatePayload(
+    context,
+    mergeRecord(runPayload, {
+      automation_name: asString(rule.name),
+      event_at: asString(runPayload.event_at) || asString(run.scheduled_at) || nowIso(),
+    }),
+    asString(run.trigger_event) || asString(rule.trigger_event) || 'automation',
+  );
+
+  if (await isAutomationRunInCooldown(schema, settings, run)) {
+    return {
+      status: 'skipped',
+      reason: 'notification_cooldown',
+    };
+  }
+
+  const bodyText =
+    asString(runPayload.template_body) ||
+    renderAutomationTemplate(asString(rule.template), templatePayload) ||
+    asString(rule.description);
+
+  let dispatchResult: Record<string, unknown> = { status: 'skipped', reason: 'no_dispatch_channel' };
+  if (asString(rule.channel) === 'whatsapp_lead') {
+    dispatchResult = await dispatchAutomationWhatsappLead(schema, settings, run, { client: context.client }, bodyText, templatePayload);
+  } else if (asString(rule.channel) === 'whatsapp_admin') {
+    dispatchResult = await dispatchAutomationWhatsappAdmin(schema, settings, run, bodyText, templatePayload);
+  } else if (asString(rule.channel) === 'internal_task') {
+    dispatchResult = { status: 'completed', reason: 'task_only_rule' };
+  }
+
+  const task = await createAutomationTaskFromRule(schema, rule, run, templatePayload);
+
+  if (asString(dispatchResult.status) === 'failed') {
+    return {
+      status: 'failed',
+      reason: asString(dispatchResult.reason) || 'automation_dispatch_failed',
+      dispatch: dispatchResult,
+      task_id: asString(task?.id),
+    };
+  }
+
+  return {
+    status: asString(dispatchResult.status) === 'skipped' && !task?.id ? 'skipped' : 'completed',
+    body_text: bodyText,
+    dispatch: dispatchResult,
+    task_id: asString(task?.id),
+  };
+}
+
+async function processAutomationRunsWithOptions(
+  serviceClient: ReturnType<typeof createClient>,
+  options: { limit?: number; runIds?: string[] },
+) {
+  const schema = crmSchema(serviceClient);
+  const limit = clamp(asNumber(options.limit, 20), 1, 100);
+  const explicitRunIds = Array.isArray(options.runIds)
+    ? options.runIds.map((value) => asString(value)).filter((value): value is string => Boolean(value))
+    : [];
+
+  let runs: Record<string, unknown>[] = [];
+
+  if (explicitRunIds.length > 0) {
+    const { data, error } = await schema
+      .from('automation_runs')
+      .select('*')
+      .in('id', explicitRunIds)
+      .order('scheduled_at', { ascending: true });
+
+    if (error) throw { status: 500, code: 'automation_runs_query_failed', error };
+    runs = (data || []).map((row) => ({ ...row }));
+
+    if (runs.length > 0) {
+      await schema
+        .from('automation_runs')
+        .update({ status: 'processing', updated_at: nowIso() })
+        .in('id', runs.map((run) => String(run.id || '')))
+        .in('status', ['pending', 'processing']);
+      runs = runs.map((run) => ({ ...run, status: 'processing' }));
+    }
+  } else {
+    const { data, error } = await serviceClient.rpc('claim_due_automation_runs', { p_limit: limit });
+    if (error) throw { status: 500, code: 'automation_runs_claim_failed', error };
+    runs = Array.isArray(data) ? data.map((row) => ({ ...row })) : [];
+  }
+
+  if (runs.length === 0) {
+    return {
+      ok: true,
+      processed_run_ids: [],
+      failed_runs: [],
+      processed_count: 0,
+      failed_count: 0,
+    };
+  }
+
+  const settings = await getAutomationSettingsRecord(serviceClient);
+  const automationIds = Array.from(new Set(runs.map((run) => asString(run.automation_id)).filter((id): id is string => Boolean(id))));
+  const { data: rules, error: rulesError } = await schema.from('automation_rules').select('*').in('id', automationIds);
+  if (rulesError) throw { status: 500, code: 'automation_rules_query_failed', error: rulesError };
+
+  const ruleById = new Map((rules || []).map((rule) => [String(rule.id), rule]));
+  const processedRunIds: string[] = [];
+  const failedRuns: Array<{ run_id: string; reason: string }> = [];
+
+  for (const run of runs) {
+    const runId = String(run.id || '');
+    const rule = ruleById.get(String(run.automation_id || ''));
+
+    try {
+      if (!rule?.id) throw new Error('automation_rule_not_found');
+
+      const outcome = await executeAutomationRun(serviceClient, run, rule, settings);
+      const finalStatus = asString(outcome.status) === 'failed'
+        ? 'failed'
+        : asString(outcome.status) === 'skipped'
+          ? 'skipped'
+          : 'completed';
+      const processedAt = nowIso();
+      const errorReason = asString(outcome.reason);
+
+      await schema
+        .from('automation_runs')
+        .update({
+          status: finalStatus,
+          processed_at: processedAt,
+          attempt_count: asNumber(run.attempt_count, 0) + 1,
+          last_error: finalStatus === 'failed' ? errorReason : null,
+          result_payload: outcome,
+          updated_at: processedAt,
+        })
+        .eq('id', run.id);
+
+      await schema
+        .from('automation_rules')
+        .update({
+          last_run_at: processedAt,
+          last_run_status: finalStatus,
+          updated_at: processedAt,
+        })
+        .eq('id', rule.id);
+
+      if (finalStatus === 'failed') {
+        failedRuns.push({ run_id: runId, reason: errorReason || 'automation_dispatch_failed' });
+
+        if (
+          asString(run.trigger_event) !== 'automation_failed' &&
+          asString(run.automation_key) !== 'admin_critical_automation_failure'
+        ) {
+          await queueAutomationEvent(serviceClient, 'automation_failed', {
+            client_id: asString(run.client_id),
+            deal_id: asString(run.deal_id),
+            appointment_id: asString(run.appointment_id),
+            conversation_id: asString(run.conversation_id),
+            automation_name: asString(rule.name),
+            event_at: processedAt,
+            event_key: `automation_failed:${runId}`,
+            nome: asString(asRecord(run.payload).nome),
+          }, { processDueNow: true });
+        }
+      } else {
+        processedRunIds.push(runId);
+      }
+    } catch (error) {
+      const processedAt = nowIso();
+      const reason = asString((error as { message?: unknown }).message) || 'automation_run_failed';
+
+      await schema
+        .from('automation_runs')
+        .update({
+          status: 'failed',
+          processed_at: processedAt,
+          attempt_count: asNumber(run.attempt_count, 0) + 1,
+          last_error: reason,
+          result_payload: { error: reason },
+          updated_at: processedAt,
+        })
+        .eq('id', run.id);
+
+      if (rule?.id) {
+        await schema
+          .from('automation_rules')
+          .update({
+            last_run_at: processedAt,
+            last_run_status: 'failed',
+            updated_at: processedAt,
+          })
+          .eq('id', rule.id);
+      }
+
+      failedRuns.push({ run_id: runId, reason });
+
+      if (
+        asString(run.trigger_event) !== 'automation_failed' &&
+        asString(run.automation_key) !== 'admin_critical_automation_failure'
+      ) {
+        await queueAutomationEvent(serviceClient, 'automation_failed', {
+          client_id: asString(run.client_id),
+          deal_id: asString(run.deal_id),
+          appointment_id: asString(run.appointment_id),
+          conversation_id: asString(run.conversation_id),
+          automation_name: asString(rule?.name) || asString(run.automation_key),
+          event_at: processedAt,
+          event_key: `automation_failed:${runId}`,
+          nome: asString(asRecord(run.payload).nome),
+        }, { processDueNow: true });
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    processed_run_ids: processedRunIds,
+    failed_runs: failedRuns,
+    processed_count: processedRunIds.length,
+    failed_count: failedRuns.length,
+  };
+}
+
+async function processAutomationRuns(serviceClient: ReturnType<typeof createClient>) {
+  return processAutomationRunsWithOptions(serviceClient, {});
 }
 
 async function executeBroadcastAssistantJob(
@@ -3289,7 +5002,7 @@ async function executeStandardAgentJob(
     await schema
       .from('clients')
       .update({
-        current_stage_code: asString(payload.target_stage_code) || 'qualificado',
+        current_stage_code: resolveBlueprintStageCode(payload.target_stage_code, 'respondeu'),
         updated_at: nowIso(),
       })
       .eq('id', clientId);
@@ -3504,6 +5217,22 @@ async function dispatchUserAction(
       return { ok: true, tasks: await listTasks(serviceClient, payload) };
     case 'upsert_task':
       return await upsertTask(serviceClient, identity, payload, req);
+    case 'list_automation_rules':
+      return { ok: true, rules: await listAutomationRules(serviceClient) };
+    case 'upsert_automation_rule':
+      return await upsertAutomationRule(serviceClient, identity, payload, req);
+    case 'list_automation_runs':
+      return { ok: true, runs: await listAutomationRuns(serviceClient, payload) };
+    case 'test_automation_rule':
+      return await testAutomationRule(serviceClient, identity, payload, req);
+    case 'get_automation_settings':
+      return { ok: true, settings: await getAutomationSettings(serviceClient) };
+    case 'upsert_automation_settings':
+      return await upsertAutomationSettings(serviceClient, identity, payload, req);
+    case 'update_deal_commercial_state':
+      return await updateDealCommercialState(serviceClient, identity, payload, req);
+    case 'intake_landing_lead':
+      return await intakeLandingLead(serviceClient, identity, payload, req);
     case 'list_instances':
       return { ok: true, instances: await listInstances(serviceClient) };
     case 'upsert_instance':
@@ -3627,6 +5356,11 @@ Deno.serve(async (req) => {
 
       if (action === 'process_agent_jobs') {
         const result = await processAgentJobs(serviceClient);
+        return json(200, result, responseHeaders);
+      }
+
+      if (action === 'process_automation_runs') {
+        const result = await processAutomationRuns(serviceClient);
         return json(200, result, responseHeaders);
       }
 

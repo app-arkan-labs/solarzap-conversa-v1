@@ -12,9 +12,9 @@ export function KpiGrid(props: KpiGridProps) {
     <>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard title="Leads no período" value={String(kpis?.leads_in_period ?? 0)} subtitle="Entradas novas no intervalo" />
-        <MetricCard title="Leads qualificados" value={String(kpis?.qualified_leads ?? 0)} subtitle="Prontos para avanço" accentClassName="text-amber-700" />
-        <MetricCard title="Demos agendadas" value={String(kpis?.demos_scheduled ?? 0)} subtitle="Compromissos comerciais" accentClassName="text-indigo-700" />
-        <MetricCard title="Taxa de ganho" value={`${kpis?.win_rate ?? 0}%`} subtitle="Ganhos sobre ganhos + perdas" accentClassName="text-emerald-700" />
+        <MetricCard title="Leads respondidos" value={String(kpis?.qualified_leads ?? 0)} subtitle="Avancaram para Respondeu" accentClassName="text-amber-700" />
+        <MetricCard title="Chamadas agendadas" value={String(kpis?.demos_scheduled ?? 0)} subtitle="Compromissos comerciais" accentClassName="text-indigo-700" />
+        <MetricCard title="Taxa de fechamento" value={`${kpis?.win_rate ?? 0}%`} subtitle="Fechou sobre fechou + nao fechou" accentClassName="text-emerald-700" />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -27,7 +27,7 @@ export function KpiGrid(props: KpiGridProps) {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <MetricCard title="Clientes em risco" value={String(kpis?.churn_risk_count ?? 0)} subtitle="Base sensível" accentClassName="text-rose-700" />
         <MetricCard title="Churn no período" value={String(kpis?.churned_in_period ?? 0)} subtitle="Clientes perdidos" />
-        <MetricCard title="Propostas enviadas" value={String(kpis?.proposals_sent ?? 0)} subtitle="Etapa proposta_enviada" />
+        <MetricCard title="Deals em negociacao" value={String(kpis?.proposals_sent ?? 0)} subtitle="Etapa Negociacao" />
       </div>
     </>
   );

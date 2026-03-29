@@ -47,8 +47,8 @@ export function PipelineFilters(props: PipelineFiltersProps) {
         <SelectContent>
           <SelectItem value="all">Todos os status</SelectItem>
           <SelectItem value="open">Abertos</SelectItem>
-          <SelectItem value="won">Ganhos</SelectItem>
-          <SelectItem value="lost">Perdidos</SelectItem>
+          <SelectItem value="won">Fechou</SelectItem>
+          <SelectItem value="lost">Nao fechou</SelectItem>
         </SelectContent>
       </Select>
     </div>

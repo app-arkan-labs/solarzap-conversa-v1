@@ -16,6 +16,14 @@ export type InternalCrmApiAction =
   | 'create_deal_checkout_link'
   | 'list_tasks'
   | 'upsert_task'
+  | 'list_automation_rules'
+  | 'upsert_automation_rule'
+  | 'list_automation_runs'
+  | 'test_automation_rule'
+  | 'get_automation_settings'
+  | 'upsert_automation_settings'
+  | 'update_deal_commercial_state'
+  | 'intake_landing_lead'
   | 'list_instances'
   | 'upsert_instance'
   | 'connect_instance'
@@ -35,6 +43,7 @@ export type InternalCrmApiAction =
   | 'run_agent_jobs'
   | 'list_ai_action_logs'
   | 'process_agent_jobs'
+  | 'process_automation_runs'
   | 'list_appointments'
   | 'upsert_appointment'
   | 'get_google_calendar_status'
@@ -159,6 +168,48 @@ export type InternalCrmDealSummary = {
   stripe_checkout_session_id: string | null;
   paid_at: string | null;
   won_at: string | null;
+  primary_offer_code: string | null;
+  closed_product_code: string | null;
+  mentorship_variant:
+    | 'mentoria_1000_1_encontro'
+    | 'mentoria_1500_4_encontros'
+    | 'mentoria_2000_premium'
+    | 'mentoria_3x1000_pos_software'
+    | 'mentoria_4x1200_pos_trial'
+    | null;
+  software_status:
+    | 'not_offered'
+    | 'offered'
+    | 'accepted'
+    | 'declined'
+    | 'trial_offered'
+    | 'trial_active'
+    | 'trial_declined'
+    | 'signed';
+  landing_page_status:
+    | 'not_offered'
+    | 'offered'
+    | 'accepted'
+    | 'declined'
+    | 'in_delivery'
+    | 'delivered';
+  traffic_status:
+    | 'not_offered'
+    | 'offered'
+    | 'accepted'
+    | 'declined'
+    | 'active';
+  trial_status:
+    | 'not_offered'
+    | 'offered'
+    | 'accepted'
+    | 'expired'
+    | 'converted'
+    | 'declined';
+  next_offer_code: string | null;
+  next_offer_at: string | null;
+  last_automation_key: string | null;
+  commercial_context: Record<string, unknown>;
   notes: string | null;
   lost_reason: string | null;
   created_at: string;
@@ -356,6 +407,60 @@ export type InternalCrmAiActionLog = {
   input_payload: Record<string, unknown>;
   output_payload: Record<string, unknown>;
   created_at: string;
+  client_company_name?: string | null;
+};
+
+export type InternalCrmAutomationSettings = {
+  scope_key: string;
+  default_whatsapp_instance_id: string | null;
+  admin_notification_numbers: string[];
+  notification_cooldown_minutes: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InternalCrmAutomationRule = {
+  id: string;
+  automation_key: string;
+  name: string;
+  description: string | null;
+  trigger_event: string;
+  condition: Record<string, unknown>;
+  channel: 'whatsapp_lead' | 'whatsapp_admin' | 'internal_task';
+  delay_minutes: number;
+  template: string | null;
+  is_active: boolean;
+  is_system: boolean;
+  sort_order: number;
+  last_run_at: string | null;
+  last_run_status: 'pending' | 'completed' | 'failed' | 'canceled' | 'skipped' | null;
+  cancel_on_event_types: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InternalCrmAutomationRun = {
+  id: string;
+  automation_id: string;
+  automation_key: string;
+  client_id: string | null;
+  deal_id: string | null;
+  appointment_id: string | null;
+  conversation_id: string | null;
+  trigger_event: string;
+  channel: 'whatsapp_lead' | 'whatsapp_admin' | 'internal_task';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'canceled' | 'skipped';
+  scheduled_at: string;
+  processed_at: string | null;
+  dedupe_key: string | null;
+  attempt_count: number;
+  last_error: string | null;
+  payload: Record<string, unknown>;
+  result_payload: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  automation_name?: string | null;
   client_company_name?: string | null;
 };
 

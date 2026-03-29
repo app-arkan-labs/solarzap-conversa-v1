@@ -55,38 +55,53 @@ function badgeVariantByToken(token: string): string {
     case 'scheduled':
     case 'call':
     case 'demo':
+    case 'novo_lead':
       return 'bg-sky-100 text-sky-800 border-sky-200';
     case 'resolved':
     case 'meeting':
     case 'confirmed':
+    case 'chamada_agendada':
+    case 'completed':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     case 'archived':
     case 'manual_note':
     case 'other':
+    case 'nao_fechou':
+    case 'skipped':
       return 'bg-zinc-200 text-zinc-800 border-zinc-300';
     case 'visit':
       return 'bg-orange-100 text-orange-800 border-orange-200';
     case 'done':
+    case 'chamada_realizada':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     case 'canceled':
     case 'failed':
     case 'no_show':
+    case 'nao_compareceu':
+    case 'declined':
       return 'bg-rose-100 text-rose-800 border-rose-200';
     case 'lead':
     case 'lead_entrante':
       return 'bg-sky-100 text-sky-800 border-sky-200';
     case 'contato_iniciado':
     case 'qualificado':
+    case 'respondeu':
+    case 'offered':
       return 'bg-amber-100 text-amber-800 border-amber-200';
     case 'demo_agendada':
     case 'proposta_enviada':
       return 'bg-indigo-100 text-indigo-800 border-indigo-200';
     case 'negociacao':
     case 'aguardando_pagamento':
+    case 'processing':
+    case 'trial_active':
       return 'bg-orange-100 text-orange-800 border-orange-200';
     case 'ganho':
     case 'won':
     case 'active_customer':
+    case 'fechou':
+    case 'accepted':
+    case 'signed':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     case 'customer_onboarding':
       return 'bg-cyan-100 text-cyan-800 border-cyan-200';

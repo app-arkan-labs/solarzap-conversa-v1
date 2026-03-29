@@ -9,6 +9,84 @@ import { AssignOwnerSelect } from '@/modules/internal-crm/components/pipeline/As
 import type { InternalCrmClientSummary, InternalCrmProduct, InternalCrmStage } from '@/modules/internal-crm/types';
 import type { DealDraft } from '@/modules/internal-crm/components/pipeline/types';
 
+const NONE_VALUE = '__none__';
+const EXTRA_OFFER_CODES = [
+  'upgrade_mentoria_500',
+  'solarzap_plan',
+  'landing_page',
+  'trafego_pago',
+  'landing_page_after_mentoria_declined',
+  'trafego_after_lp_declined',
+];
+const MENTORSHIP_VARIANT_OPTIONS = [
+  { value: 'mentoria_1000_1_encontro', label: 'Mentoria R$1000 · 1 encontro' },
+  { value: 'mentoria_1500_4_encontros', label: 'Mentoria R$1500 · 4 encontros' },
+  { value: 'mentoria_2000_premium', label: 'Mentoria R$2000 · premium' },
+  { value: 'mentoria_3x1000_pos_software', label: 'Mentoria 3x R$1000 pos-software' },
+  { value: 'mentoria_4x1200_pos_trial', label: 'Mentoria 4x R$1200 pos-trial' },
+];
+const SOFTWARE_STATUS_OPTIONS = [
+  { value: 'not_offered', label: 'Nao ofertado' },
+  { value: 'offered', label: 'Ofertado' },
+  { value: 'accepted', label: 'Aceito' },
+  { value: 'declined', label: 'Recusado' },
+  { value: 'trial_offered', label: 'Trial ofertado' },
+  { value: 'trial_active', label: 'Trial ativo' },
+  { value: 'trial_declined', label: 'Trial recusado' },
+  { value: 'signed', label: 'Assinado' },
+];
+const LANDING_PAGE_STATUS_OPTIONS = [
+  { value: 'not_offered', label: 'Nao ofertado' },
+  { value: 'offered', label: 'Ofertado' },
+  { value: 'accepted', label: 'Aceito' },
+  { value: 'declined', label: 'Recusado' },
+  { value: 'in_delivery', label: 'Em entrega' },
+  { value: 'delivered', label: 'Entregue' },
+];
+const TRAFFIC_STATUS_OPTIONS = [
+  { value: 'not_offered', label: 'Nao ofertado' },
+  { value: 'offered', label: 'Ofertado' },
+  { value: 'accepted', label: 'Aceito' },
+  { value: 'declined', label: 'Recusado' },
+  { value: 'active', label: 'Ativo' },
+];
+const TRIAL_STATUS_OPTIONS = [
+  { value: 'not_offered', label: 'Nao ofertado' },
+  { value: 'offered', label: 'Ofertado' },
+  { value: 'accepted', label: 'Aceito' },
+  { value: 'expired', label: 'Expirado' },
+  { value: 'converted', label: 'Convertido' },
+  { value: 'declined', label: 'Recusado' },
+];
+
+function humanizeToken(value: string): string {
+  return value
+    .split('_')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+function toDateTimeLocalValue(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function toIsoDateTimeValue(value: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString();
+}
+
 type EditDealModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -24,14 +102,27 @@ type EditDealModalProps = {
 };
 
 export function EditDealModal(props: EditDealModalProps) {
+  const isEditing = Boolean(props.draft.id);
   const productByCode = new Map(props.products.map((product) => [product.product_code, product]));
+  const offerOptions = Array.from(
+    new Map(
+      [
+        ...props.products.map((product) => [product.product_code, product.name] as const),
+        ...EXTRA_OFFER_CODES.map((offerCode) => [offerCode, humanizeToken(offerCode)] as const),
+      ],
+    ).entries(),
+  ).map(([value, label]) => ({ value, label }));
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-h-[85vh] max-w-5xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Novo deal interno</DialogTitle>
-          <DialogDescription>Cadastre uma oportunidade comercial e associe os itens vendidos.</DialogDescription>
+          <DialogTitle>{isEditing ? 'Editar deal interno' : 'Novo deal interno'}</DialogTitle>
+          <DialogDescription>
+            {isEditing
+              ? 'Atualize a oportunidade, o estado comercial e os gatilhos da esteira ARKAN.'
+              : 'Cadastre uma oportunidade comercial e associe os itens vendidos.'}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -59,7 +150,7 @@ export function EditDealModal(props: EditDealModalProps) {
             <Input
               value={props.draft.title}
               onChange={(event) => props.onDraftChange({ ...props.draft, title: event.target.value })}
-              placeholder="Ex: Plano Pro + Mentoria Aceleracao"
+              placeholder="Ex: Software + mentoria ARKAN"
             />
           </div>
 
@@ -94,6 +185,271 @@ export function EditDealModal(props: EditDealModalProps) {
           </div>
 
           <AssignOwnerSelect ownerUserId={props.ownerUserId} onOwnerUserIdChange={props.onOwnerUserIdChange} />
+        </div>
+
+        <div className="space-y-4 rounded-2xl border border-border/70 bg-muted/20 p-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">Estado comercial ARKAN</p>
+            <p className="text-xs text-muted-foreground">Controle a oferta atual, o produto fechado e os status de upsell/downsell.</p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Oferta principal</Label>
+              <Select
+                value={props.draft.primary_offer_code || NONE_VALUE}
+                onValueChange={(value) =>
+                  props.onDraftChange({ ...props.draft, primary_offer_code: value === NONE_VALUE ? '' : value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a oferta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_VALUE}>Nao definida</SelectItem>
+                  {offerOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Produto fechado</Label>
+              <Select
+                value={props.draft.closed_product_code || NONE_VALUE}
+                onValueChange={(value) =>
+                  props.onDraftChange({ ...props.draft, closed_product_code: value === NONE_VALUE ? '' : value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o produto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_VALUE}>Nao definido</SelectItem>
+                  {props.products.map((product) => (
+                    <SelectItem key={product.product_code} value={product.product_code}>
+                      {product.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Variante da mentoria</Label>
+              <Select
+                value={props.draft.mentorship_variant || NONE_VALUE}
+                onValueChange={(value) =>
+                  props.onDraftChange({ ...props.draft, mentorship_variant: value === NONE_VALUE ? '' : value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a variante" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_VALUE}>Nao definida</SelectItem>
+                  {MENTORSHIP_VARIANT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Proxima oferta</Label>
+              <Select
+                value={props.draft.next_offer_code || NONE_VALUE}
+                onValueChange={(value) =>
+                  props.onDraftChange({ ...props.draft, next_offer_code: value === NONE_VALUE ? '' : value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a proxima oferta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_VALUE}>Sem proxima oferta</SelectItem>
+                  {offerOptions.map((option) => (
+                    <SelectItem key={`next-${option.value}`} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Proxima oferta em</Label>
+              <Input
+                type="datetime-local"
+                value={toDateTimeLocalValue(props.draft.next_offer_at)}
+                onChange={(event) =>
+                  props.onDraftChange({
+                    ...props.draft,
+                    next_offer_at: event.target.value ? toIsoDateTimeValue(event.target.value) : '',
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Software</Label>
+              <Select
+                value={props.draft.software_status}
+                onValueChange={(value) => props.onDraftChange({ ...props.draft, software_status: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SOFTWARE_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Landing Page</Label>
+              <Select
+                value={props.draft.landing_page_status}
+                onValueChange={(value) => props.onDraftChange({ ...props.draft, landing_page_status: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LANDING_PAGE_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Trafego</Label>
+              <Select
+                value={props.draft.traffic_status}
+                onValueChange={(value) => props.onDraftChange({ ...props.draft, traffic_status: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRAFFIC_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Trial</Label>
+              <Select
+                value={props.draft.trial_status}
+                onValueChange={(value) => props.onDraftChange({ ...props.draft, trial_status: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRIAL_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4 rounded-2xl border border-border/70 p-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">Contexto de automacao</p>
+            <p className="text-xs text-muted-foreground">Esses campos alimentam lembretes, upsells e tarefas automaticas do blueprint.</p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Sessoes concluidas</Label>
+              <Input
+                type="number"
+                min={0}
+                value={props.draft.mentorship_sessions_completed}
+                onChange={(event) =>
+                  props.onDraftChange({ ...props.draft, mentorship_sessions_completed: event.target.value })
+                }
+                placeholder="0"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Ultima oferta recusada</Label>
+              <Select
+                value={props.draft.last_declined_offer_code || NONE_VALUE}
+                onValueChange={(value) =>
+                  props.onDraftChange({ ...props.draft, last_declined_offer_code: value === NONE_VALUE ? '' : value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a oferta recusada" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_VALUE}>Nenhuma</SelectItem>
+                  {offerOptions.map((option) => (
+                    <SelectItem key={`declined-${option.value}`} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Fim do trial</Label>
+              <Input
+                type="datetime-local"
+                value={toDateTimeLocalValue(props.draft.trial_ends_at)}
+                onChange={(event) =>
+                  props.onDraftChange({
+                    ...props.draft,
+                    trial_ends_at: event.target.value ? toIsoDateTimeValue(event.target.value) : '',
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2 xl:col-span-2">
+              <Label>Link de agendamento</Label>
+              <Input
+                value={props.draft.scheduling_link}
+                onChange={(event) => props.onDraftChange({ ...props.draft, scheduling_link: event.target.value })}
+                placeholder="https://cal.com/..."
+              />
+            </div>
+
+            <div className="space-y-2 xl:col-span-2">
+              <Label>Link da reuniao</Label>
+              <Input
+                value={props.draft.meeting_link}
+                onChange={(event) => props.onDraftChange({ ...props.draft, meeting_link: event.target.value })}
+                placeholder="https://meet.google.com/..."
+              />
+            </div>
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -247,7 +603,7 @@ export function EditDealModal(props: EditDealModalProps) {
           </Button>
           <Button onClick={props.onSave} disabled={props.isSaving}>
             <Save className="mr-1.5 h-4 w-4" />
-            Salvar deal
+            {isEditing ? 'Salvar alteracoes' : 'Salvar deal'}
           </Button>
         </DialogFooter>
       </DialogContent>
