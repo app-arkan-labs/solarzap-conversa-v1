@@ -9,16 +9,26 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Mail, Lock, Loader2, ArrowLeft, Zap, Eye, EyeOff } from 'lucide-react';
 import { RotatingHeadline } from '@/components/auth/RotatingHeadline';
 import { useToast } from '@/hooks/use-toast';
+import { isAdminHost } from '@/lib/hostDetection';
 
 type ViewMode = 'login' | 'signup' | 'forgot';
 const SIGNUP_AUTO_RESEND_DEFAULT_DELAY_MS = 65_000;
 const MICROSOFT_EMAIL_DOMAINS = new Set(['hotmail.com', 'outlook.com', 'live.com', 'msn.com']);
 const PLAN_STORAGE_KEY = 'checkout_plan_hint';
+const REDIRECT_STORAGE_KEY = 'post_auth_redirect_hint';
 const VALID_PLAN_HINTS = new Set(['start', 'pro', 'scale']);
 
 const normalizePlanHint = (value: string | null) => {
   const normalized = String(value || '').trim().toLowerCase();
   return VALID_PLAN_HINTS.has(normalized) ? normalized : null;
+};
+
+const normalizeRedirectHint = (value: string | null) => {
+  const normalized = String(value || '').trim();
+  if (!normalized.startsWith('/') || normalized.startsWith('//')) {
+    return null;
+  }
+  return normalized;
 };
 
 const Login = () => {
@@ -32,19 +42,24 @@ const Login = () => {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const autoResendTimerRef = useRef<number | null>(null);
+  const adminHost = typeof window !== 'undefined' && isAdminHost(window.location.hostname);
 
   useEffect(() => {
     const requestedMode = String(searchParams.get('mode') || '').trim().toLowerCase();
     const planHint = normalizePlanHint(searchParams.get('plan'));
+    const redirectHint = normalizeRedirectHint(searchParams.get('redirect'));
 
     if (planHint) {
       window.sessionStorage.setItem(PLAN_STORAGE_KEY, planHint);
     }
+    if (redirectHint) {
+      window.sessionStorage.setItem(REDIRECT_STORAGE_KEY, redirectHint);
+    }
 
-    if (requestedMode === 'signup') {
+    if (requestedMode === 'signup' && !adminHost) {
       setView('signup');
     }
-  }, [searchParams]);
+  }, [adminHost, searchParams]);
 
   const getFriendlyAuthMessage = (code: string | undefined, message: string) => {
     const normalizedCode = String(code || '').toLowerCase();
@@ -149,10 +164,13 @@ const Login = () => {
     try {
       const error = await signIn(normalizedEmail, password);
       if (!error) {
+        const redirectHint = normalizeRedirectHint(searchParams.get('redirect'))
+          || normalizeRedirectHint(window.sessionStorage.getItem(REDIRECT_STORAGE_KEY));
         const queryPlanHint = normalizePlanHint(searchParams.get('plan'));
         const storedPlanHint = normalizePlanHint(window.sessionStorage.getItem(PLAN_STORAGE_KEY));
         const planHint = queryPlanHint || storedPlanHint;
-        navigate(planHint ? `/?plan=${encodeURIComponent(planHint)}` : '/');
+        window.sessionStorage.removeItem(REDIRECT_STORAGE_KEY);
+        navigate(adminHost ? '/admin' : redirectHint || (planHint ? `/?plan=${encodeURIComponent(planHint)}` : '/'));
       } else {
         const code = (error as { code?: string }).code;
 
@@ -204,8 +222,12 @@ const Login = () => {
       const error = await signUp(normalizedEmail, password);
       if (!error) {
         const planHint = normalizePlanHint(searchParams.get('plan'));
+        const redirectHint = normalizeRedirectHint(searchParams.get('redirect'));
         if (planHint) {
           window.sessionStorage.setItem(PLAN_STORAGE_KEY, planHint);
+        }
+        if (redirectHint) {
+          window.sessionStorage.setItem(REDIRECT_STORAGE_KEY, redirectHint);
         }
         setPassword('');
         setView('login');
@@ -293,9 +315,19 @@ const Login = () => {
     }
   };
 
-  const staticTitle = view === 'signup' ? 'Criar sua conta' : view === 'forgot' ? 'Esqueceu sua senha?' : null;
+  const staticTitle = adminHost
+    ? view === 'forgot'
+      ? 'Recuperar acesso admin'
+      : 'Painel Admin SolarZap'
+    : view === 'signup'
+      ? 'Criar sua conta'
+      : view === 'forgot'
+        ? 'Esqueceu sua senha?'
+        : null;
   const subtitle = view === 'login'
-    ? 'Acesse sua conta SolarZap'
+    ? adminHost
+      ? 'Acesse sua conta administrativa'
+      : 'Acesse sua conta SolarZap'
     : view === 'signup'
       ? 'Preencha os dados para começar'
       : 'Enviaremos um link para redefinir sua senha';

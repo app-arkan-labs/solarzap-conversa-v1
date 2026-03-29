@@ -285,8 +285,18 @@ const KNOWN_ADMIN_API_ERROR_CODES: AdminApiErrorCode[] = [
 ];
 
 const KNOWN_ADMIN_API_ERROR_CODE_SET = new Set<string>(KNOWN_ADMIN_API_ERROR_CODES);
-const ADMIN_API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-api`;
-const ADMIN_API_PUBLIC_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const ADMIN_API_FALLBACK_URL = 'https://ucwmcmdwbvrwotuzlmxh.supabase.co';
+const ADMIN_API_FALLBACK_PUBLIC_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMzkyMTEsImV4cCI6MjA4MzYxNTIxMX0.KMk4XqFCm4FkvOZg7LNWaI_4lknMwcdCkYSGjBjDdOg';
+const ADMIN_API_BASE_URL =
+  typeof import.meta.env.VITE_SUPABASE_URL === 'string' && import.meta.env.VITE_SUPABASE_URL.trim().length > 0
+    ? import.meta.env.VITE_SUPABASE_URL.trim()
+    : ADMIN_API_FALLBACK_URL;
+const ADMIN_API_PUBLIC_KEY =
+  typeof import.meta.env.VITE_SUPABASE_ANON_KEY === 'string' && import.meta.env.VITE_SUPABASE_ANON_KEY.trim().length > 0
+    ? import.meta.env.VITE_SUPABASE_ANON_KEY.trim()
+    : ADMIN_API_FALLBACK_PUBLIC_KEY;
+const ADMIN_API_URL = `${ADMIN_API_BASE_URL}/functions/v1/admin-api`;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;

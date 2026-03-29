@@ -62,8 +62,18 @@ const KNOWN_INTERNAL_CRM_ERROR_CODES: InternalCrmApiErrorCode[] = [
 ];
 
 const KNOWN_INTERNAL_CRM_ERROR_CODE_SET = new Set<string>(KNOWN_INTERNAL_CRM_ERROR_CODES);
-const INTERNAL_CRM_API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/internal-crm-api`;
-const INTERNAL_CRM_API_PUBLIC_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const INTERNAL_CRM_FALLBACK_URL = 'https://ucwmcmdwbvrwotuzlmxh.supabase.co';
+const INTERNAL_CRM_FALLBACK_PUBLIC_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMzkyMTEsImV4cCI6MjA4MzYxNTIxMX0.KMk4XqFCm4FkvOZg7LNWaI_4lknMwcdCkYSGjBjDdOg';
+const INTERNAL_CRM_BASE_URL =
+  typeof import.meta.env.VITE_SUPABASE_URL === 'string' && import.meta.env.VITE_SUPABASE_URL.trim().length > 0
+    ? import.meta.env.VITE_SUPABASE_URL.trim()
+    : INTERNAL_CRM_FALLBACK_URL;
+const INTERNAL_CRM_API_PUBLIC_KEY =
+  typeof import.meta.env.VITE_SUPABASE_ANON_KEY === 'string' && import.meta.env.VITE_SUPABASE_ANON_KEY.trim().length > 0
+    ? import.meta.env.VITE_SUPABASE_ANON_KEY.trim()
+    : INTERNAL_CRM_FALLBACK_PUBLIC_KEY;
+const INTERNAL_CRM_API_URL = `${INTERNAL_CRM_BASE_URL}/functions/v1/internal-crm-api`;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;

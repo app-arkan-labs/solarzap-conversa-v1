@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import AdminAccessErrorScreen from '@/components/admin/AdminAccessErrorScreen';
 import { resolveAdminGuardState } from '@/components/admin/adminGuardState';
+import { isAdminHost } from '@/lib/hostDetection';
 import {
   useAdminWhoAmI,
   type AdminWhoAmIResponse,
@@ -173,7 +174,7 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
   }
 
   if (guardState === 'role_denied') {
-    return <Navigate to="/" replace />;
+    return <Navigate to={isAdminHost() ? '/login' : '/'} replace />;
   }
 
   if (guardState === 'mfa_setup_required') {
