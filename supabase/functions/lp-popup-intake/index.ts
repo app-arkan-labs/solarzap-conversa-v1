@@ -18,6 +18,13 @@ const RATE_LIMIT_WINDOW_MINUTES = 10;
 const RATE_LIMIT_IP_MAX = 40;
 const RATE_LIMIT_PHONE_MAX = 12;
 const STEP_ORDER = ['name', 'phone', 'company', 'email', 'schedule', 'completed'] as const;
+const LP_POPUP_NOTIFICATION_EMAIL = String(Deno.env.get('LP_POPUP_NOTIFICATION_EMAIL') || 'app.arkanlabs@gmail.com').trim();
+const LOCALHOST_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+const TRUSTED_LP_ORIGINS = [
+  'https://lp.aceleracao.solarzap.com.br',
+  'https://lp.arkanlabs.com.br',
+  'https://lp.solarzap.com.br',
+];
 
 function json(status: number, body: Record<string, unknown>, headers: Record<string, string>) {
   return new Response(JSON.stringify(body), {
@@ -85,6 +92,127 @@ function resolveNextStep(lastCompletedStep: string | null, hasScheduled: boolean
   return STEP_ORDER[Math.min(currentIndex + 1, STEP_ORDER.length - 1)];
 }
 
+function formatDateTimeForEmail(iso: string | null, timezone: string | null): string {
+  if (!iso) return '-';
+  try {
+    return new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+      timeZone: timezone || 'America/Sao_Paulo',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+async function sendEmailViaResend(subject: string, html: string, text: string) {
+  const resendApiKey = String(Deno.env.get('RESEND_API_KEY') || '').trim();
+  if (!resendApiKey) {
+    throw new Error('missing_resend_api_key');
+  }
+
+  const from = String(Deno.env.get('RESEND_FROM_EMAIL') || 'SolarZap <notificacoes@resend.dev>').trim();
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${resendApiKey}`,
+    },
+    body: JSON.stringify({
+      from,
+      to: [LP_POPUP_NOTIFICATION_EMAIL],
+      subject,
+      html,
+      text,
+    }),
+  });
+
+  if (!response.ok) {
+    const raw = await response.text().catch(() => '');
+    throw new Error(`resend_http_${response.status}:${raw}`);
+  }
+}
+
+async function notifyLeadCreatedBestEffort(input: {
+  funnelSlug: string;
+  formSessionId: string;
+  fullName: string | null;
+  companyName: string | null;
+  email: string | null;
+  phoneNormalized: string | null;
+  timezone: string | null;
+}) {
+  try {
+    const createdAtIso = nowIso();
+    const createdAtFormatted = formatDateTimeForEmail(createdAtIso, input.timezone);
+    const subject = `Novo lead LP criado - ${input.fullName || input.companyName || 'Sem nome'}`;
+    const html = [
+      '<h2>Novo lead criado pelo formulario LP</h2>',
+      `<p><strong>Data/Hora:</strong> ${createdAtFormatted}</p>`,
+      `<p><strong>Nome:</strong> ${input.fullName || '-'}</p>`,
+      `<p><strong>Empresa:</strong> ${input.companyName || '-'}</p>`,
+      `<p><strong>Email:</strong> ${input.email || '-'}</p>`,
+      `<p><strong>Telefone:</strong> ${input.phoneNormalized || '-'}</p>`,
+      `<p><strong>Funnel:</strong> ${input.funnelSlug}</p>`,
+      `<p><strong>Session:</strong> ${input.formSessionId}</p>`,
+    ].join('');
+    const text = [
+      'Novo lead criado pelo formulario LP',
+      `Data/Hora: ${createdAtFormatted}`,
+      `Nome: ${input.fullName || '-'}`,
+      `Empresa: ${input.companyName || '-'}`,
+      `Email: ${input.email || '-'}`,
+      `Telefone: ${input.phoneNormalized || '-'}`,
+      `Funnel: ${input.funnelSlug}`,
+      `Session: ${input.formSessionId}`,
+    ].join('\n');
+
+    await sendEmailViaResend(subject, html, text);
+  } catch (error) {
+    console.warn('[lp-popup-intake] lead notification failed', error);
+  }
+}
+
+async function notifyBookingCreatedBestEffort(input: {
+  funnelSlug: string;
+  formSessionId: string;
+  fullName: string | null;
+  companyName: string | null;
+  email: string | null;
+  phoneNormalized: string | null;
+  timezone: string | null;
+  scheduledAt: string | null;
+}) {
+  try {
+    const scheduledAtFormatted = formatDateTimeForEmail(input.scheduledAt, input.timezone);
+    const subject = `Agendamento LP confirmado - ${input.fullName || input.companyName || 'Sem nome'}`;
+    const html = [
+      '<h2>Novo agendamento confirmado no formulario LP</h2>',
+      `<p><strong>Data/Hora agendada:</strong> ${scheduledAtFormatted}</p>`,
+      `<p><strong>Nome:</strong> ${input.fullName || '-'}</p>`,
+      `<p><strong>Empresa:</strong> ${input.companyName || '-'}</p>`,
+      `<p><strong>Email:</strong> ${input.email || '-'}</p>`,
+      `<p><strong>Telefone:</strong> ${input.phoneNormalized || '-'}</p>`,
+      `<p><strong>Funnel:</strong> ${input.funnelSlug}</p>`,
+      `<p><strong>Session:</strong> ${input.formSessionId}</p>`,
+    ].join('');
+    const text = [
+      'Novo agendamento confirmado no formulario LP',
+      `Data/Hora agendada: ${scheduledAtFormatted}`,
+      `Nome: ${input.fullName || '-'}`,
+      `Empresa: ${input.companyName || '-'}`,
+      `Email: ${input.email || '-'}`,
+      `Telefone: ${input.phoneNormalized || '-'}`,
+      `Funnel: ${input.funnelSlug}`,
+      `Session: ${input.formSessionId}`,
+    ].join('\n');
+
+    await sendEmailViaResend(subject, html, text);
+  } catch (error) {
+    console.warn('[lp-popup-intake] booking notification failed', error);
+  }
+}
+
 async function getFunnelConfig(funnelSlug: string) {
   const { data, error } = await serviceClient
     .schema('internal_crm')
@@ -107,12 +235,19 @@ async function getFunnelConfig(funnelSlug: string) {
 
 function ensureOriginAllowedForFunnel(req: Request, funnel: Record<string, unknown>) {
   const requestOrigin = asString(req.headers.get('origin'));
-  const allowedOrigins = Array.isArray(funnel.allowed_origins)
-    ? funnel.allowed_origins.map((origin) => String(origin || '').trim()).filter(Boolean)
-    : [];
+  const normalizedOrigin = requestOrigin ? requestOrigin.replace(/\/+$/, '') : null;
 
-  if (!requestOrigin || allowedOrigins.length < 1) return;
-  if (!allowedOrigins.includes(requestOrigin)) {
+  if (normalizedOrigin && LOCALHOST_ORIGIN_REGEX.test(normalizedOrigin)) return;
+
+  const allowedOrigins = new Set<string>([
+    ...TRUSTED_LP_ORIGINS,
+    ...(Array.isArray(funnel.allowed_origins)
+      ? funnel.allowed_origins.map((origin) => String(origin || '').trim()).filter(Boolean)
+      : []),
+  ]);
+
+  if (!normalizedOrigin || allowedOrigins.size < 1) return;
+  if (!allowedOrigins.has(normalizedOrigin)) {
     throw { status: 403, code: 'forbidden_origin' };
   }
 }
@@ -336,6 +471,9 @@ async function handleSaveStep(req: Request, payload: Record<string, unknown>, he
   const suppressAutomation = Boolean(
     asString(savedSession.internal_client_id) || asString(existingSession?.internal_client_id),
   );
+  const hadInternalClientBeforeIntake = Boolean(
+    asString(savedSession.internal_client_id) || asString(existingSession?.internal_client_id),
+  );
   const intakeResult = await invokeInternalCrmApi('lp_public_intake', {
     funnel_slug: funnelSlug,
     form_session_id: formSessionId,
@@ -374,6 +512,18 @@ async function handleSaveStep(req: Request, payload: Record<string, unknown>, he
     scheduledAt: asString(intakeResult.appointment?.start_at),
     lastPayload: payload,
   });
+
+  if (!hadInternalClientBeforeIntake && Boolean(asString(savedSession.internal_client_id))) {
+    await notifyLeadCreatedBestEffort({
+      funnelSlug,
+      formSessionId,
+      fullName,
+      companyName,
+      email,
+      phoneNormalized: phoneNormalized || null,
+      timezone: asString(trackingPayload.timezone) || asString(savedSession.timezone),
+    });
+  }
 
   return json(200, {
     ok: true,
@@ -480,35 +630,50 @@ async function handleBookSlot(req: Request, payload: Record<string, unknown>, he
   });
 
   const whatsappPhone = normalizePhone(funnel.whatsapp_phone || '5514991402780');
-  const whatsappText = encodeURIComponent('Oi, acabei de preencher o formulario da LP da Aceleracao SolarZap.');
+  const whatsappText = encodeURIComponent('Oi! Quero vender mais projetos de energia solar.');
   const whatsappUrl = `https://wa.me/${whatsappPhone}?text=${whatsappText}`;
 
-  await upsertSession({
-    existingSession: session,
-    formSessionId,
+  try {
+    await upsertSession({
+      existingSession: session,
+      formSessionId,
+      funnelSlug,
+      buttonContext: isRecord(session.button_context) ? session.button_context : {},
+      phoneNormalized: asString(session.phone_normalized),
+      fullName: asString(session.full_name),
+      companyName: asString(session.company_name),
+      email: asString(session.email),
+      currentStep: 'schedule',
+      lastCompletedStep: 'schedule',
+      isAbandoned: false,
+      trackingPayload,
+      landingPageUrl: asString(session.landing_page_url),
+      referrerUrl: asString(session.referrer_url),
+      rawQuerystring: asString(session.raw_querystring),
+      sessionId: asString(session.session_id),
+      ipAddress: resolveRequestIp(req),
+      userAgent: req.headers.get('user-agent'),
+      locale: asString(session.locale),
+      timezone: asString(payload.timezone) || asString(session.timezone) || asString(funnel.timezone),
+      internalClientId: asString(session.internal_client_id),
+      internalDealId: asString(session.internal_deal_id),
+      internalAppointmentId: asString(result.appointment?.id),
+      scheduledAt: asString(result.appointment?.start_at) || appointmentStartAt,
+      lastPayload: payload,
+    });
+  } catch (error) {
+    console.warn('[lp-popup-intake] booking session persistence failed (non-blocking)', error);
+  }
+
+  await notifyBookingCreatedBestEffort({
     funnelSlug,
-    buttonContext: isRecord(session.button_context) ? session.button_context : {},
-    phoneNormalized: asString(session.phone_normalized),
+    formSessionId,
     fullName: asString(session.full_name),
     companyName: asString(session.company_name),
     email: asString(session.email),
-    currentStep: 'schedule',
-    lastCompletedStep: 'schedule',
-    isAbandoned: false,
-    trackingPayload,
-    landingPageUrl: asString(session.landing_page_url),
-    referrerUrl: asString(session.referrer_url),
-    rawQuerystring: asString(session.raw_querystring),
-    sessionId: asString(session.session_id),
-    ipAddress: resolveRequestIp(req),
-    userAgent: req.headers.get('user-agent'),
-    locale: asString(session.locale),
+    phoneNormalized: asString(session.phone_normalized),
     timezone: asString(payload.timezone) || asString(session.timezone) || asString(funnel.timezone),
-    internalClientId: asString(session.internal_client_id),
-    internalDealId: asString(session.internal_deal_id),
-    internalAppointmentId: asString(result.appointment?.id),
     scheduledAt: asString(result.appointment?.start_at) || appointmentStartAt,
-    lastPayload: payload,
   });
 
   return json(200, {
@@ -516,7 +681,7 @@ async function handleBookSlot(req: Request, payload: Record<string, unknown>, he
     internal_client_id: asString(session.internal_client_id),
     internal_deal_id: asString(session.internal_deal_id),
     appointment_id: asString(result.appointment?.id),
-    stage_code: asString(result.stage_code) || 'chamada_agendada',
+    stage_code: asString(result.stage_code) || 'agendou_reuniao',
     meeting_link: asString(result.meeting_link),
     scheduled_at: asString(result.appointment?.start_at) || appointmentStartAt,
     whatsapp_url: whatsappUrl,
@@ -524,7 +689,7 @@ async function handleBookSlot(req: Request, payload: Record<string, unknown>, he
 }
 
 Deno.serve(async (req: Request) => {
-  const cors = resolveRequestCors(req);
+  const cors = resolveRequestCors(req, { allowLocalhost: true });
   const headers = cors.corsHeaders;
 
   if (req.method === 'OPTIONS') {

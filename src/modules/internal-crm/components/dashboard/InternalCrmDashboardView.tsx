@@ -5,8 +5,9 @@ import { Label } from '@/components/ui/label';
 import { KpiGrid } from '@/modules/internal-crm/components/dashboard/cards/KpiGrid';
 import { NextActionsPanel } from '@/modules/internal-crm/components/dashboard/cards/NextActionsPanel';
 import { OnboardingQueue } from '@/modules/internal-crm/components/dashboard/cards/OnboardingQueue';
-import { StalledDealsTable } from '@/modules/internal-crm/components/dashboard/cards/StalledDealsTable';
+import { PipelineMovementChart } from '@/modules/internal-crm/components/dashboard/cards/PipelineMovementChart';
 import { useInternalCrmDashboardModule } from '@/modules/internal-crm/hooks/useInternalCrmDashboard';
+import { useInternalCrmPipelineStages } from '@/modules/internal-crm/hooks/useInternalCrmApi';
 
 type InternalCrmDashboardViewProps = {
   fromDate: string;
@@ -21,7 +22,9 @@ export function InternalCrmDashboardView(props: InternalCrmDashboardViewProps) {
     to_date: props.toDate,
   });
 
+  const stagesQuery = useInternalCrmPipelineStages();
   const kpis = dashboard.dashboardQuery.data?.kpis;
+  const stages = stagesQuery.data?.stages || [];
 
   return (
     <div className="space-y-6">
@@ -44,12 +47,15 @@ export function InternalCrmDashboardView(props: InternalCrmDashboardViewProps) {
 
       <KpiGrid kpis={kpis} />
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <StalledDealsTable deals={kpis?.stalled_deals || []} />
-        <NextActionsPanel tasks={kpis?.next_actions || []} />
-      </div>
+      <PipelineMovementChart
+        data={kpis?.pipeline_movement || []}
+        stages={stages}
+      />
 
-      <OnboardingQueue clients={kpis?.onboarding_queue || []} />
+      <div className="grid gap-6 xl:grid-cols-2">
+        <NextActionsPanel tasks={kpis?.next_actions || []} />
+        <OnboardingQueue clients={kpis?.onboarding_queue || []} />
+      </div>
     </div>
   );
 }

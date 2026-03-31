@@ -27,6 +27,9 @@ export type InternalCrmApiAction =
   | 'list_instances'
   | 'upsert_instance'
   | 'connect_instance'
+  | 'get_instance_status'
+  | 'disconnect_instance'
+  | 'delete_instance'
   | 'list_conversations'
   | 'get_conversation_detail'
   | 'append_message'
@@ -56,7 +59,15 @@ export type InternalCrmApiAction =
   | 'list_customer_snapshot'
   | 'refresh_customer_snapshot'
   | 'get_linked_public_org_summary'
-  | 'provision_customer';
+  | 'provision_customer'
+  | 'delete_client'
+  | 'list_client_notes'
+  | 'add_client_note'
+  | 'delete_client_note'
+  | 'delete_campaign'
+  | 'list_campaign_recipients'
+  | 'check_automation_health'
+  | 'delete_appointment';
 
 export type InternalCrmApiRequest = {
   action: InternalCrmApiAction;
@@ -137,6 +148,15 @@ export type InternalCrmClientContact = {
   role_label: string | null;
   is_primary: boolean;
   notes: string | null;
+};
+
+export type InternalCrmClientNote = {
+  id: string;
+  client_id: string;
+  author_name: string;
+  author_user_id: string | null;
+  body: string;
+  created_at: string;
 };
 
 export type InternalCrmDealItem = {
@@ -233,21 +253,36 @@ export type InternalCrmTask = {
 };
 
 export type InternalCrmDashboardKpis = {
+  // Linha 1 — contadores absolutos
   leads_in_period: number;
-  qualified_leads: number;
-  demos_scheduled: number;
-  proposals_sent: number;
-  win_rate: number;
-  revenue_one_time_closed_cents: number;
-  mrr_sold_cents: number;
-  mrr_active_cents: number;
-  onboarding_pending: number;
-  churn_risk_count: number;
+  forms_completed: number;
+  meetings_scheduled: number;
+  meetings_done: number;
+  contracts_closed: number;
+
+  // Linha 2 — taxas percentuais
+  form_fill_rate: number;
+  scheduling_rate: number;
+  attendance_rate: number;
+  closing_rate: number;
+
+  // Linha 3 — base de clientes
+  trial_accounts: number;
+  active_subscribers_start: number;
+  active_subscribers_pro: number;
+  active_subscribers_scale: number;
   churned_in_period: number;
-  stalled_deals: InternalCrmDealSummary[];
+
+  // Gráfico de movimentação da pipeline
+  pipeline_movement: Array<{
+    date: string;
+    stage_code: string;
+    count: number;
+  }>;
+
+  // Mantidos para outros painéis
   next_actions: InternalCrmTask[];
   onboarding_queue: InternalCrmClientSummary[];
-  pending_payments: InternalCrmDealSummary[];
 };
 
 export type InternalCrmCustomerAppLink = {
@@ -308,6 +343,10 @@ export type InternalCrmWhatsappInstance = {
   phone_number: string | null;
   webhook_url: string | null;
   qr_code_base64: string | null;
+  metadata?: Record<string, unknown> | null;
+  color?: string | null;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type InternalCrmConversationSummary = {
@@ -367,10 +406,24 @@ export type InternalCrmCampaign = {
   owner_user_id: string | null;
   target_filters: Record<string, unknown>;
   messages: Array<string>;
+  interval_seconds: number;
   recipients_total?: number;
   recipients_pending?: number;
   recipients_sent?: number;
   recipients_failed?: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InternalCrmCampaignRecipient = {
+  id: string;
+  campaign_id: string;
+  client_id: string | null;
+  recipient_name: string | null;
+  recipient_phone: string;
+  status: 'pending' | 'processing' | 'sent' | 'failed' | 'skipped' | 'canceled';
+  attempt_count: number;
+  last_error: string | null;
   created_at: string;
   updated_at: string;
 };

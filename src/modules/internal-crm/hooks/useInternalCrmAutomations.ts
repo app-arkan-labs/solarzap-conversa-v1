@@ -1,5 +1,6 @@
 import {
   internalCrmQueryKeys,
+  invokeInternalCrmApi,
   useInternalCrmAutomationRules,
   useInternalCrmAutomationRuns,
   useInternalCrmAutomationSettings,
@@ -7,6 +8,17 @@ import {
   useInternalCrmInstances,
   useInternalCrmMutation,
 } from '@/modules/internal-crm/hooks/useInternalCrmApi';
+import { useQuery } from '@tanstack/react-query';
+
+type AutomationHealthResponse = {
+  ok: true;
+  whatsapp_connected: boolean;
+  whatsapp_instance_name: string | null;
+  evolution_api_reachable: boolean;
+  pending_runs_count: number;
+  failed_runs_last_24h: number;
+  last_processed_at: string | null;
+};
 
 export function useInternalCrmAutomationsModule() {
   const rulesQuery = useInternalCrmAutomationRules();
@@ -14,6 +26,12 @@ export function useInternalCrmAutomationsModule() {
   const settingsQuery = useInternalCrmAutomationSettings();
   const instancesQuery = useInternalCrmInstances();
   const clientsQuery = useInternalCrmClients({});
+
+  const healthQuery = useQuery({
+    queryKey: ['internal-crm', 'automation-health'],
+    queryFn: () => invokeInternalCrmApi<AutomationHealthResponse>({ action: 'check_automation_health' }),
+    refetchInterval: 30_000,
+  });
 
   const upsertAutomationRuleMutation = useInternalCrmMutation({
     invalidate: [
@@ -46,6 +64,7 @@ export function useInternalCrmAutomationsModule() {
     settingsQuery,
     instancesQuery,
     clientsQuery,
+    healthQuery,
     upsertAutomationRuleMutation,
     upsertAutomationSettingsMutation,
     testAutomationRuleMutation,

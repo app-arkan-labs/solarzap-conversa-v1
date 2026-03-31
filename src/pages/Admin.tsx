@@ -18,6 +18,7 @@ import InternalCrmAutomationsPage from '@/modules/internal-crm/pages/InternalCrm
 import InternalCrmAiPage from '@/modules/internal-crm/pages/InternalCrmAiPage';
 import InternalCrmFinancePage from '@/modules/internal-crm/pages/InternalCrmFinancePage';
 import InternalCrmCalendarPage from '@/modules/internal-crm/pages/InternalCrmCalendarPage';
+import InternalCrmIntegrationsPage from '@/modules/internal-crm/pages/InternalCrmIntegrationsPage';
 
 export default function Admin() {
   return (
@@ -40,6 +41,7 @@ export default function Admin() {
         <Route path="crm/campaigns" element={<InternalCrmGuard><InternalCrmCampaignsPage /></InternalCrmGuard>} />
         <Route path="crm/automations" element={<InternalCrmGuard><InternalCrmAutomationsPage /></InternalCrmGuard>} />
         <Route path="crm/calendar" element={<InternalCrmGuard><InternalCrmCalendarPage /></InternalCrmGuard>} />
+        <Route path="crm/integrations" element={<InternalCrmGuard><InternalCrmIntegrationsPage /></InternalCrmGuard>} />
         <Route path="crm/ai" element={<InternalCrmGuard><InternalCrmAiPage /></InternalCrmGuard>} />
         <Route path="crm/finance" element={<InternalCrmGuard><InternalCrmFinancePage /></InternalCrmGuard>} />
       </Route>

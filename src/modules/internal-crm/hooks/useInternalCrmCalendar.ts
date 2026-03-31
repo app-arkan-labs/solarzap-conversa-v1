@@ -74,6 +74,13 @@ export function useInternalCrmCalendar(filters: InternalCrmCalendarFilters) {
     ],
   });
 
+  const deleteAppointmentMutation = useInternalCrmMutation({
+    invalidate: [
+      internalCrmQueryKeys.appointments({}),
+      internalCrmQueryKeys.dashboard({}),
+    ],
+  });
+
   return {
     params,
     appointmentsQuery,
@@ -83,5 +90,6 @@ export function useInternalCrmCalendar(filters: InternalCrmCalendarFilters) {
     googleCalendarActionMutation,
     importGoogleEventsMutation,
     syncAppointmentGoogleMutation,
+    deleteAppointmentMutation,
   };
 }

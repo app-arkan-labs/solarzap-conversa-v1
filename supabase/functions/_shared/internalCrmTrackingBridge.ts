@@ -310,6 +310,23 @@ export async function syncInternalCrmTrackingBridge(input: SyncBridgeInput): Pro
     return { ok: true, bridge: null, publicLeadId: null, skippedReason: leadResolution.error || 'lead_resolution_failed' };
   }
 
+  const { data: conflictingBridge, error: conflictingBridgeError } = await crm
+    .from('tracking_bridge')
+    .select('*')
+    .eq('org_id', orgId)
+    .eq('public_lead_id', leadResolution.leadId)
+    .maybeSingle();
+
+  if (conflictingBridgeError) throw conflictingBridgeError;
+  if (conflictingBridge?.internal_client_id && conflictingBridge.internal_client_id !== input.internalClientId) {
+    return {
+      ok: true,
+      bridge: conflictingBridge as InternalCrmTrackingBridgeRow,
+      publicLeadId: leadResolution.leadId,
+      skippedReason: 'public_lead_already_linked',
+    };
+  }
+
   const stageCode =
     asString(input.stageCode) ||
     asString(deal?.stage_code) ||

@@ -1,61 +1,95 @@
-import { Plus } from 'lucide-react';
+import { Filter, X } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import type { InternalCrmClientSummary } from '@/modules/internal-crm/types';
+import { cn } from '@/lib/utils';
+
+type CrmCalendarFilterState = {
+  type: string;
+  status: string;
+  clientId: string;
+};
 
 type InternalCrmCalendarFiltersProps = {
-  status: string;
-  onStatusChange: (value: string) => void;
-  clientId: string;
-  onClientIdChange: (value: string) => void;
+  filters: CrmCalendarFilterState;
+  onFiltersChange: (f: CrmCalendarFilterState) => void;
   clients: InternalCrmClientSummary[];
-  onCreateAppointment: () => void;
 };
 
 export function InternalCrmCalendarFilters(props: InternalCrmCalendarFiltersProps) {
+  const [open, setOpen] = useState(false);
+  const { filters, onFiltersChange, clients } = props;
+  const hasActive = filters.type !== 'all' || filters.status !== 'all' || filters.clientId !== 'all';
+
   return (
-    <div className="grid gap-3 rounded-2xl border border-border/70 p-4 md:grid-cols-[220px_1fr_auto]">
-      <div className="space-y-2">
-        <Label>Status</Label>
-        <Select value={props.status} onValueChange={props.onStatusChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Todos" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            <SelectItem value="scheduled">Agendado</SelectItem>
-            <SelectItem value="confirmed">Confirmado</SelectItem>
-            <SelectItem value="done">Realizado</SelectItem>
-            <SelectItem value="canceled">Cancelado</SelectItem>
-            <SelectItem value="no_show">No-show</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+    <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        className={cn(hasActive && 'border-primary text-primary')}
+        onClick={() => setOpen(!open)}
+      >
+        <Filter className="mr-1.5 h-3.5 w-3.5" />
+        Filtros
+        {hasActive && <span className="ml-1 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">!</span>}
+      </Button>
 
-      <div className="space-y-2">
-        <Label>Cliente</Label>
-        <Select value={props.clientId} onValueChange={props.onClientIdChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Todos os clientes" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os clientes</SelectItem>
-            {props.clients.map((client) => (
-              <SelectItem key={client.id} value={client.id}>
-                {client.company_name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {open && (
+        <>
+          <Select value={filters.type} onValueChange={(v) => onFiltersChange({ ...filters, type: v })}>
+            <SelectTrigger className="h-8 w-[140px] text-xs">
+              <SelectValue placeholder="Tipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os tipos</SelectItem>
+              <SelectItem value="call">Ligação</SelectItem>
+              <SelectItem value="demo">Demonstração</SelectItem>
+              <SelectItem value="meeting">Reunião</SelectItem>
+              <SelectItem value="visit">Visita</SelectItem>
+              <SelectItem value="other">Outro</SelectItem>
+            </SelectContent>
+          </Select>
 
-      <div className="flex items-end">
-        <Button onClick={props.onCreateAppointment} className="w-full md:w-auto">
-          <Plus className="mr-2 h-4 w-4" />
-          Novo agendamento
-        </Button>
-      </div>
+          <Select value={filters.status} onValueChange={(v) => onFiltersChange({ ...filters, status: v })}>
+            <SelectTrigger className="h-8 w-[150px] text-xs">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os status</SelectItem>
+              <SelectItem value="scheduled">Agendado</SelectItem>
+              <SelectItem value="confirmed">Confirmado</SelectItem>
+              <SelectItem value="done">Realizado</SelectItem>
+              <SelectItem value="canceled">Cancelado</SelectItem>
+              <SelectItem value="no_show">Não Compareceu</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filters.clientId} onValueChange={(v) => onFiltersChange({ ...filters, clientId: v })}>
+            <SelectTrigger className="h-8 w-[180px] text-xs">
+              <SelectValue placeholder="Cliente" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os clientes</SelectItem>
+              {clients.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.company_name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {hasActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs"
+              onClick={() => onFiltersChange({ type: 'all', status: 'all', clientId: 'all' })}
+            >
+              <X className="mr-1 h-3 w-3" /> Limpar
+            </Button>
+          )}
+        </>
+      )}
     </div>
   );
 }

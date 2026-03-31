@@ -1,4 +1,5 @@
 const LOCALHOST_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+const TRUSTED_ADMIN_ORIGINS = ['https://adm.solarzap.com.br', 'https://admin.solarzap.com.br'];
 
 type ResolveCorsOptions = {
   allowMethods?: string;
@@ -42,6 +43,7 @@ const resolveCorsPolicy = (allowLocalhostOverride?: boolean): ResolvedCorsPolicy
   if (legacyAllowedOrigin) {
     parsed.push(legacyAllowedOrigin);
   }
+  parsed.push(...TRUSTED_ADMIN_ORIGINS);
 
   return {
     allowedOrigins: dedupe(parsed),

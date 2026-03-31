@@ -60,6 +60,7 @@ function badgeVariantByToken(token: string): string {
     case 'resolved':
     case 'meeting':
     case 'confirmed':
+    case 'agendou_reuniao':
     case 'chamada_agendada':
     case 'completed':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200';

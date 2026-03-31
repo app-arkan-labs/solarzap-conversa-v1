@@ -3,8 +3,8 @@ import {
   generateAvailableSlotsForType,
   isSlotWithinWindow,
   normalizeAppointmentTypeForWindow,
-  normalizeAppointmentWindowConfig,
   overlapsBusyRange,
+  resolveMinimumLeadSlotStart,
 } from '../_shared/appointmentScheduling.ts';
 import { resolveRequestCors } from '../_shared/cors.ts';
 import {
@@ -57,9 +57,14 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   list_clients: { minCrmRole: 'read_only', requireMfa: true },
   get_client_detail: { minCrmRole: 'read_only', requireMfa: true },
   upsert_client: { minCrmRole: 'sales', requireMfa: true },
+  delete_client: { minCrmRole: 'sales', requireMfa: true },
+  list_client_notes: { minCrmRole: 'read_only', requireMfa: true },
+  add_client_note: { minCrmRole: 'sales', requireMfa: true },
+  delete_client_note: { minCrmRole: 'sales', requireMfa: true },
   list_deals: { minCrmRole: 'read_only', requireMfa: true },
   upsert_deal: { minCrmRole: 'sales', requireMfa: true },
   move_deal_stage: { minCrmRole: 'sales', requireMfa: true },
+  save_deal_notes: { minCrmRole: 'sales', requireMfa: true },
   create_deal_checkout_link: { minCrmRole: 'sales', requireMfa: true },
   list_tasks: { minCrmRole: 'read_only', requireMfa: true },
   upsert_task: { minCrmRole: 'sales', requireMfa: true },
@@ -74,6 +79,9 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   list_instances: { minCrmRole: 'read_only', requireMfa: true },
   upsert_instance: { minCrmRole: 'ops', requireMfa: true },
   connect_instance: { minCrmRole: 'ops', requireMfa: true },
+  get_instance_status: { minCrmRole: 'read_only', requireMfa: true },
+  disconnect_instance: { minCrmRole: 'ops', requireMfa: true },
+  delete_instance: { minCrmRole: 'ops', requireMfa: true },
   list_conversations: { minCrmRole: 'read_only', requireMfa: true },
   get_conversation_detail: { minCrmRole: 'read_only', requireMfa: true },
   append_message: { minCrmRole: 'cs', requireMfa: true },
@@ -83,6 +91,9 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   upsert_campaign: { minCrmRole: 'sales', requireMfa: true },
   update_campaign_status: { minCrmRole: 'sales', requireMfa: true },
   run_campaign_batch: { minCrmRole: 'sales', requireMfa: true },
+  delete_campaign: { minCrmRole: 'sales', requireMfa: true },
+  list_campaign_recipients: { minCrmRole: 'read_only', requireMfa: true },
+  check_automation_health: { minCrmRole: 'read_only', requireMfa: true },
   list_ai_settings: { minCrmRole: 'read_only', requireMfa: true },
   upsert_ai_settings: { minCrmRole: 'ops', requireMfa: true },
   enqueue_agent_job: { minCrmRole: 'sales', requireMfa: true },
@@ -90,6 +101,7 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   list_ai_action_logs: { minCrmRole: 'read_only', requireMfa: true },
   list_appointments: { minCrmRole: 'read_only', requireMfa: true },
   upsert_appointment: { minCrmRole: 'sales', requireMfa: true },
+  delete_appointment: { minCrmRole: 'sales', requireMfa: true },
   get_google_calendar_status: { minCrmRole: 'read_only', requireMfa: true },
   get_google_calendar_oauth_url: { minCrmRole: 'ops', requireMfa: true },
   disconnect_google_calendar: { minCrmRole: 'ops', requireMfa: true },
@@ -195,7 +207,7 @@ const LEGACY_STAGE_CODE_MAP: Record<string, string> = {
   lead_entrante: 'novo_lead',
   contato_iniciado: 'respondeu',
   qualificado: 'respondeu',
-  demo_agendada: 'chamada_agendada',
+  demo_agendada: 'agendou_reuniao',
   proposta_enviada: 'negociacao',
   aguardando_pagamento: 'negociacao',
   ganho: 'fechou',
@@ -204,6 +216,7 @@ const LEGACY_STAGE_CODE_MAP: Record<string, string> = {
 const BLUEPRINT_STAGE_DEFAULT_PROBABILITY: Record<string, number> = {
   novo_lead: 5,
   respondeu: 15,
+  agendou_reuniao: 25,
   chamada_agendada: 35,
   chamada_realizada: 55,
   nao_compareceu: 20,
@@ -607,77 +620,114 @@ async function listDashboardKpis(serviceClient: ReturnType<typeof createClient>,
 
   const [
     leadsCount,
-    qualifiedCount,
-    demosCount,
-    proposalsCount,
-    wonDeals,
-    lostDeals,
-    wonRevenue,
-    activeSubscriptions,
-    onboardingPending,
-    churnRisk,
+    formsCompleted,
+    meetingsScheduled,
+    meetingsDone,
+    contractsClosed,
+    trialAccounts,
+    subscribersStart,
+    subscribersPro,
+    subscribersScale,
     churnedInPeriod,
-    stalledDeals,
+    pipelineMovementRaw,
     nextActions,
   ] = await Promise.all([
+    // 1. Leads no período
     schema.from('clients').select('id', { count: 'exact', head: true }).gte('created_at', sinceIso).lte('created_at', untilIso),
-    schema.from('clients').select('id', { count: 'exact', head: true }).eq('current_stage_code', 'respondeu').gte('updated_at', sinceIso).lte('updated_at', untilIso),
-    schema.from('deals').select('id', { count: 'exact', head: true }).eq('stage_code', 'chamada_agendada').gte('updated_at', sinceIso).lte('updated_at', untilIso),
-    schema.from('deals').select('id', { count: 'exact', head: true }).eq('stage_code', 'negociacao').gte('updated_at', sinceIso).lte('updated_at', untilIso),
-    schema.from('deals').select('one_time_total_cents, mrr_cents', { count: 'exact' }).eq('status', 'won').gte('updated_at', sinceIso).lte('updated_at', untilIso),
-    schema.from('deals').select('id', { count: 'exact', head: true }).eq('status', 'lost').gte('updated_at', sinceIso).lte('updated_at', untilIso),
-    schema.from('deals').select('one_time_total_cents, mrr_cents').eq('status', 'won').gte('updated_at', sinceIso).lte('updated_at', untilIso),
-    schema.from('subscriptions').select('mrr_cents').in('status', ['trialing', 'active']),
-    schema.from('clients').select('id', { count: 'exact', head: true }).eq('lifecycle_status', 'customer_onboarding'),
-    schema.from('clients').select('id', { count: 'exact', head: true }).eq('lifecycle_status', 'churn_risk'),
+
+    // 2. Formulários preenchidos (status = 'completed')
+    schema.from('landing_form_sessions').select('id', { count: 'exact', head: true }).eq('status', 'completed').gte('updated_at', sinceIso).lte('updated_at', untilIso),
+
+    // 3. Reuniões agendadas
+    schema.from('appointments').select('id', { count: 'exact', head: true }).in('appointment_type', ['meeting', 'demo']).in('status', ['scheduled', 'confirmed']).gte('created_at', sinceIso).lte('created_at', untilIso),
+
+    // 4. Reuniões realizadas
+    schema.from('appointments').select('id', { count: 'exact', head: true }).in('appointment_type', ['meeting', 'demo']).eq('status', 'done').gte('updated_at', sinceIso).lte('updated_at', untilIso),
+
+    // 5. Contratos fechados
+    schema.from('deals').select('id', { count: 'exact', head: true }).eq('status', 'won').gte('won_at', sinceIso).lte('won_at', untilIso),
+
+    // 6. Contas em teste
+    schema.from('subscriptions').select('id', { count: 'exact', head: true }).eq('status', 'trialing'),
+
+    // 7. Assinantes Start
+    schema.from('subscriptions').select('id', { count: 'exact', head: true }).eq('product_code', 'solarzap_start').in('status', ['active', 'trialing']),
+
+    // 8. Assinantes Pro
+    schema.from('subscriptions').select('id', { count: 'exact', head: true }).eq('product_code', 'solarzap_pro').in('status', ['active', 'trialing']),
+
+    // 9. Assinantes Scale
+    schema.from('subscriptions').select('id', { count: 'exact', head: true }).eq('product_code', 'solarzap_scale').in('status', ['active', 'trialing']),
+
+    // 10. Churn no período
     schema.from('clients').select('id', { count: 'exact', head: true }).eq('lifecycle_status', 'churned').gte('updated_at', sinceIso).lte('updated_at', untilIso),
-    schema.from('deals').select('id, client_id, title, stage_code, status, probability, expected_close_at, one_time_total_cents, mrr_cents, payment_method, payment_status, checkout_url, stripe_checkout_session_id, paid_at, won_at, notes, lost_reason, created_at, updated_at').eq('status', 'open').lt('updated_at', sinceIso).order('updated_at', { ascending: true }).limit(10),
+
+    // 11. Pipeline movement (stage_history)
+    schema.from('stage_history').select('to_stage_code, created_at').gte('created_at', sinceIso).lte('created_at', untilIso).order('created_at', { ascending: true }),
+
+    // 12. Próximas ações
     schema.from('tasks').select('id, client_id, deal_id, owner_user_id, title, notes, due_at, status, task_kind, completed_at').eq('status', 'open').order('due_at', { ascending: true, nullsFirst: false }).limit(10),
   ]);
 
   if (
     leadsCount.error ||
-    qualifiedCount.error ||
-    demosCount.error ||
-    proposalsCount.error ||
-    wonDeals.error ||
-    lostDeals.error ||
-    wonRevenue.error ||
-    activeSubscriptions.error ||
-    onboardingPending.error ||
-    churnRisk.error ||
+    formsCompleted.error ||
+    meetingsScheduled.error ||
+    meetingsDone.error ||
+    contractsClosed.error ||
+    trialAccounts.error ||
+    subscribersStart.error ||
+    subscribersPro.error ||
+    subscribersScale.error ||
     churnedInPeriod.error ||
-    stalledDeals.error ||
+    pipelineMovementRaw.error ||
     nextActions.error
   ) {
     throw { status: 500, code: 'dashboard_query_failed' };
   }
 
-  const wonCount = Number(wonDeals.count || 0);
-  const lostCount = Number(lostDeals.count || 0);
-  const wonRows = wonRevenue.data || [];
-  const activeSubscriptionsRows = activeSubscriptions.data || [];
+  const leadsTotal = Number(leadsCount.count || 0);
+  const formsTotal = Number(formsCompleted.count || 0);
+  const meetingsSchedTotal = Number(meetingsScheduled.count || 0);
+  const meetingsDoneTotal = Number(meetingsDone.count || 0);
+  const contractsTotal = Number(contractsClosed.count || 0);
+
+  const safeRate = (num: number, den: number) =>
+    den > 0 ? Number(((num / den) * 100).toFixed(1)) : 0;
+
+  // Processar pipeline_movement: agrupar por dia + stage_code
+  const movementRows = pipelineMovementRaw.data || [];
+  const movementMap = new Map<string, number>();
+  for (const row of movementRows) {
+    const dateKey = new Date(row.created_at).toISOString().slice(0, 10);
+    const key = `${dateKey}|${row.to_stage_code}`;
+    movementMap.set(key, (movementMap.get(key) || 0) + 1);
+  }
+  const pipeline_movement = Array.from(movementMap.entries()).map(([key, count]) => {
+    const [date, stage_code] = key.split('|');
+    return { date, stage_code, count };
+  });
+
   const onboardingQueue = (await listClients(serviceClient, { lifecycle_status: 'customer_onboarding' })).slice(0, 8);
-  const pendingPayments = (await listDeals(serviceClient, { status: 'won' }))
-    .filter((deal) => String(deal.payment_status || '') === 'pending')
-    .slice(0, 8);
 
   return {
-    leads_in_period: Number(leadsCount.count || 0),
-    qualified_leads: Number(qualifiedCount.count || 0),
-    demos_scheduled: Number(demosCount.count || 0),
-    proposals_sent: Number(proposalsCount.count || 0),
-    win_rate: wonCount + lostCount > 0 ? Number(((wonCount / (wonCount + lostCount)) * 100).toFixed(1)) : 0,
-    revenue_one_time_closed_cents: wonRows.reduce((sum, row) => sum + asNumber(row.one_time_total_cents, 0), 0),
-    mrr_sold_cents: wonRows.reduce((sum, row) => sum + asNumber(row.mrr_cents, 0), 0),
-    mrr_active_cents: activeSubscriptionsRows.reduce((sum, row) => sum + asNumber(row.mrr_cents, 0), 0),
-    onboarding_pending: Number(onboardingPending.count || 0),
-    churn_risk_count: Number(churnRisk.count || 0),
+    leads_in_period: leadsTotal,
+    forms_completed: formsTotal,
+    meetings_scheduled: meetingsSchedTotal,
+    meetings_done: meetingsDoneTotal,
+    contracts_closed: contractsTotal,
+    form_fill_rate: safeRate(formsTotal, leadsTotal),
+    scheduling_rate: safeRate(meetingsSchedTotal, leadsTotal),
+    attendance_rate: safeRate(meetingsDoneTotal, leadsTotal),
+    closing_rate: safeRate(contractsTotal, leadsTotal),
+    trial_accounts: Number(trialAccounts.count || 0),
+    active_subscribers_start: Number(subscribersStart.count || 0),
+    active_subscribers_pro: Number(subscribersPro.count || 0),
+    active_subscribers_scale: Number(subscribersScale.count || 0),
     churned_in_period: Number(churnedInPeriod.count || 0),
-    stalled_deals: stalledDeals.data || [],
+    pipeline_movement,
     next_actions: nextActions.data || [],
     onboarding_queue: onboardingQueue,
-    pending_payments: pendingPayments,
   };
 }
 
@@ -886,6 +936,95 @@ async function upsertClient(
   return { ok: true, client: data };
 }
 
+async function deleteClient(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const clientId = asString(payload.client_id);
+  if (!clientId) throw { status: 400, code: 'invalid_payload' };
+  const schema = crmSchema(serviceClient);
+
+  const { count } = await schema
+    .from('deals')
+    .select('id', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+    .eq('status', 'open');
+
+  if ((count || 0) > 0) {
+    throw { status: 400, code: 'action_not_allowed', error: 'Cliente possui deals abertos. Feche os deals antes de excluir.' };
+  }
+
+  const before = (await schema.from('clients').select('*').eq('id', clientId).maybeSingle()).data;
+
+  const { error } = await schema.from('clients').delete().eq('id', clientId);
+  if (error) throw { status: 500, code: 'client_delete_failed', error };
+
+  await writeAuditLog(serviceClient, identity, 'delete_client', req, {
+    target_type: 'client',
+    target_id: clientId,
+    client_id: clientId,
+    before,
+    after: null,
+  });
+
+  return { ok: true };
+}
+
+async function listClientNotes(
+  serviceClient: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+) {
+  const clientId = asString(payload.client_id);
+  if (!clientId) throw { status: 400, code: 'invalid_payload' };
+  const schema = crmSchema(serviceClient);
+
+  const { data, error } = await schema
+    .from('client_notes')
+    .select('id, client_id, author_name, author_user_id, body, created_at')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  if (error) throw { status: 500, code: 'client_notes_query_failed', error };
+  return { ok: true, notes: data || [] };
+}
+
+async function addClientNote(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+) {
+  const clientId = asString(payload.client_id);
+  const body = asString(payload.body);
+  if (!clientId || !body) throw { status: 400, code: 'invalid_payload' };
+  const authorName = asString(payload.author_name) || identity.email || 'Admin';
+  const schema = crmSchema(serviceClient);
+
+  const { data, error } = await schema
+    .from('client_notes')
+    .insert({ client_id: clientId, author_name: authorName, author_user_id: identity.user_id, body })
+    .select('*')
+    .single();
+
+  if (error) throw { status: 500, code: 'client_note_insert_failed', error };
+  return { ok: true, note: data };
+}
+
+async function deleteClientNote(
+  serviceClient: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+) {
+  const noteId = asString(payload.note_id);
+  if (!noteId) throw { status: 400, code: 'invalid_payload' };
+  const schema = crmSchema(serviceClient);
+
+  const { error } = await schema.from('client_notes').delete().eq('id', noteId);
+  if (error) throw { status: 500, code: 'client_note_delete_failed', error };
+  return { ok: true };
+}
+
 async function listDeals(serviceClient: ReturnType<typeof createClient>, payload: Record<string, unknown>) {
   const schema = crmSchema(serviceClient);
   let query = schema
@@ -1081,6 +1220,7 @@ async function moveDealStage(
     changed_by_user_id: identity.user_id,
     closed_product_code: asString(payload.closed_product_code),
     lost_reason: asString(payload.lost_reason),
+    one_time_total_cents: asNumber(payload.one_time_total_cents, before.one_time_total_cents),
   });
 
   await syncTrackingBridgeFromDeal(serviceClient, {
@@ -1094,6 +1234,8 @@ async function moveDealStage(
       client_id: String(before.client_id || ''),
       deal_id: dealId,
       closed_product_code: asString(payload.closed_product_code) || asString(data.closed_product_code),
+      one_time_total_cents: asNumber(payload.one_time_total_cents, asNumber(data.one_time_total_cents, 0)),
+      event_currency: asString(payload.event_currency) || 'BRL',
       event_at: nowIso(),
       event_key: `deal_closed:${dealId}:${nowIso()}`,
     }, { processDueNow: true });
@@ -1203,6 +1345,7 @@ async function applyDealStageChange(
     changed_by_user_id?: string | null;
     closed_product_code?: string | null;
     lost_reason?: string | null;
+    one_time_total_cents?: number | null;
   },
 ) {
   const before = params.deal;
@@ -1232,6 +1375,9 @@ async function applyDealStageChange(
 
   if (params.closed_product_code) updatePayload.closed_product_code = params.closed_product_code;
   if (params.lost_reason) updatePayload.lost_reason = params.lost_reason;
+  if (status === 'won' && params.one_time_total_cents != null && Number.isFinite(params.one_time_total_cents)) {
+    updatePayload.one_time_total_cents = Math.max(0, Math.round(params.one_time_total_cents));
+  }
 
   const { data, error } = await schema.from('deals').update(updatePayload).eq('id', dealId).select('*').single();
   if (error || !data?.id) throw { status: 500, code: 'deal_move_failed', error };
@@ -1840,6 +1986,101 @@ function buildGoogleEventDescription(
   return chunks.join('\n').trim();
 }
 
+function extractInternalQrCodeFromRecord(source: Record<string, unknown>): string | null {
+  const qrcode = source.qrcode;
+  const qrCode = source.qrCode;
+
+  return (
+    asString(source.qr_code_base64) ||
+    asString(source.base64) ||
+    asString(source.qr_code) ||
+    asString(source.code) ||
+    (isRecord(qrcode) ? asString(qrcode.base64) || asString(qrcode.code) : asString(qrcode)) ||
+    (isRecord(qrCode) ? asString(qrCode.base64) || asString(qrCode.code) : asString(qrCode))
+  );
+}
+
+function extractInternalInstanceQrCode(payload: unknown): string | null {
+  const source = asRecord(payload);
+  const nested = asRecord(source.data);
+  const nestedDeep = asRecord(nested.data);
+
+  return (
+    extractInternalQrCodeFromRecord(source) ||
+    extractInternalQrCodeFromRecord(nested) ||
+    extractInternalQrCodeFromRecord(nestedDeep)
+  );
+}
+
+function extractInternalInstanceState(payload: unknown): string | null {
+  const source = asRecord(payload);
+  const nested = asRecord(source.data);
+  const nestedDeep = asRecord(nested.data);
+
+  return (
+    asString(source.state) ||
+    asString(asRecord(source.instance).state) ||
+    asString(nested.state) ||
+    asString(asRecord(nested.instance).state) ||
+    asString(nestedDeep.state) ||
+    asString(asRecord(nestedDeep.instance).state)
+  );
+}
+
+function normalizeInternalCrmInstanceStatus(state: string | null | undefined): 'connected' | 'disconnected' | 'connecting' | 'error' {
+  const normalized = String(state || '').trim().toLowerCase();
+  if (normalized === 'open' || normalized === 'connected') return 'connected';
+  if (normalized === 'connecting') return 'connecting';
+  if (normalized === 'error' || normalized === 'failed') return 'error';
+  return 'disconnected';
+}
+
+function extractInternalInstancePhoneNumberFromRecord(source: Record<string, unknown>): string | null {
+  const instance = asRecord(source.instance);
+  const wid = asRecord(source.wid);
+  const instanceWid = asRecord(instance.wid);
+
+  const rawPhone =
+    asString(wid.user) ||
+    asString(source.number) ||
+    asString(instanceWid.user) ||
+    asString(instance.wuid);
+
+  return rawPhone ? rawPhone.replace('@s.whatsapp.net', '').trim() : null;
+}
+
+function extractInternalInstancePhoneNumber(payload: unknown): string | null {
+  const source = asRecord(payload);
+  const nested = asRecord(source.data);
+  const nestedDeep = asRecord(nested.data);
+
+  return (
+    extractInternalInstancePhoneNumberFromRecord(source) ||
+    extractInternalInstancePhoneNumberFromRecord(nested) ||
+    extractInternalInstancePhoneNumberFromRecord(nestedDeep)
+  );
+}
+
+function isEvolutionInstanceMissing(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('404') || normalized.includes('not found') || normalized.includes('does not exist');
+}
+
+async function ensureInternalCrmInstanceWebhook(instanceName: string) {
+  await evolutionRequest(`/webhook/set/${instanceName}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      webhook: {
+        url: resolveInternalWebhookUrl(),
+        enabled: true,
+        events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'SEND_MESSAGE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+        headers: buildInternalWebhookHeaders(),
+      },
+    }),
+  });
+}
+
 async function listInstances(serviceClient: ReturnType<typeof createClient>) {
   const { data, error } = await crmSchema(serviceClient)
     .from('whatsapp_instances')
@@ -1859,23 +2100,44 @@ async function upsertInstance(
   const instanceId = asString(payload.instance_id);
   const rawInstanceName = asString(payload.instance_name);
   const displayName = asString(payload.display_name);
-  if (!rawInstanceName || !displayName) throw { status: 400, code: 'invalid_payload' };
-
-  const instanceName = rawInstanceName.startsWith('sz_internal_') ? rawInstanceName : `sz_internal_${rawInstanceName}`;
   const before = instanceId
     ? (await crmSchema(serviceClient).from('whatsapp_instances').select('*').eq('id', instanceId).maybeSingle()).data
     : null;
+
+  const resolvedInstanceName = rawInstanceName || asString(before?.instance_name);
+  const resolvedDisplayName = displayName || asString(before?.display_name);
+  if (!resolvedInstanceName || !resolvedDisplayName) throw { status: 400, code: 'invalid_payload' };
+
+  const instanceName = resolvedInstanceName.startsWith('sz_internal_')
+    ? resolvedInstanceName
+    : `sz_internal_${resolvedInstanceName}`;
+  const nextMetadata = {
+    ...asRecord(before?.metadata),
+    ...(isRecord(payload.metadata) ? payload.metadata : {}),
+  };
+  const explicitColor = asString(payload.color);
+  if (explicitColor) {
+    nextMetadata.color = explicitColor;
+  }
+
+  const hasAiEnabled = Object.prototype.hasOwnProperty.call(payload, 'ai_enabled');
+  const hasAssistantIdentityName = Object.prototype.hasOwnProperty.call(payload, 'assistant_identity_name');
+  const hasAssistantPromptOverride = Object.prototype.hasOwnProperty.call(payload, 'assistant_prompt_override');
 
   const { data, error } = await crmSchema(serviceClient)
     .from('whatsapp_instances')
     .upsert({
       id: instanceId || undefined,
       instance_name: instanceName,
-      display_name: displayName,
-      ai_enabled: asBoolean(payload.ai_enabled, false),
-      assistant_identity_name: asString(payload.assistant_identity_name),
-      assistant_prompt_override: asString(payload.assistant_prompt_override),
-      metadata: isRecord(payload.metadata) ? payload.metadata : {},
+      display_name: resolvedDisplayName,
+      ai_enabled: hasAiEnabled ? asBoolean(payload.ai_enabled, false) : asBoolean(before?.ai_enabled, false),
+      assistant_identity_name: hasAssistantIdentityName
+        ? asString(payload.assistant_identity_name)
+        : asString(before?.assistant_identity_name),
+      assistant_prompt_override: hasAssistantPromptOverride
+        ? asString(payload.assistant_prompt_override)
+        : asString(before?.assistant_prompt_override),
+      metadata: nextMetadata,
     })
     .select('*')
     .single();
@@ -1906,36 +2168,41 @@ async function connectInstance(
   if (error) throw { status: 500, code: 'instance_query_failed', error };
   if (!instance?.id) throw { status: 404, code: 'not_found' };
 
-  await evolutionRequest('/instance/create', {
+  const createPayload = await evolutionRequest('/instance/create', {
     method: 'POST',
-    body: JSON.stringify({ instanceName: instance.instance_name }),
+    body: JSON.stringify({
+      instanceName: instance.instance_name,
+      qrcode: true,
+      integration: 'WHATSAPP-BAILEYS',
+    }),
   }).catch(() => null);
 
   const qrPayload = await evolutionRequest(`/instance/connect/${instance.instance_name}`, { method: 'GET' }).catch(() => null);
-  await evolutionRequest(`/webhook/set/${instance.instance_name}`, {
-    method: 'POST',
-    body: JSON.stringify({
-      webhook: {
-        url: resolveInternalWebhookUrl(),
-        enabled: true,
-        events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'SEND_MESSAGE', 'CONNECTION_UPDATE'],
-        headers: buildInternalWebhookHeaders(),
-      },
-    }),
-  }).catch(() => null);
+  await ensureInternalCrmInstanceWebhook(instance.instance_name).catch(() => null);
 
   const statusPayload = await evolutionRequest(`/instance/connectionState/${instance.instance_name}`, {
     method: 'GET',
   }).catch(() => null);
 
-  const nextStatus = String(statusPayload?.instance?.state || '').toLowerCase() === 'open' ? 'connected' : 'connecting';
-  const qrCode = asString(qrPayload?.base64) || asString(qrPayload?.qrcode?.base64);
+  const qrCode =
+    extractInternalInstanceQrCode(qrPayload) ||
+    extractInternalInstanceQrCode(createPayload) ||
+    extractInternalInstanceQrCode(statusPayload) ||
+    asString(instance.qr_code_base64);
+  const resolvedStatus = normalizeInternalCrmInstanceStatus(
+    extractInternalInstanceState(statusPayload) ||
+    extractInternalInstanceState(qrPayload) ||
+    extractInternalInstanceState(createPayload),
+  );
+  const nextStatus = resolvedStatus === 'disconnected' && qrCode ? 'connecting' : resolvedStatus;
+  const phoneNumber = nextStatus === 'connected' ? extractInternalInstancePhoneNumber(statusPayload) : null;
 
   const { data, error: updateError } = await schema
     .from('whatsapp_instances')
     .update({
       status: nextStatus,
-      qr_code_base64: qrCode,
+      phone_number: phoneNumber,
+      qr_code_base64: nextStatus === 'connected' ? null : qrCode,
       webhook_url: resolveInternalWebhookUrl(),
       updated_at: nowIso(),
     })
@@ -1952,6 +2219,151 @@ async function connectInstance(
   });
 
   return { ok: true, instance: data, qr_code_base64: qrCode };
+}
+
+async function getInstanceStatus(
+  serviceClient: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+) {
+  const instanceId = asString(payload.instance_id);
+  if (!instanceId) throw { status: 400, code: 'invalid_payload' };
+
+  const schema = crmSchema(serviceClient);
+  const { data: instance, error } = await schema.from('whatsapp_instances').select('*').eq('id', instanceId).maybeSingle();
+  if (error) throw { status: 500, code: 'instance_query_failed', error };
+  if (!instance?.id) throw { status: 404, code: 'not_found' };
+
+  let statusPayload: unknown;
+  try {
+    statusPayload = await evolutionRequest(`/instance/connectionState/${instance.instance_name}`, { method: 'GET' });
+  } catch (statusError) {
+    if (!isEvolutionInstanceMissing(statusError)) {
+      throw { status: 500, code: 'instance_status_failed', error: statusError };
+    }
+
+    const { data: disconnectedInstance, error: disconnectedError } = await schema
+      .from('whatsapp_instances')
+      .update({
+        status: 'disconnected',
+        phone_number: null,
+        qr_code_base64: null,
+        updated_at: nowIso(),
+      })
+      .eq('id', instanceId)
+      .select('*')
+      .single();
+
+    if (disconnectedError || !disconnectedInstance?.id) {
+      throw { status: 500, code: 'instance_status_failed', error: disconnectedError };
+    }
+
+    return { ok: true, instance: disconnectedInstance, status: 'disconnected' };
+  }
+
+  const extractedQrCode = extractInternalInstanceQrCode(statusPayload) || asString(instance.qr_code_base64);
+  const resolvedStatus = normalizeInternalCrmInstanceStatus(extractInternalInstanceState(statusPayload));
+  const nextStatus = resolvedStatus === 'disconnected' && extractedQrCode ? 'connecting' : resolvedStatus;
+  if (nextStatus === 'connected') {
+    await ensureInternalCrmInstanceWebhook(instance.instance_name).catch(() => null);
+  }
+
+  const nextPhoneNumber = nextStatus === 'connected' ? extractInternalInstancePhoneNumber(statusPayload) : null;
+  const nextQrCode = nextStatus === 'connected' ? null : extractedQrCode;
+
+  const { data: updatedInstance, error: updateError } = await schema
+    .from('whatsapp_instances')
+    .update({
+      status: nextStatus,
+      phone_number: nextPhoneNumber,
+      qr_code_base64: nextQrCode,
+      webhook_url: asString(instance.webhook_url) || resolveInternalWebhookUrl(),
+      updated_at: nowIso(),
+    })
+    .eq('id', instanceId)
+    .select('*')
+    .single();
+
+  if (updateError || !updatedInstance?.id) {
+    throw { status: 500, code: 'instance_status_failed', error: updateError };
+  }
+
+  return { ok: true, instance: updatedInstance, status: nextStatus };
+}
+
+async function disconnectInstance(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const instanceId = asString(payload.instance_id);
+  if (!instanceId) throw { status: 400, code: 'invalid_payload' };
+
+  const schema = crmSchema(serviceClient);
+  const { data: instance, error } = await schema.from('whatsapp_instances').select('*').eq('id', instanceId).maybeSingle();
+  if (error) throw { status: 500, code: 'instance_query_failed', error };
+  if (!instance?.id) throw { status: 404, code: 'not_found' };
+
+  await evolutionRequest(`/instance/logout/${instance.instance_name}`, { method: 'DELETE' });
+
+  const { data, error: updateError } = await schema
+    .from('whatsapp_instances')
+    .update({
+      status: 'disconnected',
+      phone_number: null,
+      qr_code_base64: null,
+      updated_at: nowIso(),
+    })
+    .eq('id', instanceId)
+    .select('*')
+    .single();
+
+  if (updateError || !data?.id) throw { status: 500, code: 'instance_disconnect_failed', error: updateError };
+
+  await writeAuditLog(serviceClient, identity, 'disconnect_instance', req, {
+    target_type: 'whatsapp_instance',
+    target_id: instanceId,
+    before: instance,
+    after: data,
+  });
+
+  return { ok: true, instance: data };
+}
+
+async function deleteInstance(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const instanceId = asString(payload.instance_id);
+  if (!instanceId) throw { status: 400, code: 'invalid_payload' };
+
+  const schema = crmSchema(serviceClient);
+  const { data: instance, error } = await schema.from('whatsapp_instances').select('*').eq('id', instanceId).maybeSingle();
+  if (error) throw { status: 500, code: 'instance_query_failed', error };
+  if (!instance?.id) throw { status: 404, code: 'not_found' };
+
+  await evolutionRequest(`/instance/logout/${instance.instance_name}`, { method: 'DELETE' });
+  await evolutionRequest(`/instance/delete/${instance.instance_name}`, { method: 'DELETE' });
+
+  const { data: deletedInstance, error: deleteError } = await schema
+    .from('whatsapp_instances')
+    .delete()
+    .eq('id', instanceId)
+    .select('*')
+    .single();
+
+  if (deleteError || !deletedInstance?.id) throw { status: 500, code: 'instance_delete_failed', error: deleteError };
+
+  await writeAuditLog(serviceClient, identity, 'delete_instance', req, {
+    target_type: 'whatsapp_instance',
+    target_id: instanceId,
+    before: instance,
+    after: { deleted: true, instance_id: instanceId },
+  });
+
+  return { ok: true, deleted_id: instanceId };
 }
 
 async function listConversations(serviceClient: ReturnType<typeof createClient>, payload: Record<string, unknown>) {
@@ -2295,6 +2707,7 @@ async function upsertCampaign(
       target_filters: isRecord(payload.target_filters) ? payload.target_filters : {},
       messages,
       status: asString(payload.status) || 'draft',
+      interval_seconds: Math.max(10, Math.min(86400, asNumber(payload.interval_seconds, 15))),
     })
     .select('*')
     .single();
@@ -2359,6 +2772,66 @@ async function updateCampaignStatus(
   });
 
   return { ok: true, campaign: data };
+}
+
+async function deleteCampaign(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const campaignId = asString(payload.campaign_id);
+  if (!campaignId) throw { status: 400, code: 'invalid_payload' };
+
+  const before = (await crmSchema(serviceClient)
+    .from('broadcast_campaigns')
+    .select('*')
+    .eq('id', campaignId)
+    .maybeSingle()).data;
+
+  if (!before) throw { status: 404, code: 'not_found' };
+
+  if (before.status === 'running') {
+    await crmSchema(serviceClient)
+      .from('broadcast_campaigns')
+      .update({ status: 'canceled', finished_at: nowIso(), updated_at: nowIso() })
+      .eq('id', campaignId);
+  }
+
+  const { error } = await crmSchema(serviceClient)
+    .from('broadcast_campaigns')
+    .delete()
+    .eq('id', campaignId);
+
+  if (error) throw { status: 500, code: 'campaign_delete_failed', error };
+
+  await writeAuditLog(serviceClient, identity, 'delete_campaign', req, {
+    target_type: 'campaign',
+    target_id: campaignId,
+    before,
+    after: null,
+  });
+
+  return { ok: true };
+}
+
+async function listCampaignRecipients(
+  serviceClient: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+) {
+  const campaignId = asString(payload.campaign_id);
+  if (!campaignId) throw { status: 400, code: 'invalid_payload' };
+
+  const { data, error } = await crmSchema(serviceClient)
+    .from('broadcast_recipients')
+    .select('id, campaign_id, client_id, recipient_name, recipient_phone, status, attempt_count, last_error, created_at, updated_at')
+    .eq('campaign_id', campaignId)
+    .order('created_at', { ascending: true })
+    .limit(500);
+
+  if (error) throw { status: 500, code: 'campaign_recipients_query_failed', error };
+
+  return { ok: true, recipients: data || [] };
 }
 
 async function runCampaignBatch(
@@ -2525,6 +2998,83 @@ async function resolveLandingFunnelOwnerUserId(
   return resolveOrgPrimaryUserId(serviceClient, orgId);
 }
 
+const LP_PUBLIC_WEEKDAYS: Array<'mon' | 'tue' | 'wed' | 'thu' | 'fri'> = ['mon', 'tue', 'wed', 'thu', 'fri'];
+const LP_PUBLIC_WINDOW_RULES: Array<{ start: string; end: string; days: Array<'mon' | 'tue' | 'wed' | 'thu' | 'fri'> }> = [
+  { start: '09:00', end: '12:00', days: LP_PUBLIC_WEEKDAYS },
+  { start: '14:00', end: '18:00', days: LP_PUBLIC_WEEKDAYS },
+];
+const LP_PUBLIC_SLOT_MINUTES = 60;
+const LP_PUBLIC_LOOKAHEAD_DAYS = 7;
+const LP_PUBLIC_MAX_SLOTS = 56;
+const LP_PUBLIC_MIN_LEAD_BUSINESS_HOURS = 3;
+
+function generatePublicLpSlots(params: {
+  now: Date;
+  timezone: string;
+  busyRanges: Array<{ startMs: number; endMs: number }>;
+  limit?: number;
+  lookaheadDays?: number;
+}) {
+  const now = params.now;
+  const timezone = params.timezone;
+  const busyRanges = params.busyRanges;
+  const limit = clamp(asNumber(params.limit, LP_PUBLIC_MAX_SLOTS), 1, LP_PUBLIC_MAX_SLOTS);
+  const lookaheadDays = clamp(asNumber(params.lookaheadDays, LP_PUBLIC_LOOKAHEAD_DAYS), 1, LP_PUBLIC_LOOKAHEAD_DAYS);
+  const minimumLeadSlotStart = resolveMinimumLeadSlotStart({
+    now,
+    timeZone: timezone,
+    windowRules: LP_PUBLIC_WINDOW_RULES,
+    minLeadHours: LP_PUBLIC_MIN_LEAD_BUSINESS_HOURS,
+    slotMinutes: LP_PUBLIC_SLOT_MINUTES,
+    lookaheadDays,
+  });
+
+  if (LP_PUBLIC_MIN_LEAD_BUSINESS_HOURS > 0 && !minimumLeadSlotStart) {
+    return [];
+  }
+
+  const merged: string[] = [];
+  const seen = new Set<string>();
+
+  for (const windowRule of LP_PUBLIC_WINDOW_RULES) {
+    const generated = generateAvailableSlotsForType({
+      now,
+      timeZone: timezone,
+      windowRule,
+      busyRanges,
+      slotMinutes: LP_PUBLIC_SLOT_MINUTES,
+      limit: LP_PUBLIC_MAX_SLOTS,
+      lookaheadDays,
+    });
+
+    for (const slot of generated) {
+      if (seen.has(slot)) continue;
+      seen.add(slot);
+      merged.push(slot);
+    }
+  }
+
+  const filtered = minimumLeadSlotStart
+    ? merged.filter((slot) => slot >= minimumLeadSlotStart)
+    : merged;
+
+  return filtered.sort().slice(0, limit);
+}
+
+function isPublicLpSlotWithinWindow(slotIso: string, appointmentType: string, timezone: string) {
+  const type = normalizeAppointmentTypeForWindow(appointmentType);
+  return LP_PUBLIC_WINDOW_RULES.some((windowRule) => {
+    const config = {
+      call: windowRule,
+      visit: windowRule,
+      meeting: windowRule,
+      other: windowRule,
+    };
+
+    return isSlotWithinWindow(slotIso, type, config, timezone, LP_PUBLIC_SLOT_MINUTES);
+  });
+}
+
 async function listPublicLandingSlots(
   serviceClient: ReturnType<typeof createClient>,
   payload: Record<string, unknown>,
@@ -2535,18 +3085,13 @@ async function listPublicLandingSlots(
 
   const timezone = asString(payload.timezone) || asString(funnel.timezone) || 'America/Sao_Paulo';
   const appointmentType = normalizeAppointmentTypeForWindow(payload.appointment_type || funnel.appointment_type);
-  const slotDurationMinutes = clamp(
-    asNumber(payload.duration_minutes, asNumber(funnel.slot_duration_minutes, 30)),
-    5,
-    240,
-  );
-  const slotLimit = clamp(asNumber(payload.limit, asNumber(funnel.slot_limit, 8)), 1, 48);
+  const slotDurationMinutes = LP_PUBLIC_SLOT_MINUTES;
+  const slotLimit = clamp(asNumber(payload.limit, LP_PUBLIC_MAX_SLOTS), 1, LP_PUBLIC_MAX_SLOTS);
   const slotLookaheadDays = clamp(
-    asNumber(payload.lookahead_days, asNumber(funnel.slot_lookahead_days, 14)),
+    asNumber(payload.lookahead_days, LP_PUBLIC_LOOKAHEAD_DAYS),
     1,
-    90,
+    LP_PUBLIC_LOOKAHEAD_DAYS,
   );
-  const slotConfig = normalizeAppointmentWindowConfig(funnel.slot_config);
 
   const busyRanges: Array<{ startMs: number; endMs: number }> = [];
   const now = new Date();
@@ -2580,16 +3125,47 @@ async function listPublicLandingSlots(
     timezone,
     appointment_type: appointmentType,
     duration_minutes: slotDurationMinutes,
-    slots: generateAvailableSlotsForType({
+    minimum_business_hours: LP_PUBLIC_MIN_LEAD_BUSINESS_HOURS,
+    slots: generatePublicLpSlots({
       now,
-      timeZone: timezone,
-      windowRule: slotConfig[appointmentType],
+      timezone,
       busyRanges,
-      slotMinutes: slotDurationMinutes,
       limit: slotLimit,
       lookaheadDays: slotLookaheadDays,
     }),
   };
+}
+
+async function syncTrackingBridgeBestEffort(input: {
+  serviceClient: ReturnType<typeof createClient>;
+  internalClientId: string;
+  internalDealId?: string | null;
+  stageCode: string;
+  linkedPublicOrgId: string;
+  linkedPublicUserId: string;
+  ownerUserId: string;
+  attributionSnapshot: Record<string, unknown>;
+}) {
+  try {
+    return await syncInternalCrmTrackingBridge({
+      supabase: input.serviceClient,
+      internalClientId: input.internalClientId,
+      internalDealId: input.internalDealId,
+      stageCode: input.stageCode,
+      linkedPublicOrgId: input.linkedPublicOrgId,
+      linkedPublicUserId: input.linkedPublicUserId,
+      ownerUserId: input.ownerUserId,
+      attributionSnapshot: input.attributionSnapshot,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      bridge: null,
+      publicLeadId: null,
+      skippedReason: 'bridge_sync_failed',
+      error_code: asString((error as Record<string, unknown>)?.code) || 'bridge_sync_failed',
+    };
+  }
 }
 
 async function handlePublicLpIntake(
@@ -2602,10 +3178,23 @@ async function handlePublicLpIntake(
   if (!ownerUserId) throw { status: 409, code: 'landing_funnel_incomplete' };
 
   const linkedPublicOrgId = asString(payload.linked_public_org_id) || asString(funnel.linked_public_org_id);
+  const formSessionId = asString(payload.form_session_id);
   const linkedPublicUserId =
     asString(payload.linked_public_user_id) ||
     asString(funnel.linked_public_user_id) ||
     ownerUserId;
+
+  let existingSession: Record<string, unknown> | null = null;
+  if (formSessionId) {
+    const { data, error } = await crmSchema(serviceClient)
+      .from('landing_form_sessions')
+      .select('internal_client_id, internal_deal_id')
+      .eq('form_session_id', formSessionId)
+      .maybeSingle();
+
+    if (error) throw { status: 500, code: 'landing_session_query_failed', error };
+    existingSession = data;
+  }
 
   const identity = buildServiceActorIdentity(ownerUserId);
   const trackingSnapshot = buildTrackingSnapshot(isRecord(payload.tracking) ? payload.tracking : null);
@@ -2614,21 +3203,29 @@ async function handlePublicLpIntake(
     owner_user_id: ownerUserId,
     linked_public_org_id: linkedPublicOrgId,
     linked_public_user_id: linkedPublicUserId,
+    existing_internal_client_id: asString(payload.existing_internal_client_id) || asString(existingSession?.internal_client_id),
+    existing_deal_id: asString(payload.existing_deal_id) || asString(existingSession?.internal_deal_id),
     tracking: trackingSnapshot,
     form_payload: mergeRecord(payload.form_payload, {
-      form_session_id: asString(payload.form_session_id),
+      form_session_id: formSessionId,
       funnel_slug: asString(payload.funnel_slug),
     }),
   }, req);
 
-  const bridge = linkedPublicOrgId && intakeResult.client?.id
-    ? await syncInternalCrmTrackingBridge({
-        supabase: serviceClient,
+  const resolvedLinkedPublicOrgId = linkedPublicOrgId || asString(intakeResult.client?.linked_public_org_id);
+  const resolvedLinkedPublicUserId =
+    linkedPublicUserId ||
+    asString(intakeResult.client?.linked_public_user_id) ||
+    ownerUserId;
+
+  const bridge = resolvedLinkedPublicOrgId && intakeResult.client?.id
+    ? await syncTrackingBridgeBestEffort({
+        serviceClient,
         internalClientId: String(intakeResult.client.id),
         internalDealId: asString(intakeResult.deal?.id),
         stageCode: asString(intakeResult.deal?.stage_code) || 'novo_lead',
-        linkedPublicOrgId,
-        linkedPublicUserId,
+        linkedPublicOrgId: resolvedLinkedPublicOrgId,
+        linkedPublicUserId: resolvedLinkedPublicUserId,
         ownerUserId,
         attributionSnapshot: trackingSnapshot,
       })
@@ -2637,8 +3234,8 @@ async function handlePublicLpIntake(
   return {
     ...intakeResult,
     bridge,
-    linked_public_org_id: linkedPublicOrgId,
-    linked_public_user_id: linkedPublicUserId,
+    linked_public_org_id: resolvedLinkedPublicOrgId,
+    linked_public_user_id: resolvedLinkedPublicUserId,
   };
 }
 
@@ -2663,15 +3260,9 @@ async function handlePublicLpBookSlot(
 
   const timezone = asString(payload.timezone) || asString(funnel.timezone) || 'America/Sao_Paulo';
   const appointmentTypeRaw = asString(payload.appointment_type) || asString(funnel.appointment_type) || 'call';
-  const appointmentWindowType = normalizeAppointmentTypeForWindow(appointmentTypeRaw);
-  const durationMinutes = clamp(
-    asNumber(payload.duration_minutes, asNumber(funnel.slot_duration_minutes, 30)),
-    5,
-    240,
-  );
-  const slotConfig = normalizeAppointmentWindowConfig(funnel.slot_config);
+  const durationMinutes = LP_PUBLIC_SLOT_MINUTES;
 
-  if (!isSlotWithinWindow(appointmentStartAt.toISOString(), appointmentWindowType, slotConfig, timezone, durationMinutes)) {
+  if (!isPublicLpSlotWithinWindow(appointmentStartAt.toISOString(), appointmentTypeRaw, timezone)) {
     throw { status: 409, code: 'slot_unavailable' };
   }
 
@@ -2701,6 +3292,18 @@ async function handlePublicLpBookSlot(
     throw { status: 409, code: 'slot_unavailable' };
   }
 
+  const availableSlots = generatePublicLpSlots({
+    now: new Date(),
+    timezone,
+    busyRanges,
+    limit: LP_PUBLIC_MAX_SLOTS,
+    lookaheadDays: LP_PUBLIC_LOOKAHEAD_DAYS,
+  });
+
+  if (!availableSlots.includes(appointmentStartAt.toISOString())) {
+    throw { status: 409, code: 'slot_unavailable' };
+  }
+
   const identity = buildServiceActorIdentity(ownerUserId);
   const trackingSnapshot = buildTrackingSnapshot(isRecord(payload.tracking) ? payload.tracking : null);
   const client = (await crmSchema(serviceClient)
@@ -2711,23 +3314,46 @@ async function handlePublicLpBookSlot(
 
   const title = asString(payload.title) || `Chamada ARKAN - ${asString(client?.company_name) || asString(client?.primary_contact_name) || 'Lead LP'}`;
   const meetingLink = asString(payload.meeting_link) || asString(funnel.meeting_link);
-  const appointmentResult = await upsertAppointment(serviceClient, identity, {
-    client_id: clientId,
-    deal_id: dealId,
-    owner_user_id: ownerUserId,
-    title,
-    appointment_type: appointmentTypeRaw,
-    status: 'scheduled',
-    start_at: appointmentStartAt.toISOString(),
-    end_at: appointmentEndAt.toISOString(),
-    location: meetingLink,
-    metadata: {
-      meeting_link: meetingLink,
-      form_session_id: asString(payload.form_session_id),
-      funnel_slug: asString(payload.funnel_slug),
-      timezone,
-    },
-  }, req);
+  let appointmentResult;
+  try {
+    appointmentResult = await upsertAppointment(serviceClient, identity, {
+      client_id: clientId,
+      deal_id: dealId,
+      owner_user_id: ownerUserId,
+      title,
+      appointment_type: appointmentTypeRaw,
+      status: 'scheduled',
+      start_at: appointmentStartAt.toISOString(),
+      end_at: appointmentEndAt.toISOString(),
+      location: meetingLink,
+      metadata: {
+        meeting_link: meetingLink,
+        form_session_id: asString(payload.form_session_id),
+        funnel_slug: asString(payload.funnel_slug),
+        timezone,
+      },
+    }, req);
+  } catch (error) {
+    const { data: existingAppointment } = await crmSchema(serviceClient)
+      .from('appointments')
+      .select('*')
+      .eq('owner_user_id', ownerUserId)
+      .eq('client_id', clientId)
+      .eq('deal_id', dealId)
+      .eq('start_at', appointmentStartAt.toISOString())
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!existingAppointment?.id) {
+      throw error;
+    }
+
+    appointmentResult = {
+      ok: true,
+      appointment: existingAppointment,
+    };
+  }
 
   let syncedAppointment = appointmentResult.appointment;
   let syncedEventLink: string | null = null;
@@ -2751,11 +3377,11 @@ async function handlePublicLpBookSlot(
     ownerUserId;
 
   const bridge = linkedPublicOrgId
-    ? await syncInternalCrmTrackingBridge({
-        supabase: serviceClient,
+    ? await syncTrackingBridgeBestEffort({
+        serviceClient,
         internalClientId: clientId,
         internalDealId: dealId,
-        stageCode: 'chamada_agendada',
+        stageCode: 'agendou_reuniao',
         linkedPublicOrgId,
         linkedPublicUserId,
         ownerUserId,
@@ -2766,7 +3392,7 @@ async function handlePublicLpBookSlot(
   return {
     ok: true,
     appointment: syncedAppointment,
-    stage_code: 'chamada_agendada',
+    stage_code: 'agendou_reuniao',
     meeting_link: syncedEventLink || meetingLink,
     bridge,
   };
@@ -2826,7 +3452,7 @@ async function upsertAppointment(
   const appointmentStageCode =
     data.status === 'no_show' ? 'nao_compareceu' :
     data.status === 'done' ? 'chamada_realizada' :
-    ['scheduled', 'confirmed'].includes(String(data.status || '')) ? 'chamada_agendada' : null;
+    ['scheduled', 'confirmed'].includes(String(data.status || '')) ? 'agendou_reuniao' : null;
 
   if (dealForAppointment?.id && appointmentStageCode) {
     await applyDealStageChange(schema, {
@@ -2908,6 +3534,35 @@ async function upsertAppointment(
   });
 
   return { ok: true, appointment: data };
+}
+
+async function deleteAppointment(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const appointmentId = asString(payload.appointment_id);
+  if (!appointmentId) throw { status: 400, code: 'missing_appointment_id' };
+
+  const schema = crmSchema(serviceClient);
+  const { data: existing } = await schema
+    .from('appointments')
+    .select('id, title, client_id')
+    .eq('id', appointmentId)
+    .maybeSingle();
+
+  if (!existing) throw { status: 404, code: 'appointment_not_found' };
+
+  const { error } = await schema.from('appointments').delete().eq('id', appointmentId);
+  if (error) throw { status: 500, code: 'delete_appointment_failed', error };
+
+  await writeAuditLog(serviceClient, identity, 'delete_appointment', req, {
+    appointment_id: appointmentId,
+    title: existing.title,
+  });
+
+  return { ok: true, deleted_appointment_id: appointmentId };
 }
 
 async function getGoogleCalendarStatus(
@@ -3879,6 +4534,191 @@ async function testAutomationRule(
   };
 }
 
+function compareRecordsByUpdatedAtDesc(left: Record<string, unknown>, right: Record<string, unknown>) {
+  const leftUpdatedAt = Date.parse(String(left.updated_at || '')) || 0;
+  const rightUpdatedAt = Date.parse(String(right.updated_at || '')) || 0;
+  return rightUpdatedAt - leftUpdatedAt;
+}
+
+function isClientInScope(
+  client: Record<string, unknown> | null,
+  linkedPublicOrgId: string | null,
+  ownerUserId: string | null,
+) {
+  if (!client?.id) return false;
+
+  const clientLinkedPublicOrgId = asString(client.linked_public_org_id);
+  const clientOwnerUserId = asString(client.owner_user_id);
+
+  if (linkedPublicOrgId) {
+    if (clientLinkedPublicOrgId === linkedPublicOrgId) return true;
+    return !clientLinkedPublicOrgId && Boolean(ownerUserId) && clientOwnerUserId === ownerUserId;
+  }
+
+  if (ownerUserId) {
+    return clientOwnerUserId === ownerUserId;
+  }
+
+  return false;
+}
+
+async function findScopedClientById(
+  schema: ReturnType<typeof crmSchema>,
+  clientId: string | null,
+  linkedPublicOrgId: string | null,
+  ownerUserId: string | null,
+) {
+  if (!clientId) return null;
+
+  const { data, error } = await schema.from('clients').select('*').eq('id', clientId).maybeSingle();
+  if (error) throw { status: 500, code: 'scoped_client_query_failed', error };
+
+  return isClientInScope(data as Record<string, unknown> | null, linkedPublicOrgId, ownerUserId)
+    ? (data as Record<string, unknown>)
+    : null;
+}
+
+async function queryScopedClientsByPrimaryField(
+  schema: ReturnType<typeof crmSchema>,
+  field: 'primary_phone' | 'primary_email',
+  value: string | null,
+  linkedPublicOrgId: string | null,
+  ownerUserId: string | null,
+) {
+  const normalizedValue = asString(value);
+  if (!normalizedValue) return [] as Array<Record<string, unknown>>;
+
+  if (linkedPublicOrgId) {
+    const { data, error } = await schema
+      .from('clients')
+      .select('*')
+      .eq(field, normalizedValue)
+      .eq('linked_public_org_id', linkedPublicOrgId)
+      .order('updated_at', { ascending: false })
+      .limit(10);
+
+    if (error) throw { status: 500, code: 'scoped_client_query_failed', error };
+    if ((data || []).length > 0) return (data || []) as Array<Record<string, unknown>>;
+  }
+
+  if (ownerUserId) {
+    let query = schema
+      .from('clients')
+      .select('*')
+      .eq(field, normalizedValue)
+      .eq('owner_user_id', ownerUserId);
+
+    if (linkedPublicOrgId) {
+      query = query.is('linked_public_org_id', null);
+    }
+
+    const { data, error } = await query
+      .order('updated_at', { ascending: false })
+      .limit(10);
+
+    if (error) throw { status: 500, code: 'scoped_client_query_failed', error };
+    return (data || []) as Array<Record<string, unknown>>;
+  }
+
+  return [] as Array<Record<string, unknown>>;
+}
+
+async function findScopedClientByPrimaryField(
+  schema: ReturnType<typeof crmSchema>,
+  field: 'primary_phone' | 'primary_email',
+  value: string | null,
+  linkedPublicOrgId: string | null,
+  ownerUserId: string | null,
+) {
+  const candidates = await queryScopedClientsByPrimaryField(schema, field, value, linkedPublicOrgId, ownerUserId);
+  return candidates.sort(compareRecordsByUpdatedAtDesc)[0] || null;
+}
+
+async function findScopedClientsByIds(
+  schema: ReturnType<typeof crmSchema>,
+  clientIds: string[],
+  linkedPublicOrgId: string | null,
+  ownerUserId: string | null,
+) {
+  const uniqueClientIds = Array.from(new Set(clientIds.filter(Boolean)));
+  if (uniqueClientIds.length === 0) return [] as Array<Record<string, unknown>>;
+
+  const { data, error } = await schema.from('clients').select('*').in('id', uniqueClientIds);
+  if (error) throw { status: 500, code: 'scoped_client_query_failed', error };
+
+  return ((data || []) as Array<Record<string, unknown>>)
+    .filter((client) => isClientInScope(client, linkedPublicOrgId, ownerUserId))
+    .sort(compareRecordsByUpdatedAtDesc);
+}
+
+async function findScopedClientByContactPhone(
+  schema: ReturnType<typeof crmSchema>,
+  phone: string | null,
+  linkedPublicOrgId: string | null,
+  ownerUserId: string | null,
+) {
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) return null;
+
+  const { data, error } = await schema
+    .from('client_contacts')
+    .select('client_id')
+    .eq('phone', normalizedPhone)
+    .order('updated_at', { ascending: false })
+    .limit(25);
+
+  if (error) throw { status: 500, code: 'scoped_client_query_failed', error };
+
+  const clientIds = (data || [])
+    .map((row) => asString(row.client_id))
+    .filter((value): value is string => Boolean(value));
+  const clients = await findScopedClientsByIds(schema, clientIds, linkedPublicOrgId, ownerUserId);
+  return clients[0] || null;
+}
+
+async function resolveScopedClient(
+  schema: ReturnType<typeof crmSchema>,
+  options: {
+    linkedPublicOrgId?: string | null;
+    ownerUserId?: string | null;
+    existingInternalClientId?: string | null;
+    primaryPhone?: string | null;
+    primaryEmail?: string | null;
+  },
+) {
+  const linkedPublicOrgId = asString(options.linkedPublicOrgId);
+  const ownerUserId = asString(options.ownerUserId);
+  const existingInternalClientId = asString(options.existingInternalClientId);
+  const primaryPhone = normalizePhone(options.primaryPhone);
+  const primaryEmail = asString(options.primaryEmail);
+
+  const clientById = await findScopedClientById(schema, existingInternalClientId, linkedPublicOrgId, ownerUserId);
+  if (clientById?.id) return clientById;
+
+  const clientByContactPhone = await findScopedClientByContactPhone(schema, primaryPhone, linkedPublicOrgId, ownerUserId);
+  if (clientByContactPhone?.id) return clientByContactPhone;
+
+  const clientByPrimaryPhone = await findScopedClientByPrimaryField(
+    schema,
+    'primary_phone',
+    primaryPhone,
+    linkedPublicOrgId,
+    ownerUserId,
+  );
+  if (clientByPrimaryPhone?.id) return clientByPrimaryPhone;
+
+  const clientByPrimaryEmail = await findScopedClientByPrimaryField(
+    schema,
+    'primary_email',
+    primaryEmail,
+    linkedPublicOrgId,
+    ownerUserId,
+  );
+  if (clientByPrimaryEmail?.id) return clientByPrimaryEmail;
+
+  return null;
+}
+
 async function intakeLandingLead(
   serviceClient: ReturnType<typeof createClient>,
   identity: AdminIdentity,
@@ -3892,6 +4732,7 @@ async function intakeLandingLead(
   const primaryEmail = asString(payload.primary_email) || asString(payload.email);
   const linkedPublicOrgId = asString(payload.linked_public_org_id);
   const linkedPublicUserId = asString(payload.linked_public_user_id);
+  const ownerUserId = asString(payload.owner_user_id) || identity.user_id;
   const trackingSnapshot = buildTrackingSnapshot(isRecord(payload.tracking) ? payload.tracking : null);
   const suppressAutomation = asBoolean(payload.suppress_automation, false);
   if (!companyName || !primaryPhone) throw { status: 400, code: 'invalid_payload' };
@@ -3899,38 +4740,59 @@ async function intakeLandingLead(
   const hasScheduledCall = asBoolean(payload.has_scheduled_call, Boolean(asString(payload.scheduled_at) || asString(payload.appointment_start_at)));
   const appointmentStartAt = asString(payload.scheduled_at) || asString(payload.appointment_start_at);
 
-  let client = null;
-  const contactLookup = await schema.from('client_contacts').select('*').eq('phone', primaryPhone).maybeSingle();
-  if (contactLookup.data?.client_id) {
-    client = (await schema.from('clients').select('*').eq('id', contactLookup.data.client_id).maybeSingle()).data;
-  }
-  if (!client?.id && primaryEmail) {
-    client = (await schema.from('clients').select('*').eq('primary_email', primaryEmail).maybeSingle()).data;
-  }
-  if (!client?.id) {
-    client = (await schema.from('clients').insert({
+  let client = await resolveScopedClient(schema, {
+    linkedPublicOrgId,
+    ownerUserId,
+    existingInternalClientId: asString(payload.existing_internal_client_id),
+    primaryPhone,
+    primaryEmail,
+  });
+  let shouldUpdateExistingClient = Boolean(client?.id);
+  if (!client?.id && !shouldUpdateExistingClient) {
+    const { data: createdClient, error: createClientError } = await schema.from('clients').insert({
       company_name: companyName,
       primary_contact_name: primaryContactName,
       primary_phone: primaryPhone,
       primary_email: primaryEmail,
       source_channel: 'landing_page',
-      owner_user_id: asString(payload.owner_user_id) || identity.user_id,
-      current_stage_code: hasScheduledCall ? 'chamada_agendada' : 'novo_lead',
+      owner_user_id: ownerUserId,
+      current_stage_code: hasScheduledCall ? 'agendou_reuniao' : 'novo_lead',
       lifecycle_status: 'lead',
       last_contact_at: nowIso(),
       linked_public_org_id: linkedPublicOrgId,
       linked_public_user_id: linkedPublicUserId,
       metadata: asRecord(payload.client_metadata),
-    }).select('*').single()).data;
-  } else {
+    }).select('*').single();
+
+    if (createClientError && !createdClient?.id) {
+      const recoveredClient = await resolveScopedClient(schema, {
+        linkedPublicOrgId,
+        ownerUserId,
+        existingInternalClientId: asString(payload.existing_internal_client_id),
+        primaryPhone,
+        primaryEmail,
+      });
+
+      if (recoveredClient?.id) {
+        client = recoveredClient;
+        shouldUpdateExistingClient = true;
+      } else {
+        throw { status: 500, code: 'landing_lead_client_upsert_failed', error: createClientError };
+      }
+    } else {
+      client = createdClient;
+    }
+  }
+
+  if (client?.id && shouldUpdateExistingClient) {
     client = (await schema.from('clients').update({
       company_name: companyName,
       primary_contact_name: primaryContactName,
       primary_phone: primaryPhone,
       primary_email: primaryEmail,
       source_channel: 'landing_page',
-      owner_user_id: asString(payload.owner_user_id) || asString(client.owner_user_id) || identity.user_id,
-      current_stage_code: hasScheduledCall ? 'chamada_agendada' : resolveBlueprintStageCode(client.current_stage_code, 'novo_lead'),
+      owner_user_id: ownerUserId || asString(client.owner_user_id) || identity.user_id,
+      current_stage_code: hasScheduledCall ? 'agendou_reuniao' : resolveBlueprintStageCode(client.current_stage_code, 'novo_lead'),
       linked_public_org_id: linkedPublicOrgId || asString(client.linked_public_org_id),
       linked_public_user_id: linkedPublicUserId || asString(client.linked_public_user_id),
       updated_at: nowIso(),
@@ -3942,14 +4804,25 @@ async function intakeLandingLead(
 
   await ensurePrimaryContactForClient(schema, client);
 
-  const existingDeal = (await schema
-    .from('deals')
-    .select('*')
-    .eq('client_id', client.id)
-    .eq('status', 'open')
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()).data;
+  const preferredDealId = asString(payload.existing_deal_id);
+  const preferredDeal = preferredDealId
+    ? (await schema
+      .from('deals')
+      .select('*')
+      .eq('id', preferredDealId)
+      .eq('client_id', client.id)
+      .maybeSingle()).data
+    : null;
+  const existingDeal = preferredDeal?.id && asString(preferredDeal.status) === 'open'
+    ? preferredDeal
+    : (await schema
+      .from('deals')
+      .select('*')
+      .eq('client_id', client.id)
+      .eq('status', 'open')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()).data;
 
   const dealCommercialContext = mergeRecord(existingDeal?.commercial_context, {
     source: 'landing_page',
@@ -3959,12 +4832,12 @@ async function intakeLandingLead(
     attribution: trackingSnapshot,
   });
 
-  const dealStageCode = hasScheduledCall ? 'chamada_agendada' : 'novo_lead';
+  const dealStageCode = hasScheduledCall ? 'agendou_reuniao' : 'novo_lead';
   const { data: deal, error: dealError } = await schema.from('deals').upsert({
     id: asString(payload.deal_id) || asString(existingDeal?.id) || undefined,
     client_id: client.id,
     title: asString(payload.deal_title) || `Oportunidade ARKAN - ${companyName}`,
-    owner_user_id: asString(payload.owner_user_id) || asString(existingDeal?.owner_user_id) || identity.user_id,
+    owner_user_id: ownerUserId || asString(existingDeal?.owner_user_id) || identity.user_id,
     stage_code: dealStageCode,
     status: resolveDealStatusForStage(dealStageCode, asString(existingDeal?.status) || 'open'),
     probability: resolveStageProbability(dealStageCode, asNumber(existingDeal?.probability, 0)),
@@ -3989,7 +4862,7 @@ async function intakeLandingLead(
     const { data: appointmentData, error: appointmentError } = await schema.from('appointments').insert({
       client_id: client.id,
       deal_id: deal.id,
-      owner_user_id: asString(payload.owner_user_id) || identity.user_id,
+      owner_user_id: ownerUserId,
       title: asString(payload.appointment_title) || `Chamada ARKAN - ${companyName}`,
       appointment_type: asString(payload.appointment_type) || 'call',
       status: 'scheduled',
@@ -4233,6 +5106,26 @@ async function getLinkedPublicOrgSummary(serviceClient: ReturnType<typeof create
   return Array.isArray(data) ? data[0] : data;
 }
 
+async function saveDealNotes(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const dealId = asString(payload.deal_id);
+  const notes = asString(payload.notes);
+  if (!dealId) throw { status: 400, code: 'invalid_payload' };
+
+  const { error } = await crmSchema(serviceClient)
+    .from('deals')
+    .update({ notes, updated_at: new Date().toISOString() })
+    .eq('id', dealId);
+  if (error) throw { status: 500, code: 'save_notes_failed', error };
+
+  await writeAuditLog(serviceClient, identity, 'save_deal_notes', req, { deal_id: dealId });
+  return { ok: true };
+}
+
 async function createDealCheckoutLink(
   serviceClient: ReturnType<typeof createClient>,
   identity: AdminIdentity,
@@ -4455,6 +5348,11 @@ async function provisionCustomer(
 
 async function handleWebhookInbound(serviceClient: ReturnType<typeof createClient>, body: Record<string, unknown>) {
   const schema = crmSchema(serviceClient);
+  const event = (
+    asString(body.event) ||
+    asString(asRecord(body.data).event) ||
+    ''
+  ).toUpperCase();
   const instanceName =
     asString(body.instance) ||
     asString(body.instanceName) ||
@@ -4468,6 +5366,47 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
   const { data: instance } = await schema.from('whatsapp_instances').select('*').eq('instance_name', instanceName).maybeSingle();
   if (!instance?.id) {
     return { ok: true, ignored: true, reason: 'instance_not_found' };
+  }
+
+  const eventData = isRecord(body.data) ? body.data : body;
+
+  if (event === 'QRCODE_UPDATED') {
+    const qrCode = extractInternalInstanceQrCode(eventData) || extractInternalInstanceQrCode(body);
+
+    await schema
+      .from('whatsapp_instances')
+      .update({
+        qr_code_base64: qrCode,
+        status: 'connecting',
+        updated_at: nowIso(),
+      })
+      .eq('id', instance.id);
+
+    return { ok: true, event, instance_id: instance.id };
+  }
+
+  if (event === 'CONNECTION_UPDATE') {
+    const nextStatus = normalizeInternalCrmInstanceStatus(
+      extractInternalInstanceState(eventData) || extractInternalInstanceState(body),
+    );
+    const phoneNumber = nextStatus === 'connected'
+      ? extractInternalInstancePhoneNumber(eventData) || extractInternalInstancePhoneNumber(body)
+      : null;
+    const nextQrCode = nextStatus === 'connecting'
+      ? extractInternalInstanceQrCode(eventData) || extractInternalInstanceQrCode(body) || asString(instance.qr_code_base64)
+      : null;
+
+    await schema
+      .from('whatsapp_instances')
+      .update({
+        status: nextStatus,
+        phone_number: phoneNumber,
+        qr_code_base64: nextQrCode,
+        updated_at: nowIso(),
+      })
+      .eq('id', instance.id);
+
+    return { ok: true, event, instance_id: instance.id, status: nextStatus };
   }
 
   const messageNode = isRecord(body.data) ? body.data : body;
@@ -4490,30 +5429,96 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     return { ok: true, ignored: true, reason: 'missing_phone_or_body' };
   }
 
-  const contactLookup = await schema.from('client_contacts').select('*').eq('phone', phone).maybeSingle();
-  let client = null;
-  let contact = contactLookup.data;
-  if (contact?.client_id) {
-    client = (await schema.from('clients').select('*').eq('id', contact.client_id).maybeSingle()).data;
+  const ownerUserId = asString(instance.owner_user_id);
+
+  // --- FIX: Lookup by phone globally first (without owner scope) to prevent duplicates ---
+  let client: Record<string, unknown> | null = null;
+
+  // 1. Direct lookup by primary_phone (no owner filter)
+  const { data: clientByPhone } = await schema
+    .from('clients')
+    .select('*')
+    .eq('primary_phone', phone)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (clientByPhone?.id) {
+    client = clientByPhone;
+  } else {
+    // 2. Lookup via client_contacts.phone (no owner filter)
+    const { data: contactByPhone } = await schema
+      .from('client_contacts')
+      .select('client_id')
+      .eq('phone', phone)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (contactByPhone?.client_id) {
+      const { data: clientByContact } = await schema
+        .from('clients')
+        .select('*')
+        .eq('id', String(contactByPhone.client_id))
+        .maybeSingle();
+      if (clientByContact?.id) client = clientByContact;
+    }
   }
 
+  // 3. Fallback: scoped lookup (original behavior)
   if (!client?.id) {
-    const directClient = await schema.from('clients').select('*').eq('primary_phone', phone).maybeSingle();
-    client = directClient.data;
+    client = await resolveScopedClient(schema, {
+      ownerUserId,
+      primaryPhone: phone,
+    });
   }
 
+  // 4. Create new client only if truly not found — use pushName from WhatsApp payload
   if (!client?.id) {
+    const pushName =
+      asString((messageNode as Record<string, unknown>).pushName) ||
+      asString(((messageNode as Record<string, unknown>).key as Record<string, unknown> | undefined)?.pushName) ||
+      asString(body.pushName) ||
+      asString((body.data as Record<string, unknown> | undefined)?.pushName);
+    const displayName = pushName || phone;
+
     const createdClient = await schema.from('clients').insert({
-      company_name: `Lead ${phone}`,
-      primary_contact_name: `Contato ${phone}`,
+      company_name: displayName,
+      primary_contact_name: displayName,
       primary_phone: phone,
       source_channel: 'whatsapp',
-      owner_user_id: null,
+      owner_user_id: ownerUserId,
       current_stage_code: 'novo_lead',
       lifecycle_status: 'lead',
       last_contact_at: nowIso(),
     }).select('*').single();
+
+    if (createdClient.error || !createdClient.data?.id) {
+      throw { status: 500, code: 'webhook_client_upsert_failed', error: createdClient.error };
+    }
+
     client = createdClient.data;
+  }
+
+  let contact = null;
+  if (client?.id) {
+    contact = (await schema
+      .from('client_contacts')
+      .select('*')
+      .eq('client_id', client.id)
+      .eq('phone', phone)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()).data;
+
+    if (!contact?.id) {
+      contact = (await schema
+        .from('client_contacts')
+        .select('*')
+        .eq('client_id', client.id)
+        .eq('is_primary', true)
+        .maybeSingle()).data;
+    }
   }
 
   if (!contact?.id) {
@@ -4525,6 +5530,11 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
       role_label: 'Contato principal',
       is_primary: true,
     }).select('*').single();
+
+    if (createdContact.error || !createdContact.data?.id) {
+      throw { status: 500, code: 'webhook_contact_insert_failed', error: createdContact.error };
+    }
+
     contact = createdContact.data;
   }
 
@@ -4533,10 +5543,19 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     .select('*')
     .eq('client_id', client.id)
     .eq('whatsapp_instance_id', instance.id)
-    .eq('status', 'open')
+    .in('status', ['open', 'resolved'])
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle()).data;
+
+  // Reopen resolved conversation on new inbound message
+  if (conversation?.id && conversation.status === 'resolved') {
+    await schema.from('conversations').update({
+      status: 'open',
+      updated_at: nowIso(),
+    }).eq('id', conversation.id);
+    conversation.status = 'open';
+  }
 
   if (!conversation?.id) {
     conversation = (await schema.from('conversations').insert({
@@ -5147,6 +6166,63 @@ async function processAutomationRuns(serviceClient: ReturnType<typeof createClie
   return processAutomationRunsWithOptions(serviceClient, {});
 }
 
+async function checkAutomationHealth(serviceClient: ReturnType<typeof createClient>) {
+  const schema = crmSchema(serviceClient);
+
+  // 1. Connected WhatsApp instance?
+  const { data: inst } = await schema
+    .from('whatsapp_instances')
+    .select('id, status, display_name')
+    .eq('status', 'connected')
+    .limit(1)
+    .maybeSingle();
+
+  // 2. Pending runs count
+  const { count: pendingCount } = await schema
+    .from('automation_runs')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'pending');
+
+  // 3. Failed runs last 24h
+  const since24h = new Date(Date.now() - 86_400_000).toISOString();
+  const { count: failedCount } = await schema
+    .from('automation_runs')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'failed')
+    .gte('processed_at', since24h);
+
+  // 4. Last processed run
+  const { data: lastRun } = await schema
+    .from('automation_runs')
+    .select('processed_at')
+    .not('processed_at', 'is', null)
+    .order('processed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // 5. Check Evolution API reachable
+  let evolutionReachable = false;
+  try {
+    const { baseUrl, apiKey } = getEvolutionEnv();
+    const resp = await fetch(`${baseUrl}/instance/fetchInstances`, {
+      headers: { apikey: apiKey },
+    });
+    evolutionReachable = resp.ok;
+  } catch {
+    // unreachable
+  }
+
+  return {
+    ok: true,
+    whatsapp_connected: !!inst?.id,
+    whatsapp_instance_name: inst?.display_name || null,
+    evolution_api_reachable: evolutionReachable,
+    pending_runs_count: pendingCount || 0,
+    failed_runs_last_24h: failedCount || 0,
+    last_processed_at: lastRun?.processed_at || null,
+  };
+}
+
 async function executeBroadcastAssistantJob(
   serviceClient: ReturnType<typeof createClient>,
   job: Record<string, unknown>,
@@ -5544,12 +6620,22 @@ async function dispatchUserAction(
       return await getClientDetail(serviceClient, payload);
     case 'upsert_client':
       return await upsertClient(serviceClient, identity, payload, req);
+    case 'delete_client':
+      return await deleteClient(serviceClient, identity, payload, req);
+    case 'list_client_notes':
+      return await listClientNotes(serviceClient, payload);
+    case 'add_client_note':
+      return await addClientNote(serviceClient, identity, payload);
+    case 'delete_client_note':
+      return await deleteClientNote(serviceClient, payload);
     case 'list_deals':
       return { ok: true, deals: await listDeals(serviceClient, payload) };
     case 'upsert_deal':
       return await upsertDeal(serviceClient, identity, payload, req);
     case 'move_deal_stage':
       return await moveDealStage(serviceClient, identity, payload, req);
+    case 'save_deal_notes':
+      return await saveDealNotes(serviceClient, identity, payload, req);
     case 'create_deal_checkout_link':
       return await createDealCheckoutLink(serviceClient, identity, payload, req);
     case 'list_tasks':
@@ -5568,6 +6654,8 @@ async function dispatchUserAction(
       return { ok: true, settings: await getAutomationSettings(serviceClient) };
     case 'upsert_automation_settings':
       return await upsertAutomationSettings(serviceClient, identity, payload, req);
+    case 'check_automation_health':
+      return await checkAutomationHealth(serviceClient);
     case 'update_deal_commercial_state':
       return await updateDealCommercialState(serviceClient, identity, payload, req);
     case 'intake_landing_lead':
@@ -5578,6 +6666,12 @@ async function dispatchUserAction(
       return await upsertInstance(serviceClient, identity, payload, req);
     case 'connect_instance':
       return await connectInstance(serviceClient, identity, payload, req);
+    case 'get_instance_status':
+      return await getInstanceStatus(serviceClient, payload);
+    case 'disconnect_instance':
+      return await disconnectInstance(serviceClient, identity, payload, req);
+    case 'delete_instance':
+      return await deleteInstance(serviceClient, identity, payload, req);
     case 'list_conversations':
       return { ok: true, conversations: await listConversations(serviceClient, payload) };
     case 'get_conversation_detail':
@@ -5596,6 +6690,10 @@ async function dispatchUserAction(
       return await updateCampaignStatus(serviceClient, identity, payload, req);
     case 'run_campaign_batch':
       return await runCampaignBatch(serviceClient, identity, payload, req);
+    case 'delete_campaign':
+      return await deleteCampaign(serviceClient, identity, payload, req);
+    case 'list_campaign_recipients':
+      return await listCampaignRecipients(serviceClient, payload);
     case 'list_ai_settings':
       return { ok: true, settings: await listAiSettings(serviceClient) };
     case 'upsert_ai_settings':
@@ -5610,6 +6708,8 @@ async function dispatchUserAction(
       return { ok: true, appointments: await listAppointments(serviceClient, payload) };
     case 'upsert_appointment':
       return await upsertAppointment(serviceClient, identity, payload, req);
+    case 'delete_appointment':
+      return await deleteAppointment(serviceClient, identity, payload, req);
     case 'get_google_calendar_status':
       return await getGoogleCalendarStatus(serviceClient, identity);
     case 'get_google_calendar_oauth_url':

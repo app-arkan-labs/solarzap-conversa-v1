@@ -4,6 +4,9 @@ import {
   useInternalCrmClients,
   useInternalCrmMutation,
 } from '@/modules/internal-crm/hooks/useInternalCrmApi';
+import type { InternalCrmClientNote } from '@/modules/internal-crm/types';
+import { useQuery } from '@tanstack/react-query';
+import { invokeInternalCrmApi } from '@/modules/internal-crm/hooks/useInternalCrmApi';
 
 export type InternalCrmClientsFilters = {
   search?: string;
@@ -29,6 +32,10 @@ export function useInternalCrmClientsModule(selectedClientId: string | null, fil
     invalidate: [internalCrmQueryKeys.clients({})],
   });
 
+  const deleteClientMutation = useInternalCrmMutation({
+    invalidate: [internalCrmQueryKeys.clients({})],
+  });
+
   const upsertTaskMutation = useInternalCrmMutation({
     invalidate: selectedClientId
       ? [internalCrmQueryKeys.clientDetail(selectedClientId), internalCrmQueryKeys.dashboard({})]
@@ -51,12 +58,38 @@ export function useInternalCrmClientsModule(selectedClientId: string | null, fil
       : [internalCrmQueryKeys.clients({}), internalCrmQueryKeys.dashboard({})],
   });
 
+  const notesQuery = useQuery({
+    queryKey: ['internal-crm', 'client_notes', selectedClientId],
+    queryFn: () =>
+      invokeInternalCrmApi<{ ok: true; notes: InternalCrmClientNote[] }>({
+        action: 'list_client_notes',
+        client_id: selectedClientId,
+      }),
+    enabled: !!selectedClientId,
+  });
+
+  const addNoteMutation = useInternalCrmMutation({
+    invalidate: selectedClientId
+      ? [['internal-crm', 'client_notes', selectedClientId]]
+      : [],
+  });
+
+  const deleteNoteMutation = useInternalCrmMutation({
+    invalidate: selectedClientId
+      ? [['internal-crm', 'client_notes', selectedClientId]]
+      : [],
+  });
+
   return {
     clientsQuery,
     clientDetailQuery,
     upsertClientMutation,
+    deleteClientMutation,
     upsertTaskMutation,
     checkoutMutation,
     provisionMutation,
+    notesQuery,
+    addNoteMutation,
+    deleteNoteMutation,
   };
 }

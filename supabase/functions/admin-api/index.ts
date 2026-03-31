@@ -45,6 +45,7 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FLAG_KEY_REGEX = /^[a-z][a-z0-9_]*$/;
+const TRUSTED_ADMIN_ORIGINS = ['https://adm.solarzap.com.br', 'https://admin.solarzap.com.br'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -250,6 +251,23 @@ function parseAllowedOrigins(raw: string): string[] {
     .filter((item) => item.length > 0);
 }
 
+function normalizeOrigin(value: string): string {
+  return value.trim().replace(/\/+$/, '');
+}
+
+function resolveAllowedOriginsFromEnv(): string[] {
+  const allowlistCsv = parseAllowedOrigins((Deno.env.get('ALLOWED_ORIGINS') || '').trim());
+  const legacyAllowlist = parseAllowedOrigins((Deno.env.get('ALLOWED_ORIGIN') || '').trim());
+
+  return Array.from(
+    new Set(
+      [...allowlistCsv, ...legacyAllowlist, ...TRUSTED_ADMIN_ORIGINS]
+        .map((item) => normalizeOrigin(item))
+        .filter((item) => item.length > 0),
+    ),
+  );
+}
+
 function tryParseOrigin(value: string): URL | null {
   try {
     return new URL(value);
@@ -263,7 +281,7 @@ function isLoopbackHost(hostname: string): boolean {
 }
 
 function resolveAllowedOrigin(req: Request, allowed: string[]): string | null {
-  const requestOrigin = (req.headers.get('origin') || '').trim();
+  const requestOrigin = normalizeOrigin((req.headers.get('origin') || '').trim());
   if (!requestOrigin) {
     return allowed[0] ?? null;
   }
@@ -1799,7 +1817,7 @@ async function dispatchAction(
 Deno.serve(async (req) => {
   const requestId = req.headers.get('x-request-id')?.trim() || crypto.randomUUID();
   const requestOrigin = req.headers.get('origin')?.trim() || null;
-  const allowedOrigins = parseAllowedOrigins((Deno.env.get('ALLOWED_ORIGIN') || '').trim());
+  const allowedOrigins = resolveAllowedOriginsFromEnv();
   if (allowedOrigins.length === 0) {
     logAccessDecision('error', {
       origin: requestOrigin,

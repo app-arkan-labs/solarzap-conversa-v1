@@ -1,83 +1,81 @@
 import { useState } from 'react';
-import { Ban, Loader2, Megaphone, PauseCircle, Pencil, PlayCircle, Send } from 'lucide-react';
+import { Ban, Clock, Loader2, Megaphone, PauseCircle, PlayCircle, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/solarzap/PageHeader';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useToast } from '@/hooks/use-toast';
 import {
-  InternalCrmCampaignModal,
-  type InternalCrmCampaignSavePayload,
-} from '@/modules/internal-crm/components/campaigns/InternalCrmCampaignModal';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { useToast } from '@/hooks/use-toast';
+import { formatBroadcastInterval } from '@/utils/broadcastTimer';
+import { InternalCrmCampaignModal } from '@/modules/internal-crm/components/campaigns/InternalCrmCampaignModal';
 import { InternalCrmCampaignStatusPanel } from '@/modules/internal-crm/components/campaigns/InternalCrmCampaignStatusPanel';
-import { TokenBadge, formatDateTime } from '@/modules/internal-crm/components/InternalCrmUi';
+import { InternalCrmCampaignSummaryCards } from '@/modules/internal-crm/components/campaigns/InternalCrmCampaignSummaryCards';
 import { useInternalCrmCampaignsModule } from '@/modules/internal-crm/hooks/useInternalCrmCampaigns';
 import type { InternalCrmCampaign } from '@/modules/internal-crm/types';
 
+const STATUS_MAP: Record<InternalCrmCampaign['status'], { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; className?: string }> = {
+  draft: { label: 'Rascunho', variant: 'secondary' },
+  running: { label: 'Enviando', variant: 'default', className: 'bg-blue-600 hover:bg-blue-700' },
+  paused: { label: 'Pausada', variant: 'outline', className: 'border-amber-500 text-amber-600' },
+  completed: { label: 'Concluída', variant: 'default', className: 'bg-emerald-600 hover:bg-emerald-700' },
+  canceled: { label: 'Cancelada', variant: 'destructive' },
+};
+
 export function InternalCrmCampaignsView() {
   const { toast } = useToast();
-  const campaignsModule = useInternalCrmCampaignsModule();
+  const mod = useInternalCrmCampaignsModule();
 
-  const campaigns = campaignsModule.campaignsQuery.data?.campaigns || [];
-  const instances = campaignsModule.instancesQuery.data?.instances || [];
+  const campaigns = mod.campaignsQuery.data?.campaigns || [];
+  const instances = mod.instancesQuery.data?.instances || [];
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<InternalCrmCampaign | null>(null);
-  const [batchCampaignId, setBatchCampaignId] = useState<string | null>(null);
-
-  async function handleSaveCampaign(payload: InternalCrmCampaignSavePayload) {
-    try {
-      await campaignsModule.upsertCampaignMutation.mutateAsync({
-        action: 'upsert_campaign',
-        ...payload,
-      });
-
-      toast({ title: 'Campanha salva', description: 'A campanha foi atualizada com sucesso.' });
-      setModalOpen(false);
-      setEditingCampaign(null);
-    } catch {
-      toast({
-        title: 'Falha ao salvar',
-        description: 'Nao foi possivel salvar a campanha.',
-        variant: 'destructive',
-      });
-    }
-  }
+  const [detailCampaign, setDetailCampaign] = useState<InternalCrmCampaign | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<InternalCrmCampaign | null>(null);
 
   async function handleUpdateStatus(campaignId: string, status: InternalCrmCampaign['status']) {
     try {
-      await campaignsModule.updateCampaignStatusMutation.mutateAsync({
+      await mod.updateCampaignStatusMutation.mutateAsync({
         action: 'update_campaign_status',
         campaign_id: campaignId,
         status,
       });
-
-      toast({ title: 'Status atualizado', description: `Campanha alterada para ${status}.` });
+      if (status === 'running') {
+        await mod.runCampaignBatchMutation.mutateAsync({
+          action: 'run_campaign_batch',
+          campaign_id: campaignId,
+          batch_size: 20,
+        });
+      }
+      const labels: Record<string, string> = { running: 'iniciada', paused: 'pausada', canceled: 'cancelada' };
+      toast({ title: `Campanha ${labels[status] || 'atualizada'}` });
     } catch {
-      toast({
-        title: 'Falha ao atualizar status',
-        description: 'Nao foi possivel mudar o status da campanha.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro ao atualizar status', variant: 'destructive' });
     }
   }
 
-  async function handleRunBatch(campaignId: string) {
-    setBatchCampaignId(campaignId);
+  async function handleDelete() {
+    if (!deleteTarget) return;
     try {
-      await campaignsModule.runCampaignBatchMutation.mutateAsync({
-        action: 'run_campaign_batch',
-        campaign_id: campaignId,
-        batch_size: 20,
+      await mod.deleteCampaignMutation.mutateAsync({
+        action: 'delete_campaign',
+        campaign_id: deleteTarget.id,
       });
-      toast({ title: 'Batch executado', description: 'Lote enviado para o worker interno.' });
+      toast({ title: 'Campanha excluída' });
     } catch {
-      toast({
-        title: 'Falha ao executar lote',
-        description: 'Nao foi possivel iniciar o envio agora.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro ao excluir campanha', variant: 'destructive' });
     } finally {
-      setBatchCampaignId(null);
+      setDeleteTarget(null);
     }
   }
 
@@ -85,126 +83,119 @@ export function InternalCrmCampaignsView() {
     <div className="space-y-6">
       <PageHeader
         title="Campanhas"
-        subtitle="Outbound, reativacao e upsell no WhatsApp interno da operacao comercial."
+        subtitle="Disparos em massa no WhatsApp da operação comercial."
         icon={Megaphone}
         actionContent={
-          <Button
-            onClick={() => {
-              setEditingCampaign(null);
-              setModalOpen(true);
-            }}
-          >
-            Nova campanha
+          <Button onClick={() => { setEditingCampaign(null); setModalOpen(true); }}>
+            Nova Campanha
           </Button>
         }
       />
 
-      <InternalCrmCampaignStatusPanel campaigns={campaigns} />
+      <InternalCrmCampaignSummaryCards campaigns={campaigns} />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2">
         {campaigns.length === 0 ? (
-          <Card className="md:col-span-2 xl:col-span-3">
+          <Card className="lg:col-span-2">
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              Nenhuma campanha criada ainda. Use "Nova campanha" para iniciar.
+              Nenhuma campanha criada ainda. Clique em "Nova Campanha" para começar.
             </CardContent>
           </Card>
         ) : (
-          campaigns.map((campaign) => {
-            const isBatchRunning = batchCampaignId === campaign.id;
-            const isStatusPending = campaignsModule.updateCampaignStatusMutation.isPending;
+          campaigns.map((c) => {
+            const total = c.recipients_total || 0;
+            const sent = c.recipients_sent || c.sent_count || 0;
+            const failed = c.recipients_failed || c.failed_count || 0;
+            const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
+            const s = STATUS_MAP[c.status];
+            const isPending = mod.updateCampaignStatusMutation.isPending;
 
             return (
-              <Card key={campaign.id}>
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center justify-between gap-2 text-base">
-                    <span className="line-clamp-1">{campaign.name}</span>
-                    <TokenBadge token={campaign.status} />
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-sm">
-                  <p className="text-muted-foreground">
-                    {campaign.messages.length} mensagem(ns) prontas.
-                  </p>
+              <Card key={c.id} className="overflow-hidden">
+                <CardContent className="p-4 space-y-3">
+                  {/* Header: name + badge */}
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-semibold text-sm line-clamp-1">{c.name}</h3>
+                    <Badge variant={s.variant} className={s.className}>{s.label}</Badge>
+                  </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg border border-border/70 p-2">
-                      <p className="text-muted-foreground">Total</p>
-                      <p className="text-base font-semibold">{campaign.recipients_total || 0}</p>
+                  {/* Progress */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{sent} de {total} enviadas</span>
+                      <span>{pct}%</span>
                     </div>
-                    <div className="rounded-lg border border-border/70 p-2">
-                      <p className="text-muted-foreground">Pendentes</p>
-                      <p className="text-base font-semibold">{campaign.recipients_pending || 0}</p>
+                    <Progress value={pct} className="h-2" />
+                  </div>
+
+                  {/* Metrics grid */}
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="rounded-lg border p-2">
+                      <p className="text-muted-foreground">Enviadas</p>
+                      <p className="text-base font-bold text-emerald-600">{sent}</p>
                     </div>
-                    <div className="rounded-lg border border-border/70 p-2">
-                      <p className="text-muted-foreground">Enviados</p>
-                      <p className="text-base font-semibold text-emerald-600">
-                        {campaign.recipients_sent || campaign.sent_count || 0}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border/70 p-2">
+                    <div className="rounded-lg border p-2">
                       <p className="text-muted-foreground">Falhas</p>
-                      <p className="text-base font-semibold text-rose-600">
-                        {campaign.recipients_failed || campaign.failed_count || 0}
+                      <p className="text-base font-bold text-rose-600">{failed}</p>
+                    </div>
+                    <div className="rounded-lg border p-2">
+                      <p className="text-muted-foreground">Timer</p>
+                      <p className="text-base font-bold flex items-center justify-center gap-1">
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                        {formatBroadcastInterval(c.interval_seconds ?? 15)}
                       </p>
                     </div>
                   </div>
 
-                  <p className="text-xs text-muted-foreground">Atualizada em {formatDateTime(campaign.updated_at)}</p>
+                  {/* Actions */}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button variant="outline" size="sm" onClick={() => setDetailCampaign(c)}>
+                      Detalhes
+                    </Button>
 
-                  <div className="flex flex-wrap gap-2">
-                    {campaign.status === 'running' ? (
+                    {c.status === 'draft' || c.status === 'paused' ? (
                       <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isStatusPending}
-                        onClick={() => void handleUpdateStatus(campaign.id, 'paused')}
+                        variant="outline" size="sm"
+                        disabled={isPending}
+                        onClick={() => void handleUpdateStatus(c.id, 'running')}
                       >
-                        <PauseCircle className="mr-2 h-4 w-4" />
+                        {mod.runCampaignBatchMutation.isPending ? (
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <PlayCircle className="mr-1.5 h-3.5 w-3.5" />
+                        )}
+                        {c.status === 'paused' ? 'Retomar' : 'Iniciar'}
+                      </Button>
+                    ) : c.status === 'running' ? (
+                      <Button
+                        variant="outline" size="sm"
+                        disabled={isPending}
+                        onClick={() => void handleUpdateStatus(c.id, 'paused')}
+                      >
+                        <PauseCircle className="mr-1.5 h-3.5 w-3.5" />
                         Pausar
                       </Button>
-                    ) : (
+                    ) : null}
+
+                    {c.status === 'running' && (
                       <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isStatusPending || campaign.status === 'canceled'}
-                        onClick={() => void handleUpdateStatus(campaign.id, 'running')}
+                        variant="ghost" size="sm"
+                        disabled={isPending}
+                        onClick={() => void handleUpdateStatus(c.id, 'canceled')}
                       >
-                        <PlayCircle className="mr-2 h-4 w-4" />
-                        Iniciar
+                        <Ban className="mr-1.5 h-3.5 w-3.5" />
+                        Cancelar
                       </Button>
                     )}
 
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isBatchRunning || campaign.status === 'canceled'}
-                      onClick={() => void handleRunBatch(campaign.id)}
-                    >
-                      {isBatchRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                      Rodar lote
-                    </Button>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setEditingCampaign(campaign);
-                        setModalOpen(true);
-                      }}
-                    >
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Editar
-                    </Button>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={campaign.status === 'canceled' || isStatusPending}
-                      onClick={() => void handleUpdateStatus(campaign.id, 'canceled')}
-                    >
-                      <Ban className="mr-2 h-4 w-4" />
-                      Cancelar
-                    </Button>
+                    {(c.status === 'draft' || c.status === 'completed' || c.status === 'canceled') && (
+                      <Button variant="ghost" size="sm" className="text-rose-600 hover:text-rose-700"
+                        onClick={() => setDeleteTarget(c)}
+                      >
+                        <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                        Excluir
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -213,17 +204,51 @@ export function InternalCrmCampaignsView() {
         )}
       </div>
 
+      {/* Campaign wizard modal */}
       <InternalCrmCampaignModal
         open={modalOpen}
-        onOpenChange={(open) => {
-          setModalOpen(open);
-          if (!open) setEditingCampaign(null);
-        }}
+        onOpenChange={(open) => { setModalOpen(open); if (!open) setEditingCampaign(null); }}
         campaign={editingCampaign}
         instances={instances}
-        isSubmitting={campaignsModule.upsertCampaignMutation.isPending}
-        onSave={handleSaveCampaign}
+        isSubmitting={mod.upsertCampaignMutation.isPending}
+        onSave={async (payload) => {
+          try {
+            await mod.upsertCampaignMutation.mutateAsync({ action: 'upsert_campaign', ...payload });
+            toast({ title: 'Campanha salva' });
+            setModalOpen(false);
+            setEditingCampaign(null);
+          } catch {
+            toast({ title: 'Falha ao salvar campanha', variant: 'destructive' });
+          }
+        }}
       />
+
+      {/* Detail / status panel */}
+      <InternalCrmCampaignStatusPanel
+        campaign={detailCampaign}
+        open={!!detailCampaign}
+        onOpenChange={(open) => { if (!open) setDetailCampaign(null); }}
+        onUpdateStatus={handleUpdateStatus}
+      />
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir campanha?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A campanha <strong>{deleteTarget?.name}</strong> e todos os seus destinatários serão
+              removidos permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-rose-600 hover:bg-rose-700">
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

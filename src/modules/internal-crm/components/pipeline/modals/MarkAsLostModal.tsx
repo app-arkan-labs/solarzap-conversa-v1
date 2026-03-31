@@ -21,10 +21,10 @@ export function MarkAsLostModal(props: MarkAsLostModalProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
-            Marcar como nao fechou
+            Marcar como Não Fechou
           </DialogTitle>
           <DialogDescription>
-            Informe o motivo comercial para o deal {props.dealTitle || 'selecionado'}.
+            Informe o motivo para o lead {props.dealTitle || 'selecionado'}.
           </DialogDescription>
         </DialogHeader>
 
@@ -34,7 +34,7 @@ export function MarkAsLostModal(props: MarkAsLostModalProps) {
             rows={4}
             value={props.lostReason}
             onChange={(event) => props.onLostReasonChange(event.target.value)}
-            placeholder="Ex: orcamento fora da faixa, concorrente mais barato, timing inadequado"
+            placeholder="Ex: orçamento alto, concorrente, sem interesse no momento"
           />
         </div>
 

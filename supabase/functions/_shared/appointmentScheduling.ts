@@ -243,6 +243,51 @@ export function generateAvailableSlotsForType(params: {
   return results;
 }
 
+export function resolveMinimumLeadSlotStart(params: {
+  now: Date;
+  timeZone: string;
+  windowRules: AppointmentWindowRule[];
+  minLeadHours?: number;
+  slotMinutes?: number;
+  lookaheadDays?: number;
+}): string | null {
+  const {
+    now,
+    timeZone,
+    windowRules,
+    minLeadHours = 0,
+    slotMinutes = 30,
+    lookaheadDays = 14,
+  } = params;
+
+  const requiredSlots = Math.max(0, Math.ceil((minLeadHours * 60) / slotMinutes));
+  if (requiredSlots < 1) return null;
+
+  const futureSlots: string[] = [];
+  const seen = new Set<string>();
+
+  for (const windowRule of windowRules) {
+    const generated = generateAvailableSlotsForType({
+      now,
+      timeZone,
+      windowRule,
+      busyRanges: [],
+      slotMinutes,
+      limit: requiredSlots,
+      lookaheadDays,
+    });
+
+    for (const slot of generated) {
+      if (seen.has(slot)) continue;
+      seen.add(slot);
+      futureSlots.push(slot);
+    }
+  }
+
+  const sortedSlots = futureSlots.sort();
+  return sortedSlots[requiredSlots - 1] || null;
+}
+
 export function isSlotWithinWindow(
   slotIso: string,
   type: AppointmentWindowType,

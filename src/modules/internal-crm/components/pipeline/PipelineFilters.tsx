@@ -21,7 +21,7 @@ export function PipelineFilters(props: PipelineFiltersProps) {
         <Input
           value={props.search}
           onChange={(event) => props.onSearchChange(event.target.value)}
-          placeholder="Buscar por deal ou empresa..."
+          placeholder="Buscar lead ou empresa..."
           className="pl-9"
         />
       </div>
@@ -47,8 +47,8 @@ export function PipelineFilters(props: PipelineFiltersProps) {
         <SelectContent>
           <SelectItem value="all">Todos os status</SelectItem>
           <SelectItem value="open">Abertos</SelectItem>
-          <SelectItem value="won">Fechou</SelectItem>
-          <SelectItem value="lost">Nao fechou</SelectItem>
+          <SelectItem value="won">Fechou Contrato</SelectItem>
+          <SelectItem value="lost">Não Fechou</SelectItem>
         </SelectContent>
       </Select>
     </div>

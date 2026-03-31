@@ -46,6 +46,7 @@ type ConversionEventRow = {
   event_value: number | null;
   event_currency: string | null;
   occurred_at: string;
+  payload: Record<string, unknown> | null;
 };
 
 type LeadAttributionRow = {
@@ -234,12 +235,17 @@ async function dispatchMetaCapi(params: {
   }
 
   const eventTime = Math.floor(new Date(params.event.occurred_at).getTime() / 1000);
+  const payloadEventId = cleanString(
+    params.event.payload && typeof params.event.payload === 'object'
+      ? (params.event.payload as Record<string, unknown>).meta_event_id
+      : null,
+  );
   const payload: Record<string, unknown> = {
     data: [
       {
         event_name: params.mappedEventName,
         event_time: Number.isFinite(eventTime) ? eventTime : Math.floor(Date.now() / 1000),
-        event_id: `${params.event.id}:meta`,
+        event_id: payloadEventId || `${params.event.id}:meta`,
         action_source: 'system_generated',
         user_data: {
           em: params.attribution?.user_email_sha256 ? [params.attribution.user_email_sha256] : undefined,
@@ -478,7 +484,7 @@ async function processDelivery(
 ): Promise<DeliveryDispatchResult> {
   const { data: event, error: eventError } = await supabase
     .from('conversion_events')
-    .select('id, org_id, lead_id, crm_stage, event_name, event_value, event_currency, occurred_at')
+    .select('id, org_id, lead_id, crm_stage, event_name, event_value, event_currency, occurred_at, payload')
     .eq('id', delivery.conversion_event_id)
     .maybeSingle();
 

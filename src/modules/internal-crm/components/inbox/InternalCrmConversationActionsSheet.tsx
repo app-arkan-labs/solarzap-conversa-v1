@@ -1,10 +1,9 @@
+import { Archive, Calendar, CheckCheck, Kanban, MessageSquare, Phone, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { TokenBadge } from '@/modules/internal-crm/components/InternalCrmUi';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import type {
   InternalCrmClientDetail,
   InternalCrmConversationSummary,
-  InternalCrmWhatsappInstance,
 } from '@/modules/internal-crm/types';
 
 type InternalCrmConversationActionsSheetProps = {
@@ -12,70 +11,112 @@ type InternalCrmConversationActionsSheetProps = {
   onOpenChange: (open: boolean) => void;
   conversation: InternalCrmConversationSummary | null;
   detail: InternalCrmClientDetail | null;
-  instance: InternalCrmWhatsappInstance | null;
   onUpdateStatus: (status: 'open' | 'resolved' | 'archived') => void;
-  onProvision: (dealId?: string) => void;
-  onConnectInstance: () => void;
-  onOpenInstanceDialog: () => void;
-  isProvisioning?: boolean;
+  onScheduleMeeting: () => void;
+  onOpenComments: () => void;
+  onNavigatePipeline: () => void;
   isUpdatingStatus?: boolean;
-  isConnectingInstance?: boolean;
 };
 
 export function InternalCrmConversationActionsSheet(props: InternalCrmConversationActionsSheetProps) {
-  const openDealId = props.detail?.deals.find((deal) => deal.status === 'open')?.id;
+  const client = props.detail?.client;
+  const isResolved = props.conversation?.status === 'resolved';
+  const isArchived = props.conversation?.status === 'archived';
+
+  const quickActions = [
+    {
+      id: 'call',
+      label: 'Ligar',
+      icon: Phone,
+      className: 'bg-blue-500 hover:bg-blue-600 text-white',
+      onClick: () => {
+        const phone = client?.primary_phone || props.conversation?.primary_phone;
+        if (phone) window.open(`tel:${phone}`);
+      },
+    },
+    {
+      id: 'video',
+      label: 'Vídeo',
+      icon: Video,
+      className: 'bg-cyan-500 hover:bg-cyan-600 text-white',
+      onClick: () => {},
+    },
+    {
+      id: 'schedule',
+      label: 'Reunião',
+      icon: Calendar,
+      className: 'bg-purple-500 hover:bg-purple-600 text-white',
+      onClick: () => { props.onScheduleMeeting(); props.onOpenChange(false); },
+    },
+    {
+      id: 'comments',
+      label: 'Notas',
+      icon: MessageSquare,
+      className: 'bg-secondary hover:bg-secondary/80 text-secondary-foreground',
+      onClick: () => { props.onOpenComments(); props.onOpenChange(false); },
+    },
+    {
+      id: 'pipeline',
+      label: 'Pipeline',
+      icon: Kanban,
+      className: 'bg-indigo-500 hover:bg-indigo-600 text-white',
+      onClick: () => { props.onNavigatePipeline(); props.onOpenChange(false); },
+    },
+    {
+      id: 'resolve',
+      label: isResolved || isArchived ? 'Reabrir' : 'Resolver',
+      icon: isResolved || isArchived ? CheckCheck : CheckCheck,
+      className: isResolved || isArchived ? 'bg-sky-500 hover:bg-sky-600 text-white' : 'bg-emerald-500 hover:bg-emerald-600 text-white',
+      onClick: () => { props.onUpdateStatus(isResolved || isArchived ? 'open' : 'resolved'); props.onOpenChange(false); },
+    },
+  ];
 
   return (
     <Sheet open={props.open} onOpenChange={props.onOpenChange}>
       <SheetContent className="w-full sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>Ações da conversa</SheetTitle>
-          <SheetDescription>
-            Atualize status e organização da conversa de {props.conversation?.client_company_name || 'cliente selecionado'}.
-          </SheetDescription>
+          <SheetTitle>Ações</SheetTitle>
         </SheetHeader>
 
-        <div className="mt-6 space-y-5">
-          <div className="space-y-3 rounded-3xl border border-border/70 bg-muted/20 p-4">
-            <p className="text-sm font-medium text-foreground">Resumo rápido</p>
-            <div className="flex flex-wrap gap-2">
-              {props.conversation ? <TokenBadge token={props.conversation.status} label={props.conversation.status} /> : null}
-              {props.conversation ? (
-                <TokenBadge
-                  token={props.conversation.channel}
-                  label={props.conversation.channel === 'manual_note' ? 'Nota interna' : 'WhatsApp'}
-                />
-              ) : null}
-              {props.instance ? <TokenBadge token={props.instance.status} label={props.instance.display_name} /> : null}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {props.detail?.client.next_action || props.conversation?.next_action || 'Nenhuma próxima ação registrada.'}
-            </p>
+        <div className="mt-4 space-y-5">
+          {/* Client summary */}
+          <div className="space-y-1.5 text-sm">
+            <p className="font-semibold">{client?.company_name || props.conversation?.client_company_name || 'Cliente'}</p>
+            <p className="text-muted-foreground">{client?.primary_phone || props.conversation?.primary_phone || '-'}</p>
           </div>
 
-          <div className="grid gap-2">
-            <Button variant="outline" onClick={() => props.onUpdateStatus('open')} disabled={props.isUpdatingStatus}>
-              Marcar como aberta
-            </Button>
-            <Button variant="outline" onClick={() => props.onUpdateStatus('resolved')} disabled={props.isUpdatingStatus}>
-              Marcar como resolvida
-            </Button>
-            <Button variant="outline" onClick={() => props.onUpdateStatus('archived')} disabled={props.isUpdatingStatus}>
+          {/* Quick actions grid */}
+          <div className="grid grid-cols-3 gap-2">
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Button
+                  key={action.id}
+                  variant="secondary"
+                  size="sm"
+                  className={`h-auto flex-col gap-1 py-3 text-[11px] font-medium ${action.className}`}
+                  onClick={action.onClick}
+                  disabled={action.id === 'resolve' && props.isUpdatingStatus}
+                >
+                  <Icon className="h-4 w-4" />
+                  {action.label}
+                </Button>
+              );
+            })}
+          </div>
+
+          {/* Archive button */}
+          {props.conversation?.status !== 'archived' ? (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => { props.onUpdateStatus('archived'); props.onOpenChange(false); }}
+              disabled={props.isUpdatingStatus}
+            >
+              <Archive className="mr-2 h-4 w-4" />
               Arquivar conversa
             </Button>
-          </div>
-
-          <div className="grid gap-2">
-            <Button variant="outline" onClick={props.onConnectInstance} disabled={!props.instance?.id || props.isConnectingInstance}>
-              Conectar / atualizar QR
-            </Button>
-            <Button variant="outline" onClick={props.onOpenInstanceDialog}>
-              Nova instância interna
-            </Button>
-            <Button onClick={() => props.onProvision(openDealId)} disabled={!props.detail?.client.id || props.isProvisioning}>
-              Provisionar conta SolarZap
-            </Button>
-          </div>
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>

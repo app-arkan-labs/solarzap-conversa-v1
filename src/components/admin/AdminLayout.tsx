@@ -11,6 +11,7 @@ import {
   LogOut,
   Megaphone,
   MessageSquare,
+  Plug,
   ScrollText,
   Shield,
   Sun,
@@ -37,6 +38,7 @@ const crmSidebarItems: SidebarItem[] = [
   { to: '/admin/crm/campaigns', label: 'Campanhas', icon: Megaphone },
   { to: '/admin/crm/automations', label: 'Automacoes', icon: CircuitBoard },
   { to: '/admin/crm/calendar', label: 'Calendarios', icon: CalendarDays },
+  { to: '/admin/crm/integrations', label: 'Integracoes', icon: Plug },
   { to: '/admin/crm/ai', label: 'IA', icon: Bot },
   { to: '/admin/crm/finance', label: 'Financeiro CRM', icon: DollarSign },
 ];

@@ -43,11 +43,17 @@ export function getDefaultStageEventMap(): StageEventMap {
       google_ads: null,
       ga4: 'generate_lead',
     },
-    chamada_realizada: {
-      event_key: 'chamada_realizada',
+    agendou_reuniao: {
+      event_key: 'agendou_reuniao',
       meta: 'Schedule',
       google_ads: 'schedule',
       ga4: 'schedule_appointment',
+    },
+    chamada_realizada: {
+      event_key: 'chamada_realizada',
+      meta: null,
+      google_ads: null,
+      ga4: null,
     },
     visita_realizada: {
       event_key: 'visita_realizada',
@@ -85,11 +91,17 @@ export function getDefaultStageEventMap(): StageEventMap {
       google_ads: null,
       ga4: null,
     },
-    projeto_pago: {
-      event_key: 'projeto_pago',
+    fechou: {
+      event_key: 'fechou',
       meta: 'Purchase',
       google_ads: 'purchase',
       ga4: 'purchase',
+    },
+    projeto_pago: {
+      event_key: 'projeto_pago',
+      meta: null,
+      google_ads: null,
+      ga4: null,
     },
   }
 }

@@ -21,11 +21,16 @@ export function useInternalCrmCampaignsModule() {
     invalidate: [internalCrmQueryKeys.campaigns()],
   });
 
+  const deleteCampaignMutation = useInternalCrmMutation({
+    invalidate: [internalCrmQueryKeys.campaigns(), internalCrmQueryKeys.dashboard({})],
+  });
+
   return {
     campaignsQuery,
     instancesQuery,
     upsertCampaignMutation,
     updateCampaignStatusMutation,
     runCampaignBatchMutation,
+    deleteCampaignMutation,
   };
 }
