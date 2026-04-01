@@ -23,6 +23,7 @@ type AdminIdentity = {
   user_id: string;
   system_role: SystemRole;
   crm_role: CrmRole;
+  email?: string | null;
 };
 
 type ActionPermission = {
@@ -51,6 +52,7 @@ const CRM_ROLE_LEVEL: Record<CrmRole, number> = {
 
 const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   crm_whoami: { minCrmRole: 'read_only', requireMfa: true },
+  list_crm_members: { minCrmRole: 'read_only', requireMfa: true },
   list_products: { minCrmRole: 'read_only', requireMfa: true },
   list_pipeline_stages: { minCrmRole: 'read_only', requireMfa: true },
   list_dashboard_kpis: { minCrmRole: 'read_only', requireMfa: true },
@@ -323,6 +325,7 @@ function buildServiceActorIdentity(userId: string | null): AdminIdentity {
     user_id: userId || '00000000-0000-0000-0000-000000000000',
     system_role: 'ops',
     crm_role: 'ops',
+    email: null,
   };
 }
 
@@ -505,6 +508,7 @@ async function resolveAdminIdentity(
     user_id: userId,
     system_role: systemRole,
     crm_role: crmRole,
+    email: null,
   };
 }
 
@@ -583,6 +587,51 @@ async function listProducts(serviceClient: ReturnType<typeof createClient>) {
       stripe_price_id: asString(price?.stripe_price_id),
     };
   });
+}
+
+async function listCrmMembers(serviceClient: ReturnType<typeof createClient>) {
+  const { data: members, error } = await serviceClient
+    .from('_admin_system_admins')
+    .select('user_id, system_role, crm_role')
+    .neq('crm_role', 'none')
+    .order('system_role', { ascending: true })
+    .order('crm_role', { ascending: true })
+    .order('user_id', { ascending: true });
+
+  if (error) {
+    throw { status: 500, code: 'members_query_failed', error };
+  }
+
+  const enriched = await Promise.all(
+    (members || []).map(async (member) => {
+      const userId = asString(member.user_id) || '';
+      let email: string | null = null;
+      let fullName: string | null = null;
+      let displayName: string | null = null;
+
+      if (userId) {
+        const { data: userData } = await serviceClient.auth.admin.getUserById(userId);
+        email = userData.user?.email ?? null;
+
+        const metadata = userData.user?.user_metadata;
+        if (isRecord(metadata)) {
+          fullName = asString(metadata.full_name) || asString(metadata.name) || asString(metadata.display_name) || null;
+          displayName = asString(metadata.display_name) || fullName;
+        }
+      }
+
+      return {
+        user_id: userId,
+        system_role: String(member.system_role || 'read_only') as SystemRole,
+        crm_role: String(member.crm_role || 'none') as CrmRole,
+        full_name: fullName,
+        email,
+        display_name: displayName || email || userId,
+      };
+    }),
+  );
+
+  return enriched;
 }
 
 async function listPipelineStages(serviceClient: ReturnType<typeof createClient>) {
@@ -2475,6 +2524,8 @@ async function appendMessage(
   const messageType = asString(payload.message_type) || 'text';
   const internalOnlyNote = conversation.channel === 'manual_note' || messageType === 'note';
 
+  const attachmentUrl = asString(payload.attachment_url);
+
   let waMessageId: string | null = null;
   let deliveryStatus = internalOnlyNote ? 'sent' : 'pending';
   if (!internalOnlyNote) {
@@ -2485,15 +2536,42 @@ async function appendMessage(
       schema.from('clients').select('primary_phone').eq('id', conversation.client_id).maybeSingle(),
     ]);
 
-    if (!instance?.instance_name || !client?.primary_phone || !body) {
-      throw { status: 400, code: 'invalid_payload', message: 'Conversa sem instancia, telefone ou corpo para envio.' };
+    if (!instance?.instance_name || !client?.primary_phone) {
+      throw { status: 400, code: 'invalid_payload', message: 'Conversa sem instancia ou telefone para envio.' };
+    }
+    if (!body && !attachmentUrl) {
+      throw { status: 400, code: 'invalid_payload', message: 'Mensagem sem corpo e sem anexo.' };
     }
 
     const phone = normalizePhone(client.primary_phone);
-    const sendResponse = await evolutionRequest(`/message/sendText/${instance.instance_name}`, {
-      method: 'POST',
-      body: JSON.stringify({ number: phone, text: body }),
-    }).catch(() => null);
+    let sendResponse: Record<string, unknown> | null = null;
+
+    if (attachmentUrl && (messageType === 'image' || messageType === 'video' || messageType === 'document')) {
+      // Send media (image/video/document) via Evolution API
+      const mediaBody: Record<string, unknown> = {
+        number: phone,
+        mediatype: messageType,
+        media: attachmentUrl,
+      };
+      if (body) mediaBody.caption = body;
+      if (messageType === 'document') mediaBody.fileName = asString(payload.file_name) || 'documento';
+      sendResponse = await evolutionRequest(`/message/sendMedia/${instance.instance_name}`, {
+        method: 'POST',
+        body: JSON.stringify(mediaBody),
+      }).catch(() => null);
+    } else if (attachmentUrl && messageType === 'audio') {
+      // Send audio (voice note) via Evolution API
+      sendResponse = await evolutionRequest(`/message/sendWhatsAppAudio/${instance.instance_name}`, {
+        method: 'POST',
+        body: JSON.stringify({ number: phone, audio: attachmentUrl }),
+      }).catch(() => null);
+    } else {
+      // Send text via Evolution API
+      sendResponse = await evolutionRequest(`/message/sendText/${instance.instance_name}`, {
+        method: 'POST',
+        body: JSON.stringify({ number: phone, text: body }),
+      }).catch(() => null);
+    }
 
     waMessageId = asString(sendResponse?.key?.id);
     deliveryStatus = sendResponse ? 'sent' : 'failed';
@@ -5122,7 +5200,12 @@ async function saveDealNotes(
     .eq('id', dealId);
   if (error) throw { status: 500, code: 'save_notes_failed', error };
 
-  await writeAuditLog(serviceClient, identity, 'save_deal_notes', req, { deal_id: dealId });
+  await writeAuditLog(serviceClient, identity, 'save_deal_notes', req, {
+    target_type: 'deal',
+    target_id: dealId,
+    deal_id: dealId,
+    after: { notes },
+  });
   return { ok: true };
 }
 
@@ -5409,7 +5492,45 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     return { ok: true, event, instance_id: instance.id, status: nextStatus };
   }
 
+  // --- Handle SEND_MESSAGE ack from Evolution (outbound already saved by append_message) ---
+  if (event === 'SEND_MESSAGE') {
+    return { ok: true, ignored: true, reason: 'send_message_ack' };
+  }
+
+  // --- Handle MESSAGES_UPDATE for delivery status tracking ---
+  if (event === 'MESSAGES_UPDATE') {
+    const updateNode = isRecord(body.data) ? body.data : body;
+    const updateWaMessageId =
+      asString((updateNode.key as Record<string, unknown> | undefined)?.id) ||
+      asString((updateNode as Record<string, unknown>).id);
+    // Evolution sends status as a number: 2=sent/SERVER_ACK, 3=delivered/DELIVERY_ACK, 4=read/READ, 5=played
+    const rawStatus = (updateNode as Record<string, unknown>).status;
+    const statusNum = typeof rawStatus === 'number' ? rawStatus : parseInt(String(rawStatus), 10);
+    let mappedStatus: string | null = null;
+    if (statusNum === 2) mappedStatus = 'sent';
+    else if (statusNum === 3) mappedStatus = 'delivered';
+    else if (statusNum === 4 || statusNum === 5) mappedStatus = 'read';
+
+    if (updateWaMessageId && mappedStatus) {
+      await schema
+        .from('messages')
+        .update({ delivery_status: mappedStatus, ...(mappedStatus === 'read' ? { read_at: nowIso() } : {}) })
+        .eq('wa_message_id', updateWaMessageId);
+      return { ok: true, event, wa_message_id: updateWaMessageId, delivery_status: mappedStatus };
+    }
+    return { ok: true, ignored: true, reason: 'messages_update_no_match' };
+  }
+
   const messageNode = isRecord(body.data) ? body.data : body;
+
+  // --- Filter out fromMe messages (outbound already saved by append_message) ---
+  const fromMe =
+    (messageNode.key as Record<string, unknown> | undefined)?.fromMe === true ||
+    (messageNode as Record<string, unknown>).fromMe === true;
+  if (fromMe) {
+    return { ok: true, ignored: true, reason: 'from_me_outbound' };
+  }
+
   const rawRemoteJid =
     asString(messageNode.remoteJid) ||
     asString((messageNode.key as Record<string, unknown> | undefined)?.remoteJid) ||
@@ -6608,6 +6729,8 @@ async function dispatchUserAction(
         crm_role: identity.crm_role,
         aal: extractAalFromToken(userToken),
       };
+    case 'list_crm_members':
+      return { ok: true, members: await listCrmMembers(serviceClient) };
     case 'list_products':
       return { ok: true, products: await listProducts(serviceClient) };
     case 'list_pipeline_stages':

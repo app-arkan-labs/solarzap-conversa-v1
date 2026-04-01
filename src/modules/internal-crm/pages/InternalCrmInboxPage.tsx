@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { InternalCrmActionsPanel } from '@/modules/internal-crm/components/inbox/InternalCrmActionsPanel';
-import { InternalCrmChatArea } from '@/modules/internal-crm/components/inbox/InternalCrmChatArea';
+import { InternalCrmActionsPanelFull } from '@/modules/internal-crm/components/inbox/InternalCrmActionsPanelFull';
+import { InternalCrmChatAreaFull } from '@/modules/internal-crm/components/inbox/InternalCrmChatAreaFull';
 import { InternalCrmConversationActionsSheet } from '@/modules/internal-crm/components/inbox/InternalCrmConversationActionsSheet';
 import { InternalCrmConversationList } from '@/modules/internal-crm/components/inbox/InternalCrmConversationList';
 import { ClientNotesSheet } from '@/modules/internal-crm/components/inbox/ClientNotesSheet';
@@ -13,11 +14,14 @@ import { useInternalCrmClients, useInternalCrmMutation } from '@/modules/interna
 
 export default function InternalCrmInboxPage() {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [status, setStatus] = useState<'all' | 'open' | 'resolved' | 'archived'>('open');
   const [search, setSearch] = useState('');
   const [messageBody, setMessageBody] = useState('');
   const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
+  const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(true);
   const [notesSheetOpen, setNotesSheetOpen] = useState(false);
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
   const autoReadSignatureRef = useRef<string>('');
@@ -70,6 +74,25 @@ export default function InternalCrmInboxPage() {
     if (!selectedConversationId) autoReadSignatureRef.current = '';
   }, [selectedConversationId]);
 
+  useEffect(() => {
+    const requestedConversationId = searchParams.get('conversation');
+    if (!requestedConversationId) return;
+
+    if (status !== 'all') {
+      setStatus('all');
+      return;
+    }
+
+    const matchedConversation = conversations.find((conversation) => conversation.id === requestedConversationId);
+    if (!matchedConversation) return;
+
+    setSelectedConversationId(requestedConversationId);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('conversation');
+    setSearchParams(nextParams, { replace: true });
+  }, [conversations, searchParams, setSearchParams, status]);
+
   const sendMessage = async () => {
     if (!selectedConversationId || !messageBody.trim()) return;
     await inbox.appendMessageMutation.mutateAsync({
@@ -90,6 +113,39 @@ export default function InternalCrmInboxPage() {
       message_type: 'note',
     });
     toast({ title: 'Nota adicionada' });
+  };
+
+  const sendAttachment = async (file: File, fileType: string) => {
+    if (!selectedConversationId) return;
+    // Upload file to Supabase Storage first
+    const ext = file.name.split('.').pop() || 'bin';
+    const path = `internal-crm/attachments/${selectedConversationId}/${Date.now()}.${ext}`;
+    const { data: uploadData, error: uploadError } = await inbox.supabaseClient.storage
+      .from('internal-crm-media')
+      .upload(path, file, { cacheControl: '3600', upsert: false });
+    if (uploadError || !uploadData?.path) {
+      toast({ title: 'Erro ao enviar arquivo', description: uploadError?.message || 'Falha no upload.', variant: 'destructive' });
+      return;
+    }
+    const { data: { publicUrl } } = inbox.supabaseClient.storage.from('internal-crm-media').getPublicUrl(uploadData.path);
+    await inbox.appendMessageMutation.mutateAsync({
+      action: 'append_message',
+      conversation_id: selectedConversationId,
+      body: fileType === 'image' ? '' : file.name,
+      message_type: fileType,
+      attachment_url: publicUrl,
+      file_name: file.name,
+    });
+  };
+
+  const saveClient = async (fields: Record<string, unknown>) => {
+    if (!selectedClientId) return;
+    await inbox.upsertClientMutation.mutateAsync({
+      action: 'upsert_client',
+      client_id: selectedClientId,
+      ...fields,
+    });
+    toast({ title: 'Cliente atualizado' });
   };
 
   const updateConversationStatus = async (nextStatus: 'open' | 'resolved' | 'archived') => {
@@ -117,9 +173,8 @@ export default function InternalCrmInboxPage() {
   };
 
   const navigatePipeline = () => {
-    // Navigate to pipeline tab — trigger parent tab change
-    const pipelineTab = document.querySelector('[data-tab-value="pipeline"]') as HTMLElement | null;
-    if (pipelineTab) pipelineTab.click();
+    const targetClientId = selectedClientId || inbox.selectedConversation?.client_id || '';
+    navigate(targetClientId ? `/admin/crm/pipeline?client=${targetClientId}` : '/admin/crm/pipeline');
   };
 
   return (
@@ -137,7 +192,10 @@ export default function InternalCrmInboxPage() {
         </div>
 
         {/* 3-column layout */}
-        <div className="grid h-[calc(100vh-11rem)] min-h-[600px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_340px]">
+        <div className={cn(
+          'grid h-[calc(100vh-11rem)] min-h-[600px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]',
+          isDetailsPanelOpen && 'xl:grid-cols-[320px_minmax(0,1fr)_340px]',
+        )}>
           {/* Conversation list */}
           <div className={cn('min-h-0', selectedConversationId ? 'hidden lg:block' : 'block')}>
             <InternalCrmConversationList
@@ -152,35 +210,47 @@ export default function InternalCrmInboxPage() {
             />
           </div>
 
-          {/* Chat area */}
+          {/* Chat area — full version */}
           <div className={cn('min-h-0 border-l border-border/40', !selectedConversationId ? 'hidden lg:block' : 'block')}>
-            <InternalCrmChatArea
+            <InternalCrmChatAreaFull
               conversation={inbox.selectedConversation}
               messages={inbox.messages}
               instance={inbox.selectedInstance}
               messageBody={messageBody}
               onMessageBodyChange={setMessageBody}
               onSendMessage={sendMessage}
+              onSendAttachment={sendAttachment}
               isSending={inbox.appendMessageMutation.isPending}
               isUpdatingStatus={inbox.updateConversationStatusMutation.isPending}
               onUpdateStatus={updateConversationStatus}
-              onOpenActions={() => setActionsSheetOpen(true)}
+              onOpenActions={() => {
+                // On xl+ toggle the right panel; on smaller screens open sheet
+                if (window.innerWidth >= 1280) {
+                  setIsDetailsPanelOpen((p) => !p);
+                } else {
+                  setActionsSheetOpen(true);
+                }
+              }}
               onBack={() => setSelectedConversationId(null)}
+              isDetailsPanelOpen={isDetailsPanelOpen}
             />
           </div>
 
-          {/* Actions panel (desktop) */}
-          <div className="hidden min-h-0 border-l border-border/40 xl:block">
-            <InternalCrmActionsPanel
-              conversation={inbox.selectedConversation}
-              detail={inbox.clientDetailQuery.data || null}
-              onUpdateStatus={updateConversationStatus}
-              onScheduleMeeting={() => setAppointmentModalOpen(true)}
-              onOpenComments={() => setNotesSheetOpen(true)}
-              onNavigatePipeline={navigatePipeline}
-              isUpdatingStatus={inbox.updateConversationStatusMutation.isPending}
-            />
-          </div>
+          {/* Actions panel (desktop) — full version */}
+          {isDetailsPanelOpen && (
+            <div className="hidden min-h-0 border-l border-border/40 xl:block">
+              <InternalCrmActionsPanelFull
+                conversation={inbox.selectedConversation}
+                detail={inbox.clientDetailQuery.data || null}
+                onClose={() => setIsDetailsPanelOpen(false)}
+                onSaveClient={saveClient}
+                onScheduleMeeting={() => setAppointmentModalOpen(true)}
+                onScheduleCall={() => setAppointmentModalOpen(true)}
+                onOpenComments={() => setNotesSheetOpen(true)}
+                onNavigatePipeline={navigatePipeline}
+              />
+            </div>
+          )}
         </div>
       </div>
 

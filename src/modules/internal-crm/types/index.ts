@@ -4,6 +4,7 @@ export type CrmRole = 'none' | 'owner' | 'sales' | 'cs' | 'finance' | 'ops' | 'r
 
 export type InternalCrmApiAction =
   | 'crm_whoami'
+  | 'list_crm_members'
   | 'list_products'
   | 'list_pipeline_stages'
   | 'list_dashboard_kpis'
@@ -64,6 +65,7 @@ export type InternalCrmApiAction =
   | 'list_client_notes'
   | 'add_client_note'
   | 'delete_client_note'
+  | 'save_deal_notes'
   | 'delete_campaign'
   | 'list_campaign_recipients'
   | 'check_automation_health'
@@ -96,6 +98,15 @@ export type InternalCrmWhoAmIResponse = {
   system_role: SystemRole;
   crm_role: CrmRole;
   aal: string;
+};
+
+export type InternalCrmMember = {
+  user_id: string;
+  system_role: SystemRole;
+  crm_role: CrmRole;
+  full_name: string | null;
+  email: string | null;
+  display_name: string;
 };
 
 export type InternalCrmProduct = {

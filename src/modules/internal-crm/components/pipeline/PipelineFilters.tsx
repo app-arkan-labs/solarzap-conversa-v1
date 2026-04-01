@@ -1,7 +1,9 @@
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { InternalCrmStage } from '@/modules/internal-crm/types';
+import type { InternalCrmMember, InternalCrmStage } from '@/modules/internal-crm/types';
+
+const ALL_VALUE = 'all';
 
 type PipelineFiltersProps = {
   search: string;
@@ -10,12 +12,18 @@ type PipelineFiltersProps = {
   onStageCodeChange: (value: string) => void;
   status: string;
   onStatusChange: (value: string) => void;
+  ownerUserId: string;
+  onOwnerUserIdChange: (value: string) => void;
+  sourceChannel: string;
+  onSourceChannelChange: (value: string) => void;
   stages: InternalCrmStage[];
+  members: InternalCrmMember[];
+  sources: Array<{ value: string; label: string }>;
 };
 
 export function PipelineFilters(props: PipelineFiltersProps) {
   return (
-    <div className="grid gap-3 md:grid-cols-[1fr_220px_220px]">
+    <div className="grid gap-3 xl:grid-cols-[minmax(240px,1fr)_180px_180px_200px_200px]">
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -31,7 +39,7 @@ export function PipelineFilters(props: PipelineFiltersProps) {
           <SelectValue placeholder="Etapa" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">Todas as etapas</SelectItem>
+          <SelectItem value={ALL_VALUE}>Todas as etapas</SelectItem>
           {props.stages.map((stage) => (
             <SelectItem key={stage.stage_code} value={stage.stage_code}>
               {stage.name}
@@ -45,10 +53,38 @@ export function PipelineFilters(props: PipelineFiltersProps) {
           <SelectValue placeholder="Status" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">Todos os status</SelectItem>
+          <SelectItem value={ALL_VALUE}>Todos os status</SelectItem>
           <SelectItem value="open">Abertos</SelectItem>
           <SelectItem value="won">Fechou Contrato</SelectItem>
           <SelectItem value="lost">Não Fechou</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select value={props.sourceChannel} onValueChange={props.onSourceChannelChange}>
+        <SelectTrigger>
+          <SelectValue placeholder="Origem" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_VALUE}>Todas as origens</SelectItem>
+          {props.sources.map((source) => (
+            <SelectItem key={source.value} value={source.value}>
+              {source.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={props.ownerUserId} onValueChange={props.onOwnerUserIdChange}>
+        <SelectTrigger>
+          <SelectValue placeholder="Responsável" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_VALUE}>Todos os responsáveis</SelectItem>
+          {props.members.map((member) => (
+            <SelectItem key={member.user_id} value={member.user_id}>
+              {member.display_name}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </div>

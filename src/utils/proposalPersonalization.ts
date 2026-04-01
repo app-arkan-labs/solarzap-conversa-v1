@@ -363,17 +363,17 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
   const isUsina = segment === 'usina';
 
   const headline = isUsina
-    ? `${input.contact.name}: ${formatCurrency(monthlySavings)}/mês em receita estimada com retorno em ${formatYears(input.metrics.paybackMeses)}`
-    : `${input.contact.name}: ${formatCurrency(monthlySavings)}/mês em economia com retorno estimado em ${formatYears(input.metrics.paybackMeses)}`;
+    ? `${input.contact.name}: projeto de geração estruturado para máximo aproveitamento da capacidade instalada`
+    : `${input.contact.name}: energia solar dimensionada sob medida para o seu perfil de consumo`;
 
   const summaryParts = [
     `Projeto ${cfg.label.toLowerCase()} desenhado para ${cfg.promise}.`,
     isUsina
-      ? `Investimento previsto de ${formatCurrency(input.metrics.valorTotal)}, receita anual estimada de ${formatCurrency(input.metrics.economiaAnual)} e payback em aproximadamente ${formatYears(input.metrics.paybackMeses)}.`
-      : `Investimento previsto de ${formatCurrency(input.metrics.valorTotal)}, economia anual estimada de ${formatCurrency(input.metrics.economiaAnual)} e payback em aproximadamente ${formatYears(input.metrics.paybackMeses)}.`,
+      ? 'Este projeto foi estruturado para maximizar a capacidade de geração e o aproveitamento da infraestrutura disponível, com foco em eficiência de longo prazo.'
+      : 'Este projeto foi dimensionado com base no seu consumo atual, garantindo o melhor aproveitamento da geração solar e a maior redução possível na sua conta de energia.',
     isUsina
-      ? `Na janela de 25 anos, a receita acumulada estimada é de ${formatCurrency(longTermSavings)} (ROI estimado de ${formatPercent(roiPercent)}).`
-      : `Na janela de 25 anos, o potencial acumulado de economia é de ${formatCurrency(longTermSavings)} (ROI estimado de ${formatPercent(roiPercent)}).`,
+      ? 'Com vida útil de mais de 25 anos, o sistema oferece décadas de geração consistente e proteção contra variações do mercado de energia.'
+      : 'Com vida útil de mais de 25 anos, o sistema oferece décadas de economia contínua e proteção contra reajustes na tarifa de energia.',
   ];
 
   if (companyPitch) summaryParts.push(companyPitch);

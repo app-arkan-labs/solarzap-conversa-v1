@@ -20,6 +20,7 @@ import type {
   InternalCrmDealSummary,
   InternalCrmFinanceSummary,
   InternalCrmGoogleCalendarStatus,
+  InternalCrmMember,
   InternalCrmProduct,
   InternalCrmStage,
   InternalCrmTask,
@@ -392,6 +393,7 @@ export function isInternalCrmApiError(error: unknown): error is InternalCrmApiEr
 export const internalCrmQueryKeys = {
   all: ['internal-crm'] as const,
   whoami: () => ['internal-crm', 'whoami'] as const,
+  members: () => ['internal-crm', 'members'] as const,
   products: () => ['internal-crm', 'products'] as const,
   pipelineStages: () => ['internal-crm', 'pipeline-stages'] as const,
   dashboard: (params: Record<string, unknown>) => ['internal-crm', 'dashboard', params] as const,
@@ -421,6 +423,15 @@ export function useInternalCrmWhoAmI(options?: { enabled?: boolean }) {
     enabled: options?.enabled ?? true,
     retry: false,
     staleTime: 0,
+  });
+}
+
+export function useInternalCrmMembers(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: internalCrmQueryKeys.members(),
+    queryFn: () => invokeInternalCrmApi<{ ok: true; members: InternalCrmMember[] }>({ action: 'list_crm_members' }),
+    enabled: options?.enabled ?? true,
+    staleTime: 60_000,
   });
 }
 

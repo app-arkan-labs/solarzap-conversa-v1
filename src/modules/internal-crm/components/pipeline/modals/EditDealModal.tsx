@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { AssignOwnerSelect } from '@/modules/internal-crm/components/pipeline/AssignOwnerSelect';
-import type { InternalCrmClientSummary, InternalCrmProduct, InternalCrmStage } from '@/modules/internal-crm/types';
+import type { InternalCrmClientSummary, InternalCrmMember, InternalCrmProduct, InternalCrmStage } from '@/modules/internal-crm/types';
 import type { DealDraft } from '@/modules/internal-crm/components/pipeline/types';
 
 const NONE_VALUE = '__none__';
@@ -95,6 +95,7 @@ type EditDealModalProps = {
   clients: InternalCrmClientSummary[];
   stages: InternalCrmStage[];
   products: InternalCrmProduct[];
+  members?: InternalCrmMember[];
   ownerUserId: string;
   onOwnerUserIdChange: (value: string) => void;
   onSave: () => void;
@@ -184,7 +185,11 @@ export function EditDealModal(props: EditDealModalProps) {
             />
           </div>
 
-          <AssignOwnerSelect ownerUserId={props.ownerUserId} onOwnerUserIdChange={props.onOwnerUserIdChange} />
+          <AssignOwnerSelect
+            ownerUserId={props.ownerUserId}
+            onOwnerUserIdChange={props.onOwnerUserIdChange}
+            members={props.members}
+          />
         </div>
 
         <div className="space-y-4 rounded-2xl border border-border/70 bg-muted/20 p-4">

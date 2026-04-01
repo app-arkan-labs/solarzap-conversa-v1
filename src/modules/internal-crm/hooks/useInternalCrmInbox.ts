@@ -89,6 +89,10 @@ export function useInternalCrmInbox(selectedConversationId: string | null, filte
     invalidate: [internalCrmQueryKeys.instances()],
   });
 
+  const upsertClientMutation = useInternalCrmMutation({
+    invalidate: invalidateConversationKeys,
+  });
+
   useEffect(() => {
     const channel = supabase
       .channel('internal_crm_messages_stream')
@@ -132,6 +136,7 @@ export function useInternalCrmInbox(selectedConversationId: string | null, filte
   }, [queryClient]);
 
   return {
+    supabaseClient: supabase,
     conversationsQuery,
     conversationDetailQuery,
     instancesQuery,
@@ -143,6 +148,7 @@ export function useInternalCrmInbox(selectedConversationId: string | null, filte
     appendMessageMutation,
     markConversationReadMutation,
     updateConversationStatusMutation,
+    upsertClientMutation,
     upsertInstanceMutation,
     connectInstanceMutation,
   };

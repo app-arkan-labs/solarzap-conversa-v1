@@ -55,6 +55,15 @@ type InternalCrmAppointmentModalProps = {
   appointment: InternalCrmAppointment | null;
   clients: InternalCrmClientSummary[];
   defaultStartAt: string | null;
+  defaults?: {
+    client_id?: string | null;
+    deal_id?: string | null;
+    title?: string | null;
+    appointment_type?: string | null;
+    status?: string | null;
+    location?: string | null;
+    notes?: string | null;
+  } | null;
   isSubmitting: boolean;
   onSave: (payload: Record<string, unknown>) => Promise<void>;
   onDelete?: (appointmentId: string) => Promise<void>;
@@ -127,18 +136,19 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
     }
 
     const defaultStart = props.defaultStartAt || new Date().toISOString();
+    const defaults = props.defaults || null;
     setDraft({
-      client_id: '',
-      title: '',
-      appointment_type: 'meeting',
-      status: 'scheduled',
+      client_id: defaults?.client_id || '',
+      title: defaults?.title || '',
+      appointment_type: defaults?.appointment_type || 'meeting',
+      status: defaults?.status || 'scheduled',
       date: toDateValue(defaultStart),
       time: toTimeValue(defaultStart) || '10:00',
       duration_minutes: 60,
-      location: '',
-      notes: '',
+      location: defaults?.location || '',
+      notes: defaults?.notes || '',
     });
-  }, [props.appointment, props.defaultStartAt, props.open]);
+  }, [props.appointment, props.defaultStartAt, props.defaults, props.open]);
 
   const canSave = draft.client_id.length > 0 && draft.title.trim().length > 2 && draft.date.length > 0;
 
@@ -152,6 +162,7 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
     await props.onSave({
       appointment_id: props.appointment?.id,
       client_id: draft.client_id,
+      deal_id: props.appointment?.deal_id || props.defaults?.deal_id || null,
       title: draft.title.trim(),
       appointment_type: draft.appointment_type,
       status: draft.status,

@@ -102,7 +102,7 @@ function renderNavSection(title: string, items: SidebarItem[]) {
               )
             }
           >
-            <Icon className="h-4.5 w-4.5 shrink-0" />
+            <Icon className="h-4 w-4 shrink-0" />
             {item.label}
           </NavLink>
         );
@@ -128,8 +128,8 @@ export default function AdminLayout() {
     (!!crmIdentityQuery.data?.crm_role && crmIdentityQuery.data.crm_role !== 'none');
 
   return (
-    <div className="app-shell-bg min-h-screen bg-background text-foreground">
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[280px_1fr]">
+    <div className="app-shell-bg h-screen bg-background text-foreground overflow-hidden">
+      <div className="grid h-full grid-cols-1 lg:grid-cols-[280px_1fr]">
         <aside className="relative hidden lg:flex lg:flex-col border-r border-sidebar-border/70 bg-[linear-gradient(180deg,hsl(var(--sidebar-background)),hsl(var(--sidebar-accent))_135%)] text-sidebar-foreground">
           <div className="px-5 py-5 border-b border-sidebar-border/80">
             <Link to="/admin" className="inline-flex items-center gap-2.5 group">
@@ -143,7 +143,7 @@ export default function AdminLayout() {
             </Link>
           </div>
 
-          <nav className="flex-1 px-3 py-4 space-y-5">
+          <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-5">
             {hasCrmAccess ? renderNavSection('CRM Interno', crmSidebarItems) : null}
             {crmAccessDenied ? (
               <div className="rounded-xl border border-dashed border-sidebar-border/80 px-3.5 py-3 text-xs text-sidebar-foreground/55">
@@ -170,7 +170,7 @@ export default function AdminLayout() {
           </div>
         </aside>
 
-        <main className="min-w-0 flex flex-col">
+        <main className="min-w-0 flex flex-col overflow-hidden">
           <header className="sticky top-0 z-30 border-b border-border/70 bg-card/82 backdrop-blur-md px-5 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3 lg:hidden">
               <div className="brand-gradient-bg flex items-center justify-center w-8 h-8 rounded-lg">
@@ -211,7 +211,7 @@ export default function AdminLayout() {
             </Tooltip>
           </header>
 
-          <div className="flex-1 p-5 lg:p-7">
+          <div className="flex-1 min-h-0 flex flex-col p-5 lg:p-7 overflow-auto">
             <Outlet />
           </div>
         </main>

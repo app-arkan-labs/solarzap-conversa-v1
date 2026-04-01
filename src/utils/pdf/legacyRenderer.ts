@@ -1263,8 +1263,8 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   }
 
   const narrative = isUsina
-    ? `${fmtCurrency(investimentoBaseMetricas)} de investimento estimado para gerar receita de cerca de ${fmtCurrency(econMensal)}/mÃªs (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Receita acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulaÃ§Ã£o).`
-    : `${fmtCurrency(investimentoBaseMetricas)} de investimento estimado para economizar cerca de ${fmtCurrency(econMensal)}/mÃªs (${fmtCurrency(econAnual)}/ano), com payback aproximado de ${paybackYears}. Economia acumulada em 25 anos: ${fmtCurrency(longTermSavings)} (simulaÃ§Ã£o).`;
+    ? 'Projeto dimensionado para otimizar a geração de energia com base na potência instalada e nas condições de irradiância do local. A geração estimada cobre todo o horizonte de operação com eficiência consistente ao longo dos anos.'
+    : 'Sistema projetado para cobrir a maior parte do seu consumo mensal, reduzindo significativamente a conta de energia. A economia começa a partir do primeiro mês de operação e se acumula ao longo de mais de 25 anos de vida útil dos equipamentos.';
   doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
   doc.setFontSize(9.6); doc.setFont('helvetica', 'normal');
   const narLines = doc.splitTextToSize(narrative, W - 2 * M);

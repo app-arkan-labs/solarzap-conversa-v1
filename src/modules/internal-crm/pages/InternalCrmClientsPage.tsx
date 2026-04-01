@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Building2,
   Plus,
@@ -128,6 +129,7 @@ function getDaysInStage(lastContactAt: string | null) {
 export default function InternalCrmClientsPage() {
   const { toast } = useToast();
   const isMobile = useMobileViewport();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Selection & search state
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -223,6 +225,23 @@ export default function InternalCrmClientsPage() {
   useEffect(() => {
     if (!isMobile) setMobileDetailOpen(false);
   }, [isMobile]);
+
+  useEffect(() => {
+    const requestedClientId = searchParams.get('client');
+    if (!requestedClientId) return;
+
+    const matchedClient = allClients.find((client) => client.id === requestedClientId);
+    if (!matchedClient) return;
+
+    setSelectedClientId(matchedClient.id);
+    if (isMobile) {
+      setMobileDetailOpen(true);
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('client');
+    setSearchParams(nextParams, { replace: true });
+  }, [allClients, isMobile, searchParams, setSearchParams]);
 
   // Keep selected IDs in sync with visible clients
   useEffect(() => {
@@ -365,7 +384,7 @@ export default function InternalCrmClientsPage() {
   const showMobileDetail = isMobile && mobileDetailOpen && !!selectedClient;
 
   return (
-    <div className="flex-1 flex h-full bg-muted/30 overflow-hidden min-h-0">
+    <div className="flex flex-1 h-full min-h-0 bg-muted/30 overflow-hidden">
       {/* ── Sidebar Left: Client List ────────────────── */}
       <div
         className={cn(
@@ -382,20 +401,20 @@ export default function InternalCrmClientsPage() {
           icon={Users}
           className="px-4 py-4"
           actionContent={
-            <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
+            <div className="flex w-full items-center justify-end gap-1.5 sm:w-auto">
               <Button
-                size="sm"
+                size="icon"
                 variant="ghost"
-                className="text-muted-foreground hover:text-foreground h-9 w-9 p-0"
+                className="text-muted-foreground hover:text-foreground h-8 w-8"
                 onClick={() => setImportOpen(true)}
                 title="Importar clientes"
               >
                 <Upload className="w-4 h-4" />
               </Button>
               <Button
-                size="sm"
+                size="icon"
                 variant="ghost"
-                className="text-muted-foreground hover:text-foreground h-9 w-9 p-0"
+                className="text-muted-foreground hover:text-foreground h-8 w-8"
                 onClick={() => setExportOpen(true)}
                 title="Exportar clientes"
               >

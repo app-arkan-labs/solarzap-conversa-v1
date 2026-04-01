@@ -1,6 +1,10 @@
-import { useState } from 'react';
-import { Ban, Clock, Loader2, Megaphone, PauseCircle, PlayCircle, Trash2 } from 'lucide-react';
-import { PageHeader } from '@/components/solarzap/PageHeader';
+import { useEffect, useMemo, useState } from 'react';
+import { Eye, Loader2, Pause, Play, Plus, Square, SendHorizontal, Trash2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,240 +15,349 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
+import { useAdminBroadcasts, type AdminBroadcastCampaignInput, type AdminBroadcastCampaign } from '@/hooks/useAdminBroadcasts';
 import { useToast } from '@/hooks/use-toast';
 import { formatBroadcastInterval } from '@/utils/broadcastTimer';
-import { InternalCrmCampaignModal } from '@/modules/internal-crm/components/campaigns/InternalCrmCampaignModal';
-import { InternalCrmCampaignStatusPanel } from '@/modules/internal-crm/components/campaigns/InternalCrmCampaignStatusPanel';
-import { InternalCrmCampaignSummaryCards } from '@/modules/internal-crm/components/campaigns/InternalCrmCampaignSummaryCards';
-import { useInternalCrmCampaignsModule } from '@/modules/internal-crm/hooks/useInternalCrmCampaigns';
-import type { InternalCrmCampaign } from '@/modules/internal-crm/types';
+import { PageHeader } from '@/components/solarzap/PageHeader';
+import { InternalCrmCampaignModal } from './InternalCrmCampaignModal';
+import { InternalCrmCampaignStatusPanel } from './InternalCrmCampaignStatusPanel';
+import { useInternalCrmInstances } from '@/modules/internal-crm/hooks/useInternalCrmApi';
 
-const STATUS_MAP: Record<InternalCrmCampaign['status'], { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; className?: string }> = {
-  draft: { label: 'Rascunho', variant: 'secondary' },
-  running: { label: 'Enviando', variant: 'default', className: 'bg-blue-600 hover:bg-blue-700' },
-  paused: { label: 'Pausada', variant: 'outline', className: 'border-amber-500 text-amber-600' },
-  completed: { label: 'Concluída', variant: 'default', className: 'bg-emerald-600 hover:bg-emerald-700' },
-  canceled: { label: 'Cancelada', variant: 'destructive' },
+const campaignStatusClass: Record<AdminBroadcastCampaign['status'], string> = {
+  draft: 'bg-muted text-muted-foreground',
+  running: 'bg-blue-500/15 text-blue-700 border-blue-500/30',
+  paused: 'bg-amber-500/15 text-amber-700 border-amber-500/30',
+  completed: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30',
+  canceled: 'bg-destructive/15 text-destructive border-destructive/30',
+};
+
+const campaignStatusLabel: Record<AdminBroadcastCampaign['status'], string> = {
+  draft: 'Rascunho',
+  running: 'Rodando',
+  paused: 'Pausada',
+  completed: 'Concluída',
+  canceled: 'Cancelada',
 };
 
 export function InternalCrmCampaignsView() {
   const { toast } = useToast();
-  const mod = useInternalCrmCampaignsModule();
+  const {
+    campaigns,
+    recipientsByCampaign,
+    isLoading,
+    error,
+    fetchCampaignRecipients,
+    createCampaign,
+    startCampaign,
+    pauseCampaign,
+    resumeCampaign,
+    cancelCampaign,
+    deleteCampaign,
+  } = useAdminBroadcasts();
 
-  const campaigns = mod.campaignsQuery.data?.campaigns || [];
-  const instances = mod.instancesQuery.data?.instances || [];
+  const instancesQuery = useInternalCrmInstances();
+  const instances = useMemo(() => {
+    const raw = instancesQuery.data?.instances || [];
+    return raw.map((inst) => ({
+      id: inst.id,
+      instance_name: inst.instance_name,
+      display_name: inst.display_name,
+      status: inst.status,
+      is_active: inst.status === 'connected',
+    }));
+  }, [instancesQuery.data]);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingCampaign, setEditingCampaign] = useState<InternalCrmCampaign | null>(null);
-  const [detailCampaign, setDetailCampaign] = useState<InternalCrmCampaign | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<InternalCrmCampaign | null>(null);
+  const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
+  const [statusPanelCampaignId, setStatusPanelCampaignId] = useState<string | null>(null);
+  const [actionInFlight, setActionInFlight] = useState<string | null>(null);
+  const [campaignToDelete, setCampaignToDelete] = useState<AdminBroadcastCampaign | null>(null);
 
-  async function handleUpdateStatus(campaignId: string, status: InternalCrmCampaign['status']) {
+  const selectedCampaign = useMemo(
+    () => campaigns.find((c) => c.id === statusPanelCampaignId) || null,
+    [campaigns, statusPanelCampaignId],
+  );
+
+  const selectedRecipients = useMemo(() => {
+    if (!statusPanelCampaignId) return [];
+    return recipientsByCampaign[statusPanelCampaignId] || [];
+  }, [recipientsByCampaign, statusPanelCampaignId]);
+
+  useEffect(() => {
+    if (!statusPanelCampaignId) return;
+    void fetchCampaignRecipients(statusPanelCampaignId);
+    const interval = setInterval(() => {
+      void fetchCampaignRecipients(statusPanelCampaignId);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [fetchCampaignRecipients, statusPanelCampaignId]);
+
+  const runCampaignAction = async (
+    campaignId: string,
+    actionName: 'start' | 'pause' | 'resume' | 'cancel',
+    action: () => Promise<void>,
+  ) => {
+    setActionInFlight(`${campaignId}:${actionName}`);
     try {
-      await mod.updateCampaignStatusMutation.mutateAsync({
-        action: 'update_campaign_status',
-        campaign_id: campaignId,
-        status,
-      });
-      if (status === 'running') {
-        await mod.runCampaignBatchMutation.mutateAsync({
-          action: 'run_campaign_batch',
-          campaign_id: campaignId,
-          batch_size: 20,
-        });
-      }
-      const labels: Record<string, string> = { running: 'iniciada', paused: 'pausada', canceled: 'cancelada' };
-      toast({ title: `Campanha ${labels[status] || 'atualizada'}` });
-    } catch {
-      toast({ title: 'Erro ao atualizar status', variant: 'destructive' });
-    }
-  }
-
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    try {
-      await mod.deleteCampaignMutation.mutateAsync({
-        action: 'delete_campaign',
-        campaign_id: deleteTarget.id,
-      });
-      toast({ title: 'Campanha excluída' });
-    } catch {
-      toast({ title: 'Erro ao excluir campanha', variant: 'destructive' });
+      await action();
+      const successMessage = {
+        start: 'Campanha iniciada',
+        pause: 'Campanha pausada',
+        resume: 'Campanha retomada',
+        cancel: 'Campanha cancelada',
+      }[actionName];
+      toast({ title: successMessage });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro na ação da campanha';
+      toast({ title: 'Falha na campanha', description: message, variant: 'destructive' });
     } finally {
-      setDeleteTarget(null);
+      setActionInFlight(null);
     }
-  }
+  };
+
+  const handleSubmitCampaign = async (input: AdminBroadcastCampaignInput, autoStart: boolean) => {
+    const createdCampaign = await createCampaign(input);
+    if (autoStart) {
+      await runCampaignAction(createdCampaign.id, 'start', () => startCampaign(createdCampaign.id));
+    } else {
+      toast({ title: 'Campanha salva como rascunho' });
+    }
+    setStatusPanelCampaignId(createdCampaign.id);
+  };
+
+  const handleDeleteCampaign = async () => {
+    if (!campaignToDelete) return;
+    const deletingCampaign = campaignToDelete;
+    setActionInFlight(`${deletingCampaign.id}:delete`);
+    try {
+      if (deletingCampaign.status === 'running') {
+        await cancelCampaign(deletingCampaign.id);
+      }
+      await deleteCampaign(deletingCampaign.id);
+      toast({ title: 'Campanha deletada' });
+      if (statusPanelCampaignId === deletingCampaign.id) {
+        setStatusPanelCampaignId(null);
+      }
+      setCampaignToDelete(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao deletar campanha';
+      toast({ title: 'Falha ao deletar campanha', description: message, variant: 'destructive' });
+    } finally {
+      setActionInFlight(null);
+    }
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="flex-1 flex flex-col bg-muted/30 overflow-hidden min-h-0">
       <PageHeader
-        title="Campanhas"
-        subtitle="Disparos em massa no WhatsApp da operação comercial."
-        icon={Megaphone}
-        actionContent={
-          <Button onClick={() => { setEditingCampaign(null); setModalOpen(true); }}>
+        title="Disparos em Massa"
+        subtitle="Crie campanhas, acompanhe progresso e controle o envio via WhatsApp."
+        icon={SendHorizontal}
+        actionContent={(
+          <Button
+            data-testid="admin-broadcast-create-campaign"
+            onClick={() => setIsCampaignModalOpen(true)}
+            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10 w-full sm:w-auto"
+          >
+            <Plus className="w-4 h-4" />
             Nova Campanha
           </Button>
-        }
+        )}
       />
 
-      <InternalCrmCampaignSummaryCards campaigns={campaigns} />
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <div className="w-full space-y-6 px-4 py-4 sm:px-6 sm:py-6">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {campaigns.length === 0 ? (
-          <Card className="lg:col-span-2">
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              Nenhuma campanha criada ainda. Clique em "Nova Campanha" para começar.
-            </CardContent>
-          </Card>
-        ) : (
-          campaigns.map((c) => {
-            const total = c.recipients_total || 0;
-            const sent = c.recipients_sent || c.sent_count || 0;
-            const failed = c.recipients_failed || c.failed_count || 0;
-            const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
-            const s = STATUS_MAP[c.status];
-            const isPending = mod.updateCampaignStatusMutation.isPending;
+          {isLoading && campaigns.length === 0 ? (
+            <div className="rounded-lg border border-border/50 bg-background/50 glass shadow-sm p-8 flex items-center justify-center gap-2 text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Carregando campanhas...
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {campaigns.map((campaign) => {
+                const progressBase = campaign.total_recipients > 0
+                  ? ((campaign.sent_count + campaign.failed_count) / campaign.total_recipients) * 100
+                  : 0;
 
-            return (
-              <Card key={c.id} className="overflow-hidden">
-                <CardContent className="p-4 space-y-3">
-                  {/* Header: name + badge */}
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="font-semibold text-sm line-clamp-1">{c.name}</h3>
-                    <Badge variant={s.variant} className={s.className}>{s.label}</Badge>
-                  </div>
+                return (
+                  <Card key={campaign.id} className="border-border/50 bg-background/50 glass shadow-sm hover:shadow-md transition-shadow">
+                    <CardHeader className="space-y-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <CardTitle className="text-base">{campaign.name}</CardTitle>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">Instância: {campaign.instance_name}</p>
+                        </div>
+                        <Badge className={campaignStatusClass[campaign.status]}>{campaignStatusLabel[campaign.status]}</Badge>
+                      </div>
 
-                  {/* Progress */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{sent} de {total} enviadas</span>
-                      <span>{pct}%</span>
-                    </div>
-                    <Progress value={pct} className="h-2" />
-                  </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Progresso</span>
+                          <span>{campaign.sent_count + campaign.failed_count}/{campaign.total_recipients}</span>
+                        </div>
+                        <Progress value={Math.min(100, progressBase)} />
+                      </div>
+                    </CardHeader>
 
-                  {/* Metrics grid */}
-                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                    <div className="rounded-lg border p-2">
-                      <p className="text-muted-foreground">Enviadas</p>
-                      <p className="text-base font-bold text-emerald-600">{sent}</p>
-                    </div>
-                    <div className="rounded-lg border p-2">
-                      <p className="text-muted-foreground">Falhas</p>
-                      <p className="text-base font-bold text-rose-600">{failed}</p>
-                    </div>
-                    <div className="rounded-lg border p-2">
-                      <p className="text-muted-foreground">Timer</p>
-                      <p className="text-base font-bold flex items-center justify-center gap-1">
-                        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                        {formatBroadcastInterval(c.interval_seconds ?? 15)}
-                      </p>
-                    </div>
-                  </div>
+                    <CardContent className="space-y-3">
+                      <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                        <div className="rounded border p-2">
+                          <p className="text-muted-foreground">Enviadas</p>
+                          <p className="font-semibold">{campaign.sent_count}</p>
+                        </div>
+                        <div className="rounded border p-2">
+                          <p className="text-muted-foreground">Falhas</p>
+                          <p className="font-semibold">{campaign.failed_count}</p>
+                        </div>
+                        <div className="rounded border p-2">
+                          <p className="text-muted-foreground">Timer</p>
+                          <p className="font-semibold">{formatBroadcastInterval(campaign.interval_seconds)}</p>
+                        </div>
+                      </div>
 
-                  {/* Actions */}
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <Button variant="outline" size="sm" onClick={() => setDetailCampaign(c)}>
-                      Detalhes
-                    </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setStatusPanelCampaignId(campaign.id)}>
+                          <Eye className="w-4 h-4 mr-1" />
+                          Detalhes
+                        </Button>
 
-                    {c.status === 'draft' || c.status === 'paused' ? (
-                      <Button
-                        variant="outline" size="sm"
-                        disabled={isPending}
-                        onClick={() => void handleUpdateStatus(c.id, 'running')}
-                      >
-                        {mod.runCampaignBatchMutation.isPending ? (
-                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <PlayCircle className="mr-1.5 h-3.5 w-3.5" />
+                        {(campaign.status === 'draft' || campaign.status === 'paused') && (
+                          <Button
+                            size="sm"
+                            onClick={() => void runCampaignAction(
+                              campaign.id,
+                              campaign.status === 'draft' ? 'start' : 'resume',
+                              () => (campaign.status === 'draft' ? startCampaign(campaign.id) : resumeCampaign(campaign.id)),
+                            )}
+                            disabled={actionInFlight !== null}
+                          >
+                            {actionInFlight === `${campaign.id}:${campaign.status === 'draft' ? 'start' : 'resume'}` ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Play className="w-4 h-4 mr-1" />
+                                {campaign.status === 'draft' ? 'Iniciar' : 'Retomar'}
+                              </>
+                            )}
+                          </Button>
                         )}
-                        {c.status === 'paused' ? 'Retomar' : 'Iniciar'}
-                      </Button>
-                    ) : c.status === 'running' ? (
-                      <Button
-                        variant="outline" size="sm"
-                        disabled={isPending}
-                        onClick={() => void handleUpdateStatus(c.id, 'paused')}
-                      >
-                        <PauseCircle className="mr-1.5 h-3.5 w-3.5" />
-                        Pausar
-                      </Button>
-                    ) : null}
 
-                    {c.status === 'running' && (
-                      <Button
-                        variant="ghost" size="sm"
-                        disabled={isPending}
-                        onClick={() => void handleUpdateStatus(c.id, 'canceled')}
-                      >
-                        <Ban className="mr-1.5 h-3.5 w-3.5" />
-                        Cancelar
-                      </Button>
-                    )}
+                        {campaign.status === 'running' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void runCampaignAction(campaign.id, 'pause', () => pauseCampaign(campaign.id))}
+                            disabled={actionInFlight !== null}
+                          >
+                            {actionInFlight === `${campaign.id}:pause` ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Pause className="w-4 h-4 mr-1" />
+                                Pausar
+                              </>
+                            )}
+                          </Button>
+                        )}
 
-                    {(c.status === 'draft' || c.status === 'completed' || c.status === 'canceled') && (
-                      <Button variant="ghost" size="sm" className="text-rose-600 hover:text-rose-700"
-                        onClick={() => setDeleteTarget(c)}
-                      >
-                        <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                        Excluir
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
-        )}
+                        {(campaign.status === 'running' || campaign.status === 'paused' || campaign.status === 'draft') && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => void runCampaignAction(campaign.id, 'cancel', () => cancelCampaign(campaign.id))}
+                            disabled={actionInFlight !== null}
+                          >
+                            {actionInFlight === `${campaign.id}:cancel` ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Square className="w-4 h-4 mr-1" />
+                                Cancelar
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-destructive/40 text-destructive hover:text-destructive hover:bg-destructive/5"
+                          onClick={() => setCampaignToDelete(campaign)}
+                          disabled={actionInFlight !== null}
+                        >
+                          {actionInFlight === `${campaign.id}:delete` ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              Deletar
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+
+              {campaigns.length === 0 && (
+                <Card className="lg:col-span-2 border-border/50 bg-background/50 glass shadow-sm">
+                  <CardContent className="py-16 text-center text-muted-foreground">
+                    Nenhuma campanha criada ainda. Clique em "Nova Campanha" para iniciar.
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Campaign wizard modal */}
       <InternalCrmCampaignModal
-        open={modalOpen}
-        onOpenChange={(open) => { setModalOpen(open); if (!open) setEditingCampaign(null); }}
-        campaign={editingCampaign}
+        isOpen={isCampaignModalOpen}
+        onClose={() => setIsCampaignModalOpen(false)}
         instances={instances}
-        isSubmitting={mod.upsertCampaignMutation.isPending}
-        onSave={async (payload) => {
-          try {
-            await mod.upsertCampaignMutation.mutateAsync({ action: 'upsert_campaign', ...payload });
-            toast({ title: 'Campanha salva' });
-            setModalOpen(false);
-            setEditingCampaign(null);
-          } catch {
-            toast({ title: 'Falha ao salvar campanha', variant: 'destructive' });
-          }
-        }}
+        onSubmit={(input, autoStart) => handleSubmitCampaign(input, autoStart)}
       />
 
-      {/* Detail / status panel */}
       <InternalCrmCampaignStatusPanel
-        campaign={detailCampaign}
-        open={!!detailCampaign}
-        onOpenChange={(open) => { if (!open) setDetailCampaign(null); }}
-        onUpdateStatus={handleUpdateStatus}
+        isOpen={statusPanelCampaignId !== null}
+        onClose={() => setStatusPanelCampaignId(null)}
+        campaign={selectedCampaign}
+        recipients={selectedRecipients}
+        onPause={pauseCampaign}
+        onResume={resumeCampaign}
+        onCancel={cancelCampaign}
       />
 
-      {/* Delete confirmation */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+      <AlertDialog open={campaignToDelete !== null} onOpenChange={(open) => !open && setCampaignToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir campanha?</AlertDialogTitle>
+            <AlertDialogTitle>Deletar campanha?</AlertDialogTitle>
             <AlertDialogDescription>
-              A campanha <strong>{deleteTarget?.name}</strong> e todos os seus destinatários serão
-              removidos permanentemente.
+              Esta ação removerá a campanha "{campaignToDelete?.name || ''}" e seu histórico de envios.
+              {campaignToDelete?.status === 'running' ? ' A campanha será cancelada antes da exclusão.' : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-rose-600 hover:bg-rose-700">
-              Excluir
+            <AlertDialogCancel disabled={actionInFlight !== null}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteCampaign();
+              }}
+              disabled={actionInFlight !== null}
+            >
+              {campaignToDelete && actionInFlight === `${campaignToDelete.id}:delete` ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                'Deletar campanha'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

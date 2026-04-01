@@ -97,6 +97,9 @@ verify_jwt = false
 [functions.internal-crm-broadcast-worker]
 verify_jwt = false
 
+[functions.admin-broadcast-worker]
+verify_jwt = false
+
 [functions.stripe-checkout]
 verify_jwt = false
 
