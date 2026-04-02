@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import {
@@ -93,6 +93,17 @@ export function useInternalCrmInbox(selectedConversationId: string | null, filte
     invalidate: invalidateConversationKeys,
   });
 
+  const retryMessageMediaMutation = useInternalCrmMutation({
+    invalidate: invalidateConversationKeys,
+  });
+  const retryMessageMedia = retryMessageMediaMutation.mutateAsync;
+
+  const retryAttemptsRef = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    retryAttemptsRef.current.clear();
+  }, [selectedConversationId]);
+
   useEffect(() => {
     const channel = supabase
       .channel('internal_crm_messages_stream')
@@ -135,6 +146,53 @@ export function useInternalCrmInbox(selectedConversationId: string | null, filte
     };
   }, [queryClient]);
 
+  useEffect(() => {
+    const messages = conversationDetailQuery.data?.messages || [];
+    const pendingMessages = messages.filter((message) => {
+      if (!['image', 'video', 'audio', 'document'].includes(message.message_type)) return false;
+      if (message.attachment_ready !== false) return false;
+
+      const createdAtMs = new Date(message.created_at).getTime();
+      const ageMs = Number.isFinite(createdAtMs) ? Date.now() - createdAtMs : Number.POSITIVE_INFINITY;
+      return message.attachment_error === true || ageMs >= 5_000;
+    });
+
+    const pendingIds = new Set(pendingMessages.map((message) => message.id));
+    for (const messageId of Array.from(retryAttemptsRef.current.keys())) {
+      if (!pendingIds.has(messageId)) {
+        retryAttemptsRef.current.delete(messageId);
+      }
+    }
+
+    const retryableMessages = pendingMessages.filter((message) => {
+      const attempts = retryAttemptsRef.current.get(message.id) || 0;
+      return attempts < 3;
+    });
+
+    if (retryableMessages.length === 0) return undefined;
+
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        for (const message of retryableMessages) {
+          const attempts = retryAttemptsRef.current.get(message.id) || 0;
+          retryAttemptsRef.current.set(message.id, attempts + 1);
+          try {
+            await retryMessageMedia({
+              action: 'retry_message_media',
+              message_id: message.id,
+            });
+          } catch {
+            // leave state as-is; the retry counter prevents endless hammering
+          }
+        }
+      })();
+    }, 2_000);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [conversationDetailQuery.data?.messages, retryMessageMedia]);
+
   return {
     supabaseClient: supabase,
     conversationsQuery,
@@ -151,5 +209,6 @@ export function useInternalCrmInbox(selectedConversationId: string | null, filte
     upsertClientMutation,
     upsertInstanceMutation,
     connectInstanceMutation,
+    retryMessageMediaMutation,
   };
 }

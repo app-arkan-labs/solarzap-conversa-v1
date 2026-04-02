@@ -324,7 +324,7 @@ export default function InternalCrmInboxPage() {
           isDetailsPanelOpen && 'xl:grid-cols-[320px_minmax(0,1fr)_340px]',
         )}>
           {/* Conversation list */}
-          <div className={cn('min-h-0', selectedConversationId ? 'hidden lg:block' : 'block')}>
+          <div className={cn('min-h-0 overflow-hidden', selectedConversationId ? 'hidden lg:block' : 'block')}>
             <InternalCrmConversationList
               conversations={conversations}
               selectedConversationId={selectedConversationId}
@@ -338,7 +338,7 @@ export default function InternalCrmInboxPage() {
           </div>
 
           {/* Chat area — full version */}
-          <div className={cn('min-h-0 border-l border-border/40', !selectedConversationId ? 'hidden lg:block' : 'block')}>
+          <div className={cn('min-h-0 overflow-hidden border-l border-border/40', !selectedConversationId ? 'hidden lg:block' : 'block')}>
             <InternalCrmChatAreaFull
               conversation={inbox.selectedConversation}
               messages={inbox.messages}
@@ -348,6 +348,20 @@ export default function InternalCrmInboxPage() {
               onSendMessage={sendMessage}
               onSendAttachment={sendAttachment}
               onSendAudio={sendAudio}
+              onRetryMessageMedia={async (messageId) => {
+                try {
+                  await inbox.retryMessageMediaMutation.mutateAsync({
+                    action: 'retry_message_media',
+                    message_id: messageId,
+                  });
+                } catch (error) {
+                  toast({
+                    title: 'Falha ao reprocessar mídia',
+                    description: error instanceof Error ? error.message : 'Não foi possível reenfileirar a mídia.',
+                    variant: 'destructive',
+                  });
+                }
+              }}
               isSending={inbox.appendMessageMutation.isPending || isSendingMedia}
               isUpdatingStatus={inbox.updateConversationStatusMutation.isPending}
               onUpdateStatus={updateConversationStatus}

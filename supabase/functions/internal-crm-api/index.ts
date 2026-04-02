@@ -87,6 +87,7 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   list_conversations: { minCrmRole: 'read_only', requireMfa: true },
   get_conversation_detail: { minCrmRole: 'read_only', requireMfa: true },
   append_message: { minCrmRole: 'cs', requireMfa: true },
+  retry_message_media: { minCrmRole: 'read_only', requireMfa: true },
   mark_conversation_read: { minCrmRole: 'read_only', requireMfa: true },
   update_conversation_status: { minCrmRole: 'cs', requireMfa: true },
   list_campaigns: { minCrmRole: 'read_only', requireMfa: true },
@@ -1842,6 +1843,122 @@ function buildInternalCrmMessagePreview(messageType: unknown, body: unknown, met
   return `${placeholder}: ${trimmedBody}`.trim();
 }
 
+function normalizeInternalCrmNameToken(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function isInternalCrmPhoneLikeName(value: unknown, phone: string): boolean {
+  const digits = normalizePhone(value);
+  return Boolean(digits) && digits === phone;
+}
+
+function isInternalCrmPlaceholderName(value: unknown, phone: string, instanceDisplayName?: string | null): boolean {
+  const normalized = normalizeInternalCrmNameToken(value);
+  if (!normalized) return true;
+  if (isInternalCrmPhoneLikeName(value, phone)) return true;
+
+  const genericTokens = new Set([
+    'cliente',
+    'contato',
+    'contato principal',
+    'lead',
+    'lead whatsapp',
+    'crm interno',
+    'sem nome',
+  ]);
+  if (genericTokens.has(normalized)) return true;
+  if (normalized.startsWith('contato ') && isInternalCrmPhoneLikeName(normalized.replace(/^contato\s+/, ''), phone)) return true;
+
+  const instanceName = normalizeInternalCrmNameToken(instanceDisplayName);
+  return Boolean(instanceName) && normalized === instanceName;
+}
+
+function shouldPromoteInternalCrmInboundName(
+  currentValue: unknown,
+  nextValue: unknown,
+  phone: string,
+  instanceDisplayName?: string | null,
+): boolean {
+  const nextName = normalizeInternalCrmNameToken(nextValue);
+  if (!nextName) return false;
+
+  const currentName = normalizeInternalCrmNameToken(currentValue);
+  if (currentName === nextName) return false;
+  if (!currentName) return true;
+
+  return isInternalCrmPlaceholderName(currentValue, phone, instanceDisplayName);
+}
+
+async function reconcileInternalCrmInboundIdentity(
+  schema: ReturnType<typeof crmSchema>,
+  input: {
+    client: Record<string, unknown>;
+    contact: Record<string, unknown> | null;
+    inboundDisplayName: string | null;
+    phone: string;
+    instanceDisplayName?: string | null;
+  },
+) {
+  const inboundDisplayName = asString(input.inboundDisplayName);
+  if (!inboundDisplayName) {
+    return {
+      client: input.client,
+      contact: input.contact,
+    };
+  }
+
+  let nextClient = input.client;
+  let nextContact = input.contact;
+
+  const clientUpdatePayload: Record<string, unknown> = {};
+  if (shouldPromoteInternalCrmInboundName(input.client.primary_contact_name, inboundDisplayName, input.phone, input.instanceDisplayName)) {
+    clientUpdatePayload.primary_contact_name = inboundDisplayName;
+  }
+  if (shouldPromoteInternalCrmInboundName(input.client.company_name, inboundDisplayName, input.phone, input.instanceDisplayName)) {
+    clientUpdatePayload.company_name = inboundDisplayName;
+  }
+
+  if (Object.keys(clientUpdatePayload).length > 0) {
+    clientUpdatePayload.updated_at = nowIso();
+    const { data: updatedClient } = await schema
+      .from('clients')
+      .update(clientUpdatePayload)
+      .eq('id', asString(input.client.id))
+      .select('*')
+      .maybeSingle();
+
+    if (updatedClient?.id) {
+      nextClient = updatedClient as Record<string, unknown>;
+    }
+  }
+
+  if (nextContact?.id && shouldPromoteInternalCrmInboundName(nextContact.name, inboundDisplayName, input.phone, input.instanceDisplayName)) {
+    const { data: updatedContact } = await schema
+      .from('client_contacts')
+      .update({
+        name: inboundDisplayName,
+        updated_at: nowIso(),
+      })
+      .eq('id', asString(nextContact.id))
+      .select('*')
+      .maybeSingle();
+
+    if (updatedContact?.id) {
+      nextContact = updatedContact as Record<string, unknown>;
+    }
+  }
+
+  return {
+    client: nextClient,
+    contact: nextContact,
+  };
+}
+
 async function evolutionRequest(endpoint: string, options: RequestInit = {}) {
   const { baseUrl, apiKey } = getEvolutionEnv();
   const { timeoutMs, maxRetries, baseBackoffMs } = resolveEvolutionRequestConfig();
@@ -2780,6 +2897,60 @@ async function appendMessage(
   });
 
   return { ok: true, message: data };
+}
+
+async function retryMessageMedia(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const messageId = asString(payload.message_id);
+  if (!messageId) throw { status: 400, code: 'invalid_payload' };
+
+  const schema = crmSchema(serviceClient);
+  const { data: message, error } = await schema
+    .from('messages')
+    .select('*')
+    .eq('id', messageId)
+    .maybeSingle();
+
+  if (error) throw { status: 500, code: 'message_query_failed', error };
+  if (!message?.id) throw { status: 404, code: 'not_found' };
+
+  if (!['image', 'video', 'audio', 'document'].includes(String(message.message_type || ''))) {
+    return { ok: true, skipped: true, reason: 'not_media_message' };
+  }
+
+  if (!message.wa_message_id) {
+    throw { status: 400, code: 'invalid_payload', message: 'Mensagem sem wa_message_id para reprocessamento.' };
+  }
+
+  await schema
+    .from('messages')
+    .update({
+      attachment_error: false,
+      attachment_error_message: 'MANUAL_RETRY_REQUESTED',
+    })
+    .eq('id', messageId);
+
+  const result = await invokeInternalEdgeFunction('internal-crm-media-resolver', {
+    messageId,
+    waMessageId: asString(message.wa_message_id),
+    instanceName: asString(asRecord(message.metadata).instance_name),
+    mimeType: asString(message.attachment_mimetype),
+    fileName: asString(message.attachment_name),
+    messageType: asString(message.message_type),
+    mediaVariant: asString(asRecord(message.metadata).media_variant),
+  });
+
+  await writeAuditLog(serviceClient, identity, 'retry_message_media', req, {
+    target_type: 'message',
+    target_id: messageId,
+    after: result,
+  });
+
+  return { ok: true, result };
 }
 
 async function markConversationRead(
@@ -5694,6 +5865,14 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
   const fromMe =
     (messageNode.key as Record<string, unknown> | undefined)?.fromMe === true ||
     (messageNode as Record<string, unknown>).fromMe === true;
+  const inboundPushName = !fromMe
+    ? (
+      asString((messageNode as Record<string, unknown>).pushName) ||
+      asString(((messageNode as Record<string, unknown>).key as Record<string, unknown> | undefined)?.pushName) ||
+      asString(body.pushName) ||
+      asString((body.data as Record<string, unknown> | undefined)?.pushName)
+    )
+    : null;
 
   const rawRemoteJid =
     asString(messageNode.remoteJid) ||
@@ -5809,12 +5988,10 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
 
   // 4. Create new client only if truly not found — use pushName from WhatsApp payload
   if (!client?.id) {
-    const pushName =
-      asString((messageNode as Record<string, unknown>).pushName) ||
-      asString(((messageNode as Record<string, unknown>).key as Record<string, unknown> | undefined)?.pushName) ||
-      asString(body.pushName) ||
-      asString((body.data as Record<string, unknown> | undefined)?.pushName);
-    const displayName = pushName || phone;
+    if (fromMe) {
+      return { ok: true, ignored: true, reason: 'from_me_client_not_found' };
+    }
+    const displayName = inboundPushName || phone;
 
     const createdClient = await schema.from('clients').insert({
       company_name: displayName,
@@ -5858,7 +6035,7 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
   if (!contact?.id) {
     const createdContact = await schema.from('client_contacts').insert({
       client_id: client.id,
-      name: client.primary_contact_name || `Contato ${phone}`,
+      name: client.primary_contact_name || inboundPushName || `Contato ${phone}`,
       phone,
       email: client.primary_email,
       role_label: 'Contato principal',
@@ -5870,6 +6047,18 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     }
 
     contact = createdContact.data;
+  }
+
+  if (!fromMe && inboundPushName) {
+    const reconciledIdentity = await reconcileInternalCrmInboundIdentity(schema, {
+      client: client as Record<string, unknown>,
+      contact: contact as Record<string, unknown> | null,
+      inboundDisplayName: inboundPushName,
+      phone,
+      instanceDisplayName: asString((instance as Record<string, unknown>).display_name),
+    });
+    client = reconciledIdentity.client;
+    contact = reconciledIdentity.contact;
   }
 
   let conversation = (await schema
@@ -7193,6 +7382,8 @@ async function dispatchUserAction(
       return await getConversationDetail(serviceClient, payload);
     case 'append_message':
       return await appendMessage(serviceClient, identity, payload, req);
+    case 'retry_message_media':
+      return await retryMessageMedia(serviceClient, identity, payload, req);
     case 'mark_conversation_read':
       return await markConversationRead(serviceClient, identity, payload, req);
     case 'update_conversation_status':

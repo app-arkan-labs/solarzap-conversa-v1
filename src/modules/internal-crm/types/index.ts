@@ -34,6 +34,7 @@ export type InternalCrmApiAction =
   | 'list_conversations'
   | 'get_conversation_detail'
   | 'append_message'
+  | 'retry_message_media'
   | 'mark_conversation_read'
   | 'update_conversation_status'
   | 'webhook_inbound'

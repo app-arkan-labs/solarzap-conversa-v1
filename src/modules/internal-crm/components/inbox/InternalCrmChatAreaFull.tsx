@@ -79,6 +79,7 @@ type InternalCrmChatAreaFullProps = {
       mimeType?: string;
     },
   ) => Promise<void>;
+  onRetryMessageMedia?: (messageId: string) => Promise<void>;
   isSending: boolean;
   isUpdatingStatus?: boolean;
   onUpdateStatus: (status: 'open' | 'resolved' | 'archived') => void;
@@ -294,6 +295,18 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
       prependAdjustRef.current = { pending: true, prevScrollTop: el.scrollTop, prevScrollHeight: el.scrollHeight };
       setVisibleStartIndex((prev) => Math.max(0, prev - OLDER_MESSAGES_BATCH));
     }
+  };
+
+  const scrollToBottom = (instant = false) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'auto' : 'smooth', block: 'end' });
+  };
+
+  const handleMediaLoad = () => {
+    window.setTimeout(() => {
+      if (isAtBottomRef.current) {
+        scrollToBottom();
+      }
+    }, 100);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -544,7 +557,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
         className="flex-1 min-h-0 overflow-y-auto chat-bg-pattern custom-scrollbar"
         onScroll={handleMessagesScroll}
       >
-        <div className="flex flex-col space-y-1 py-2 px-4 min-h-full max-w-3xl mx-auto">
+        <div className="flex min-h-full max-w-3xl mx-auto flex-col space-y-1 py-2 px-4">
           {visibleMessages.length === 0 ? (
             <div className="text-center text-sm text-muted-foreground py-8">
               Nenhuma mensagem nesta conversa.
@@ -556,6 +569,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
               const isNote = msg.message_type === 'note';
               const isSelected = selectedMessages.has(msg.id);
               const attType = mapAttachmentType(msg.message_type);
+              const showFailedMediaState = Boolean(attType && !msg.attachment_url && msg.attachment_error);
 
               // Day separator
               const dayKey = getDayKey(msg.created_at);
@@ -668,10 +682,32 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
                       )}
 
                       {/* Message content — use SolarZap MessageContent for media rendering */}
-                      {attType ? (
+                      {showFailedMediaState ? (
+                        <div className="space-y-2 rounded-lg border border-dashed border-destructive/40 bg-destructive/5 p-3 text-sm">
+                          <p className="font-medium text-destructive">Falha ao carregar mídia</p>
+                          <p className="text-xs text-muted-foreground">
+                            {msg.attachment_error_message || msg.body || 'Não foi possível processar o anexo ainda.'}
+                          </p>
+                          {props.onRetryMessageMedia ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void props.onRetryMessageMedia?.(msg.id);
+                              }}
+                            >
+                              Tentar novamente
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : attType ? (
                         <MessageContent
                           content={msg.body || ''}
                           isSent={isOutbound}
+                          onLoad={handleMediaLoad}
                           attachmentUrl={msg.attachment_url}
                           attachmentType={attType}
                           attachmentReady={msg.attachment_ready !== false}

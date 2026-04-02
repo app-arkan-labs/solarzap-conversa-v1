@@ -105,6 +105,7 @@ export default function AdminLayout() {
 
   const hasCrmAccess =
     !!crmIdentityQuery.data?.crm_role && crmIdentityQuery.data.crm_role !== 'none';
+  const isInternalCrmRoute = location.pathname.startsWith('/admin/crm');
 
   return (
     <div className="app-shell-bg h-screen bg-background text-foreground overflow-hidden">
@@ -219,7 +220,12 @@ export default function AdminLayout() {
             </Tooltip>
           </header>
 
-          <div className="flex-1 min-h-0 flex flex-col p-5 lg:p-7 overflow-auto">
+          <div
+            className={cn(
+              'flex-1 min-h-0 flex flex-col',
+              isInternalCrmRoute ? 'overflow-hidden p-0' : 'overflow-auto p-5 lg:p-7',
+            )}
+          >
             <Outlet />
           </div>
         </main>

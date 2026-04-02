@@ -14,8 +14,8 @@ export function InternalCrmPageLayout({
 }: InternalCrmPageLayoutProps) {
   if (mode === 'immersive') {
     return (
-      <div className="h-full overflow-hidden">
-        <div className={cn('mx-auto flex h-full w-full max-w-[1680px] flex-col px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-5', className)}>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <div className={cn('mx-auto flex h-full min-h-0 w-full max-w-[1680px] flex-col px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-5', className)}>
           {children}
         </div>
       </div>
@@ -23,8 +23,8 @@ export function InternalCrmPageLayout({
   }
 
   return (
-    <div className="h-full overflow-auto">
-      <div className={cn('mx-auto flex min-h-full w-full max-w-[1680px] flex-col gap-6 px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-5', className)}>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className={cn('mx-auto flex min-h-0 h-full w-full max-w-[1680px] flex-col gap-6 overflow-auto px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-5', className)}>
         {children}
       </div>
     </div>

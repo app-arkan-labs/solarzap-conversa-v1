@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Play, Pause, Download, FileText, Image as ImageIcon, Film, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { tokenizeLinkifiedText } from '@/lib/linkifyText';
 
 interface MessageContentProps {
   content: string;
@@ -11,6 +12,33 @@ interface MessageContentProps {
   attachmentType?: string;
   attachmentReady?: boolean;
   attachmentName?: string;
+}
+
+function renderLinkifiedText(text: string) {
+  const tokens = tokenizeLinkifiedText(text);
+  if (tokens.length === 0) return text;
+
+  return tokens.map((token, index) => {
+    if (token.type === 'link') {
+      return (
+        <a
+          key={`link-${index}-${token.href}`}
+          href={token.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="break-all text-primary underline underline-offset-2 hover:text-primary/80"
+        >
+          {token.value}
+        </a>
+      );
+    }
+
+    return (
+      <React.Fragment key={`text-${index}`}>
+        {token.value}
+      </React.Fragment>
+    );
+  });
 }
 
 // Parse message content to extract media type and URL
@@ -566,7 +594,7 @@ export function MessageContent({
     default:
       return (
         <p className="text-foreground text-sm whitespace-pre-wrap break-words">
-          {parsed.text}
+          {renderLinkifiedText(parsed.text)}
         </p>
       );
   }
