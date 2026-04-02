@@ -141,8 +141,8 @@ export default function AdminCrmLayout() {
   };
 
   return (
-    <div className="app-shell-bg min-h-[100dvh] bg-background text-foreground">
-      <div className="flex min-h-[100dvh]">
+    <div className="app-shell-bg h-[100dvh] overflow-hidden bg-background text-foreground">
+      <div className="flex h-full min-h-0 overflow-hidden">
         <aside className="relative hidden w-[84px] shrink-0 border-r border-sidebar-border/80 bg-[linear-gradient(180deg,hsl(var(--sidebar-background)),hsl(var(--sidebar-accent))_135%)] text-sidebar-foreground lg:flex lg:flex-col">
           <div className="flex justify-center px-3 pb-5 pt-4">
             <Tooltip>
@@ -221,7 +221,7 @@ export default function AdminCrmLayout() {
           </div>
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <header className="sticky top-0 z-40 border-b border-border/70 bg-card/78 backdrop-blur-xl">
             <div className="flex items-center justify-between gap-4 px-4 py-3 lg:px-6">
               <div className="flex min-w-0 items-center gap-3">
