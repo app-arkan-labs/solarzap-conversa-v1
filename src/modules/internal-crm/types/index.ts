@@ -391,11 +391,18 @@ export type InternalCrmMessage = {
   body: string | null;
   message_type: 'text' | 'image' | 'audio' | 'document' | 'video' | 'note';
   attachment_url: string | null;
+  attachment_ready: boolean | null;
+  attachment_mimetype: string | null;
+  attachment_name: string | null;
+  attachment_size: number | null;
+  attachment_error: boolean | null;
+  attachment_error_message: string | null;
   wa_message_id: string | null;
   remote_jid: string | null;
   sent_by_user_id: string | null;
   read_at: string | null;
   delivery_status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+  metadata: Record<string, unknown> | null;
   created_at: string;
 };
 

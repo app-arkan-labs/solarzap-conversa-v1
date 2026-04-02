@@ -25,6 +25,10 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import EmojiPicker, { EmojiClickData, Theme, Categories } from 'emoji-picker-react';
 import { MessageContent } from '@/components/solarzap/MessageContent';
+import {
+  resolveInternalCrmAttachmentKind,
+  resolveInternalCrmMediaVariant,
+} from '@/modules/internal-crm/lib/chatMedia';
 import type {
   InternalCrmConversationSummary,
   InternalCrmMessage,
@@ -58,7 +62,23 @@ type InternalCrmChatAreaFullProps = {
   messageBody: string;
   onMessageBodyChange: (value: string) => void;
   onSendMessage: () => void;
-  onSendAttachment?: (file: File, fileType: string) => Promise<void>;
+  onSendAttachment?: (
+    file: File,
+    fileType: 'image' | 'video' | 'audio' | 'document',
+    options?: {
+      caption?: string;
+      mediaVariant?: 'standard' | 'gif' | 'sticker';
+      preferSticker?: boolean;
+    },
+  ) => Promise<void>;
+  onSendAudio?: (
+    audioBlob: Blob,
+    durationSeconds: number,
+    options?: {
+      fileName?: string;
+      mimeType?: string;
+    },
+  ) => Promise<void>;
   isSending: boolean;
   isUpdatingStatus?: boolean;
   onUpdateStatus: (status: 'open' | 'resolved' | 'archived') => void;
@@ -138,12 +158,18 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingIntervalRef = useRef<number | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingDurationRef = useRef(0);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [replyTarget, setReplyTarget] = useState<InternalCrmMessage | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
   const dragCounterRef = useRef(0);
 
   // Reverse-pagination
@@ -217,6 +243,24 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
     }
   }, [props.isDetailsPanelOpen]);
 
+  useEffect(() => {
+    return () => {
+      if (recordingIntervalRef.current) {
+        window.clearInterval(recordingIntervalRef.current);
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch {
+          // noop
+        }
+      }
+      const recorder = mediaRecorderRef.current as (MediaRecorder & { stream?: MediaStream }) | null;
+      recorder?.stream?.getTracks().forEach((track) => track.stop());
+      mediaRecorderRef.current = null;
+    };
+  }, []);
+
   const clampedStart = Math.min(visibleStartIndex, props.messages.length);
   const visibleMessages = props.messages.slice(clampedStart);
 
@@ -252,13 +296,6 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
     }
   };
 
-  // File handling
-  const getFileType = (file: File): 'image' | 'video' | 'document' => {
-    if (file.type.startsWith('image/')) return 'image';
-    if (file.type.startsWith('video/')) return 'video';
-    return 'document';
-  };
-
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!props.onSendAttachment || !e.target.files) return;
     const file = e.target.files[0];
@@ -268,8 +305,20 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
       e.target.value = '';
       return;
     }
-    await props.onSendAttachment(file, getFileType(file));
-    e.target.value = '';
+    try {
+      const fileType = resolveInternalCrmAttachmentKind(file);
+      const mediaVariant = resolveInternalCrmMediaVariant(file);
+      await props.onSendAttachment(file, fileType, {
+        caption: props.messageBody.trim() || undefined,
+        mediaVariant: mediaVariant === 'voice_note' ? 'standard' : mediaVariant,
+        preferSticker: mediaVariant === 'gif' || mediaVariant === 'sticker',
+      });
+      if (props.messageBody.trim()) {
+        props.onMessageBodyChange('');
+      }
+    } finally {
+      e.target.value = '';
+    }
   };
 
   // Drag and drop
@@ -282,7 +331,108 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
     const files = Array.from(e.dataTransfer.files).slice(0, 10);
     for (const file of files) {
       if (file.size > 16 * 1024 * 1024) { toast({ title: 'Arquivo grande', description: `${file.name} excede 16 MB.`, variant: 'destructive' }); continue; }
-      await props.onSendAttachment(file, getFileType(file));
+      const fileType = resolveInternalCrmAttachmentKind(file);
+      const mediaVariant = resolveInternalCrmMediaVariant(file);
+      await props.onSendAttachment(file, fileType, {
+        caption: props.messageBody.trim() || undefined,
+        mediaVariant: mediaVariant === 'voice_note' ? 'standard' : mediaVariant,
+        preferSticker: mediaVariant === 'gif' || mediaVariant === 'sticker',
+      });
+    }
+    if (props.messageBody.trim()) props.onMessageBodyChange('');
+  };
+
+  const resetRecordingState = () => {
+    if (recordingIntervalRef.current) {
+      window.clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    recordingChunksRef.current = [];
+    recordingDurationRef.current = 0;
+    setRecordingDuration(0);
+    setIsRecording(false);
+  };
+
+  const handleRecordToggle = async () => {
+    if (!props.onSendAudio) {
+      toast({ title: 'Áudio indisponível', description: 'O envio de áudio ainda não foi configurado.', variant: 'destructive' });
+      return;
+    }
+
+    if (isRecording) {
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.stop();
+      }
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast({ title: 'Microfone indisponível', description: 'Seu navegador não suporta gravação de áudio.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredMime = MediaRecorder.isTypeSupported('audio/ogg; codecs=opus')
+        ? 'audio/ogg; codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
+          ? 'audio/webm; codecs=opus'
+          : '';
+      const recorder = new MediaRecorder(stream, preferredMime ? { mimeType: preferredMime } : undefined) as MediaRecorder & { stream?: MediaStream };
+      recorder.stream = stream;
+
+      recordingChunksRef.current = [];
+      recordingDurationRef.current = 0;
+      setRecordingDuration(0);
+      setIsRecording(true);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const finalChunks = [...recordingChunksRef.current];
+        const mimeType = recorder.mimeType || preferredMime || 'audio/webm';
+        const durationSeconds = recordingDurationRef.current;
+        resetRecordingState();
+        recorder.stream?.getTracks().forEach((track) => track.stop());
+        mediaRecorderRef.current = null;
+
+        if (finalChunks.length === 0) return;
+
+        const audioBlob = new Blob(finalChunks, { type: mimeType });
+        if (audioBlob.size === 0) return;
+
+        try {
+          await props.onSendAudio?.(audioBlob, durationSeconds, {
+            mimeType,
+            fileName: `audio.${mimeType.includes('ogg') ? 'ogg' : 'webm'}`,
+          });
+        } catch (error) {
+          toast({
+            title: 'Erro ao enviar áudio',
+            description: error instanceof Error ? error.message : 'Falha desconhecida no envio do áudio.',
+            variant: 'destructive',
+          });
+        }
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      recordingIntervalRef.current = window.setInterval(() => {
+        recordingDurationRef.current += 1;
+        setRecordingDuration(recordingDurationRef.current);
+      }, 1_000);
+    } catch (error) {
+      resetRecordingState();
+      toast({
+        title: 'Erro ao acessar microfone',
+        description: error instanceof Error ? error.message : 'Não foi possível iniciar a gravação.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -518,13 +668,14 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
                       )}
 
                       {/* Message content — use SolarZap MessageContent for media rendering */}
-                      {msg.attachment_url && attType ? (
+                      {attType ? (
                         <MessageContent
                           content={msg.body || ''}
                           isSent={isOutbound}
                           attachmentUrl={msg.attachment_url}
                           attachmentType={attType}
-                          attachmentReady={true}
+                          attachmentReady={msg.attachment_ready !== false}
+                          attachmentName={msg.attachment_name || undefined}
                         />
                       ) : (
                         <p className="whitespace-pre-wrap break-words text-sm">{msg.body || '-'}</p>
@@ -592,6 +743,12 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
       {/* ====== MESSAGE INPUT — copied from SolarZap ====== */}
       {!isSelectionMode && (
         <div className={cn('px-4 py-3 border-t border-border bg-card shrink-0', replyTarget && 'border-t-0')}>
+          {isRecording && (
+            <div className="mb-2 flex items-center justify-between rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+              <span className="font-medium">Gravando áudio...</span>
+              <span>{recordingDuration}s</span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             {/* Emoji */}
             <div className="relative" ref={emojiPickerRef}>
@@ -632,6 +789,21 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
               onChange={handleFileSelect}
             />
 
+            {/* Audio record */}
+            <button
+              onClick={() => { void handleRecordToggle(); }}
+              disabled={props.isSending}
+              className={cn(
+                'p-2 rounded-lg transition-colors',
+                isRecording
+                  ? 'bg-red-500 text-white hover:bg-red-600'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+              )}
+              title={isRecording ? 'Parar gravação' : 'Gravar áudio'}
+            >
+              <Mic className="w-5 h-5" />
+            </button>
+
             {/* Text input */}
             <textarea
               ref={inputRef}
@@ -651,7 +823,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
             {/* Send */}
             <button
               onClick={handleSend}
-              disabled={props.isSending || !props.messageBody.trim()}
+              disabled={props.isSending || isRecording || !props.messageBody.trim()}
               className={cn(
                 'p-2.5 rounded-lg transition-colors',
                 props.messageBody.trim()

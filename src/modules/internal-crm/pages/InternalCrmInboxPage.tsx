@@ -13,6 +13,7 @@ import { ClientNotesSheet } from '@/modules/internal-crm/components/inbox/Client
 import { InternalCrmAppointmentModal } from '@/modules/internal-crm/components/calendar/InternalCrmAppointmentModal';
 import { useInternalCrmInbox } from '@/modules/internal-crm/hooks/useInternalCrmInbox';
 import { useInternalCrmClients, useInternalCrmMutation } from '@/modules/internal-crm/hooks/useInternalCrmApi';
+import type { InternalCrmAttachmentKind, InternalCrmMediaVariant } from '@/modules/internal-crm/lib/chatMedia';
 
 export default function InternalCrmInboxPage() {
   const { toast } = useToast();
@@ -26,6 +27,7 @@ export default function InternalCrmInboxPage() {
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(true);
   const [notesSheetOpen, setNotesSheetOpen] = useState(false);
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
+  const [isSendingMedia, setIsSendingMedia] = useState(false);
   const autoReadSignatureRef = useRef<string>('');
 
   const inbox = useInternalCrmInbox(selectedConversationId, { status });
@@ -120,27 +122,138 @@ export default function InternalCrmInboxPage() {
     toast({ title: 'Nota adicionada' });
   };
 
-  const sendAttachment = async (file: File, fileType: string) => {
-    if (!selectedConversationId) return;
-    // Upload file to Supabase Storage first
-    const ext = file.name.split('.').pop() || 'bin';
-    const path = `internal-crm/attachments/${selectedConversationId}/${Date.now()}.${ext}`;
-    const { data: uploadData, error: uploadError } = await inbox.supabaseClient.storage
-      .from('internal-crm-media')
-      .upload(path, file, { cacheControl: '3600', upsert: false });
-    if (uploadError || !uploadData?.path) {
-      toast({ title: 'Erro ao enviar arquivo', description: uploadError?.message || 'Falha no upload.', variant: 'destructive' });
-      return;
-    }
-    const { data: { publicUrl } } = inbox.supabaseClient.storage.from('internal-crm-media').getPublicUrl(uploadData.path);
-    await inbox.appendMessageMutation.mutateAsync({
-      action: 'append_message',
-      conversation_id: selectedConversationId,
-      body: fileType === 'image' ? '' : file.name,
-      message_type: fileType,
-      attachment_url: publicUrl,
-      file_name: file.name,
+  const uploadViaStorageIntent = async (input: {
+    file: File;
+    kind: InternalCrmAttachmentKind;
+    mediaVariant?: InternalCrmMediaVariant;
+    isVoiceNote?: boolean;
+    preferSticker?: boolean;
+  }) => {
+    if (!selectedConversationId) throw new Error('Conversa não selecionada.');
+
+    const { data, error } = await inbox.supabaseClient.functions.invoke('internal-crm-storage-intent', {
+      body: {
+        conversationId: selectedConversationId,
+        fileName: input.file.name,
+        sizeBytes: input.file.size,
+        mimeType: input.file.type,
+        kind: input.kind,
+        mediaVariant: input.mediaVariant,
+        isVoiceNote: input.isVoiceNote === true,
+        preferSticker: input.preferSticker === true,
+      },
     });
+
+    if (error) {
+      throw new Error(error.message || 'Falha ao preparar upload.');
+    }
+
+    const uploadUrl = String(data?.uploadUrl || '');
+    const deliveryUrl = String(data?.deliveryUrl || data?.publicUrl || '');
+    const sendMode = String(data?.sendMode || input.kind) as InternalCrmAttachmentKind;
+    const mediaVariant = String(data?.mediaVariant || input.mediaVariant || 'standard') as InternalCrmMediaVariant;
+
+    if (!uploadUrl || !deliveryUrl) {
+      throw new Error('Storage intent retornou dados incompletos.');
+    }
+
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'PUT',
+      body: input.file,
+      headers: {
+        'Content-Type': input.file.type || 'application/octet-stream',
+      },
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error(`Falha no upload do arquivo (${uploadResponse.status}).`);
+    }
+
+    return {
+      deliveryUrl,
+      sendMode,
+      mediaVariant,
+    };
+  };
+
+  const sendAttachment = async (
+    file: File,
+    fileType: InternalCrmAttachmentKind,
+    options?: {
+      caption?: string;
+      mediaVariant?: 'standard' | 'gif' | 'sticker';
+      preferSticker?: boolean;
+    },
+  ) => {
+    if (!selectedConversationId) return;
+    setIsSendingMedia(true);
+    try {
+      const prepared = await uploadViaStorageIntent({
+        file,
+        kind: fileType,
+        mediaVariant: options?.mediaVariant || 'standard',
+        preferSticker: options?.preferSticker,
+      });
+
+      await inbox.appendMessageMutation.mutateAsync({
+        action: 'append_message',
+        conversation_id: selectedConversationId,
+        body: options?.caption || '',
+        message_type: prepared.sendMode,
+        attachment_url: prepared.deliveryUrl,
+        attachment_ready: true,
+        attachment_mimetype: file.type || null,
+        attachment_name: file.name,
+        attachment_size: file.size,
+        metadata: {
+          media_variant: prepared.mediaVariant,
+        },
+      });
+    } finally {
+      setIsSendingMedia(false);
+    }
+  };
+
+  const sendAudio = async (
+    audioBlob: Blob,
+    durationSeconds: number,
+    options?: {
+      fileName?: string;
+      mimeType?: string;
+    },
+  ) => {
+    if (!selectedConversationId) return;
+    const mimeType = options?.mimeType || audioBlob.type || 'audio/webm';
+    const fileName = options?.fileName || `audio.${mimeType.includes('ogg') ? 'ogg' : 'webm'}`;
+    const audioFile = new File([audioBlob], fileName, { type: mimeType });
+
+    setIsSendingMedia(true);
+    try {
+      const prepared = await uploadViaStorageIntent({
+        file: audioFile,
+        kind: 'audio',
+        mediaVariant: 'voice_note',
+        isVoiceNote: true,
+      });
+
+      await inbox.appendMessageMutation.mutateAsync({
+        action: 'append_message',
+        conversation_id: selectedConversationId,
+        body: '',
+        message_type: prepared.sendMode,
+        attachment_url: prepared.deliveryUrl,
+        attachment_ready: true,
+        attachment_mimetype: mimeType,
+        attachment_name: fileName,
+        attachment_size: audioFile.size,
+        metadata: {
+          media_variant: prepared.mediaVariant,
+          duration_seconds: durationSeconds,
+        },
+      });
+    } finally {
+      setIsSendingMedia(false);
+    }
   };
 
   const saveClient = async (fields: Record<string, unknown>) => {
@@ -234,7 +347,8 @@ export default function InternalCrmInboxPage() {
               onMessageBodyChange={setMessageBody}
               onSendMessage={sendMessage}
               onSendAttachment={sendAttachment}
-              isSending={inbox.appendMessageMutation.isPending}
+              onSendAudio={sendAudio}
+              isSending={inbox.appendMessageMutation.isPending || isSendingMedia}
               isUpdatingStatus={inbox.updateConversationStatusMutation.isPending}
               onUpdateStatus={updateConversationStatus}
               onOpenActions={() => {

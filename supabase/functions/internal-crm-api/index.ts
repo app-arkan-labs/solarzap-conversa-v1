@@ -121,6 +121,7 @@ const INTERNAL_ONLY_ACTIONS = new Set([
   'webhook_inbound',
   'process_agent_jobs',
   'process_automation_runs',
+  'replay_failed_automation_runs',
   'lp_public_intake',
   'lp_public_list_slots',
   'lp_public_book_slot',
@@ -993,22 +994,25 @@ async function deleteClient(
 ) {
   const clientId = asString(payload.client_id);
   if (!clientId) throw { status: 400, code: 'invalid_payload' };
+  const force = payload.force === true;
   const schema = crmSchema(serviceClient);
 
-  const { count } = await schema
-    .from('deals')
-    .select('id', { count: 'exact', head: true })
-    .eq('client_id', clientId)
-    .eq('status', 'open');
+  if (!force) {
+    const { count } = await schema
+      .from('deals')
+      .select('id', { count: 'exact', head: true })
+      .eq('client_id', clientId)
+      .eq('status', 'open');
 
-  if ((count || 0) > 0) {
-    throw { status: 400, code: 'action_not_allowed', error: 'Cliente possui deals abertos. Feche os deals antes de excluir.' };
+    if ((count || 0) > 0) {
+      throw { status: 400, code: 'action_not_allowed', message: 'Cliente possui deals abertos. Feche os deals antes de excluir.' };
+    }
   }
 
   const before = (await schema.from('clients').select('*').eq('id', clientId).maybeSingle()).data;
 
   const { error } = await schema.from('clients').delete().eq('id', clientId);
-  if (error) throw { status: 500, code: 'client_delete_failed', error };
+  if (error) throw { status: 500, code: 'client_delete_failed', message: error.message || 'Falha ao excluir cliente.' };
 
   await writeAuditLog(serviceClient, identity, 'delete_client', req, {
     target_type: 'client',
@@ -1760,22 +1764,144 @@ function getEvolutionEnv() {
   return { baseUrl, apiKey };
 }
 
+function resolveEvolutionRequestConfig() {
+  const timeoutMs = clamp(asNumber(Deno.env.get('EVOLUTION_REQUEST_TIMEOUT_MS'), 12_000), 1_000, 60_000);
+  const maxRetries = clamp(asNumber(Deno.env.get('EVOLUTION_REQUEST_MAX_RETRIES'), 2), 0, 5);
+  const baseBackoffMs = clamp(asNumber(Deno.env.get('EVOLUTION_REQUEST_BACKOFF_MS'), 350), 100, 10_000);
+  return { timeoutMs, maxRetries, baseBackoffMs };
+}
+
+function isRetryableEvolutionStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+function isRetryableEvolutionNetworkError(error: unknown): boolean {
+  if (isAbortError(error)) return true;
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('fetch')
+    || message.includes('network')
+    || message.includes('connection')
+    || message.includes('timed out')
+    || message.includes('econnreset')
+    || message.includes('econnrefused')
+    || message.includes('enotfound')
+  );
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeInternalCrmMediaVariant(value: unknown): 'standard' | 'gif' | 'sticker' | 'voice_note' {
+  const normalized = asString(value)?.toLowerCase();
+  if (normalized === 'gif') return 'gif';
+  if (normalized === 'sticker') return 'sticker';
+  if (normalized === 'voice_note') return 'voice_note';
+  return 'standard';
+}
+
+function buildInternalCrmAttachmentPlaceholder(messageType: unknown, metadata?: unknown): string {
+  const normalizedType = asString(messageType)?.toLowerCase() || 'text';
+  const mediaVariant = normalizeInternalCrmMediaVariant(asRecord(metadata).media_variant);
+  if (mediaVariant === 'sticker') return 'Sticker recebido';
+  if (mediaVariant === 'gif') return 'GIF recebido';
+  if (normalizedType === 'image') return 'Imagem recebida';
+  if (normalizedType === 'video') return 'Vídeo recebido';
+  if (normalizedType === 'audio') return 'Áudio recebido';
+  if (normalizedType === 'document') return 'Documento recebido';
+  return '';
+}
+
+function buildInternalCrmMessagePreview(messageType: unknown, body: unknown, metadata?: unknown): string {
+  const normalizedType = asString(messageType)?.toLowerCase() || 'text';
+  const trimmedBody = asString(body, 1_000) || '';
+  const placeholder = buildInternalCrmAttachmentPlaceholder(normalizedType, metadata);
+
+  if (!['image', 'video', 'audio', 'document'].includes(normalizedType)) {
+    return trimmedBody;
+  }
+
+  if (!trimmedBody) {
+    return placeholder;
+  }
+
+  if (normalizedType === 'audio' && trimmedBody.startsWith('🎤 ')) {
+    return trimmedBody;
+  }
+
+  if (trimmedBody === placeholder) {
+    return placeholder;
+  }
+
+  return `${placeholder}: ${trimmedBody}`.trim();
+}
+
 async function evolutionRequest(endpoint: string, options: RequestInit = {}) {
   const { baseUrl, apiKey } = getEvolutionEnv();
-  const response = await fetch(`${baseUrl}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: apiKey,
-      ...(options.headers || {}),
-    },
-  });
+  const { timeoutMs, maxRetries, baseBackoffMs } = resolveEvolutionRequestConfig();
 
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(`evolution_request_failed:${response.status}:${JSON.stringify(payload)}`);
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const abortController = new AbortController();
+    const timeoutHandle = setTimeout(() => abortController.abort(), timeoutMs);
+
+    try {
+      const headers = new Headers(options.headers);
+      headers.set('Content-Type', 'application/json');
+      headers.set('apikey', apiKey);
+
+      const response = await fetch(`${baseUrl}${endpoint}`, {
+        ...options,
+        headers,
+        signal: abortController.signal,
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (response.ok) {
+        return payload;
+      }
+
+      const errorMessage = `evolution_request_failed:${response.status}:${JSON.stringify(payload)}`;
+      if (attempt < maxRetries && isRetryableEvolutionStatus(response.status)) {
+        console.warn('[internal-crm-api] evolution_request_retry_status', {
+          endpoint,
+          status: response.status,
+          attempt: attempt + 1,
+          maxRetries,
+        });
+        await wait(baseBackoffMs * (2 ** attempt));
+        continue;
+      }
+
+      throw new Error(errorMessage);
+    } catch (error) {
+      if (attempt < maxRetries && isRetryableEvolutionNetworkError(error)) {
+        console.warn('[internal-crm-api] evolution_request_retry_network', {
+          endpoint,
+          reason: error instanceof Error ? error.message : String(error),
+          attempt: attempt + 1,
+          maxRetries,
+        });
+        await wait(baseBackoffMs * (2 ** attempt));
+        continue;
+      }
+
+      if (isAbortError(error)) {
+        throw new Error(`evolution_request_timeout:${timeoutMs}`);
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
   }
-  return payload;
+
+  throw new Error('evolution_request_exhausted_retries');
 }
 
 function buildInternalWebhookHeaders() {
@@ -2525,6 +2651,15 @@ async function appendMessage(
   const internalOnlyNote = conversation.channel === 'manual_note' || messageType === 'note';
 
   const attachmentUrl = asString(payload.attachment_url);
+  const attachmentMimetype = asString(payload.attachment_mimetype);
+  const attachmentName = asString(payload.attachment_name) || asString(payload.file_name);
+  const attachmentSize = Number(payload.attachment_size);
+  const metadata = mergeRecord(payload.metadata, {
+    media_variant: normalizeInternalCrmMediaVariant(payload.media_variant || asRecord(payload.metadata).media_variant),
+  });
+  const placeholderBody = attachmentUrl ? buildInternalCrmAttachmentPlaceholder(messageType, metadata) : '';
+  const persistedBody = body || placeholderBody || null;
+  const previewText = buildInternalCrmMessagePreview(messageType, persistedBody, metadata);
 
   let waMessageId: string | null = null;
   let deliveryStatus = internalOnlyNote ? 'sent' : 'pending';
@@ -2545,16 +2680,44 @@ async function appendMessage(
 
     const phone = normalizePhone(client.primary_phone);
     let sendResponse: Record<string, unknown> | null = null;
+    const mediaVariant = normalizeInternalCrmMediaVariant(metadata.media_variant);
+    const captionBody = body && body !== placeholderBody ? body : null;
 
-    if (attachmentUrl && (messageType === 'image' || messageType === 'video' || messageType === 'document')) {
+    if (attachmentUrl && (mediaVariant === 'gif' || mediaVariant === 'sticker')) {
+      try {
+        sendResponse = await evolutionRequest(`/message/sendSticker/${instance.instance_name}`, {
+          method: 'POST',
+          body: JSON.stringify({ number: phone, sticker: attachmentUrl }),
+        }).catch(() => null);
+      } catch {
+        sendResponse = null;
+      }
+
+      if (!sendResponse) {
+        const mediaBody: Record<string, unknown> = {
+          number: phone,
+          mediatype: 'image',
+          media: attachmentUrl,
+        };
+        if (captionBody) mediaBody.caption = captionBody;
+        if (attachmentName) mediaBody.fileName = attachmentName;
+        if (attachmentMimetype) mediaBody.mimetype = attachmentMimetype;
+        sendResponse = await evolutionRequest(`/message/sendMedia/${instance.instance_name}`, {
+          method: 'POST',
+          body: JSON.stringify(mediaBody),
+        }).catch(() => null);
+      }
+    } else if (attachmentUrl && (messageType === 'image' || messageType === 'video' || messageType === 'document')) {
       // Send media (image/video/document) via Evolution API
       const mediaBody: Record<string, unknown> = {
         number: phone,
         mediatype: messageType,
         media: attachmentUrl,
       };
-      if (body) mediaBody.caption = body;
-      if (messageType === 'document') mediaBody.fileName = asString(payload.file_name) || 'documento';
+      if (captionBody) mediaBody.caption = captionBody;
+      if (attachmentName) mediaBody.fileName = attachmentName;
+      if (attachmentMimetype) mediaBody.mimetype = attachmentMimetype;
+      if (messageType === 'document' && !mediaBody.fileName) mediaBody.fileName = 'documento';
       sendResponse = await evolutionRequest(`/message/sendMedia/${instance.instance_name}`, {
         method: 'POST',
         body: JSON.stringify(mediaBody),
@@ -2581,14 +2744,18 @@ async function appendMessage(
     conversation_id: conversationId,
     whatsapp_instance_id: conversation.whatsapp_instance_id,
     direction: 'outbound',
-    body,
+    body: persistedBody,
     message_type: messageType,
     attachment_url: asString(payload.attachment_url),
+    attachment_ready: attachmentUrl ? payload.attachment_ready !== false : true,
+    attachment_mimetype: attachmentMimetype,
+    attachment_name: attachmentName,
+    attachment_size: Number.isFinite(attachmentSize) && attachmentSize > 0 ? attachmentSize : null,
     wa_message_id: waMessageId,
     remote_jid: asString(payload.remote_jid),
     sent_by_user_id: identity.user_id,
     delivery_status: deliveryStatus,
-    metadata: isRecord(payload.metadata) ? payload.metadata : {},
+    metadata,
   };
 
   const { data, error } = await schema.from('messages').insert(insertPayload).select('*').single();
@@ -2596,7 +2763,7 @@ async function appendMessage(
 
   await schema.from('conversations').update({
     last_message_at: data.created_at,
-    last_message_preview: body,
+    last_message_preview: previewText,
     updated_at: nowIso(),
   }).eq('id', conversationId);
 
@@ -5523,13 +5690,10 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
 
   const messageNode = isRecord(body.data) ? body.data : body;
 
-  // --- Filter out fromMe messages (outbound already saved by append_message) ---
+  // --- Resolve fromMe flag (outbound messages sent from WhatsApp phone or CRM) ---
   const fromMe =
     (messageNode.key as Record<string, unknown> | undefined)?.fromMe === true ||
     (messageNode as Record<string, unknown>).fromMe === true;
-  if (fromMe) {
-    return { ok: true, ignored: true, reason: 'from_me_outbound' };
-  }
 
   const rawRemoteJid =
     asString(messageNode.remoteJid) ||
@@ -5540,13 +5704,62 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
   const waMessageId =
     asString((messageNode.key as Record<string, unknown> | undefined)?.id) ||
     asString(messageNode.id);
-  const bodyText =
-    asString((messageNode.message as Record<string, unknown> | undefined)?.conversation) ||
-    asString(((messageNode.message as Record<string, unknown> | undefined)?.extendedTextMessage as Record<string, unknown> | undefined)?.text) ||
-    asString(messageNode.text) ||
-    asString(messageNode.body);
 
-  if (!phone || !bodyText) {
+  // --- Resolve message type and text content (support media + text) ---
+  const msg = messageNode as Record<string, unknown>;
+  const msgObj = isRecord(msg.message) ? (msg.message as Record<string, unknown>) : null;
+  const rawMsgType =
+    asString(msg.messageType) ||
+    asString(msg.type) ||
+    (msgObj ? Object.keys(msgObj).find((k) =>
+      ['conversation', 'extendedTextMessage', 'imageMessage', 'videoMessage',
+       'audioMessage', 'documentMessage', 'stickerMessage', 'contactMessage',
+       'locationMessage'].includes(k)
+    ) || null : null);
+
+  // Map Evolution message type to internal CRM message_type
+  let dbMessageType: 'text' | 'image' | 'video' | 'audio' | 'document' = 'text';
+  const isMediaMessage = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage'].includes(rawMsgType || '');
+  if (rawMsgType === 'imageMessage' || rawMsgType === 'stickerMessage') dbMessageType = 'image';
+  else if (rawMsgType === 'videoMessage') dbMessageType = 'video';
+  else if (rawMsgType === 'audioMessage') dbMessageType = 'audio';
+  else if (rawMsgType === 'documentMessage') dbMessageType = 'document';
+
+  const mediaNode = rawMsgType && msgObj ? asRecord(msgObj[rawMsgType]) : {};
+  const mediaMimeType =
+    asString(mediaNode.mimetype) ||
+    asString(mediaNode.mimeType) ||
+    asString(mediaNode.fileMimetype);
+  const mediaFileName =
+    asString(mediaNode.fileName) ||
+    asString(mediaNode.filename) ||
+    asString(mediaNode.title);
+  const mediaVariant =
+    rawMsgType === 'stickerMessage'
+      ? 'sticker'
+      : (rawMsgType === 'videoMessage' && asBoolean(mediaNode.gifPlayback))
+        ? 'gif'
+        : (rawMsgType === 'audioMessage' && asBoolean(mediaNode.ptt))
+          ? 'voice_note'
+          : 'standard';
+
+  // Extract text body — support text, captions, and media placeholders
+  let bodyText =
+    asString((msgObj as Record<string, unknown> | null)?.conversation) ||
+    asString(((msgObj as Record<string, unknown> | null)?.extendedTextMessage as Record<string, unknown> | undefined)?.text) ||
+    asString(msg.text) ||
+    asString(msg.body);
+
+  // For media messages: extract caption or generate placeholder
+  if (!bodyText && isMediaMessage && msgObj) {
+    const typeNode = msgObj[rawMsgType!] as Record<string, unknown> | undefined;
+    bodyText =
+      asString(typeNode?.caption) ||
+      asString(typeNode?.fileName) ||
+      buildInternalCrmAttachmentPlaceholder(dbMessageType, { media_variant: mediaVariant });
+  }
+
+  if (!phone || (!bodyText && !isMediaMessage)) {
     return { ok: true, ignored: true, reason: 'missing_phone_or_body' };
   }
 
@@ -5670,7 +5883,7 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     .maybeSingle()).data;
 
   // Reopen resolved conversation on new inbound message
-  if (conversation?.id && conversation.status === 'resolved') {
+  if (conversation?.id && conversation.status === 'resolved' && !fromMe) {
     await schema.from('conversations').update({
       status: 'open',
       updated_at: nowIso(),
@@ -5687,10 +5900,12 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
       status: 'open',
       subject: client.company_name,
       last_message_at: nowIso(),
-      last_message_preview: bodyText,
+      last_message_preview: bodyText || '',
     }).select('*').single()).data;
   }
 
+  // Dedup by wa_message_id — skip if this exact message was already saved
+  // (e.g. outbound sent via CRM appendMessage, or inbound already processed)
   if (waMessageId) {
     const existingMessage = await schema.from('messages').select('id').eq('wa_message_id', waMessageId).maybeSingle();
     if (existingMessage.data?.id) {
@@ -5698,16 +5913,30 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     }
   }
 
+  // Determine direction: fromMe → outbound (sent from WhatsApp phone), else inbound
+  const direction = fromMe ? 'outbound' : 'inbound';
+  const messageMetadata = mergeRecord(body, {
+    instance_name: instanceName,
+    media_variant: mediaVariant,
+    attachment_mimetype: mediaMimeType,
+    attachment_name: mediaFileName,
+  });
+  const previewText = buildInternalCrmMessagePreview(dbMessageType, bodyText || '', messageMetadata);
+
   const { data: message, error: messageError } = await schema.from('messages').insert({
     conversation_id: conversation.id,
     whatsapp_instance_id: instance.id,
-    direction: 'inbound',
-    body: bodyText,
-    message_type: 'text',
+    direction,
+    body: bodyText || '',
+    message_type: dbMessageType,
+    attachment_url: null,
+    attachment_ready: isMediaMessage ? false : true,
+    attachment_mimetype: isMediaMessage ? mediaMimeType : null,
+    attachment_name: isMediaMessage ? mediaFileName : null,
     wa_message_id: waMessageId,
     remote_jid: remoteJid,
-    delivery_status: 'delivered',
-    metadata: body,
+    delivery_status: fromMe ? 'sent' : 'delivered',
+    metadata: messageMetadata,
   }).select('*').single();
 
   if (messageError || !message?.id) {
@@ -5716,16 +5945,40 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
 
   await schema.from('conversations').update({
     last_message_at: message.created_at,
-    last_message_preview: bodyText,
+    last_message_preview: previewText,
     updated_at: nowIso(),
   }).eq('id', conversation.id);
 
-  await schema.from('clients').update({
+  if (isMediaMessage && message?.id) {
+    try {
+      await invokeInternalEdgeFunction('internal-crm-media-resolver', {
+        messageId: String(message.id),
+        waMessageId,
+        instanceName,
+        mimeType: mediaMimeType,
+        fileName: mediaFileName,
+        messageType: dbMessageType,
+        mediaVariant,
+      });
+    } catch (resolverError) {
+      await schema.from('messages').update({
+        attachment_error: true,
+        attachment_error_message: `RESOLVER_DISPATCH_FAILED:${shortErrorMessage(resolverError)}`,
+      }).eq('id', message.id);
+    }
+  }
+
+  const clientUpdatePayload: Record<string, unknown> = {
     primary_phone: client.primary_phone || phone,
     last_contact_at: message.created_at,
-    current_stage_code: resolveBlueprintStageCode(client.current_stage_code, 'novo_lead') === 'novo_lead' ? 'respondeu' : resolveBlueprintStageCode(client.current_stage_code, 'novo_lead'),
     updated_at: nowIso(),
-  }).eq('id', client.id);
+  };
+  // Only advance pipeline stage on inbound messages (not outbound from phone)
+  if (!fromMe) {
+    const resolvedStage = resolveBlueprintStageCode(client.current_stage_code, 'novo_lead');
+    if (resolvedStage === 'novo_lead') clientUpdatePayload.current_stage_code = 'respondeu';
+  }
+  await schema.from('clients').update(clientUpdatePayload).eq('id', client.id);
 
   return { ok: true, message };
 }
@@ -6285,6 +6538,145 @@ async function processAutomationRunsWithOptions(
 
 async function processAutomationRuns(serviceClient: ReturnType<typeof createClient>) {
   return processAutomationRunsWithOptions(serviceClient, {});
+}
+
+function isEvolutionAutomationFailure(lastError: unknown): boolean {
+  const reason = asString(lastError);
+  if (!reason) return false;
+  return (
+    reason.startsWith('evolution_request_failed:')
+    || reason.startsWith('evolution_request_timeout:')
+    || reason === 'evolution_request_exhausted_retries'
+  );
+}
+
+function chunkValues<T>(values: T[], chunkSize: number): T[][] {
+  if (chunkSize <= 0) return [values];
+  const chunks: T[][] = [];
+  for (let i = 0; i < values.length; i += chunkSize) {
+    chunks.push(values.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+async function replayFailedAutomationRuns(
+  serviceClient: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+) {
+  const schema = crmSchema(serviceClient);
+  const sinceHours = clamp(asNumber(payload.since_hours, 24), 1, 720);
+  const scanLimit = clamp(asNumber(payload.limit, 200), 1, 1_000);
+  const requeueBatchSize = clamp(asNumber(payload.batch_size, 50), 1, 200);
+  const processNow = asBoolean(payload.process_now, true);
+  const sinceIso = new Date(Date.now() - (sinceHours * 3_600_000)).toISOString();
+
+  const { data, error } = await schema
+    .from('automation_runs')
+    .select('id, last_error, processed_at')
+    .eq('status', 'failed')
+    .gte('processed_at', sinceIso)
+    .order('processed_at', { ascending: true })
+    .limit(scanLimit);
+
+  if (error) throw { status: 500, code: 'automation_runs_replay_query_failed', error };
+
+  const scannedRuns = (data || []).map((row) => ({ ...row }));
+  const replayableRunIds: string[] = scannedRuns
+    .filter((run) => isEvolutionAutomationFailure(run.last_error))
+    .map((run) => asString(run.id))
+    .filter((id): id is string => Boolean(id));
+
+  if (replayableRunIds.length === 0) {
+    return {
+      ok: true,
+      since_hours: sinceHours,
+      since_iso: sinceIso,
+      scanned_count: scannedRuns.length,
+      replayable_count: 0,
+      requeued_count: 0,
+      process_now: processNow,
+      processed_count: 0,
+      failed_count: 0,
+      processed_run_ids: [],
+      failed_runs: [],
+    };
+  }
+
+  const updatedAt = nowIso();
+  for (const idsChunk of chunkValues<string>(replayableRunIds, requeueBatchSize)) {
+    const { error: updateError } = await schema
+      .from('automation_runs')
+      .update({
+        status: 'pending',
+        scheduled_at: updatedAt,
+        processed_at: null,
+        last_error: null,
+        result_payload: null,
+        updated_at: updatedAt,
+      })
+      .in('id', idsChunk);
+
+    if (updateError) throw { status: 500, code: 'automation_runs_replay_update_failed', error: updateError };
+  }
+
+  if (!processNow) {
+    return {
+      ok: true,
+      since_hours: sinceHours,
+      since_iso: sinceIso,
+      scanned_count: scannedRuns.length,
+      replayable_count: replayableRunIds.length,
+      requeued_count: replayableRunIds.length,
+      process_now: false,
+      processed_count: 0,
+      failed_count: 0,
+      processed_run_ids: [],
+      failed_runs: [],
+    };
+  }
+
+  let processedCount = 0;
+  let failedCount = 0;
+  const processedRunIds: string[] = [];
+  const failedRuns: Array<{ run_id: string; reason: string }> = [];
+
+  for (const idsChunk of chunkValues<string>(replayableRunIds, 100)) {
+    const processed = await processAutomationRunsWithOptions(serviceClient, {
+      runIds: idsChunk,
+      limit: idsChunk.length,
+    });
+
+    processedCount += asNumber(processed.processed_count, 0);
+    failedCount += asNumber(processed.failed_count, 0);
+    processedRunIds.push(...(Array.isArray(processed.processed_run_ids)
+      ? processed.processed_run_ids
+        .map((value) => asString(value))
+        .filter((value): value is string => Boolean(value))
+      : []));
+    failedRuns.push(...(Array.isArray(processed.failed_runs)
+      ? processed.failed_runs
+        .map((value) => asRecord(value))
+        .filter((value) => Boolean(asString(value.run_id)))
+        .map((value) => ({
+          run_id: asString(value.run_id) || '',
+          reason: asString(value.reason) || 'automation_dispatch_failed',
+        }))
+      : []));
+  }
+
+  return {
+    ok: true,
+    since_hours: sinceHours,
+    since_iso: sinceIso,
+    scanned_count: scannedRuns.length,
+    replayable_count: replayableRunIds.length,
+    requeued_count: replayableRunIds.length,
+    process_now: true,
+    processed_count: processedCount,
+    failed_count: failedCount,
+    processed_run_ids: processedRunIds,
+    failed_runs: failedRuns,
+  };
 }
 
 async function checkAutomationHealth(serviceClient: ReturnType<typeof createClient>) {
@@ -6923,6 +7315,11 @@ Deno.serve(async (req) => {
 
       if (action === 'process_automation_runs') {
         const result = await processAutomationRuns(serviceClient);
+        return json(200, result, responseHeaders);
+      }
+
+      if (action === 'replay_failed_automation_runs') {
+        const result = await replayFailedAutomationRuns(serviceClient, payload);
         return json(200, result, responseHeaders);
       }
 
