@@ -1,5 +1,3 @@
-import { BarChart3 } from 'lucide-react';
-import { PageHeader } from '@/components/solarzap/PageHeader';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { KpiGrid } from '@/modules/internal-crm/components/dashboard/cards/KpiGrid';
@@ -29,12 +27,6 @@ export function InternalCrmDashboardView(props: InternalCrmDashboardViewProps) {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="CRM Dashboard"
-        subtitle="Visão comercial consolidada para venda, fechamento e onboarding."
-        icon={BarChart3}
-      />
-
       <InternalCrmFilterBar className="grid gap-3 md:grid-cols-[220px_220px] md:items-end md:justify-between">
         <div className="space-y-2">
           <Label>Data inicial</Label>

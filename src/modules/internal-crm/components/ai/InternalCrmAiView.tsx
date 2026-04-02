@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Bot, Loader2, PlayCircle, Save } from 'lucide-react';
-import { PageHeader } from '@/components/solarzap/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -119,12 +118,6 @@ export function InternalCrmAiView() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="IA"
-        subtitle="Automacoes internas para qualificacao, follow-up, disparo e onboarding."
-        icon={Bot}
-      />
-
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>
           <CardHeader>

@@ -18,7 +18,6 @@ import {
 import { toast } from 'sonner';
 
 import { useInternalCrmGuardContext } from '@/components/admin/InternalCrmGuard';
-import { PageHeader } from '@/components/solarzap/PageHeader';
 import { WHATSAPP_COLORS } from '@/constants';
 import {
   type InternalCrmManagedWhatsappInstance,
@@ -31,6 +30,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { InternalCrmCompactBar } from '@/modules/internal-crm/components/InternalCrmPageLayout';
 
 export function InternalCrmIntegrationsView() {
   const { identity } = useInternalCrmGuardContext();
@@ -133,30 +133,12 @@ export function InternalCrmIntegrationsView() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Central de Integracoes"
-        subtitle="Conecte canais usados pela operacao comercial interna sem tocar o runtime do CRM principal."
-        icon={Plug}
-        actionContent={
-          <div className="flex w-full flex-wrap items-center gap-4 rounded-xl border border-border/50 bg-background/50 px-4 py-2 glass sm:w-auto sm:justify-end">
-            <div className="text-right">
-              <div className="text-xl font-bold leading-none text-foreground">{connectedCount}/{whatsappInstances.length}</div>
-              <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {connectedCount === 1 ? 'Instancia ativa' : 'Instancias ativas'}
-              </div>
-            </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#25D366]/10">
-              <CheckCircle2 className="h-5 w-5 text-[#25D366]" />
-            </div>
-          </div>
-        }
-        mobileToolbar={
-          <Badge variant="outline" className="gap-1 px-2 py-0.5 text-[10px]">
-            <CheckCircle2 className="h-3 w-3 text-[#25D366]" />
-            {connectedCount}/{whatsappInstances.length}
-          </Badge>
-        }
-      />
+      <InternalCrmCompactBar className="flex flex-wrap items-center justify-end gap-3">
+        <Badge variant="outline" className="gap-2 rounded-full px-3 py-1.5 text-xs font-medium">
+          <CheckCircle2 className="h-3.5 w-3.5 text-[#25D366]" />
+          {connectedCount}/{whatsappInstances.length} ativas
+        </Badge>
+      </InternalCrmCompactBar>
 
       <Card className="overflow-hidden border-0 shadow-sm">
         <div className="bg-gradient-to-r from-[#25D366]/10 to-[#128C7E]/5">

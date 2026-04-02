@@ -1,6 +1,7 @@
 import React, { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { LucideIcon } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useMobileViewport } from '@/hooks/useMobileViewport';
 
 interface PageHeaderProps {
@@ -15,6 +16,23 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, icon: Icon, actionContent, mobileToolbar, className }: PageHeaderProps) {
   const isMobile = useMobileViewport();
+  const location = useLocation();
+  const isInternalCrmRoute = location.pathname.startsWith('/admin/crm');
+  const compactToolbarContent = isMobile ? (mobileToolbar ?? actionContent) : (actionContent ?? mobileToolbar);
+
+  if (isInternalCrmRoute) {
+    if (!compactToolbarContent) return null;
+
+    return (
+      <div className={cn('flex-shrink-0', className)}>
+        <div className="rounded-[22px] border border-border/60 bg-card/82 px-4 py-3 shadow-[0_16px_40px_-32px_rgba(15,23,42,0.22)] backdrop-blur-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+            {compactToolbarContent}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

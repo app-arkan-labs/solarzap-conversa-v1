@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MessageSquare } from 'lucide-react';
-import { PageHeader } from '@/components/solarzap/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -297,27 +295,6 @@ export default function InternalCrmInboxPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-      <PageHeader
-        title="Inbox"
-        subtitle="Converse com leads e clientes sem sair do fluxo operacional do CRM."
-        icon={MessageSquare}
-        mobileToolbar={
-          <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px]">
-            {conversations.length} conversa{conversations.length === 1 ? '' : 's'}
-          </Badge>
-        }
-        actionContent={
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="rounded-full px-3 py-1 text-xs">
-              {conversations.length} conversa{conversations.length === 1 ? '' : 's'}
-            </Badge>
-            <Badge variant="outline" className="rounded-full px-3 py-1 text-xs capitalize">
-              {status === 'all' ? 'Todas' : status === 'open' ? 'Abertas' : status === 'resolved' ? 'Resolvidas' : 'Arquivadas'}
-            </Badge>
-          </div>
-        }
-      />
-
       <div className="min-h-0 flex-1 overflow-hidden rounded-[28px] border border-border/60 bg-card/88 shadow-[0_24px_70px_-42px_rgba(15,23,42,0.24)] backdrop-blur-sm">
         <div className={cn(
           'grid h-full min-h-0 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]',

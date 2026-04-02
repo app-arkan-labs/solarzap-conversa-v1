@@ -18,10 +18,10 @@ import {
 import { useAdminBroadcasts, type AdminBroadcastCampaignInput, type AdminBroadcastCampaign } from '@/hooks/useAdminBroadcasts';
 import { useToast } from '@/hooks/use-toast';
 import { formatBroadcastInterval } from '@/utils/broadcastTimer';
-import { PageHeader } from '@/components/solarzap/PageHeader';
 import { InternalCrmCampaignModal } from './InternalCrmCampaignModal';
 import { InternalCrmCampaignStatusPanel } from './InternalCrmCampaignStatusPanel';
 import { useInternalCrmInstances } from '@/modules/internal-crm/hooks/useInternalCrmApi';
+import { InternalCrmCompactBar } from '@/modules/internal-crm/components/InternalCrmPageLayout';
 
 const campaignStatusClass: Record<AdminBroadcastCampaign['status'], string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -148,21 +148,18 @@ export function InternalCrmCampaignsView() {
 
   return (
     <div className="flex-1 flex flex-col bg-muted/30 overflow-hidden min-h-0">
-      <PageHeader
-        title="Disparos em Massa"
-        subtitle="Crie campanhas, acompanhe progresso e controle o envio via WhatsApp."
-        icon={SendHorizontal}
-        actionContent={(
+      <div className="px-4 pt-4 sm:px-6 sm:pt-6">
+        <InternalCrmCompactBar className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
           <Button
             data-testid="admin-broadcast-create-campaign"
             onClick={() => setIsCampaignModalOpen(true)}
-            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2 font-semibold h-10 w-full sm:w-auto"
+            className="h-10 w-full gap-2 font-semibold sm:w-auto"
           >
             <Plus className="w-4 h-4" />
             Nova Campanha
           </Button>
-        )}
-      />
+        </InternalCrmCompactBar>
+      </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="w-full space-y-6 px-4 py-4 sm:px-6 sm:py-6">

@@ -313,7 +313,7 @@ export default function InternalCrmClientsPage() {
     const ids = [...selectedIds];
     const results = await Promise.allSettled(
       ids.map((id) =>
-        clients.deleteClientMutation.mutateAsync({ action: 'delete_client', client_id: id }),
+        clients.deleteClientMutation.mutateAsync({ action: 'delete_client', client_id: id, force: true }),
       ),
     );
     const failed = results.filter((r) => r.status === 'rejected').length;
@@ -597,9 +597,10 @@ export default function InternalCrmClientsPage() {
           isMobile && (showMobileDetail ? '' : 'hidden'),
         )}
       >
-        {/* Detail header */}
-        <div className="shrink-0 px-4 py-4 sm:px-6 border-b border-border/50 bg-gradient-to-r from-background to-muted/30 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+        {/* Detail toolbar */}
+        <div className="shrink-0 border-b border-border/50 bg-background/80 px-4 py-3 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
             {isMobile && showMobileDetail && (
               <Button
                 variant="ghost"
@@ -610,17 +611,21 @@ export default function InternalCrmClientsPage() {
                 <ArrowLeft className="w-4 h-4" />
               </Button>
             )}
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Mail className="w-4 h-4 text-primary" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-foreground">
+                  {selectedClient?.company_name || selectedClient?.primary_contact_name || 'Cliente selecionado'}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {selectedClient?.primary_phone || selectedClient?.primary_email || 'Sem contato principal'}
+                </p>
+              </div>
             </div>
-            <h2 className="text-lg font-semibold text-foreground truncate">Detalhes do Cliente</h2>
-          </div>
-          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             {selectedClient && (
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 border-border/50 shadow-sm h-10"
+                className="h-9 gap-2 border-border/50 shadow-sm"
                 onClick={() => setCommentsOpen(true)}
               >
                 <MessageSquare className="w-4 h-4" />
@@ -628,7 +633,7 @@ export default function InternalCrmClientsPage() {
               </Button>
             )}
             {selectedClient && hasChanges && (
-              <Button onClick={() => void handleSave()} disabled={isSaving} size="sm" className="gap-2 shadow-sm h-10">
+              <Button onClick={() => void handleSave()} disabled={isSaving} size="sm" className="h-9 gap-2 shadow-sm">
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Salvar
               </Button>
@@ -637,7 +642,7 @@ export default function InternalCrmClientsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20 h-10"
+                className="h-9 gap-2 border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => {
                   setClientToDelete(selectedClient);
                   setDeleteConfirmOpen(true);
@@ -647,6 +652,7 @@ export default function InternalCrmClientsPage() {
                 Excluir
               </Button>
             )}
+            </div>
           </div>
         </div>
 

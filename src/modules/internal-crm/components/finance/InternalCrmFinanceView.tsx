@@ -1,5 +1,4 @@
-import { DollarSign } from 'lucide-react';
-import { PageHeader } from '@/components/solarzap/PageHeader';
+import { RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RevenueKpiGrid } from '@/modules/internal-crm/components/finance/cards/RevenueKpiGrid';
 import { MrrTrendChart } from '@/modules/internal-crm/components/finance/charts/MrrTrendChart';
@@ -10,6 +9,7 @@ import { PendingPaymentsTable } from '@/modules/internal-crm/components/finance/
 import { SubscriptionsTable } from '@/modules/internal-crm/components/finance/tables/SubscriptionsTable';
 import { useInternalCrmFinanceModule } from '@/modules/internal-crm/hooks/useInternalCrmFinance';
 import { useToast } from '@/hooks/use-toast';
+import { InternalCrmCompactBar } from '@/modules/internal-crm/components/InternalCrmPageLayout';
 
 export function InternalCrmFinanceView() {
   const { toast } = useToast();
@@ -26,16 +26,12 @@ export function InternalCrmFinanceView() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Financeiro CRM"
-        subtitle="Receita comercial da SolarZap separada do billing operacional do SaaS."
-        icon={DollarSign}
-        actionContent={
-          <Button onClick={() => void handleRefreshSnapshot()} disabled={finance.refreshSnapshotMutation.isPending}>
-            Atualizar snapshot
-          </Button>
-        }
-      />
+      <InternalCrmCompactBar className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+        <Button onClick={() => void handleRefreshSnapshot()} disabled={finance.refreshSnapshotMutation.isPending} className="w-full gap-2 sm:w-auto">
+          <RotateCw className="h-4 w-4" />
+          Atualizar snapshot
+        </Button>
+      </InternalCrmCompactBar>
 
       <RevenueKpiGrid summary={finance.summary} pendingPaymentsRows={finance.pendingPayments.length} />
 

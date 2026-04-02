@@ -72,10 +72,10 @@ function AdminCrmNavButton(props: AdminCrmNavButtonProps) {
           to={props.to}
           className={({ isActive }) =>
             cn(
-              'group flex h-12 w-12 items-center justify-center rounded-2xl border border-transparent transition-all duration-300',
+              'group flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-300',
               isActive
                 ? 'brand-gradient-bg text-white shadow-[0_20px_42px_-22px_hsl(var(--primary)/0.58)] scale-[1.03]'
-                : 'text-sidebar-foreground/58 hover:border-sidebar-border/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground',
+                : 'border-sidebar-border/45 bg-white/55 text-sidebar-foreground/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] hover:border-sidebar-border/80 hover:bg-white/82 hover:text-sidebar-foreground',
             )
           }
           title={props.label}
@@ -143,7 +143,7 @@ export default function AdminCrmLayout() {
   return (
     <div className="app-shell-bg h-[100dvh] overflow-hidden bg-background text-foreground">
       <div className="flex h-full min-h-0 overflow-hidden">
-        <aside className="relative hidden w-[84px] shrink-0 border-r border-sidebar-border/80 bg-[linear-gradient(180deg,hsl(var(--sidebar-background)),hsl(var(--sidebar-accent))_135%)] text-sidebar-foreground lg:flex lg:flex-col">
+        <aside className="relative hidden w-[88px] shrink-0 border-r border-sidebar-border/80 bg-[linear-gradient(180deg,hsl(var(--sidebar-background)),hsl(var(--sidebar-accent))_135%)] text-sidebar-foreground lg:flex lg:flex-col">
           <div className="flex justify-center px-3 pb-5 pt-4">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -172,7 +172,7 @@ export default function AdminCrmLayout() {
                   <PopoverTrigger asChild>
                     <button
                       type="button"
-                      className="group flex h-12 w-12 items-center justify-center rounded-2xl border border-transparent text-sidebar-foreground/58 transition-all duration-300 hover:border-sidebar-border/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"
+                      className="group flex h-12 w-12 items-center justify-center rounded-2xl border border-sidebar-border/45 bg-white/55 text-sidebar-foreground/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] transition-all duration-300 hover:border-sidebar-border/80 hover:bg-white/82 hover:text-sidebar-foreground"
                       aria-label="Abrir atalhos do sistema"
                     >
                       <Layers3 className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
@@ -210,7 +210,7 @@ export default function AdminCrmLayout() {
                 <button
                   type="button"
                   onClick={() => void handleSignOut()}
-                  className="group flex h-12 w-12 items-center justify-center rounded-2xl border border-transparent text-sidebar-foreground/58 transition-all duration-300 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                  className="group flex h-12 w-12 items-center justify-center rounded-2xl border border-sidebar-border/45 bg-white/55 text-sidebar-foreground/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] transition-all duration-300 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
                   aria-label="Encerrar sessao"
                 >
                   <LogOut className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
@@ -222,7 +222,7 @@ export default function AdminCrmLayout() {
         </aside>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="sticky top-0 z-40 border-b border-border/70 bg-card/78 backdrop-blur-xl">
+          <header className="sticky top-0 z-40 border-b border-border/70 bg-card/82 backdrop-blur-xl">
             <div className="flex items-center justify-between gap-4 px-4 py-3 lg:px-6">
               <div className="flex min-w-0 items-center gap-3">
                 <Button

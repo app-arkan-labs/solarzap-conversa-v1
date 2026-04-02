@@ -54,3 +54,15 @@ export function InternalCrmPanel({ className, ...props }: HTMLAttributes<HTMLDiv
     />
   );
 }
+
+export function InternalCrmCompactBar({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        'rounded-[22px] border border-border/60 bg-card/82 px-4 py-3 shadow-[0_16px_40px_-32px_rgba(15,23,42,0.22)] backdrop-blur-sm',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
