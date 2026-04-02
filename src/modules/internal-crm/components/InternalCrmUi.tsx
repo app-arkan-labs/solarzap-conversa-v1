@@ -34,15 +34,17 @@ export function MetricCard(props: {
   accentClassName?: string;
 }) {
   return (
-    <Card className="border-border/70 shadow-sm">
-      <CardHeader className="space-y-1 pb-3">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{props.title}</CardTitle>
+    <Card className="overflow-hidden rounded-[28px] border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--card))_62%,hsl(var(--primary)/0.03)_100%)] shadow-[0_24px_60px_-38px_rgba(15,23,42,0.22)]">
+      <CardHeader className="space-y-2 pb-2">
+        <CardTitle className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          {props.title}
+        </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className={cn('text-2xl font-semibold tracking-tight text-foreground', props.accentClassName)}>
+        <div className={cn('text-3xl font-semibold tracking-tight text-foreground', props.accentClassName)}>
           {props.value}
         </div>
-        {props.subtitle ? <p className="mt-2 text-xs text-muted-foreground">{props.subtitle}</p> : null}
+        {props.subtitle ? <p className="mt-3 max-w-[28ch] text-xs leading-relaxed text-muted-foreground">{props.subtitle}</p> : null}
       </CardContent>
     </Card>
   );

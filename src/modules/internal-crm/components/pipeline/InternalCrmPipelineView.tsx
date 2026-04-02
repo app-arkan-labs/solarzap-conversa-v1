@@ -61,6 +61,7 @@ import {
 } from '@/modules/internal-crm/components/pipeline/stageCatalog';
 import type { InternalCrmAppointment, InternalCrmDealSummary } from '@/modules/internal-crm/types';
 import { cn } from '@/lib/utils';
+import { InternalCrmFilterBar } from '@/modules/internal-crm/components/InternalCrmPageLayout';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -771,22 +772,24 @@ export function InternalCrmPipelineView() {
         }
       />
 
-      <div className="flex-shrink-0 border-b border-border/50 bg-background/90 px-4 py-3 sm:px-5">
-        <PipelineFilters
-          search={search}
-          onSearchChange={setSearch}
-          stageCode={stageCode}
-          onStageCodeChange={setStageCode}
-          status={status}
-          onStatusChange={(value) => setStatus(value as 'all' | 'open' | 'won' | 'lost')}
-          ownerUserId={ownerUserId}
-          onOwnerUserIdChange={setOwnerUserId}
-          sourceChannel={sourceChannel}
-          onSourceChannelChange={setSourceChannel}
-          stages={stages}
-          members={members}
-          sources={board.sourceOptions}
-        />
+      <div className="flex-shrink-0 border-b border-border/50 bg-background/78 px-3 py-3 backdrop-blur-sm sm:px-4">
+        <InternalCrmFilterBar className="p-3 sm:p-4">
+          <PipelineFilters
+            search={search}
+            onSearchChange={setSearch}
+            stageCode={stageCode}
+            onStageCodeChange={setStageCode}
+            status={status}
+            onStatusChange={(value) => setStatus(value as 'all' | 'open' | 'won' | 'lost')}
+            ownerUserId={ownerUserId}
+            onOwnerUserIdChange={setOwnerUserId}
+            sourceChannel={sourceChannel}
+            onSourceChannelChange={setSourceChannel}
+            stages={stages}
+            members={members}
+            sources={board.sourceOptions}
+          />
+        </InternalCrmFilterBar>
       </div>
 
       {isMobileViewport && board.columns.length > 0 && (

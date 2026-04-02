@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import AdminLayout from '@/components/admin/AdminLayout';
+import AdminCrmLayout from '@/components/admin/AdminCrmLayout';
 import AdminDashboard from '@/components/admin/AdminDashboard';
 import OrgsList from '@/components/admin/OrgsList';
 import OrgDetails from '@/components/admin/OrgDetails';
@@ -19,6 +20,7 @@ import InternalCrmAiPage from '@/modules/internal-crm/pages/InternalCrmAiPage';
 import InternalCrmFinancePage from '@/modules/internal-crm/pages/InternalCrmFinancePage';
 import InternalCrmCalendarPage from '@/modules/internal-crm/pages/InternalCrmCalendarPage';
 import InternalCrmIntegrationsPage from '@/modules/internal-crm/pages/InternalCrmIntegrationsPage';
+import { InternalCrmPageLayout } from '@/modules/internal-crm/components/InternalCrmPageLayout';
 
 export default function Admin() {
   return (
@@ -33,17 +35,97 @@ export default function Admin() {
         <Route path="financeiro" element={<FinancialPanel />} />
         <Route path="audit" element={<AuditLogViewer />} />
         <Route path="flags" element={<FeatureFlagsPanel />} />
-        <Route path="crm" element={<Navigate to="/admin/crm/dashboard" replace />} />
-        <Route path="crm/dashboard" element={<InternalCrmGuard><InternalCrmDashboardPage /></InternalCrmGuard>} />
-        <Route path="crm/pipeline" element={<InternalCrmGuard><InternalCrmPipelinePage /></InternalCrmGuard>} />
-        <Route path="crm/inbox" element={<InternalCrmGuard><InternalCrmInboxPage /></InternalCrmGuard>} />
-        <Route path="crm/clients" element={<InternalCrmGuard><InternalCrmClientsPage /></InternalCrmGuard>} />
-        <Route path="crm/campaigns" element={<InternalCrmGuard><InternalCrmCampaignsPage /></InternalCrmGuard>} />
-        <Route path="crm/automations" element={<InternalCrmGuard><InternalCrmAutomationsPage /></InternalCrmGuard>} />
-        <Route path="crm/calendar" element={<InternalCrmGuard><InternalCrmCalendarPage /></InternalCrmGuard>} />
-        <Route path="crm/integrations" element={<InternalCrmGuard><InternalCrmIntegrationsPage /></InternalCrmGuard>} />
-        <Route path="crm/ai" element={<InternalCrmGuard><InternalCrmAiPage /></InternalCrmGuard>} />
-        <Route path="crm/finance" element={<InternalCrmGuard><InternalCrmFinancePage /></InternalCrmGuard>} />
+      </Route>
+
+      <Route
+        path="crm"
+        element={
+          <InternalCrmGuard>
+            <AdminCrmLayout />
+          </InternalCrmGuard>
+        }
+      >
+        <Route index element={<Navigate to="/admin/crm/dashboard" replace />} />
+        <Route
+          path="dashboard"
+          element={
+            <InternalCrmPageLayout>
+              <InternalCrmDashboardPage />
+            </InternalCrmPageLayout>
+          }
+        />
+        <Route
+          path="pipeline"
+          element={
+            <InternalCrmPageLayout mode="immersive">
+              <InternalCrmPipelinePage />
+            </InternalCrmPageLayout>
+          }
+        />
+        <Route
+          path="inbox"
+          element={
+            <InternalCrmPageLayout mode="immersive">
+              <InternalCrmInboxPage />
+            </InternalCrmPageLayout>
+          }
+        />
+        <Route
+          path="clients"
+          element={
+            <InternalCrmPageLayout mode="immersive">
+              <InternalCrmClientsPage />
+            </InternalCrmPageLayout>
+          }
+        />
+        <Route
+          path="campaigns"
+          element={
+            <InternalCrmPageLayout>
+              <InternalCrmCampaignsPage />
+            </InternalCrmPageLayout>
+          }
+        />
+        <Route
+          path="automations"
+          element={
+            <InternalCrmPageLayout>
+              <InternalCrmAutomationsPage />
+            </InternalCrmPageLayout>
+          }
+        />
+        <Route
+          path="calendar"
+          element={
+            <InternalCrmPageLayout mode="immersive">
+              <InternalCrmCalendarPage />
+            </InternalCrmPageLayout>
+          }
+        />
+        <Route
+          path="integrations"
+          element={
+            <InternalCrmPageLayout>
+              <InternalCrmIntegrationsPage />
+            </InternalCrmPageLayout>
+          }
+        />
+        <Route
+          path="ai"
+          element={
+            <InternalCrmPageLayout>
+              <InternalCrmAiPage />
+            </InternalCrmPageLayout>
+          }
+        />
+        <Route
+          path="finance"
+          element={
+            <InternalCrmPageLayout>
+              <InternalCrmFinancePage />
+            </InternalCrmPageLayout>
+          }
+        />
       </Route>
 
       <Route path="*" element={<Navigate to="/admin" replace />} />

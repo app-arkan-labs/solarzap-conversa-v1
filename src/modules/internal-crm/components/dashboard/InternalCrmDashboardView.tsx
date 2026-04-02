@@ -8,6 +8,7 @@ import { OnboardingQueue } from '@/modules/internal-crm/components/dashboard/car
 import { PipelineMovementChart } from '@/modules/internal-crm/components/dashboard/cards/PipelineMovementChart';
 import { useInternalCrmDashboardModule } from '@/modules/internal-crm/hooks/useInternalCrmDashboard';
 import { useInternalCrmPipelineStages } from '@/modules/internal-crm/hooks/useInternalCrmApi';
+import { InternalCrmFilterBar } from '@/modules/internal-crm/components/InternalCrmPageLayout';
 
 type InternalCrmDashboardViewProps = {
   fromDate: string;
@@ -34,7 +35,7 @@ export function InternalCrmDashboardView(props: InternalCrmDashboardViewProps) {
         icon={BarChart3}
       />
 
-      <div className="grid gap-3 rounded-2xl border border-border/70 p-4 md:grid-cols-2">
+      <InternalCrmFilterBar className="grid gap-3 md:grid-cols-[220px_220px] md:items-end md:justify-between">
         <div className="space-y-2">
           <Label>Data inicial</Label>
           <Input type="date" value={props.fromDate} onChange={(event) => props.onFromDateChange(event.target.value)} />
@@ -43,7 +44,7 @@ export function InternalCrmDashboardView(props: InternalCrmDashboardViewProps) {
           <Label>Data final</Label>
           <Input type="date" value={props.toDate} onChange={(event) => props.onToDateChange(event.target.value)} />
         </div>
-      </div>
+      </InternalCrmFilterBar>
 
       <KpiGrid kpis={kpis} />
 

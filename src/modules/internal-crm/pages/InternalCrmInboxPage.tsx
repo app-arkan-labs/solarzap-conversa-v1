@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MessageSquare } from 'lucide-react';
+import { PageHeader } from '@/components/solarzap/PageHeader';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { InternalCrmActionsPanelFull } from '@/modules/internal-crm/components/inbox/InternalCrmActionsPanelFull';
@@ -27,7 +29,10 @@ export default function InternalCrmInboxPage() {
   const autoReadSignatureRef = useRef<string>('');
 
   const inbox = useInternalCrmInbox(selectedConversationId, { status });
-  const conversations = inbox.conversationsQuery.data?.conversations || [];
+  const conversations = useMemo(
+    () => inbox.conversationsQuery.data?.conversations ?? [],
+    [inbox.conversationsQuery.data?.conversations],
+  );
   const selectedClientId = inbox.selectedClientId;
   const clientsQuery = useInternalCrmClients();
   const clients = clientsQuery.data?.clients || [];
@@ -178,22 +183,31 @@ export default function InternalCrmInboxPage() {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-border/50 bg-card shadow-sm overflow-hidden">
-        {/* Simplified header */}
-        <div className="flex items-center gap-3 border-b border-border/40 px-4 py-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <MessageSquare className="h-4 w-4" />
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <PageHeader
+        title="Inbox"
+        subtitle="Converse com leads e clientes sem sair do fluxo operacional do CRM."
+        icon={MessageSquare}
+        mobileToolbar={
+          <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px]">
+            {conversations.length} conversa{conversations.length === 1 ? '' : 's'}
+          </Badge>
+        }
+        actionContent={
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="rounded-full px-3 py-1 text-xs">
+              {conversations.length} conversa{conversations.length === 1 ? '' : 's'}
+            </Badge>
+            <Badge variant="outline" className="rounded-full px-3 py-1 text-xs capitalize">
+              {status === 'all' ? 'Todas' : status === 'open' ? 'Abertas' : status === 'resolved' ? 'Resolvidas' : 'Arquivadas'}
+            </Badge>
           </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">Conversas</p>
-            <p className="text-xs text-muted-foreground">Inbox do CRM interno</p>
-          </div>
-        </div>
+        }
+      />
 
-        {/* 3-column layout */}
+      <div className="min-h-0 flex-1 overflow-hidden rounded-[28px] border border-border/60 bg-card/88 shadow-[0_24px_70px_-42px_rgba(15,23,42,0.24)] backdrop-blur-sm">
         <div className={cn(
-          'grid h-[calc(100vh-11rem)] min-h-[600px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]',
+          'grid h-full min-h-0 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]',
           isDetailsPanelOpen && 'xl:grid-cols-[320px_minmax(0,1fr)_340px]',
         )}>
           {/* Conversation list */}

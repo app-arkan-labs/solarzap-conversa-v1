@@ -1,17 +1,10 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Bot,
-  CircuitBoard,
   Building2,
-  CalendarDays,
   DollarSign,
   Flag,
   Home,
-  KanbanSquare,
   LogOut,
-  Megaphone,
-  MessageSquare,
-  Plug,
   ScrollText,
   Shield,
   Sun,
@@ -29,19 +22,6 @@ type SidebarItem = {
   label: string;
   icon: typeof Home;
 };
-
-const crmSidebarItems: SidebarItem[] = [
-  { to: '/admin/crm/dashboard', label: 'CRM Dashboard', icon: Home },
-  { to: '/admin/crm/pipeline', label: 'Pipeline', icon: KanbanSquare },
-  { to: '/admin/crm/inbox', label: 'Inbox', icon: MessageSquare },
-  { to: '/admin/crm/clients', label: 'Clientes', icon: Building2 },
-  { to: '/admin/crm/campaigns', label: 'Campanhas', icon: Megaphone },
-  { to: '/admin/crm/automations', label: 'Automacoes', icon: CircuitBoard },
-  { to: '/admin/crm/calendar', label: 'Calendarios', icon: CalendarDays },
-  { to: '/admin/crm/integrations', label: 'Integracoes', icon: Plug },
-  { to: '/admin/crm/ai', label: 'IA', icon: Bot },
-  { to: '/admin/crm/finance', label: 'Financeiro CRM', icon: DollarSign },
-];
 
 const systemSidebarItems: SidebarItem[] = [
   { to: '/admin', label: 'Dashboard Sistema', icon: Home },
@@ -124,8 +104,7 @@ export default function AdminLayout() {
     (crmIdentityQuery.error.code === 'not_crm_member' || crmIdentityQuery.error.code === 'insufficient_role');
 
   const hasCrmAccess =
-    location.pathname.startsWith('/admin/crm') ||
-    (!!crmIdentityQuery.data?.crm_role && crmIdentityQuery.data.crm_role !== 'none');
+    !!crmIdentityQuery.data?.crm_role && crmIdentityQuery.data.crm_role !== 'none';
 
   return (
     <div className="app-shell-bg h-screen bg-background text-foreground overflow-hidden">
@@ -144,7 +123,26 @@ export default function AdminLayout() {
           </div>
 
           <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-5">
-            {hasCrmAccess ? renderNavSection('CRM Interno', crmSidebarItems) : null}
+            {hasCrmAccess ? (
+              <div className="rounded-2xl border border-sidebar-border/80 bg-sidebar-accent/45 p-3.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-sidebar-foreground/50">
+                  CRM Interno
+                </p>
+                <p className="mt-2 text-sm font-medium text-sidebar-foreground">
+                  A operacao comercial agora usa um shell proprio, inspirado no SolarZap.
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-sidebar-foreground/62">
+                  Abra o CRM para navegar pelo rail lateral compacto e pelas abas operacionais.
+                </p>
+                <Button
+                  className="mt-3 w-full justify-center brand-gradient-button text-white"
+                  onClick={() => navigate('/admin/crm/dashboard')}
+                >
+                  <Sun className="mr-2 h-4 w-4" />
+                  Abrir CRM Interno
+                </Button>
+              </div>
+            ) : null}
             {crmAccessDenied ? (
               <div className="rounded-xl border border-dashed border-sidebar-border/80 px-3.5 py-3 text-xs text-sidebar-foreground/55">
                 O CRM interno fica oculto para usuarios sem `crm_role`.
@@ -187,6 +185,16 @@ export default function AdminLayout() {
                 <Badge variant="outline" className="text-xs">
                   CRM: {crmIdentityQuery.data.crm_role}
                 </Badge>
+              ) : null}
+              {hasCrmAccess ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => navigate('/admin/crm/dashboard')}
+                >
+                  Abrir CRM
+                </Button>
               ) : null}
             </div>
 
