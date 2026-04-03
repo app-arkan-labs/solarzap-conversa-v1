@@ -6692,13 +6692,21 @@ async function processAutomationRunsWithOptions(
           : 'completed';
       const processedAt = nowIso();
       const errorReason = asString(outcome.reason);
+      const nextAttemptCount = asNumber(run.attempt_count, 0) + 1;
+      const shouldRetryTransientFailure =
+        finalStatus === 'failed' &&
+        isEvolutionAutomationFailure(errorReason) &&
+        nextAttemptCount < 4;
 
       await schema
         .from('automation_runs')
         .update({
-          status: finalStatus,
-          processed_at: processedAt,
-          attempt_count: asNumber(run.attempt_count, 0) + 1,
+          status: shouldRetryTransientFailure ? 'pending' : finalStatus,
+          processed_at: shouldRetryTransientFailure ? null : processedAt,
+          scheduled_at: shouldRetryTransientFailure
+            ? addMinutesIso(processedAt, getTransientAutomationRetryDelayMinutes(nextAttemptCount))
+            : asString(run.scheduled_at) || processedAt,
+          attempt_count: nextAttemptCount,
           last_error: finalStatus === 'failed' ? errorReason : null,
           result_payload: outcome,
           updated_at: processedAt,
@@ -6709,12 +6717,17 @@ async function processAutomationRunsWithOptions(
         .from('automation_rules')
         .update({
           last_run_at: processedAt,
-          last_run_status: finalStatus,
+          last_run_status: shouldRetryTransientFailure ? 'pending' : finalStatus,
           updated_at: processedAt,
         })
         .eq('id', rule.id);
 
       if (finalStatus === 'failed') {
+        if (shouldRetryTransientFailure) {
+          failedRuns.push({ run_id: runId, reason: `requeued:${errorReason || 'automation_dispatch_failed'}` });
+          continue;
+        }
+
         failedRuns.push({ run_id: runId, reason: errorReason || 'automation_dispatch_failed' });
 
         if (
@@ -6738,13 +6751,20 @@ async function processAutomationRunsWithOptions(
     } catch (error) {
       const processedAt = nowIso();
       const reason = asString((error as { message?: unknown }).message) || 'automation_run_failed';
+      const nextAttemptCount = asNumber(run.attempt_count, 0) + 1;
+      const shouldRetryTransientFailure =
+        isEvolutionAutomationFailure(reason) &&
+        nextAttemptCount < 4;
 
       await schema
         .from('automation_runs')
         .update({
-          status: 'failed',
-          processed_at: processedAt,
-          attempt_count: asNumber(run.attempt_count, 0) + 1,
+          status: shouldRetryTransientFailure ? 'pending' : 'failed',
+          processed_at: shouldRetryTransientFailure ? null : processedAt,
+          scheduled_at: shouldRetryTransientFailure
+            ? addMinutesIso(processedAt, getTransientAutomationRetryDelayMinutes(nextAttemptCount))
+            : asString(run.scheduled_at) || processedAt,
+          attempt_count: nextAttemptCount,
           last_error: reason,
           result_payload: { error: reason },
           updated_at: processedAt,
@@ -6756,10 +6776,15 @@ async function processAutomationRunsWithOptions(
           .from('automation_rules')
           .update({
             last_run_at: processedAt,
-            last_run_status: 'failed',
+            last_run_status: shouldRetryTransientFailure ? 'pending' : 'failed',
             updated_at: processedAt,
           })
           .eq('id', rule.id);
+      }
+
+      if (shouldRetryTransientFailure) {
+        failedRuns.push({ run_id: runId, reason: `requeued:${reason}` });
+        continue;
       }
 
       failedRuns.push({ run_id: runId, reason });
@@ -6803,6 +6828,12 @@ function isEvolutionAutomationFailure(lastError: unknown): boolean {
     || reason.startsWith('evolution_request_timeout:')
     || reason === 'evolution_request_exhausted_retries'
   );
+}
+
+function getTransientAutomationRetryDelayMinutes(attemptCount: number): number {
+  if (attemptCount <= 1) return 2;
+  if (attemptCount === 2) return 5;
+  return 15;
 }
 
 function chunkValues<T>(values: T[], chunkSize: number): T[][] {
