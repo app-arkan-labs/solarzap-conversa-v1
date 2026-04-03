@@ -6587,8 +6587,15 @@ async function processAutomationRunsWithOptions(
       runs = runs.map((run) => ({ ...run, status: 'processing' }));
     }
   } else {
-    const { data, error } = await serviceClient.rpc('claim_due_automation_runs', { p_limit: limit });
-    if (error) throw { status: 500, code: 'automation_runs_claim_failed', error };
+    const { data, error } = await schema.rpc('claim_due_automation_runs', { p_limit: limit });
+    if (error) {
+      throw {
+        status: 500,
+        code: 'automation_runs_claim_failed',
+        error,
+        message: asString((error as { message?: unknown })?.message) || 'Falha ao reservar automações vencidas.',
+      };
+    }
     runs = Array.isArray(data) ? data.map((row) => ({ ...row })) : [];
   }
 
