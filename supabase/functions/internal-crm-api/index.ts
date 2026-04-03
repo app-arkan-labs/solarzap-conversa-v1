@@ -6498,6 +6498,65 @@ async function dispatchAutomationWhatsappAdmin(
   };
 }
 
+async function claimDueInternalCrmAutomationRuns(
+  schema: ReturnType<typeof crmSchema>,
+  limit: number,
+) {
+  const now = nowIso();
+  const staleProcessingThresholdIso = new Date(Date.now() - 10 * 60_000).toISOString();
+
+  await schema
+    .from('automation_runs')
+    .update({ status: 'pending', updated_at: now })
+    .eq('status', 'processing')
+    .is('processed_at', null)
+    .lt('updated_at', staleProcessingThresholdIso);
+
+  const { data: dueRuns, error: dueRunsError } = await schema
+    .from('automation_runs')
+    .select('*')
+    .eq('status', 'pending')
+    .lte('scheduled_at', now)
+    .order('scheduled_at', { ascending: true })
+    .order('created_at', { ascending: true })
+    .limit(limit);
+
+  if (dueRunsError) {
+    throw {
+      status: 500,
+      code: 'automation_runs_claim_failed',
+      error: dueRunsError,
+      message: asString((dueRunsError as { message?: unknown })?.message) || 'Falha ao listar automacoes vencidas.',
+    };
+  }
+
+  const dueRunIds = (dueRuns || [])
+    .map((row) => asString(row.id))
+    .filter((value): value is string => Boolean(value));
+
+  if (dueRunIds.length === 0) {
+    return { data: [], error: null };
+  }
+
+  const { data: claimedRuns, error: claimedRunsError } = await schema
+    .from('automation_runs')
+    .update({ status: 'processing', updated_at: now })
+    .in('id', dueRunIds)
+    .eq('status', 'pending')
+    .select('*');
+
+  if (claimedRunsError) {
+    throw {
+      status: 500,
+      code: 'automation_runs_claim_failed',
+      error: claimedRunsError,
+      message: asString((claimedRunsError as { message?: unknown })?.message) || 'Falha ao reservar automacoes vencidas.',
+    };
+  }
+
+  return { data: claimedRuns || [], error: null };
+}
+
 async function executeAutomationRun(
   serviceClient: ReturnType<typeof createClient>,
   run: Record<string, unknown>,
@@ -6587,7 +6646,7 @@ async function processAutomationRunsWithOptions(
       runs = runs.map((run) => ({ ...run, status: 'processing' }));
     }
   } else {
-    const { data, error } = await schema.rpc('claim_due_automation_runs', { p_limit: limit });
+    const { data, error } = await claimDueInternalCrmAutomationRuns(schema, limit);
     if (error) {
       throw {
         status: 500,
