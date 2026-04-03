@@ -15,6 +15,12 @@ import {
 } from '../_shared/internalCrmTrackingBridge.ts';
 import { validateServiceInvocationAuth } from '../_shared/invocationAuth.ts';
 import { getStripeClient, resolveAppUrl } from '../_shared/stripe.ts';
+import {
+  extractAutomationTemplateTokens,
+  mergeAutomationTemplatePayload,
+  normalizeAutomationTemplateValue as normalizeTemplateValue,
+  renderAutomationTemplate,
+} from './templatePayload.ts';
 
 type SystemRole = 'super_admin' | 'ops' | 'support' | 'billing' | 'read_only';
 type CrmRole = 'none' | 'owner' | 'sales' | 'cs' | 'finance' | 'ops' | 'read_only';
@@ -74,6 +80,7 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   upsert_automation_rule: { minCrmRole: 'ops', requireMfa: true },
   list_automation_runs: { minCrmRole: 'read_only', requireMfa: true },
   test_automation_rule: { minCrmRole: 'ops', requireMfa: true },
+  preview_automation_rule: { minCrmRole: 'ops', requireMfa: true },
   get_automation_settings: { minCrmRole: 'read_only', requireMfa: true },
   upsert_automation_settings: { minCrmRole: 'ops', requireMfa: true },
   update_deal_commercial_state: { minCrmRole: 'sales', requireMfa: true },
@@ -123,6 +130,7 @@ const INTERNAL_ONLY_ACTIONS = new Set([
   'process_agent_jobs',
   'process_automation_runs',
   'replay_failed_automation_runs',
+  'preview_automation_rule',
   'lp_public_intake',
   'lp_public_list_slots',
   'lp_public_book_slot',
@@ -337,27 +345,11 @@ function addMinutesIso(input: string, minutes: number): string {
   return new Date(parsed.getTime() + (minutes * 60_000)).toISOString();
 }
 
-function normalizeTemplateValue(value: unknown): string {
-  if (value == null) return '';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  return '';
-}
-
 function buildInternalCrmUrl(clientId?: string | null): string {
   const appUrl = safeAsOrigin(resolveAppUrl(), 'http://localhost:5173');
   const base = appUrl.replace(/\/$/, '');
   if (clientId) return `${base}/admin/crm/clients?client=${clientId}`;
   return `${base}/admin/crm/pipeline`;
-}
-
-function renderAutomationTemplate(template: string | null, payload: Record<string, unknown>): string | null {
-  const source = asString(template);
-  if (!source) return null;
-  return source.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_match, rawKey) => {
-    const key = String(rawKey || '').trim();
-    return normalizeTemplateValue(payload[key]);
-  });
 }
 
 function conditionMatches(expected: unknown, actual: unknown): boolean {
@@ -1533,6 +1525,10 @@ function buildAutomationTemplatePayload(
   const conversation = context.conversation || {};
   const commercialContext = asRecord(deal.commercial_context);
   const appointmentMetadata = asRecord(appointment.metadata);
+  const attributionSnapshot = mergeRecord(
+    commercialContext.attribution,
+    payload.tracking,
+  );
   const stageCode = resolveBlueprintStageCode(
     payload.stage_code || deal.stage_code || client.current_stage_code,
     'novo_lead',
@@ -1540,8 +1536,13 @@ function buildAutomationTemplatePayload(
   const appointmentStartAt = asString(payload.appointment_start_at) || asString(appointment.start_at);
   const effectiveOfferCode = asString(payload.offer_code) || asString(deal.next_offer_code);
   const closedProductCode = asString(payload.closed_product_code) || asString(deal.closed_product_code) || asString(deal.primary_offer_code);
+  const landingPageUrl =
+    asString(payload.landing_page_url) ||
+    asString(commercialContext.landing_page_url) ||
+    asString(appointmentMetadata.landing_page_url) ||
+    asString(attributionSnapshot.landing_page_url);
 
-  return {
+  const basePayload = {
     client_id: asString(payload.client_id) || asString(client.id),
     deal_id: asString(payload.deal_id) || asString(deal.id),
     appointment_id: asString(payload.appointment_id) || asString(appointment.id),
@@ -1565,13 +1566,17 @@ function buildAutomationTemplatePayload(
     crm_url: asString(payload.crm_url) || buildInternalCrmUrl(asString(client.id)),
     link_agendamento:
       asString(payload.link_agendamento) ||
+      asString(payload.scheduling_link) ||
       asString(commercialContext.scheduling_link) ||
       asString(appointmentMetadata.scheduling_link) ||
+      landingPageUrl ||
       buildInternalCrmUrl(asString(client.id)),
     link_reuniao:
       asString(payload.link_reuniao) ||
+      asString(payload.meeting_link) ||
       asString(appointmentMetadata.meeting_link) ||
       asString(commercialContext.meeting_link),
+    landing_page_url: landingPageUrl,
     data_hora: asString(payload.data_hora) || formatPtBrDateTime(appointmentStartAt),
     hora: asString(payload.hora) || formatPtBrTime(appointmentStartAt),
     produto_fechado: asString(payload.produto_fechado) || humanizeToken(closedProductCode),
@@ -1586,10 +1591,15 @@ function buildAutomationTemplatePayload(
     primary_email: asString(payload.primary_email) || asString(client.primary_email),
     commercial_context: commercialContext,
     appointment_metadata: appointmentMetadata,
-    ...commercialContext,
-    ...appointmentMetadata,
-    ...payload,
   };
+
+  return mergeAutomationTemplatePayload(
+    basePayload,
+    commercialContext,
+    appointmentMetadata,
+    attributionSnapshot,
+    payload,
+  );
 }
 
 async function cancelPendingAutomationRunsForEvent(
@@ -4950,6 +4960,58 @@ async function testAutomationRule(
   };
 }
 
+async function previewAutomationRule(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const automationId = asString(payload.automation_id);
+  const automationKey = asString(payload.automation_key);
+
+  const { data: rule, error: ruleError } = automationId
+    ? await schema.from('automation_rules').select('*').eq('id', automationId).maybeSingle()
+    : await schema.from('automation_rules').select('*').eq('automation_key', automationKey).maybeSingle();
+
+  if (ruleError) throw { status: 500, code: 'automation_rule_query_failed', error: ruleError };
+  if (!rule?.id) throw { status: 404, code: 'not_found' };
+
+  const context = await resolveAutomationContextEntities(serviceClient, payload);
+  const templatePayload = buildAutomationTemplatePayload(context, payload, asString(rule.trigger_event) || 'manual_preview');
+  const renderedBody = renderAutomationTemplate(asString(rule.template), templatePayload);
+  const tokens = extractAutomationTemplateTokens(asString(rule.template));
+  const missingTokens = tokens.filter((token) => normalizeTemplateValue(templatePayload[token]).trim().length < 1);
+
+  await writeAuditLog(serviceClient, identity, 'preview_automation_rule', req, {
+    target_type: 'automation_rule',
+    target_id: String(rule.id),
+    client_id: asString(templatePayload.client_id),
+    deal_id: asString(templatePayload.deal_id),
+    after: {
+      rendered_body: renderedBody,
+      missing_tokens: missingTokens,
+      token_count: tokens.length,
+    },
+  });
+
+  return {
+    ok: true,
+    rule: {
+      id: rule.id,
+      automation_key: rule.automation_key,
+      name: rule.name,
+      trigger_event: rule.trigger_event,
+      channel: rule.channel,
+      template: rule.template,
+    },
+    rendered_body: renderedBody,
+    template_payload: templatePayload,
+    tokens,
+    missing_tokens: missingTokens,
+  };
+}
+
 function compareRecordsByUpdatedAtDesc(left: Record<string, unknown>, right: Record<string, unknown>) {
   const leftUpdatedAt = Date.parse(String(left.updated_at || '')) || 0;
   const rightUpdatedAt = Date.parse(String(right.updated_at || '')) || 0;
@@ -5240,10 +5302,19 @@ async function intakeLandingLead(
       .limit(1)
       .maybeSingle()).data;
 
+  const resolvedSchedulingLink =
+    asString(payload.link_agendamento) ||
+    asString(payload.scheduling_link) ||
+    asString(trackingSnapshot.landing_page_url);
+  const resolvedMeetingLink =
+    asString(payload.link_reuniao) ||
+    asString(payload.meeting_link) ||
+    asString(funnel.meeting_link);
   const dealCommercialContext = mergeRecord(existingDeal?.commercial_context, {
     source: 'landing_page',
-    scheduling_link: asString(payload.link_agendamento) || asString(payload.scheduling_link),
-    meeting_link: asString(payload.link_reuniao) || asString(payload.meeting_link),
+    ...(resolvedSchedulingLink ? { scheduling_link: resolvedSchedulingLink } : {}),
+    ...(resolvedMeetingLink ? { meeting_link: resolvedMeetingLink } : {}),
+    ...(asString(trackingSnapshot.landing_page_url) ? { landing_page_url: asString(trackingSnapshot.landing_page_url) } : {}),
     form_payload: asRecord(payload.form_payload),
     attribution: trackingSnapshot,
   });
@@ -5283,10 +5354,11 @@ async function intakeLandingLead(
       appointment_type: asString(payload.appointment_type) || 'call',
       status: 'scheduled',
       start_at: parsedAppointmentAt.toISOString(),
-      location: asString(payload.link_reuniao) || asString(payload.meeting_link),
+      location: resolvedMeetingLink,
       metadata: {
-        meeting_link: asString(payload.link_reuniao) || asString(payload.meeting_link),
-        scheduling_link: asString(payload.link_agendamento) || asString(payload.scheduling_link),
+        ...(resolvedMeetingLink ? { meeting_link: resolvedMeetingLink } : {}),
+        ...(resolvedSchedulingLink ? { scheduling_link: resolvedSchedulingLink } : {}),
+        ...(asString(trackingSnapshot.landing_page_url) ? { landing_page_url: asString(trackingSnapshot.landing_page_url) } : {}),
       },
     }).select('*').single();
 
@@ -5303,8 +5375,9 @@ async function intakeLandingLead(
     primary_phone: primaryPhone,
     primary_email: primaryEmail,
     has_scheduled_call: hasScheduledCall,
-    link_agendamento: asString(payload.link_agendamento) || asString(payload.scheduling_link),
-    link_reuniao: asString(payload.link_reuniao) || asString(payload.meeting_link),
+    ...(resolvedSchedulingLink ? { link_agendamento: resolvedSchedulingLink } : {}),
+    ...(resolvedMeetingLink ? { link_reuniao: resolvedMeetingLink } : {}),
+    ...(asString(trackingSnapshot.landing_page_url) ? { landing_page_url: asString(trackingSnapshot.landing_page_url) } : {}),
     appointment_start_at: appointment?.start_at,
     event_at: nowIso(),
     event_key: `lp_form_submitted:${String(client.id)}:${nowIso()}`,
@@ -7451,6 +7524,8 @@ async function dispatchUserAction(
       return { ok: true, runs: await listAutomationRuns(serviceClient, payload) };
     case 'test_automation_rule':
       return await testAutomationRule(serviceClient, identity, payload, req);
+    case 'preview_automation_rule':
+      return await previewAutomationRule(serviceClient, identity, payload, req);
     case 'get_automation_settings':
       return { ok: true, settings: await getAutomationSettings(serviceClient) };
     case 'upsert_automation_settings':
@@ -7608,6 +7683,16 @@ Deno.serve(async (req) => {
 
       if (action === 'replay_failed_automation_runs') {
         const result = await replayFailedAutomationRuns(serviceClient, payload);
+        return json(200, result, responseHeaders);
+      }
+
+      if (action === 'preview_automation_rule') {
+        const result = await previewAutomationRule(
+          serviceClient,
+          buildServiceActorIdentity(null),
+          payload,
+          req,
+        );
         return json(200, result, responseHeaders);
       }
 

@@ -21,6 +21,7 @@ export type InternalCrmApiAction =
   | 'upsert_automation_rule'
   | 'list_automation_runs'
   | 'test_automation_rule'
+  | 'preview_automation_rule'
   | 'get_automation_settings'
   | 'upsert_automation_settings'
   | 'update_deal_commercial_state'
