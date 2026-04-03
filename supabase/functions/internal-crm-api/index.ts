@@ -6897,7 +6897,7 @@ async function replayFailedAutomationRuns(
         scheduled_at: updatedAt,
         processed_at: null,
         last_error: null,
-        result_payload: null,
+        result_payload: {},
         updated_at: updatedAt,
       })
       .in('id', idsChunk);
