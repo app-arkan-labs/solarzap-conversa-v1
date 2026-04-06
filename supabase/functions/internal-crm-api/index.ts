@@ -72,6 +72,7 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   list_deals: { minCrmRole: 'read_only', requireMfa: true },
   upsert_deal: { minCrmRole: 'sales', requireMfa: true },
   move_deal_stage: { minCrmRole: 'sales', requireMfa: true },
+  delete_deal: { minCrmRole: 'sales', requireMfa: true },
   save_deal_notes: { minCrmRole: 'sales', requireMfa: true },
   create_deal_checkout_link: { minCrmRole: 'sales', requireMfa: true },
   list_tasks: { minCrmRole: 'read_only', requireMfa: true },
@@ -1370,6 +1371,85 @@ async function moveDealStage(
   });
 
   return { ok: true, deal: data };
+}
+
+async function deleteDeal(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const dealId = asString(payload.deal_id);
+  if (!dealId) throw { status: 400, code: 'invalid_payload' };
+
+  const { data: before, error: beforeError } = await schema.from('deals').select('*').eq('id', dealId).maybeSingle();
+  if (beforeError) throw { status: 500, code: 'deal_query_failed', error: beforeError };
+  if (!before?.id) throw { status: 404, code: 'not_found' };
+
+  const clientId = asString(before.client_id);
+  const deletedStageCode = asString(before.stage_code);
+
+  const { error } = await schema.from('deals').delete().eq('id', dealId);
+  if (error) throw { status: 500, code: 'deal_delete_failed', error };
+
+  const { data: replacementDeal, error: replacementError } = await schema
+    .from('deals')
+    .select('id, stage_code, owner_user_id, updated_at')
+    .eq('client_id', clientId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (replacementError) throw { status: 500, code: 'deal_query_failed', error: replacementError };
+
+  const nextStageCode = asString(replacementDeal?.stage_code) || 'novo_lead';
+  const nextOwnerUserId = asString(replacementDeal?.owner_user_id) || asString(before.owner_user_id) || identity.user_id;
+
+  await schema
+    .from('clients')
+    .update({
+      current_stage_code: nextStageCode,
+      owner_user_id: nextOwnerUserId,
+      updated_at: nowIso(),
+    })
+    .eq('id', clientId);
+
+  await syncInternalCrmTrackingBridge({
+    supabase: serviceClient,
+    internalClientId: clientId,
+    internalDealId: asString(replacementDeal?.id),
+    ownerUserId: nextOwnerUserId,
+    stageCode: nextStageCode,
+    syncedAt: nowIso(),
+  });
+
+  await writeAuditLog(serviceClient, identity, 'delete_deal', req, {
+    target_type: 'deal',
+    target_id: dealId,
+    client_id: clientId,
+    deal_id: dealId,
+    before: {
+      ...before,
+      deleted_stage_code: deletedStageCode,
+    },
+    after: replacementDeal
+      ? {
+          replacement_deal_id: asString(replacementDeal.id),
+          replacement_stage_code: nextStageCode,
+        }
+      : {
+          replacement_deal_id: null,
+          replacement_stage_code: nextStageCode,
+        },
+  });
+
+  return {
+    ok: true,
+    deleted_deal_id: dealId,
+    replacement_deal_id: asString(replacementDeal?.id) || null,
+    replacement_stage_code: nextStageCode,
+  };
 }
 
 async function listTasks(serviceClient: ReturnType<typeof createClient>, payload: Record<string, unknown>) {
@@ -7599,6 +7679,8 @@ async function dispatchUserAction(
       return await upsertDeal(serviceClient, identity, payload, req);
     case 'move_deal_stage':
       return await moveDealStage(serviceClient, identity, payload, req);
+    case 'delete_deal':
+      return await deleteDeal(serviceClient, identity, payload, req);
     case 'save_deal_notes':
       return await saveDealNotes(serviceClient, identity, payload, req);
     case 'create_deal_checkout_link':

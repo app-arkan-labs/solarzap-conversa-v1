@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, CircleX, Wallet } from 'lucide-react';
+import { CheckCircle2, CircleX, Trash2, Wallet } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -72,6 +72,7 @@ type DealDetailPanelProps = {
   onMoveToStage: (dealId: string, stageCode: string) => void;
   onMarkWon: () => void;
   onMarkLost: () => void;
+  onDeleteDeal: () => void;
   onOpenCheckout: () => void;
   isSaving: boolean;
 };
@@ -223,6 +224,14 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
                 Gerar Checkout
               </Button>
             ) : null}
+            <Button
+              variant="outline"
+              className="w-full gap-2 border-rose-200 text-rose-600 hover:bg-rose-50"
+              onClick={props.onDeleteDeal}
+            >
+              <Trash2 className="h-4 w-4" />
+              Excluir Oportunidade
+            </Button>
           </div>
 
           <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-4 text-xs text-muted-foreground">

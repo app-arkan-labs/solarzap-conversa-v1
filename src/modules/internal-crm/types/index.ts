@@ -14,6 +14,7 @@ export type InternalCrmApiAction =
   | 'list_deals'
   | 'upsert_deal'
   | 'move_deal_stage'
+  | 'delete_deal'
   | 'create_deal_checkout_link'
   | 'list_tasks'
   | 'upsert_task'

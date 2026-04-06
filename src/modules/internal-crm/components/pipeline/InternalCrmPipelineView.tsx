@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRightLeft,
-  ArrowUpDown,
   Building2,
   Calendar,
   CheckCircle2,
@@ -13,11 +12,15 @@ import {
   FileText,
   FileUp,
   GripVertical,
+  Eye,
+  EyeOff,
   KanbanSquare,
   MessageSquare,
   MoreVertical,
   Phone,
   Plus,
+  SlidersHorizontal,
+  Trash2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/solarzap/PageHeader';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +29,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -206,6 +210,7 @@ export function InternalCrmPipelineView() {
   const [status, setStatus] = useState<'all' | 'open' | 'won' | 'lost'>('all');
   const [ownerUserId, setOwnerUserId] = useState('all');
   const [sourceChannel, setSourceChannel] = useState('all');
+  const [filtersVisible, setFiltersVisible] = useState(true);
 
   // D&D state
   const [draggedCard, setDraggedCard] = useState<InternalCrmPipelineBoardCard | null>(null);
@@ -272,6 +277,17 @@ export function InternalCrmPipelineView() {
       ['internal-crm', 'tasks'],
       ['internal-crm', 'appointments'],
       ['internal-crm', 'conversations'],
+    ],
+  });
+
+  const deleteDealMutation = useInternalCrmMutation({
+    invalidate: [
+      ['internal-crm', 'deals'],
+      ['internal-crm', 'clients'],
+      ['internal-crm', 'tasks'],
+      ['internal-crm', 'appointments'],
+      ['internal-crm', 'conversations'],
+      internalCrmQueryKeys.pipelineStages(),
     ],
   });
 
@@ -615,6 +631,36 @@ export function InternalCrmPipelineView() {
     toast({ title: 'Notas salvas' });
   };
 
+  const handleDeleteDeal = useCallback(async (card: InternalCrmPipelineBoardCard) => {
+    const confirmed = window.confirm(`Excluir a oportunidade "${card.title}"?`);
+    if (!confirmed) return;
+
+    try {
+      await deleteDealMutation.mutateAsync({
+        action: 'delete_deal',
+        deal_id: card.deal.id,
+      });
+
+      if (selectedCard?.id === card.id) {
+        setSelectedCard(null);
+        setDetailPanelOpen(false);
+        setCommentsOpen(false);
+        setCheckoutModalOpen(false);
+      }
+
+      toast({
+        title: 'Oportunidade excluida',
+        description: `${card.title} foi removida da pipeline.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro ao excluir oportunidade',
+        description: error instanceof Error ? error.message : 'Nao foi possivel excluir a oportunidade.',
+        variant: 'destructive',
+      });
+    }
+  }, [deleteDealMutation, selectedCard?.id, toast]);
+
   const handleOpenNewDeal = () => {
     if (clients.length === 0) {
       toast({ title: 'Cadastre um cliente primeiro', description: 'Crie ao menos um cliente antes de abrir um novo deal.', variant: 'destructive' });
@@ -781,8 +827,77 @@ export function InternalCrmPipelineView() {
     }
   };
 
+  const filterActionsMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="min-w-[124px] justify-between rounded-full">
+          Acoes
+          <MoreVertical className="ml-2 h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuItem onClick={() => setImportOpen(true)} className="gap-2 cursor-pointer">
+          <FileText className="h-4 w-4 text-amber-500" />
+          Importar clientes
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setExportOpen(true)} className="gap-2 cursor-pointer">
+          <FileText className="h-4 w-4 text-blue-500" />
+          Exportar clientes
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <div className="flex-1 flex flex-col h-full w-full overflow-hidden bg-muted/30">
+      <div className="flex-shrink-0 px-3 pb-2 pt-3 sm:px-4">
+        <div className="flex items-center justify-end">
+          <Button
+            variant={filtersVisible ? 'outline' : 'default'}
+            size="sm"
+            className={cn(filtersVisible ? 'rounded-full' : 'rounded-full brand-gradient-button text-white')}
+            onClick={() => setFiltersVisible((current) => !current)}
+          >
+            {filtersVisible ? (
+              <>
+                <EyeOff className="mr-2 h-4 w-4" />
+                Ocultar filtros
+              </>
+            ) : (
+              <>
+                <SlidersHorizontal className="mr-2 h-4 w-4" />
+                Mostrar filtros
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {filtersVisible ? (
+        <div className="flex-shrink-0 border-b border-border/50 bg-background/78 px-3 py-2 backdrop-blur-sm sm:px-4">
+          <InternalCrmFilterBar className="p-3 sm:p-4">
+            <PipelineFilters
+              search={search}
+              onSearchChange={setSearch}
+              stageCode={stageCode}
+              onStageCodeChange={setStageCode}
+              status={status}
+              onStatusChange={(value) => setStatus(value as 'all' | 'open' | 'won' | 'lost')}
+              ownerUserId={ownerUserId}
+              onOwnerUserIdChange={setOwnerUserId}
+              sourceChannel={sourceChannel}
+              onSourceChannelChange={setSourceChannel}
+              stages={stages}
+              members={members}
+              sources={board.sourceOptions}
+              actionsContent={filterActionsMenu}
+            />
+          </InternalCrmFilterBar>
+        </div>
+      ) : null}
+
+      {false ? (
+        <>
       <PageHeader
         title="Pipeline"
         subtitle="Arraste os cards entre as etapas para acompanhar a negociação"
@@ -836,6 +951,8 @@ export function InternalCrmPipelineView() {
           />
         </InternalCrmFilterBar>
       </div>
+        </>
+      ) : null}
 
       {isMobileViewport && board.columns.length > 0 && (
         <div className="border-b border-border/60 bg-background/95 px-4 py-3 backdrop-blur-sm">
@@ -995,6 +1112,13 @@ export function InternalCrmPipelineView() {
                                   <FileText className="w-4 h-4 text-amber-500" />
                                   <span>Editar Deal</span>
                                 </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => { e.stopPropagation(); void handleDeleteDeal(card); }}
+                                  className="gap-2 cursor-pointer text-rose-600 focus:text-rose-600"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  <span>Excluir Oportunidade</span>
+                                </DropdownMenuItem>
                                 <DropdownMenuSub>
                                   <DropdownMenuSubTrigger className="gap-2">
                                     <ArrowRightLeft className="w-4 h-4" /> Mover para
@@ -1131,6 +1255,12 @@ export function InternalCrmPipelineView() {
             openMarkLostModal(activeSelectedCard);
           }
         }}
+        onDeleteDeal={() => {
+          if (activeSelectedCard) {
+            setDetailPanelOpen(false);
+            void handleDeleteDeal(activeSelectedCard);
+          }
+        }}
         onOpenCheckout={() => {
           if (activeSelectedCard) {
             setDetailPanelOpen(false);
@@ -1226,6 +1356,16 @@ export function InternalCrmPipelineView() {
         onClose={() => setExportOpen(false)}
         clients={clients}
       />
+
+      <Button
+        type="button"
+        onClick={handleOpenNewDeal}
+        className="fixed bottom-5 right-5 z-40 h-14 w-14 rounded-full p-0 text-white brand-gradient-button shadow-[0_24px_50px_-24px_hsl(var(--primary)/0.55)] sm:bottom-6 sm:right-6"
+        aria-label="Novo Deal"
+        title="Novo Deal"
+      >
+        <Plus className="h-6 w-6" />
+      </Button>
     </div>
   );
 }
