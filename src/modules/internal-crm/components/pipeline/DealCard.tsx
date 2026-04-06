@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 const STAGE_LABELS: Record<string, string> = {
   novo_lead: 'Novo Lead',
   respondeu: 'Respondeu',
-  agendou_reuniao: 'Agendou Reunião',
+  agendou_reuniao: 'Reunião Agendada',
   chamada_agendada: 'Reunião Agendada',
   chamada_realizada: 'Reunião Realizada',
   nao_compareceu: 'Não Compareceu',
@@ -68,20 +68,20 @@ export function DealCard(props: DealCardProps) {
         </div>
         <div className="flex items-center gap-0 flex-shrink-0">
           <DropdownMenu>
-            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuTrigger asChild onClick={(event) => event.stopPropagation()}>
               <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
                 <MoreVertical className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); props.onScheduleMeeting(); }}
+                onClick={(event) => { event.stopPropagation(); props.onScheduleMeeting(); }}
                 className="gap-2"
               >
                 <Calendar className="w-4 h-4 text-purple-500" /> Agendar Reunião
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); props.onOpenComments(); }}
+                onClick={(event) => { event.stopPropagation(); props.onOpenComments(); }}
                 className="gap-2"
               >
                 <MessageSquareText className="w-4 h-4 text-amber-500" /> Notas
@@ -95,8 +95,8 @@ export function DealCard(props: DealCardProps) {
                     <DropdownMenuItem
                       key={stage.stage_code}
                       disabled={stage.stage_code === deal.stage_code}
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={(event) => {
+                        event.stopPropagation();
                         props.onMoveToStage(stage.stage_code);
                       }}
                     >
@@ -107,13 +107,13 @@ export function DealCard(props: DealCardProps) {
               </DropdownMenuSub>
               <div className="h-px bg-muted my-1" />
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); props.onMarkWon(); }}
+                onClick={(event) => { event.stopPropagation(); props.onMarkWon(); }}
                 className="gap-2 text-emerald-600"
               >
                 <CheckCircle2 className="w-4 h-4" /> Fechou Contrato
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); props.onMarkLost(); }}
+                onClick={(event) => { event.stopPropagation(); props.onMarkLost(); }}
                 className="gap-2 text-rose-600"
               >
                 <CircleX className="w-4 h-4" /> Não Fechou
@@ -133,11 +133,11 @@ export function DealCard(props: DealCardProps) {
         </span>
       </div>
 
-      {deal.notes && (
+      {deal.notes ? (
         <p className="mt-2 text-xs text-muted-foreground line-clamp-2 italic">
           {deal.notes}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

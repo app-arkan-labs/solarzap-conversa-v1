@@ -1,7 +1,6 @@
 export type InternalCrmCanonicalStageCode =
   | 'novo_lead'
   | 'respondeu'
-  | 'agendou_reuniao'
   | 'chamada_agendada'
   | 'chamada_realizada'
   | 'nao_compareceu'
@@ -21,7 +20,6 @@ type InternalCrmStageMeta = {
 export const INTERNAL_CRM_PIPELINE_STAGE_ORDER: InternalCrmCanonicalStageCode[] = [
   'novo_lead',
   'respondeu',
-  'agendou_reuniao',
   'chamada_agendada',
   'chamada_realizada',
   'nao_compareceu',
@@ -39,6 +37,7 @@ export const INTERNAL_CRM_STAGE_ALIASES: Record<string, InternalCrmCanonicalStag
   aguardando_pagamento: 'negociacao',
   ganho: 'fechou',
   perdido: 'nao_fechou',
+  agendou_reuniao: 'chamada_agendada',
   reuniao_agendada: 'chamada_agendada',
   reuniao_realizada: 'chamada_realizada',
   contrato_fechado: 'fechou',
@@ -49,56 +48,49 @@ export const INTERNAL_CRM_STAGE_META: Record<InternalCrmCanonicalStageCode, Inte
     label: 'Novo Lead',
     shortLabel: 'Novo Lead',
     color: '#2196F3',
-    icon: '●',
+    icon: 'N',
     nextActionLabel: 'Abrir conversa',
   },
   respondeu: {
     label: 'Respondeu',
     shortLabel: 'Respondeu',
     color: '#FF9800',
-    icon: '◐',
+    icon: 'R',
     nextActionLabel: 'Agendar reuniao',
-  },
-  agendou_reuniao: {
-    label: 'Agendou Reuniao',
-    shortLabel: 'Agendou',
-    color: '#9C27B0',
-    icon: '◌',
-    nextActionLabel: 'Confirmar agenda',
   },
   chamada_agendada: {
     label: 'Reuniao Agendada',
     shortLabel: 'Agendada',
     color: '#3F51B5',
-    icon: '◆',
+    icon: 'A',
     nextActionLabel: 'Realizar reuniao',
   },
   chamada_realizada: {
     label: 'Reuniao Realizada',
     shortLabel: 'Realizada',
     color: '#4CAF50',
-    icon: '■',
+    icon: 'C',
     nextActionLabel: 'Gerar checkout',
   },
   nao_compareceu: {
     label: 'Nao Compareceu',
     shortLabel: 'No-show',
     color: '#F44336',
-    icon: '×',
+    icon: '!',
     nextActionLabel: 'Reagendar',
   },
   negociacao: {
     label: 'Negociacao',
     shortLabel: 'Negociacao',
     color: '#FFC107',
-    icon: '△',
+    icon: '$',
     nextActionLabel: 'Fechar negociacao',
   },
   fechou: {
     label: 'Fechou Contrato',
     shortLabel: 'Fechou',
     color: '#8BC34A',
-    icon: '✓',
+    icon: 'F',
     nextActionLabel: 'Provisionar conta',
     terminal: true,
   },

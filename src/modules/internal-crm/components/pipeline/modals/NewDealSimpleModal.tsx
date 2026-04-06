@@ -12,7 +12,6 @@ import type { InternalCrmClientSummary, InternalCrmProduct, InternalCrmStage } f
 const STAGE_LABELS: Record<string, string> = {
   novo_lead: 'Novo Lead',
   respondeu: 'Respondeu',
-  agendou_reuniao: 'Agendou Reunião',
   chamada_agendada: 'Reunião Agendada',
   chamada_realizada: 'Reunião Realizada',
   nao_compareceu: 'Não Compareceu',

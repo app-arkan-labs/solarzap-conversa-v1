@@ -45,15 +45,15 @@ export function getDefaultStageEventMap(): StageEventMap {
     },
     agendou_reuniao: {
       event_key: 'agendou_reuniao',
-      meta: 'Schedule',
-      google_ads: 'schedule',
-      ga4: 'schedule_appointment',
-    },
-    chamada_realizada: {
-      event_key: 'chamada_realizada',
       meta: null,
       google_ads: null,
       ga4: null,
+    },
+    chamada_realizada: {
+      event_key: 'chamada_realizada',
+      meta: 'Schedule',
+      google_ads: 'schedule',
+      ga4: 'schedule_appointment',
     },
     visita_realizada: {
       event_key: 'visita_realizada',

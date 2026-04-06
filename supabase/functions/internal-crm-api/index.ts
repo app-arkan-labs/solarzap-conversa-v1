@@ -219,7 +219,10 @@ const LEGACY_STAGE_CODE_MAP: Record<string, string> = {
   lead_entrante: 'novo_lead',
   contato_iniciado: 'respondeu',
   qualificado: 'respondeu',
-  demo_agendada: 'agendou_reuniao',
+  demo_agendada: 'chamada_agendada',
+  agendou_reuniao: 'chamada_agendada',
+  reuniao_agendada: 'chamada_agendada',
+  reuniao_realizada: 'chamada_realizada',
   proposta_enviada: 'negociacao',
   aguardando_pagamento: 'negociacao',
   ganho: 'fechou',
@@ -228,7 +231,6 @@ const LEGACY_STAGE_CODE_MAP: Record<string, string> = {
 const BLUEPRINT_STAGE_DEFAULT_PROBABILITY: Record<string, number> = {
   novo_lead: 5,
   respondeu: 15,
-  agendou_reuniao: 25,
   chamada_agendada: 35,
   chamada_realizada: 55,
   nao_compareceu: 20,
@@ -310,6 +312,68 @@ function resolveLifecycleStatusForStage(
 function resolveStageProbability(stageCode: unknown, fallback = 0): number {
   const resolvedStageCode = resolveBlueprintStageCode(stageCode, 'novo_lead');
   return BLUEPRINT_STAGE_DEFAULT_PROBABILITY[resolvedStageCode] ?? fallback;
+}
+
+type AppointmentCommercialKind = 'meeting' | 'call' | 'visit' | 'other';
+
+function normalizeAppointmentType(value: unknown): 'call' | 'demo' | 'meeting' | 'visit' | 'other' {
+  const normalized = asString(value)?.toLowerCase() || '';
+  if (normalized === 'call') return 'call';
+  if (normalized === 'demo') return 'demo';
+  if (normalized === 'visit') return 'visit';
+  if (normalized === 'other') return 'other';
+  return 'meeting';
+}
+
+function classifyAppointmentCommercialKind(value: unknown): AppointmentCommercialKind {
+  const appointmentType = normalizeAppointmentType(value);
+  if (appointmentType === 'meeting' || appointmentType === 'demo') return 'meeting';
+  if (appointmentType === 'call') return 'call';
+  if (appointmentType === 'visit') return 'visit';
+  return 'other';
+}
+
+function buildAppointmentCommercialContextPatch(params: {
+  appointmentType: unknown;
+  appointmentStatus: unknown;
+  startAt: unknown;
+  eventAt?: unknown;
+}) {
+  const appointmentType = normalizeAppointmentType(params.appointmentType);
+  const appointmentCategory = classifyAppointmentCommercialKind(appointmentType);
+  const appointmentStatus = asString(params.appointmentStatus) || 'scheduled';
+  const startAt = asString(params.startAt);
+  const eventAt = asString(params.eventAt) || nowIso();
+
+  const patch: Record<string, unknown> = {
+    last_appointment_type: appointmentType,
+    last_appointment_category: appointmentCategory,
+    last_appointment_status: appointmentStatus,
+    last_appointment_start_at: startAt,
+    last_appointment_event_at: eventAt,
+  };
+
+  if (['scheduled', 'confirmed'].includes(appointmentStatus)) {
+    patch.last_scheduled_appointment_type = appointmentType;
+    patch.last_scheduled_appointment_category = appointmentCategory;
+    patch.last_scheduled_appointment_status = appointmentStatus;
+    patch.last_scheduled_appointment_start_at = startAt;
+  }
+
+  if (appointmentStatus === 'done') {
+    patch.last_completed_appointment_type = appointmentType;
+    patch.last_completed_appointment_category = appointmentCategory;
+    patch.last_completed_appointment_at = eventAt;
+    patch.last_completed_appointment_start_at = startAt;
+  }
+
+  if (appointmentStatus === 'no_show') {
+    patch.last_no_show_appointment_type = appointmentType;
+    patch.last_no_show_appointment_category = appointmentCategory;
+    patch.last_no_show_appointment_at = eventAt;
+  }
+
+  return patch;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -3807,7 +3871,7 @@ async function handlePublicLpBookSlot(
         serviceClient,
         internalClientId: clientId,
         internalDealId: dealId,
-        stageCode: 'agendou_reuniao',
+        stageCode: 'chamada_agendada',
         linkedPublicOrgId,
         linkedPublicUserId,
         ownerUserId,
@@ -3818,7 +3882,7 @@ async function handlePublicLpBookSlot(
   return {
     ok: true,
     appointment: syncedAppointment,
-    stage_code: 'agendou_reuniao',
+    stage_code: 'chamada_agendada',
     meeting_link: syncedEventLink || meetingLink,
     bridge,
   };
@@ -3848,6 +3912,8 @@ async function upsertAppointment(
     if (Number.isNaN(parsedEndAt.getTime())) throw { status: 400, code: 'invalid_payload' };
   }
 
+  const normalizedAppointmentType = normalizeAppointmentType(payload.appointment_type);
+
   const before = appointmentId
     ? (await schema.from('appointments').select('*').eq('id', appointmentId).maybeSingle()).data
     : null;
@@ -3858,7 +3924,7 @@ async function upsertAppointment(
     deal_id: asString(payload.deal_id),
     owner_user_id: asString(payload.owner_user_id) || identity.user_id,
     title,
-    appointment_type: asString(payload.appointment_type) || 'meeting',
+    appointment_type: normalizedAppointmentType,
     status: asString(payload.status) || 'scheduled',
     start_at: parsedStartAt.toISOString(),
     end_at: parsedEndAt ? parsedEndAt.toISOString() : null,
@@ -3871,14 +3937,39 @@ async function upsertAppointment(
 
   await schema.from('clients').update({ updated_at: nowIso() }).eq('id', clientId);
 
-  const dealForAppointment = data.deal_id
+  let dealForAppointment = data.deal_id
     ? (await schema.from('deals').select('*').eq('id', data.deal_id).maybeSingle()).data
     : null;
+
+  if (dealForAppointment?.id) {
+    const commercialContextPatch = buildAppointmentCommercialContextPatch({
+      appointmentType: data.appointment_type,
+      appointmentStatus: data.status,
+      startAt: data.start_at,
+      eventAt: nowIso(),
+    });
+
+    const { data: updatedDeal, error: dealUpdateError } = await schema
+      .from('deals')
+      .update({
+        commercial_context: mergeRecord(dealForAppointment.commercial_context, commercialContextPatch),
+        updated_at: nowIso(),
+      })
+      .eq('id', dealForAppointment.id)
+      .select('*')
+      .single();
+
+    if (dealUpdateError || !updatedDeal?.id) {
+      throw { status: 500, code: 'deal_context_update_failed', error: dealUpdateError };
+    }
+
+    dealForAppointment = updatedDeal;
+  }
 
   const appointmentStageCode =
     data.status === 'no_show' ? 'nao_compareceu' :
     data.status === 'done' ? 'chamada_realizada' :
-    ['scheduled', 'confirmed'].includes(String(data.status || '')) ? 'agendou_reuniao' : null;
+    ['scheduled', 'confirmed'].includes(String(data.status || '')) ? 'chamada_agendada' : null;
 
   if (dealForAppointment?.id && appointmentStageCode) {
     await applyDealStageChange(schema, {
@@ -5234,7 +5325,7 @@ async function intakeLandingLead(
       primary_email: primaryEmail,
       source_channel: 'landing_page',
       owner_user_id: ownerUserId,
-      current_stage_code: hasScheduledCall ? 'agendou_reuniao' : 'novo_lead',
+      current_stage_code: hasScheduledCall ? 'chamada_agendada' : 'novo_lead',
       lifecycle_status: 'lead',
       last_contact_at: nowIso(),
       linked_public_org_id: linkedPublicOrgId,
@@ -5270,7 +5361,7 @@ async function intakeLandingLead(
       primary_email: primaryEmail,
       source_channel: 'landing_page',
       owner_user_id: ownerUserId || asString(client.owner_user_id) || identity.user_id,
-      current_stage_code: hasScheduledCall ? 'agendou_reuniao' : resolveBlueprintStageCode(client.current_stage_code, 'novo_lead'),
+      current_stage_code: hasScheduledCall ? 'chamada_agendada' : resolveBlueprintStageCode(client.current_stage_code, 'novo_lead'),
       linked_public_org_id: linkedPublicOrgId || asString(client.linked_public_org_id),
       linked_public_user_id: linkedPublicUserId || asString(client.linked_public_user_id),
       updated_at: nowIso(),
@@ -5319,7 +5410,7 @@ async function intakeLandingLead(
     attribution: trackingSnapshot,
   });
 
-  const dealStageCode = hasScheduledCall ? 'agendou_reuniao' : 'novo_lead';
+  const dealStageCode = hasScheduledCall ? 'chamada_agendada' : 'novo_lead';
   const { data: deal, error: dealError } = await schema.from('deals').upsert({
     id: asString(payload.deal_id) || asString(existingDeal?.id) || undefined,
     client_id: client.id,

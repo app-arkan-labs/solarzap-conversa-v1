@@ -107,6 +107,15 @@ function formatAppointmentLabel(appointment: InternalCrmAppointment | null): str
   });
 }
 
+function extractTrackingAttribution(value: unknown): Record<string, unknown> {
+  const context = asRecord(value);
+  return asRecord(context.attribution);
+}
+
+function hasTrackingAttribution(value: unknown): boolean {
+  return Object.keys(extractTrackingAttribution(value)).length > 0;
+}
+
 function buildDealDraftFromCard(card: InternalCrmPipelineBoardCard): DealDraft {
   const context = asRecord(card.deal.commercial_context);
   return {
@@ -295,6 +304,7 @@ export function InternalCrmPipelineView() {
   });
 
   const products = board.productsQuery.data?.products || [];
+  const appointments = board.appointmentsQuery.data?.appointments || [];
   const stages = board.stageOptions;
   const members = board.members;
   const clients = board.clientsQuery.data?.clients || [];
@@ -333,6 +343,25 @@ export function InternalCrmPipelineView() {
     const product = products.find((item) => item.product_code === productCode);
     return Number(product?.price_cents || 0);
   };
+
+  const findRelevantAppointment = useCallback((
+    card: InternalCrmPipelineBoardCard,
+    appointmentType: string,
+  ) => {
+    const normalizedType = appointmentType === 'demo' ? 'meeting' : appointmentType;
+    const matchingTypes = normalizedType === 'meeting' ? ['meeting', 'demo'] : [normalizedType];
+
+    return appointments
+      .filter((appointment) => {
+        const matchesDeal = appointment.deal_id
+          ? appointment.deal_id === card.deal.id
+          : appointment.client_id === card.deal.client_id;
+        if (!matchesDeal) return false;
+        if (!['scheduled', 'confirmed'].includes(String(appointment.status || ''))) return false;
+        return matchingTypes.includes(String(appointment.appointment_type || ''));
+      })
+      .sort((left, right) => new Date(left.start_at).getTime() - new Date(right.start_at).getTime())[0] || null;
+  }, [appointments]);
 
   const updateActiveMobileStage = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -468,13 +497,37 @@ export function InternalCrmPipelineView() {
     setLostModalOpen(true);
   };
 
+  const openAppointmentModalForCard = useCallback((card: InternalCrmPipelineBoardCard, appointmentType: string = 'meeting') => {
+    const relevantAppointment = findRelevantAppointment(card, appointmentType);
+    const normalizedType = appointmentType === 'demo' ? 'meeting' : appointmentType;
+    const isCallType = normalizedType === 'call';
+
+    setSelectedCard(card);
+    setSelectedAppointment(relevantAppointment);
+    setAppointmentDefaults({
+      client_id: card.deal.client_id,
+      deal_id: card.deal.id,
+      title: isCallType ? `Ligacao - ${card.companyName}` : `Reuniao - ${card.companyName}`,
+      appointment_type: normalizedType,
+      status: relevantAppointment?.status || 'scheduled',
+      location: relevantAppointment?.location || null,
+      notes: relevantAppointment?.notes || null,
+    });
+    setAppointmentModalOpen(true);
+  }, [findRelevantAppointment]);
+
   const handleMoveToStage = useCallback(async (
     card: InternalCrmPipelineBoardCard,
     targetStageCode: string,
-    options?: { skipTerminalModal?: boolean; successMessage?: string },
+    options?: { skipTerminalModal?: boolean; skipSchedulingModal?: boolean; successMessage?: string },
   ) => {
     const normalizedStageCode = normalizeInternalCrmStageCode(targetStageCode);
     if (card.stageCode === normalizedStageCode) return;
+
+    if (!options?.skipSchedulingModal && normalizedStageCode === 'chamada_agendada') {
+      openAppointmentModalForCard(card, 'meeting');
+      return;
+    }
 
     if (!options?.skipTerminalModal && normalizedStageCode === 'fechou') {
       openMarkWonModal(card);
@@ -496,7 +549,7 @@ export function InternalCrmPipelineView() {
       title: 'Lead movido!',
       description: options?.successMessage || `Movido para ${getInternalCrmStageLabel(normalizedStageCode)}`,
     });
-  }, [moveDealMutation, toast, products]);
+  }, [moveDealMutation, openAppointmentModalForCard, toast]);
 
   const handleDrop = async (e: React.DragEvent, targetStageCode: string) => {
     if (isMobileViewport) return;
@@ -671,30 +724,25 @@ export function InternalCrmPipelineView() {
     window.location.href = `tel:${phone}`;
   }, [toast]);
 
-  const handleOpenAppointmentModal = useCallback((card: InternalCrmPipelineBoardCard, appointmentType: string = 'meeting') => {
-    setSelectedCard(card);
-    setSelectedAppointment(card.nextAppointment);
-    setAppointmentDefaults({
-      client_id: card.deal.client_id,
-      deal_id: card.deal.id,
-      title: `Reuniao - ${card.companyName}`,
-      appointment_type: appointmentType,
-      status: card.nextAppointment?.status || 'scheduled',
-      location: card.nextAppointment?.location || null,
-      notes: card.nextAppointment?.notes || null,
-    });
-    setAppointmentModalOpen(true);
-  }, []);
-
   const handleSaveAppointment = async (payload: Record<string, unknown>) => {
-    await appointmentMutation.mutateAsync({
+    const result = await appointmentMutation.mutateAsync({
       action: 'upsert_appointment',
       ...payload,
     });
     setAppointmentModalOpen(false);
     setSelectedAppointment(null);
     setAppointmentDefaults(null);
-    toast({ title: 'Agendamento salvo' });
+    const savedAppointment = (result as { appointment?: InternalCrmAppointment }).appointment || null;
+    const type = String(savedAppointment?.appointment_type || payload.appointment_type || 'meeting');
+    const title = type === 'call' ? 'Ligacao agendada' : type === 'visit' ? 'Visita agendada' : 'Reuniao agendada';
+    toast({ title });
+  };
+
+  const handleAppointmentModalOpenChange = (open: boolean) => {
+    setAppointmentModalOpen(open);
+    if (open) return;
+    setSelectedAppointment(null);
+    setAppointmentDefaults(null);
   };
 
   const handleNextActionClick = async (card: InternalCrmPipelineBoardCard, e: React.MouseEvent) => {
@@ -704,13 +752,10 @@ export function InternalCrmPipelineView() {
         handleOpenConversation(card);
         break;
       case 'respondeu':
-        handleOpenAppointmentModal(card, 'meeting');
-        break;
-      case 'agendou_reuniao':
-        handleOpenConversation(card);
+        openAppointmentModalForCard(card, 'meeting');
         break;
       case 'chamada_agendada':
-        handleOpenAppointmentModal(card, 'meeting');
+        openAppointmentModalForCard(card, 'meeting');
         break;
       case 'chamada_realizada':
         setSelectedCard(card);
@@ -718,7 +763,7 @@ export function InternalCrmPipelineView() {
         setCheckoutModalOpen(true);
         break;
       case 'nao_compareceu':
-        handleOpenAppointmentModal(card, 'meeting');
+        openAppointmentModalForCard(card, 'meeting');
         break;
       case 'negociacao':
         openMarkWonModal(card);
@@ -879,6 +924,7 @@ export function InternalCrmPipelineView() {
                   ) : (
                     column.deals.map((card) => {
                       const isDragging = draggedCard?.id === card.id;
+                      const hasTracking = hasTrackingAttribution(card.deal.commercial_context);
                       const nextAppointmentLabel = formatAppointmentLabel(card.nextAppointment);
                       const currentStageIndex = INTERNAL_CRM_PIPELINE_STAGE_ORDER.indexOf(card.stageCode as never);
                       const prevStage = currentStageIndex > 0 ? INTERNAL_CRM_PIPELINE_STAGE_ORDER[currentStageIndex - 1] : null;
@@ -937,7 +983,7 @@ export function InternalCrmPipelineView() {
                                   <Phone className="w-4 h-4 text-blue-500" />
                                   <span>Ligar Agora</span>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleOpenAppointmentModal(card, 'meeting'); }} className="gap-2 cursor-pointer">
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openAppointmentModalForCard(card, 'meeting'); }} className="gap-2 cursor-pointer">
                                   <Calendar className="w-4 h-4 text-purple-500" />
                                   <span>Agendar Reuniao</span>
                                 </DropdownMenuItem>
@@ -986,6 +1032,11 @@ export function InternalCrmPipelineView() {
                         <div className="flex flex-wrap gap-1.5 mb-3">
                           {card.sourceLabel ? <TokenBadge token={card.sourceChannel} label={card.sourceLabel} /> : null}
                           <TokenBadge token={card.paymentStatus} label={getPaymentStatusLabel(card.paymentStatus)} />
+                          {hasTracking ? (
+                            <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700">
+                              Tracking
+                            </Badge>
+                          ) : null}
                           {card.unreadCount > 0 ? (
                             <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
                               {card.unreadCount} nao lidas
@@ -1155,7 +1206,7 @@ export function InternalCrmPipelineView() {
 
       <InternalCrmAppointmentModal
         open={appointmentModalOpen}
-        onOpenChange={setAppointmentModalOpen}
+        onOpenChange={handleAppointmentModalOpenChange}
         appointment={selectedAppointment}
         clients={clients}
         defaultStartAt={new Date().toISOString()}

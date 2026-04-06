@@ -27,7 +27,8 @@ describe('tracking scaffold constants', () => {
     expect(map.chamada_agendada.meta).toBeNull();
     expect(map.proposta_pronta.meta).toBeNull();
     expect(map.contrato_assinado.meta).toBeNull();
-    expect(map.projeto_pago.google_ads).toBe('purchase');
+    expect(map.fechou.google_ads).toBe('purchase');
+    expect(map.projeto_pago.google_ads).toBeNull();
   });
 
   it('gates delivery creation by tracking flag', () => {
