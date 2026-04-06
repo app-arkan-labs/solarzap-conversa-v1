@@ -1920,7 +1920,7 @@ function getEvolutionEnv() {
 }
 
 function resolveEvolutionRequestConfig() {
-  const timeoutMs = clamp(asNumber(Deno.env.get('EVOLUTION_REQUEST_TIMEOUT_MS'), 12_000), 1_000, 60_000);
+  const timeoutMs = clamp(asNumber(Deno.env.get('EVOLUTION_REQUEST_TIMEOUT_MS'), 20_000), 1_000, 60_000);
   const maxRetries = clamp(asNumber(Deno.env.get('EVOLUTION_REQUEST_MAX_RETRIES'), 2), 0, 5);
   const baseBackoffMs = clamp(asNumber(Deno.env.get('EVOLUTION_REQUEST_BACKOFF_MS'), 350), 100, 10_000);
   return { timeoutMs, maxRetries, baseBackoffMs };
@@ -4058,12 +4058,6 @@ async function upsertAppointment(
       notes: `appointment_status:${String(data.status || '')}`,
       changed_by_user_id: identity.user_id,
     });
-
-    await syncTrackingBridgeFromDeal(serviceClient, {
-      internalDealId: String(dealForAppointment.id),
-      stageCode: appointmentStageCode,
-      syncedAt: nowIso(),
-    });
   }
 
   const appointmentEventAt = asString(data.start_at) || nowIso();
@@ -4119,6 +4113,23 @@ async function upsertAppointment(
       event_at: nowIso(),
       event_key: `appointment_no_show:${String(data.id)}:${nowIso()}`,
     }, { processDueNow: true });
+  }
+
+  if (dealForAppointment?.id && appointmentStageCode) {
+    try {
+      await syncTrackingBridgeFromDeal(serviceClient, {
+        internalDealId: String(dealForAppointment.id),
+        stageCode: appointmentStageCode,
+        syncedAt: nowIso(),
+      });
+    } catch (error) {
+      console.warn('[internal-crm-api] appointment_bridge_sync_failed', {
+        appointment_id: String(data.id),
+        deal_id: String(dealForAppointment.id),
+        stage_code: appointmentStageCode,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   await writeAuditLog(serviceClient, identity, 'upsert_appointment', req, {
