@@ -218,7 +218,16 @@ async function updatePublicLeadRecord(input: {
     .eq('org_id', input.orgId);
 
   const errorCode = String(updateResult.error?.code || '');
-  if (updateResult.error && (errorCode === '42703' || errorCode === 'PGRST204') && Object.prototype.hasOwnProperty.call(basePayload, 'email')) {
+  const errorMessage = String(updateResult.error?.message || '');
+  const shouldRetryWithoutEmail =
+    Object.prototype.hasOwnProperty.call(basePayload, 'email') && (
+      errorCode === '42703' ||
+      errorCode === 'PGRST204' ||
+      errorCode === '23505' ||
+      errorMessage.includes('Leads_email_key')
+    );
+
+  if (updateResult.error && shouldRetryWithoutEmail) {
     delete basePayload.email;
     updateResult = await input.supabase
       .from('leads')
