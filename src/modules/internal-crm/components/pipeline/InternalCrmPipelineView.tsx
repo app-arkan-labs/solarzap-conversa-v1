@@ -874,7 +874,7 @@ export function InternalCrmPipelineView() {
         onScroll={isMobileViewport ? updateActiveMobileStage : undefined}
       >
         <div
-          className={cn('flex gap-4 pb-4', isMobileViewport && 'snap-x snap-mandatory')}
+          className={cn('flex gap-4 pb-4 pr-4 sm:pr-6 lg:pr-8', isMobileViewport && 'snap-x snap-mandatory')}
           style={{
             width: 'max-content',
             minWidth: isMobileViewport ? '100%' : `${Math.max(board.columns.length, 1) * 296}px`,

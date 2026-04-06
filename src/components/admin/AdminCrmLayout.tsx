@@ -75,13 +75,13 @@ function AdminCrmNavButton(props: AdminCrmNavButtonProps) {
               'group flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-300',
               isActive
                 ? 'brand-gradient-bg text-white shadow-[0_20px_42px_-22px_hsl(var(--primary)/0.58)] scale-[1.03]'
-                : 'border-sidebar-border/45 bg-white/55 text-sidebar-foreground/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] hover:border-sidebar-border/80 hover:bg-white/82 hover:text-sidebar-foreground',
+                : 'border-sidebar-border/70 bg-sidebar-accent/82 text-sidebar-foreground shadow-[0_16px_34px_-26px_rgba(15,23,42,0.3)] hover:border-sidebar-ring/35 hover:bg-white hover:text-sidebar-foreground',
             )
           }
           title={props.label}
           aria-label={props.label}
         >
-          <Icon className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
+          <Icon className="h-5 w-5 stroke-[2.25] transition-transform duration-300 group-hover:scale-110" />
         </NavLink>
       </TooltipTrigger>
       <TooltipContent side="right">{props.label}</TooltipContent>
@@ -143,7 +143,7 @@ export default function AdminCrmLayout() {
   return (
     <div className="app-shell-bg h-[100dvh] overflow-hidden bg-background text-foreground">
       <div className="flex h-full min-h-0 overflow-hidden">
-        <aside className="relative hidden w-[88px] shrink-0 border-r border-sidebar-border/80 bg-[linear-gradient(180deg,hsl(var(--sidebar-background)),hsl(var(--sidebar-accent))_135%)] text-sidebar-foreground lg:flex lg:flex-col">
+        <aside className="relative hidden w-[88px] shrink-0 border-r border-sidebar-border/80 bg-[linear-gradient(180deg,hsl(var(--sidebar-background)),hsl(var(--sidebar-accent))_135%)] text-sidebar-foreground shadow-[18px_0_40px_-34px_rgba(15,23,42,0.16)] lg:flex lg:flex-col">
           <div className="flex justify-center px-3 pb-5 pt-4">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -172,10 +172,10 @@ export default function AdminCrmLayout() {
                   <PopoverTrigger asChild>
                     <button
                       type="button"
-                      className="group flex h-12 w-12 items-center justify-center rounded-2xl border border-sidebar-border/45 bg-white/55 text-sidebar-foreground/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] transition-all duration-300 hover:border-sidebar-border/80 hover:bg-white/82 hover:text-sidebar-foreground"
+                      className="group flex h-12 w-12 items-center justify-center rounded-2xl border border-sidebar-border/70 bg-sidebar-accent/82 text-sidebar-foreground shadow-[0_16px_34px_-26px_rgba(15,23,42,0.3)] transition-all duration-300 hover:border-sidebar-ring/35 hover:bg-white hover:text-sidebar-foreground"
                       aria-label="Abrir atalhos do sistema"
                     >
-                      <Layers3 className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
+                      <Layers3 className="h-5 w-5 stroke-[2.25] transition-transform duration-300 group-hover:scale-110" />
                     </button>
                   </PopoverTrigger>
                 </TooltipTrigger>
@@ -210,10 +210,10 @@ export default function AdminCrmLayout() {
                 <button
                   type="button"
                   onClick={() => void handleSignOut()}
-                  className="group flex h-12 w-12 items-center justify-center rounded-2xl border border-sidebar-border/45 bg-white/55 text-sidebar-foreground/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] transition-all duration-300 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                  className="group flex h-12 w-12 items-center justify-center rounded-2xl border border-sidebar-border/70 bg-sidebar-accent/82 text-sidebar-foreground shadow-[0_16px_34px_-26px_rgba(15,23,42,0.3)] transition-all duration-300 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
                   aria-label="Encerrar sessao"
                 >
-                  <LogOut className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
+                  <LogOut className="h-5 w-5 stroke-[2.25] transition-transform duration-300 group-hover:scale-110" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right">Encerrar sessao</TooltipContent>
