@@ -5375,6 +5375,10 @@ async function intakeLandingLead(
   req: Request,
 ) {
   const schema = crmSchema(serviceClient);
+  const funnelSlug = asString(payload.funnel_slug);
+  const funnel = funnelSlug
+    ? await resolveLandingFormFunnel(serviceClient, funnelSlug)
+    : null;
   const companyName = asString(payload.company_name) || asString(payload.nome_empresa) || asString(payload.nome) || 'Lead LP';
   const primaryContactName = asString(payload.primary_contact_name) || asString(payload.nome) || companyName;
   const primaryPhone = normalizePhone(payload.primary_phone || payload.phone || payload.whatsapp);
@@ -5480,7 +5484,7 @@ async function intakeLandingLead(
   const resolvedMeetingLink =
     asString(payload.link_reuniao) ||
     asString(payload.meeting_link) ||
-    asString(funnel.meeting_link);
+    asString(funnel?.meeting_link);
   const dealCommercialContext = mergeRecord(existingDeal?.commercial_context, {
     source: 'landing_page',
     ...(resolvedSchedulingLink ? { scheduling_link: resolvedSchedulingLink } : {}),
