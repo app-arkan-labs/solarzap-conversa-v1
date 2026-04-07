@@ -4060,7 +4060,7 @@ async function upsertAppointment(
     });
   }
 
-  const appointmentEventAt = asString(data.start_at) || nowIso();
+  const appointmentEventAt = nowIso();
   const appointmentEventBase = {
     client_id: clientId,
     deal_id: asString(data.deal_id),
@@ -5581,7 +5581,7 @@ async function intakeLandingLead(
       appointment_id: String(appointment.id),
       appointment_type: asString(appointment.appointment_type) || 'call',
       appointment_start_at: appointment.start_at,
-      event_at: appointment.start_at,
+      event_at: nowIso(),
       event_key: `appointment_scheduled:${String(appointment.id)}:${appointment.start_at}`,
     }, { processDueNow: true }));
   }
