@@ -1766,8 +1766,8 @@ async function cancelPendingAutomationRunsForEvent(
     .order('scheduled_at', { ascending: true })
     .limit(200);
 
-  if (appointmentId) query = query.eq('appointment_id', appointmentId);
-  else if (dealId) query = query.eq('deal_id', dealId);
+  if (dealId) query = query.eq('deal_id', dealId);
+  else if (appointmentId) query = query.eq('appointment_id', appointmentId);
   else if (conversationId) query = query.eq('conversation_id', conversationId);
   else if (clientId) query = query.eq('client_id', clientId);
 
