@@ -50,3 +50,4 @@ fix_imports.cjs
 .supabase-deploy-prompts-temp-*/
 vite.config.ts.timestamp-*.mjs
 implementation_plan.md.resolved
+artifacts/
