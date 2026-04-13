@@ -2,11 +2,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { resolveRequestCors } from '../_shared/cors.ts';
 
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').trim();
-const SUPABASE_ANON_KEY = (Deno.env.get('SUPABASE_ANON_KEY') || '').trim();
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
 const GOOGLE_ADS_CLIENT_ID = (Deno.env.get('GOOGLE_ADS_CLIENT_ID') || '').trim();
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Missing SUPABASE_URL/SUPABASE_ANON_KEY/SUPABASE_SERVICE_ROLE_KEY env');
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('Missing SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY env');
 }
 if (!GOOGLE_ADS_CLIENT_ID) {
   throw new Error('Missing GOOGLE_ADS_CLIENT_ID env');
@@ -81,7 +80,7 @@ Deno.serve(async (req) => {
     }
 
     const token = authHeader.replace(/^Bearer\s+/i, '');
-    const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    const authClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       global: {
         headers: {
           Authorization: authHeader,

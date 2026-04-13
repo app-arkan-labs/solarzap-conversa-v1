@@ -6,6 +6,7 @@ import {
   type DeliveryDispatchResult,
   type DispatcherPlatform,
 } from '../_shared/conversionDispatcher.ts';
+import { fetchVaultSecret } from '../_shared/vault.ts';
 
 const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim();
 const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true';
@@ -198,29 +199,6 @@ async function parseResponseBody(response: Response): Promise<unknown> {
   }
 }
 
-async function fetchVaultSecret(vaultId: string | null | undefined, cache: Map<string, string | null>): Promise<string | null> {
-  const cleanedId = cleanString(vaultId);
-  if (!cleanedId) return null;
-
-  if (cache.has(cleanedId)) return cache.get(cleanedId) || null;
-
-  const { data, error } = await supabase
-    .schema('vault')
-    .from('decrypted_secrets')
-    .select('secret')
-    .eq('id', cleanedId)
-    .maybeSingle();
-
-  if (error || !data?.secret) {
-    cache.set(cleanedId, null);
-    return null;
-  }
-
-  const value = String(data.secret);
-  cache.set(cleanedId, value);
-  return value;
-}
-
 async function dispatchMetaCapi(params: {
   event: ConversionEventRow;
   attribution: LeadAttributionRow | null;
@@ -229,7 +207,7 @@ async function dispatchMetaCapi(params: {
   vaultCache: Map<string, string | null>;
 }): Promise<DeliveryDispatchResult> {
   const pixelId = cleanString(params.credentials.meta_pixel_id);
-  const accessToken = await fetchVaultSecret(params.credentials.meta_access_token_vault_id, params.vaultCache);
+  const accessToken = await fetchVaultSecret(supabase, params.credentials.meta_access_token_vault_id, params.vaultCache);
   if (!pixelId || !accessToken) {
     return { status: 'failed', error: 'meta_missing_credentials' };
   }
@@ -342,12 +320,12 @@ async function dispatchGoogleAds(params: {
   const conversionActionId = cleanString(params.credentials.google_conversion_action_id);
   const clientId = cleanString(params.credentials.google_client_id) || cleanString(Deno.env.get('GOOGLE_ADS_CLIENT_ID')) || null;
   const clientSecret =
-    (await fetchVaultSecret(params.credentials.google_client_secret_vault_id, params.vaultCache)) ||
+    (await fetchVaultSecret(supabase, params.credentials.google_client_secret_vault_id, params.vaultCache)) ||
     cleanString(Deno.env.get('GOOGLE_ADS_CLIENT_SECRET')) ||
     null;
-  const refreshToken = await fetchVaultSecret(params.credentials.google_refresh_token_vault_id, params.vaultCache);
+  const refreshToken = await fetchVaultSecret(supabase, params.credentials.google_refresh_token_vault_id, params.vaultCache);
   const developerToken =
-    (await fetchVaultSecret(params.credentials.google_developer_token_vault_id, params.vaultCache)) ||
+    (await fetchVaultSecret(supabase, params.credentials.google_developer_token_vault_id, params.vaultCache)) ||
     cleanString(Deno.env.get('GOOGLE_ADS_DEVELOPER_TOKEN')) ||
     null;
 
@@ -392,7 +370,7 @@ async function dispatchGoogleAds(params: {
     headers['login-customer-id'] = loginCustomerId;
   }
 
-  const response = await fetch(`https://googleads.googleapis.com/v19/customers/${customerId}:uploadClickConversions`, {
+  const response = await fetch(`https://googleads.googleapis.com/v22/customers/${customerId}:uploadClickConversions`, {
     method: 'POST',
     headers,
     body: JSON.stringify(requestPayload),
@@ -426,7 +404,7 @@ async function dispatchGa4(params: {
   vaultCache: Map<string, string | null>;
 }): Promise<DeliveryDispatchResult> {
   const measurementId = cleanString(params.credentials.ga4_measurement_id);
-  const apiSecret = await fetchVaultSecret(params.credentials.ga4_api_secret_vault_id, params.vaultCache);
+  const apiSecret = await fetchVaultSecret(supabase, params.credentials.ga4_api_secret_vault_id, params.vaultCache);
   if (!measurementId || !apiSecret) {
     return { status: 'failed', error: 'ga4_missing_credentials' };
   }

@@ -18,7 +18,7 @@ type SetupState = {
   userId: string;
   email: string;
   password: string;
-  instanceName: string;
+  legacyInstanceName: string;
 };
 
 const state: SetupState = {
@@ -26,7 +26,7 @@ const state: SetupState = {
   userId: "",
   email: "",
   password: "",
-  instanceName: "",
+  legacyInstanceName: "",
 };
 
 async function login(page: Page, email: string, password: string) {
@@ -40,7 +40,7 @@ async function login(page: Page, email: string, password: string) {
 async function openNotificationSettings(page: Page) {
   await page.getByTestId("nav-notifications-trigger").click();
   await expect(
-    page.getByRole("heading", { name: /Notificações/i }),
+    page.getByRole("heading", { name: /Notifica/ }),
   ).toBeVisible({ timeout: 20_000 });
   await page.getByTestId("notifications-open-settings").click();
   await expect(page.getByText("Canais de Envio")).toBeVisible({
@@ -52,7 +52,7 @@ test.beforeAll(async () => {
   const suffix = `${Date.now()}`;
   state.email = `e2e.notifications.${suffix}@example.test`;
   state.password = `NotifRcpt!${suffix}Aa1`;
-  state.instanceName = `notif-recipient-${suffix}`;
+  state.legacyInstanceName = `legacy-notification-instance-${suffix}`;
 
   const userResp = await admin.auth.admin.createUser({
     email: state.email,
@@ -80,22 +80,9 @@ test.beforeAll(async () => {
     role: "owner",
     can_view_team_leads: true,
   });
-  if (memberErr)
+  if (memberErr) {
     throw new Error(`Failed to create membership: ${memberErr.message}`);
-
-  const { error: instanceErr } = await admin.from("whatsapp_instances").insert({
-    org_id: state.orgId,
-    user_id: state.userId,
-    instance_name: state.instanceName,
-    display_name: `Notif Instance ${suffix.slice(-4)}`,
-    status: "connected",
-    is_active: true,
-    ai_enabled: false,
-  });
-  if (instanceErr)
-    throw new Error(
-      `Failed to create whatsapp instance: ${instanceErr.message}`,
-    );
+  }
 
   const { error: settingsErr } = await admin
     .from("notification_settings")
@@ -103,19 +90,22 @@ test.beforeAll(async () => {
       {
         org_id: state.orgId,
         enabled_notifications: true,
-        enabled_whatsapp: true,
+        enabled_whatsapp: false,
         enabled_email: true,
-        whatsapp_instance_name: state.instanceName,
+        whatsapp_instance_name: state.legacyInstanceName,
         whatsapp_recipients: [],
         email_recipients: [],
+        email_sender_name: "Qualquer Nome Antigo",
+        email_reply_to: "antigo@cliente.com",
         updated_by: state.userId,
       },
       { onConflict: "org_id" },
     );
-  if (settingsErr)
+  if (settingsErr) {
     throw new Error(
       `Failed to seed notification settings: ${settingsErr.message}`,
     );
+  }
 });
 
 test.afterAll(async () => {
@@ -124,7 +114,6 @@ test.afterAll(async () => {
       .from("notification_settings")
       .delete()
       .eq("org_id", state.orgId);
-    await admin.from("whatsapp_instances").delete().eq("org_id", state.orgId);
     await admin.from("organization_members").delete().eq("org_id", state.orgId);
     await admin.from("organizations").delete().eq("id", state.orgId);
   }
@@ -134,11 +123,25 @@ test.afterAll(async () => {
   }
 });
 
-test("notification recipients editor supports add/remove and blocks whatsapp enable without instance", async ({
+test("notification recipients editor keeps only recipients editable and whatsapp no longer depends on local instance", async ({
   page,
 }) => {
   await login(page, state.email, state.password);
   await openNotificationSettings(page);
+
+  await expect(
+    page.getByText(/instancia SolarZap configurada no painel admin/i),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/ARKAN SOLAR/i),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/contato@arkanlabs.com.br/i),
+  ).toBeVisible();
+
+  await expect(
+    page.getByTestId("notification-whatsapp-instance-trigger"),
+  ).toHaveCount(0);
 
   await page
     .getByTestId("notification-whatsapp-input")
@@ -200,62 +203,10 @@ test("notification recipients editor supports add/remove and blocks whatsapp ena
     )
     .toBe("ops@cliente.com");
 
-  await page.reload();
-  await openNotificationSettings(page);
-  await expect(page.getByText("5511999990001")).toBeVisible();
-  await expect(page.getByText("5511999990003")).toBeVisible();
-  await expect(page.getByText("ops@cliente.com")).toBeVisible();
-
-  await page.getByTestId("notification-whatsapp-instance-trigger").click();
-  await page.getByRole("option", { name: "Nenhuma" }).click();
-
-  await expect
-    .poll(
-      async () => {
-        const { data, error } = await admin
-          .from("notification_settings")
-          .select("whatsapp_instance_name")
-          .eq("org_id", state.orgId)
-          .single();
-        if (error) return `ERROR:${error.message}`;
-        return data.whatsapp_instance_name;
-      },
-      { timeout: 20_000 },
-    )
-    .toBeNull();
-
-  const whatsappInstanceTrigger = page.getByTestId(
-    "notification-whatsapp-instance-trigger",
-  );
-  await expect(whatsappInstanceTrigger).toBeVisible();
-
   const whatsappToggle = page.getByTestId("notification-whatsapp-toggle");
   await expect(whatsappToggle).toHaveAttribute("aria-checked", "false");
-
   await whatsappToggle.click();
-  await expect(
-    page.getByText("Selecione uma instancia", { exact: true }).first(),
-  ).toBeVisible({ timeout: 10_000 });
-  await expect(whatsappToggle).toHaveAttribute("aria-checked", "false");
-
-  await expect
-    .poll(
-      async () => {
-        const { data, error } = await admin
-          .from("notification_settings")
-          .select("enabled_whatsapp")
-          .eq("org_id", state.orgId)
-          .single();
-        if (error) return `ERROR:${error.message}`;
-        return data.enabled_whatsapp;
-      },
-      { timeout: 20_000 },
-    )
-    .toBe(false);
-
-  await whatsappInstanceTrigger.click();
-  await page.getByRole("option", { name: /Notif Instance/i }).click();
-  await whatsappToggle.click();
+  await expect(whatsappToggle).toHaveAttribute("aria-checked", "true");
 
   await expect
     .poll(
@@ -276,7 +227,16 @@ test("notification recipients editor supports add/remove and blocks whatsapp ena
     .toBe(
       JSON.stringify({
         enabled_whatsapp: true,
-        whatsapp_instance_name: state.instanceName,
+        whatsapp_instance_name: state.legacyInstanceName,
       }),
     );
+
+  await page.reload();
+  await openNotificationSettings(page);
+  await expect(page.getByText("5511999990001")).toBeVisible();
+  await expect(page.getByText("5511999990003")).toBeVisible();
+  await expect(page.getByText("ops@cliente.com")).toBeVisible();
+  await expect(
+    page.getByTestId("notification-whatsapp-instance-trigger"),
+  ).toHaveCount(0);
 });

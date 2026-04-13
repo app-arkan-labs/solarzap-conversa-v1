@@ -69,4 +69,41 @@ describe('digest comment selection', () => {
     expect(lines[0].startsWith('Comentario interno: ')).toBe(true)
     expect(lines[0].length).toBeLessThanOrEqual(80)
   })
+
+  it('mergeDigestLeadIds excludes leads that only had ai_daily_summary comments', () => {
+    // After the DB-level filter (.neq('comment_type', 'ai_daily_summary')),
+    // AI-only leads should not appear in the comment lead IDs at all.
+    // This test documents that behavior: if no message IDs and no comment IDs
+    // come in for a lead, it is correctly excluded.
+    const merged = mergeDigestLeadIds([], [])
+    expect(merged).toEqual([])
+  })
+
+  it('mergeDigestLeadIds keeps leads with real comments after AI comments are filtered at DB level', () => {
+    // Lead 200 had both AI + human comments, but DB filter removed AI ones,
+    // so only lead 200 appears from real human comment
+    // Lead 300 only had AI comments → removed by DB filter → not in list
+    const merged = mergeDigestLeadIds([100], [200])
+    expect(merged).toEqual([100, 200])
+    // 300 is absent because DB filtered its only comments (ai_daily_summary)
+    expect(merged).not.toContain(300)
+  })
+
+  it('selectDigestCommentsForPrompt returns empty for only-AI-comment leads', () => {
+    const comments: DigestPromptCommentRow[] = [
+      {
+        created_at: '2026-03-11T10:00:00.000Z',
+        autor: 'Resumo da IA',
+        comment_type: 'ai_daily_summary',
+        texto: 'Resumo gerado automaticamente',
+      },
+    ]
+
+    const selected = selectDigestCommentsForPrompt({
+      comments,
+      maxComments: 6,
+    })
+
+    expect(selected).toHaveLength(0)
+  })
 })

@@ -4,12 +4,17 @@ import {
   assertStrictAiCoverage,
   classifyDigestAiErrorMessage,
 } from '../_shared/digestAiPolicy.ts'
+import { sendEvolutionTextMessage } from '../_shared/evolutionText.ts'
 import {
   getDigestTitle,
   normalizeDigestSections,
   renderDigestSectionsTextLines,
   type DigestSections,
 } from '../_shared/digestContract.ts'
+import {
+  resolveInternalNotificationTransport,
+  type InternalNotificationTransport,
+} from '../_shared/internalNotificationTransport.ts'
 import {
   mergeDigestLeadIds,
   renderDigestCommentsForPrompt,
@@ -19,7 +24,7 @@ import {
 import { selectDigestMessagesForPrompt } from '../_shared/digestMessageSelection.ts'
 import { resolveDigestPeriodBounds } from '../_shared/digestPeriod.ts'
 import { buildDigestTextMessage } from '../_shared/digestTextFormatter.ts'
-import { resolveNotificationRouting, toDigits } from '../_shared/notificationRecipients.ts'
+import { resolveNotificationRouting } from '../_shared/notificationRecipients.ts'
 
 const ALLOWED_ORIGIN = (Deno.env.get('ALLOWED_ORIGIN') || '').trim()
 const ALLOW_WILDCARD_CORS = String(Deno.env.get('ALLOW_WILDCARD_CORS') || '').trim().toLowerCase() === 'true'
@@ -590,51 +595,6 @@ async function mapWithConcurrency<T, R>(
   return results
 }
 
-async function sendWhatsAppViaProxy(
-  supabaseUrl: string,
-  serviceRoleKey: string,
-  internalApiKey: string,
-  orgId: string,
-  instanceName: string,
-  number: string,
-  text: string,
-) {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    apikey: serviceRoleKey,
-    Authorization: `Bearer ${serviceRoleKey}`,
-  }
-  if (internalApiKey) {
-    headers['x-internal-api-key'] = internalApiKey
-  }
-
-  const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/functions/v1/evolution-proxy`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      action: 'send-text',
-      payload: {
-        orgId,
-        instanceName,
-        number,
-        text,
-      },
-    }),
-  })
-
-  const raw = await response.text()
-  if (!response.ok) {
-    throw new Error(`proxy_http_${response.status}:${raw}`)
-  }
-
-  const parsed = raw ? JSON.parse(raw) : null
-  if (!parsed || parsed.success === false) {
-    throw new Error(`proxy_failed:${raw}`)
-  }
-
-  return parsed
-}
-
 async function sendEmailViaResend(
   recipient: string,
   subject: string,
@@ -784,44 +744,8 @@ async function failDigestRun(
     .eq('id', runId)
 }
 
-async function resolveWhatsappRecipientsWithFallback(
-  supabase: ReturnType<typeof createClient>,
-  orgId: string,
-  instanceName: string | null,
-  explicitRecipients: string[],
-): Promise<{ recipients: string[]; source: 'settings' | 'instance_fallback' | 'none'; error?: string }> {
-  if (explicitRecipients.length > 0) {
-    return { recipients: explicitRecipients, source: 'settings' }
-  }
-
-  if (!instanceName) {
-    return { recipients: [], source: 'none', error: 'missing_whatsapp_instance' }
-  }
-
-  const lookup = await supabase
-    .from('whatsapp_instances')
-    .select('phone_number')
-    .eq('org_id', orgId)
-    .eq('instance_name', instanceName)
-    .maybeSingle()
-
-  if (lookup.error) {
-    return { recipients: [], source: 'none', error: `instance_lookup_failed:${lookup.error.message}` }
-  }
-
-  const fallbackTarget = toDigits((lookup.data as any)?.phone_number || '')
-  if (!fallbackTarget) {
-    return { recipients: [], source: 'none', error: 'missing_target_number' }
-  }
-
-  return { recipients: [fallbackTarget], source: 'instance_fallback' }
-}
-
 async function processDigestForOrg(
   supabase: ReturnType<typeof createClient>,
-  supabaseUrl: string,
-  serviceRoleKey: string,
-  internalApiKey: string,
   settings: NotificationSettingsRow,
   ctx: DigestContext,
 ) {
@@ -841,14 +765,8 @@ async function processDigestForOrg(
     return { skipped: true, reason: 'no_channel_enabled' }
   }
 
-  const whatsappResolution = routing.whatsappEnabled
-    ? await resolveWhatsappRecipientsWithFallback(
-      supabase,
-      ctx.orgId,
-      settings.whatsapp_instance_name,
-      routing.whatsappRecipients,
-    )
-    : { recipients: [] as string[], source: 'none' as const }
+  const transport = await resolveInternalNotificationTransport(supabase)
+  const whatsappRecipients = routing.whatsappEnabled ? routing.whatsappRecipients : []
 
   const channelResults: Record<string, unknown> = {
     summary_engine: `openai:${DIGEST_OPENAI_MODEL}`,
@@ -869,7 +787,7 @@ async function processDigestForOrg(
     whatsapp: {
       sent: 0,
       failed: 0,
-      recipient_source: whatsappResolution.source,
+      recipient_source: whatsappRecipients.length > 0 ? 'settings' : 'none',
     },
     email: {
       sent: 0,
@@ -878,17 +796,13 @@ async function processDigestForOrg(
     lead_summaries: 0,
   }
 
-  if (whatsappResolution.error) {
-    ;(channelResults.whatsapp as any).error = whatsappResolution.error
-  }
-
   const run = await acquireDigestRun(supabase, ctx)
   if ('skipped' in run) {
     return { skipped: true, reason: run.reason }
   }
   const runId = run.runId
 
-  const effectiveWhatsappRecipients = routing.whatsappEnabled ? whatsappResolution.recipients : []
+  const effectiveWhatsappRecipients = whatsappRecipients
   const effectiveEmailRecipients = routing.emailEnabled ? routing.emailRecipients : []
   const hasAnyRecipient = effectiveWhatsappRecipients.length > 0 || effectiveEmailRecipients.length > 0
   if (!hasAnyRecipient) {
@@ -938,6 +852,7 @@ async function processDigestForOrg(
     .gte('created_at', ctx.periodStartIso)
     .lte('created_at', ctx.periodEndIso)
     .not('lead_id', 'is', null)
+    .or('comment_type.is.null,comment_type.neq.ai_daily_summary')
     .order('created_at', { ascending: false })
     .limit(commentsFetchLimit)
 
@@ -982,9 +897,13 @@ async function processDigestForOrg(
     groupedComments.get(leadId)!.push(comment)
   }
 
-  const leadIds = mergeDigestLeadIds(
+  const allCandidateLeadIds = mergeDigestLeadIds(
     Array.from(groupedMessages.keys()),
     Array.from(groupedComments.keys()),
+  )
+  // Only keep leads that have real activity (messages or non-AI comments)
+  const leadIds = allCandidateLeadIds.filter(
+    (id) => (groupedMessages.get(id)?.length ?? 0) > 0 || (groupedComments.get(id)?.length ?? 0) > 0,
   )
   const { data: leads } = leadIds.length > 0
     ? await supabase
@@ -1025,6 +944,10 @@ async function processDigestForOrg(
     const stage = lead?.status_pipeline || 'sem_etapa'
     const messages = groupedMessages.get(leadId) || []
     const comments = groupedComments.get(leadId) || []
+    // Safety net: skip leads with no real content (should not happen after filtering above)
+    if (messages.length === 0 && comments.length === 0) {
+      return null
+    }
     try {
       const generated = await generateLeadSections({
         apiKey: openAiApiKey,
@@ -1055,13 +978,16 @@ async function processDigestForOrg(
   })
 
   const leadSummaries = leadSummariesRaw.filter((item): item is GeneratedLeadSummary => item !== null)
+  // Leads skipped by safety net (no content) should not count against strict coverage
+  const skippedNoContent = digestLeadIds.length - leadSummaries.length - generationFailures.length
 
   ;(channelResults.section_generation as any).ai_count = leadSummaries.length
   ;(channelResults.section_generation as any).fallback_count = 0
+  ;(channelResults.section_generation as any).skipped_no_activity = skippedNoContent
   channelResults.lead_summaries = leadSummaries.length
 
   const strictCoverage = assertStrictAiCoverage({
-    leadCount: digestLeadIds.length,
+    leadCount: digestLeadIds.length - skippedNoContent,
     aiCount: leadSummaries.length,
   })
 
@@ -1156,20 +1082,16 @@ async function processDigestForOrg(
   }
 
   if (routing.whatsappEnabled) {
-    if (!settings.whatsapp_instance_name) {
+    if (!transport.whatsappReady || !transport.whatsappInstanceName) {
       ;(channelResults.whatsapp as any).failed += 1
-      ;(channelResults.whatsapp as any).error = 'missing_whatsapp_instance'
+      ;(channelResults.whatsapp as any).error = describeWhatsappTransportFailure(transport)
     } else if (effectiveWhatsappRecipients.length === 0) {
       ;(channelResults.whatsapp as any).skipped = 'no_recipients'
     } else {
       for (const targetNumber of effectiveWhatsappRecipients) {
         try {
-          await sendWhatsAppViaProxy(
-            supabaseUrl,
-            serviceRoleKey,
-            internalApiKey,
-            ctx.orgId,
-            settings.whatsapp_instance_name,
+          await sendEvolutionTextMessage(
+            transport.whatsappInstanceName,
             targetNumber,
             digestText,
           )
@@ -1198,7 +1120,7 @@ async function processDigestForOrg(
         digestType: ctx.digestType,
         dateBucket: ctx.dateBucket,
         leads: digestLeads,
-        senderName: settings.email_sender_name,
+        senderName: transport.emailSenderName,
       })
 
       for (const recipient of effectiveEmailRecipients) {
@@ -1207,8 +1129,8 @@ async function processDigestForOrg(
             recipient,
             digestHtml.subject,
             digestHtml.text,
-            settings.email_sender_name,
-            settings.email_reply_to,
+            transport.emailSenderName,
+            transport.emailReplyTo,
             digestHtml.html,
           )
           ;(channelResults.email as any).sent += 1
@@ -1228,9 +1150,9 @@ async function processDigestForOrg(
     Number((channelResults.whatsapp as any).sent || 0) +
     Number((channelResults.email as any).sent || 0)
 
-  const runStatus = hadFailure
-    ? 'failed'
-    : (totalSent > 0 ? 'sent' : 'skipped')
+  // If at least one channel delivered successfully, mark as 'sent' to prevent
+  // retry loops that would re-send on the working channel every cron cycle.
+  const runStatus = totalSent > 0 ? 'sent' : (hadFailure ? 'failed' : 'skipped')
 
   await supabase
     .from('ai_digest_runs')
@@ -1245,9 +1167,15 @@ async function processDigestForOrg(
 
   return {
     skipped: false,
-    failed: hadFailure,
-    reason: hadFailure ? 'partial_failure' : 'ok',
+    failed: hadFailure && totalSent === 0,
+    reason: hadFailure ? (totalSent > 0 ? 'partial_delivery' : 'delivery_failed') : 'ok',
   }
+}
+
+function describeWhatsappTransportFailure(transport: InternalNotificationTransport): string {
+  const errorCode = transport.whatsappErrorCode || 'admin_notification_transport_unavailable'
+  const errorMessage = String(transport.whatsappErrorMessage || '').trim()
+  return errorMessage ? `${errorCode}:${errorMessage}` : errorCode
 }
 
 function resolveDueDigest(settings: NotificationSettingsRow): DigestContext[] {
@@ -1364,7 +1292,7 @@ Deno.serve(async (req) => {
       candidates += dueDigests.length
 
       for (const ctx of dueDigests) {
-        const result = await processDigestForOrg(supabase, supabaseUrl, serviceRoleKey, internalApiKey, settings, ctx)
+        const result = await processDigestForOrg(supabase, settings, ctx)
         if (result.skipped) continue
         processed += 1
         if (result.failed) failed += 1

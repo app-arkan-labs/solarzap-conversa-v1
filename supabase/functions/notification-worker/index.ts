@@ -1,5 +1,10 @@
 ﻿import { createClient } from 'npm:@supabase/supabase-js@2'
 import { buildEmailContent, type TemplateContext } from '../_shared/emailTemplates.ts'
+import { sendEvolutionTextMessage } from '../_shared/evolutionText.ts'
+import {
+  resolveInternalNotificationTransport,
+  type InternalNotificationTransport,
+} from '../_shared/internalNotificationTransport.ts'
 import { resolveNotificationRouting } from '../_shared/notificationRecipients.ts'
 import {
   buildDispatchSuccessLookup,
@@ -384,58 +389,6 @@ function buildMessage(event: NotificationEventRow, lead: { nome?: string | null;
   return { subject, text, ctx }
 }
 
-async function sendWhatsAppViaProxy(
-  supabaseUrl: string,
-  serviceRoleKey: string,
-  internalApiKey: string,
-  orgId: string,
-  instanceName: string,
-  number: string,
-  text: string,
-) {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    apikey: serviceRoleKey,
-    Authorization: `Bearer ${serviceRoleKey}`,
-  }
-  if (internalApiKey) {
-    headers['x-internal-api-key'] = internalApiKey
-  }
-
-  const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/functions/v1/evolution-proxy`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      action: 'send-text',
-      payload: {
-        orgId,
-        instanceName,
-        number,
-        text,
-      },
-    }),
-  })
-
-  const raw = await response.text()
-  let parsed: unknown = raw
-  try {
-    parsed = raw ? JSON.parse(raw) : null
-  } catch {
-    parsed = raw
-  }
-
-  if (!response.ok) {
-    throw new Error(`proxy_http_${response.status}:${typeof parsed === 'string' ? parsed : JSON.stringify(parsed)}`)
-  }
-
-  const success = typeof parsed === 'object' && parsed !== null && (parsed as any).success !== false
-  if (!success) {
-    throw new Error(`proxy_failed:${JSON.stringify(parsed)}`)
-  }
-
-  return parsed
-}
-
 async function sendEmailViaResend(
   recipient: string,
   subject: string,
@@ -562,9 +515,6 @@ async function resolveLead(
 
 async function processEvent(
   supabase: ReturnType<typeof createClient>,
-  supabaseUrl: string,
-  serviceRoleKey: string,
-  internalApiKey: string,
   event: NotificationEventRow,
 ) {
   const settings = await fetchNotificationSettings(supabase, event.org_id)
@@ -630,9 +580,10 @@ async function processEvent(
 
   const lead = await resolveLead(supabase, event.org_id, event.payload || {})
   const { subject, text, ctx } = buildMessage(event, lead)
+  const transport = await resolveInternalNotificationTransport(supabase)
 
   // Build HTML email via template
-  const emailCtx = { ...ctx, senderName: settings.email_sender_name }
+  const emailCtx = { ...ctx, senderName: transport.emailSenderName }
   const emailContent = buildEmailContent(event.event_type, emailCtx)
 
   const failures: string[] = []
@@ -643,9 +594,10 @@ async function processEvent(
   const totalTargets = targetWhatsappRecipients.length + targetEmailRecipients.length
 
   if (routing.whatsappEnabled) {
-    if (!settings.whatsapp_instance_name) {
-      failures.push('whatsapp_missing_instance')
-      await logDispatch(supabase, event, 'whatsapp', '', 'failed', null, 'whatsapp_missing_instance')
+    if (!transport.whatsappReady || !transport.whatsappInstanceName) {
+      const transportError = describeWhatsappTransportFailure(transport)
+      failures.push(transportError)
+      await logDispatch(supabase, event, 'whatsapp', '', 'failed', null, transportError)
     } else if (targetWhatsappRecipients.length === 0) {
       skippedChannels.push('whatsapp')
     } else {
@@ -654,12 +606,8 @@ async function processEvent(
           continue
         }
         try {
-          const responsePayload = await sendWhatsAppViaProxy(
-            supabaseUrl,
-            serviceRoleKey,
-            internalApiKey,
-            event.org_id,
-            settings.whatsapp_instance_name,
+          const responsePayload = await sendEvolutionTextMessage(
+            transport.whatsappInstanceName,
             targetNumber,
             text,
           )
@@ -687,8 +635,8 @@ async function processEvent(
           recipient,
           emailContent.subject,
           emailContent.text,
-          settings.email_sender_name,
-          settings.email_reply_to,
+          transport.emailSenderName,
+          transport.emailReplyTo,
           emailContent.html,
         )
         markRecipientDelivered('email', recipient, successfulDispatches)
@@ -764,6 +712,12 @@ async function processEvent(
       last_error: errorText,
     })
     .eq('id', event.id)
+}
+
+function describeWhatsappTransportFailure(transport: InternalNotificationTransport): string {
+  const errorCode = transport.whatsappErrorCode || 'admin_notification_transport_unavailable'
+  const errorMessage = String(transport.whatsappErrorMessage || '').trim()
+  return errorMessage ? `${errorCode}:${errorMessage}` : errorCode
 }
 
 Deno.serve(async (req) => {
@@ -870,7 +824,7 @@ Deno.serve(async (req) => {
 
     for (const event of activeEvents) {
       try {
-        await processEvent(supabase, supabaseUrl, serviceRoleKey, internalApiKey, event)
+        await processEvent(supabase, event)
         processed += 1
       } catch (error) {
         failed += 1

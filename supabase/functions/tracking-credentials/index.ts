@@ -1,11 +1,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { resolveRequestCors } from '../_shared/cors.ts';
+import { fetchVaultSecret } from '../_shared/vault.ts';
 
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').trim();
-const SUPABASE_ANON_KEY = (Deno.env.get('SUPABASE_ANON_KEY') || '').trim();
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Missing SUPABASE_URL/SUPABASE_ANON_KEY/SUPABASE_SERVICE_ROLE_KEY env');
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('Missing SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY env');
 }
 
 type TrackingPlatform = 'meta' | 'google_ads' | 'ga4';
@@ -34,14 +34,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 function asPlatform(value: unknown): TrackingPlatform | null {
   if (value === 'meta' || value === 'google_ads' || value === 'ga4') return value;
   return null;
-}
-
-async function fetchVaultSecret(admin: ReturnType<typeof createClient>, vaultId: string | null | undefined) {
-  const id = cleanString(vaultId);
-  if (!id) return null;
-  const { data, error } = await admin.schema('vault').from('decrypted_secrets').select('decrypted_secret').eq('id', id).maybeSingle();
-  if (error || !data?.decrypted_secret) return null;
-  return String(data.decrypted_secret);
 }
 
 async function parseJsonResponse(response: Response): Promise<unknown> {
@@ -158,7 +150,7 @@ async function resolveAuthenticatedUser(req: Request): Promise<{ userId: string 
   }
 
   const token = authHeader.replace(/^Bearer\s+/i, '');
-  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const authClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     global: {
       headers: {
         Authorization: authHeader,
@@ -389,7 +381,7 @@ async function testPlatformConnection(params: {
     }
 
     const accessToken = String(tokenJson.access_token);
-    const response = await fetch('https://googleads.googleapis.com/v19/customers:listAccessibleCustomers', {
+    const response = await fetch('https://googleads.googleapis.com/v22/customers:listAccessibleCustomers', {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -523,7 +515,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      const response = await fetch('https://googleads.googleapis.com/v19/customers:listAccessibleCustomers', {
+      const response = await fetch('https://googleads.googleapis.com/v22/customers:listAccessibleCustomers', {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${authContext.accessToken}`,
@@ -561,7 +553,7 @@ Deno.serve(async (req) => {
       const query =
         "SELECT customer_client.client_customer, customer_client.level, customer_client.manager, customer_client.descriptive_name, customer_client.id, customer_client.status FROM customer_client WHERE customer_client.status = 'ENABLED'";
       const response = await fetch(
-        `https://googleads.googleapis.com/v19/customers/${normalizedLoginCustomerId}/googleAds:search`,
+        `https://googleads.googleapis.com/v22/customers/${normalizedLoginCustomerId}/googleAds:search`,
         {
           method: 'POST',
           headers: {
@@ -630,7 +622,7 @@ Deno.serve(async (req) => {
       }
 
       const response = await fetch(
-        `https://googleads.googleapis.com/v19/customers/${normalizedCustomerId}/googleAds:search`,
+        `https://googleads.googleapis.com/v22/customers/${normalizedCustomerId}/googleAds:search`,
         {
           method: 'POST',
           headers,

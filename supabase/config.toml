@@ -13,6 +13,9 @@ verify_jwt = false
 [functions.google-oauth]
 verify_jwt = false
 
+[functions.google-ads-oauth]
+verify_jwt = false
+
 [functions.google-callback]
 verify_jwt = false
 

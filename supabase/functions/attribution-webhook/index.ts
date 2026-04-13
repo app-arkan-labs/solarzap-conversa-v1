@@ -7,6 +7,7 @@ import {
   type RateLimitResult,
 } from '../_shared/attributionWebhookService.ts';
 import { resolveLeadCanonicalId } from '../_shared/leadCanonical.ts';
+import { fetchVaultSecret } from '../_shared/vault.ts';
 
 const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN');
 if (!ALLOWED_ORIGIN) {
@@ -168,15 +169,7 @@ const repo: AttributionWebhookRepo = {
   },
 
   async getSecretByVaultId(vaultId) {
-    const { data, error } = await supabase
-      .schema('vault')
-      .from('decrypted_secrets')
-      .select('secret')
-      .eq('id', vaultId)
-      .maybeSingle();
-
-    if (error || !data?.secret) return null;
-    return String(data.secret);
+    return fetchVaultSecret(supabase, vaultId);
   },
 };
 
