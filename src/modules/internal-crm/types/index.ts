@@ -119,6 +119,7 @@ export type InternalCrmProduct = {
   payment_method: 'stripe' | 'manual' | 'hybrid';
   is_active: boolean;
   sort_order: number;
+  metadata: Record<string, unknown>;
   price_cents: number;
   currency: string;
   stripe_price_id: string | null;
@@ -183,6 +184,7 @@ export type InternalCrmDealItem = {
   unit_price_cents: number;
   quantity: number;
   total_price_cents: number;
+  metadata: Record<string, unknown>;
 };
 
 export type InternalCrmDealSummary = {
@@ -430,8 +432,11 @@ export type InternalCrmCampaign = {
   interval_seconds: number;
   recipients_total?: number;
   recipients_pending?: number;
+  recipients_processing?: number;
   recipients_sent?: number;
   recipients_failed?: number;
+  recipients_skipped?: number;
+  recipients_canceled?: number;
   created_at: string;
   updated_at: string;
 };

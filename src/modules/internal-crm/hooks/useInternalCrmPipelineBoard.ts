@@ -24,6 +24,7 @@ import {
   INTERNAL_CRM_PIPELINE_STAGE_ORDER,
   normalizeInternalCrmStageCode,
 } from '@/modules/internal-crm/components/pipeline/stageCatalog';
+import { getDealSummaryLabel } from '@/modules/internal-crm/components/pipeline/dealCatalog';
 
 export type InternalCrmPipelineBoardFilters = {
   search?: string;
@@ -211,7 +212,6 @@ export function useInternalCrmPipelineBoard(filters: InternalCrmPipelineBoardFil
 
     const clientsById = new Map<string, InternalCrmClientSummary>(clients.map((client) => [client.id, client]));
     const membersById = new Map<string, InternalCrmMember>(members.map((member) => [member.user_id, member]));
-    const productsByCode = new Map(products.map((product) => [product.product_code, product.name]));
     const conversationsByClientId = pickConversationByClient(conversations);
     const nextTasks = pickNextTask(tasks);
     const nextAppointments = pickNextAppointment(appointments);
@@ -226,10 +226,7 @@ export function useInternalCrmPipelineBoard(filters: InternalCrmPipelineBoardFil
         const conversation = conversationsByClientId.get(deal.client_id) || null;
         const nextTask = nextTasks.byDealId.get(deal.id) || nextTasks.byClientId.get(deal.client_id) || null;
         const nextAppointment = nextAppointments.byDealId.get(deal.id) || nextAppointments.byClientId.get(deal.client_id) || null;
-        const itemSummary = (deal.items || [])
-          .map((item) => productsByCode.get(item.product_code) || humanizeToken(item.product_code) || item.product_code)
-          .filter(Boolean)
-          .join(' + ');
+        const itemSummary = getDealSummaryLabel(deal, products);
         const totalCents = Number(deal.one_time_total_cents || 0) + Number(deal.mrr_cents || 0);
         const companyName = client?.company_name || deal.client_company_name || 'Sem empresa';
         const contactName = client?.primary_contact_name || null;
@@ -251,7 +248,7 @@ export function useInternalCrmPipelineBoard(filters: InternalCrmPipelineBoardFil
           paymentStatus: deal.payment_status || 'pending',
           unreadCount: Number(conversation?.unread_count || 0),
           lastMessagePreview: conversation?.last_message_preview || null,
-          itemSummary: itemSummary || 'Sem itens vinculados',
+          itemSummary: itemSummary || 'Valor livre',
           nextActionLabel: getInternalCrmNextActionLabel(stageCode),
           nextTask,
           nextAppointment,

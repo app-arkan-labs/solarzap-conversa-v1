@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useInternalCrmRealtime } from '@/modules/internal-crm/hooks/useInternalCrmRealtime';
 
 function getSystemRoleBadgeVariant(role: string | undefined): 'default' | 'secondary' | 'outline' {
   switch (role) {
@@ -140,6 +141,7 @@ export default function AdminCrmLayout() {
   const { signOut } = useAuth();
   const { identity: adminIdentity } = useAdminGuardContext();
   const { identity: crmIdentity } = useInternalCrmGuardContext();
+  useInternalCrmRealtime(Boolean(crmIdentity?.user_id));
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const activeRoute = useMemo(() => getAdminCrmRouteMeta(location.pathname), [location.pathname]);
   const ActiveIcon = activeRoute.icon;

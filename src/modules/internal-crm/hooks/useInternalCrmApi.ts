@@ -82,6 +82,8 @@ const INTERNAL_CRM_API_PUBLIC_KEY =
     ? import.meta.env.VITE_SUPABASE_ANON_KEY.trim()
     : INTERNAL_CRM_FALLBACK_PUBLIC_KEY;
 const INTERNAL_CRM_API_URL = `${INTERNAL_CRM_BASE_URL}/functions/v1/internal-crm-api`;
+const INTERNAL_CRM_LIVE_REFETCH_MS = 5_000;
+const INTERNAL_CRM_ANALYTICS_REFETCH_MS = 10_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -459,6 +461,8 @@ export function useInternalCrmDashboard(
   return useQuery({
     queryKey: internalCrmQueryKeys.dashboard(params),
     queryFn: () => invokeInternalCrmApi<{ ok: true; kpis: InternalCrmDashboardKpis }>({ action: 'list_dashboard_kpis', ...params }),
+    refetchInterval: INTERNAL_CRM_ANALYTICS_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -470,6 +474,8 @@ export function useInternalCrmClients(params: {
   return useQuery({
     queryKey: internalCrmQueryKeys.clients(params),
     queryFn: () => invokeInternalCrmApi<{ ok: true; clients: InternalCrmClientSummary[] }>({ action: 'list_clients', ...params }),
+    refetchInterval: INTERNAL_CRM_LIVE_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -478,6 +484,8 @@ export function useInternalCrmClientDetail(clientId: string | null) {
     queryKey: internalCrmQueryKeys.clientDetail(clientId ?? 'missing'),
     queryFn: () => invokeInternalCrmApi<InternalCrmClientDetail>({ action: 'get_client_detail', client_id: clientId }),
     enabled: Boolean(clientId),
+    refetchInterval: clientId ? INTERNAL_CRM_LIVE_REFETCH_MS : false,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -489,6 +497,8 @@ export function useInternalCrmDeals(params: {
   return useQuery({
     queryKey: internalCrmQueryKeys.deals(params),
     queryFn: () => invokeInternalCrmApi<{ ok: true; deals: InternalCrmDealSummary[] }>({ action: 'list_deals', ...params }),
+    refetchInterval: INTERNAL_CRM_LIVE_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -500,6 +510,8 @@ export function useInternalCrmTasks(params: {
   return useQuery({
     queryKey: internalCrmQueryKeys.tasks(params),
     queryFn: () => invokeInternalCrmApi<{ ok: true; tasks: InternalCrmTask[] }>({ action: 'list_tasks', ...params }),
+    refetchInterval: INTERNAL_CRM_LIVE_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -522,6 +534,8 @@ export function useInternalCrmConversations(params: {
         action: 'list_conversations',
         ...params,
       }),
+    refetchInterval: INTERNAL_CRM_LIVE_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -534,6 +548,8 @@ export function useInternalCrmConversationDetail(conversationId: string | null) 
         conversation_id: conversationId,
       }),
     enabled: Boolean(conversationId),
+    refetchInterval: conversationId ? INTERNAL_CRM_LIVE_REFETCH_MS : false,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -606,6 +622,8 @@ export function useInternalCrmAppointments(params: {
         action: 'list_appointments',
         ...params,
       }),
+    refetchInterval: INTERNAL_CRM_LIVE_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 }
 

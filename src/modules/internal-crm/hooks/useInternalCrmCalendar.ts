@@ -3,6 +3,7 @@ import {
   internalCrmQueryKeys,
   useInternalCrmAppointments,
   useInternalCrmClients,
+  useInternalCrmDeals,
   useInternalCrmGoogleCalendarStatus,
   useInternalCrmMutation,
 } from '@/modules/internal-crm/hooks/useInternalCrmApi';
@@ -42,6 +43,7 @@ export function useInternalCrmCalendar(filters: InternalCrmCalendarFilters) {
 
   const appointmentsQuery = useInternalCrmAppointments(params);
   const clientsQuery = useInternalCrmClients({});
+  const dealsQuery = useInternalCrmDeals({ status: 'open' });
   const googleCalendarQuery = useInternalCrmGoogleCalendarStatus();
 
   const upsertAppointmentMutation = useInternalCrmMutation({
@@ -81,12 +83,23 @@ export function useInternalCrmCalendar(filters: InternalCrmCalendarFilters) {
     ],
   });
 
+  const upsertDealMutation = useInternalCrmMutation({
+    invalidate: [
+      internalCrmQueryKeys.deals({}),
+      internalCrmQueryKeys.clients({}),
+      internalCrmQueryKeys.dashboard({}),
+      internalCrmQueryKeys.appointments({}),
+    ],
+  });
+
   return {
     params,
     appointmentsQuery,
     clientsQuery,
+    dealsQuery,
     googleCalendarQuery,
     upsertAppointmentMutation,
+    upsertDealMutation,
     googleCalendarActionMutation,
     importGoogleEventsMutation,
     syncAppointmentGoogleMutation,

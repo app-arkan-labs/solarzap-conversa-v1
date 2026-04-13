@@ -23,7 +23,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import type { InternalCrmAppointment, InternalCrmClientSummary } from '@/modules/internal-crm/types';
+import type {
+  InternalCrmAppointment,
+  InternalCrmClientSummary,
+  InternalCrmDealSummary,
+} from '@/modules/internal-crm/types';
+import { buildAutoDealTitle, getOpenDealsForClient } from '@/modules/internal-crm/lib/commercialFlow';
 import { cn } from '@/lib/utils';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -54,6 +59,7 @@ type InternalCrmAppointmentModalProps = {
   onOpenChange: (open: boolean) => void;
   appointment: InternalCrmAppointment | null;
   clients: InternalCrmClientSummary[];
+  deals: InternalCrmDealSummary[];
   defaultStartAt: string | null;
   defaults?: {
     client_id?: string | null;
@@ -92,6 +98,8 @@ function minutesBetween(start: string, end: string): number | null {
 
 type AppointmentDraft = {
   client_id: string;
+  deal_id: string;
+  new_deal_title: string;
   title: string;
   appointment_type: string;
   status: string;
@@ -105,6 +113,8 @@ type AppointmentDraft = {
 export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalProps) {
   const [draft, setDraft] = useState<AppointmentDraft>({
     client_id: '',
+    deal_id: '',
+    new_deal_title: '',
     title: '',
     appointment_type: 'meeting',
     status: 'scheduled',
@@ -123,6 +133,8 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
       const dur = minutesBetween(props.appointment.start_at, props.appointment.end_at || '') ?? 60;
       setDraft({
         client_id: props.appointment.client_id,
+        deal_id: props.appointment.deal_id || '',
+        new_deal_title: '',
         title: props.appointment.title,
         appointment_type: props.appointment.appointment_type,
         status: props.appointment.status,
@@ -139,6 +151,8 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
     const defaults = props.defaults || null;
     setDraft({
       client_id: defaults?.client_id || '',
+      deal_id: defaults?.deal_id || '',
+      new_deal_title: '',
       title: defaults?.title || '',
       appointment_type: defaults?.appointment_type || 'meeting',
       status: defaults?.status || 'scheduled',
@@ -150,7 +164,36 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
     });
   }, [props.appointment, props.defaultStartAt, props.defaults, props.open]);
 
-  const canSave = draft.client_id.length > 0 && draft.title.trim().length > 2 && draft.date.length > 0;
+  const dealsForClient = getOpenDealsForClient(props.deals, draft.client_id);
+  const shouldCreateDealInline = draft.client_id.length > 0 && !props.appointment && dealsForClient.length === 0;
+
+  useEffect(() => {
+    if (!draft.client_id || props.appointment?.id) return;
+
+    if (dealsForClient.length === 1 && draft.deal_id !== dealsForClient[0].id) {
+      setDraft((current) => ({ ...current, deal_id: dealsForClient[0].id }));
+      return;
+    }
+
+    if (dealsForClient.length === 0) {
+      const selectedClient = props.clients.find((client) => client.id === draft.client_id);
+      const autoTitle = buildAutoDealTitle({
+        companyName: selectedClient?.company_name,
+        contactName: selectedClient?.primary_contact_name,
+      });
+      setDraft((current) => ({
+        ...current,
+        deal_id: '',
+        new_deal_title: current.new_deal_title || autoTitle,
+      }));
+    }
+  }, [dealsForClient, draft.client_id, draft.deal_id, props.appointment?.id, props.clients]);
+
+  const canSave =
+    draft.client_id.length > 0 &&
+    draft.title.trim().length > 2 &&
+    draft.date.length > 0 &&
+    (draft.deal_id.length > 0 || (shouldCreateDealInline && draft.new_deal_title.trim().length > 2));
 
   async function handleSave() {
     const [y, m, d] = draft.date.split('-').map(Number);
@@ -162,7 +205,8 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
     await props.onSave({
       appointment_id: props.appointment?.id,
       client_id: draft.client_id,
-      deal_id: props.appointment?.deal_id || props.defaults?.deal_id || null,
+      deal_id: draft.deal_id || props.appointment?.deal_id || props.defaults?.deal_id || null,
+      new_deal_title: shouldCreateDealInline ? draft.new_deal_title.trim() : null,
       title: draft.title.trim(),
       appointment_type: draft.appointment_type,
       status: draft.status,
@@ -196,7 +240,12 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
               <Label>Cliente</Label>
               <Select
                 value={draft.client_id || 'none'}
-                onValueChange={(v) => setDraft((c) => ({ ...c, client_id: v === 'none' ? '' : v }))}
+                onValueChange={(v) => setDraft((c) => ({
+                  ...c,
+                  client_id: v === 'none' ? '' : v,
+                  deal_id: '',
+                  new_deal_title: '',
+                }))}
               >
                 <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
                 <SelectContent>
@@ -206,6 +255,44 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Deal</Label>
+              {dealsForClient.length > 1 ? (
+                <Select value={draft.deal_id || '__none__'} onValueChange={(v) => setDraft((c) => ({ ...c, deal_id: v === '__none__' ? '' : v }))}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o deal" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Selecione</SelectItem>
+                    {dealsForClient.map((deal) => (
+                      <SelectItem key={deal.id} value={deal.id}>{deal.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : dealsForClient.length === 1 ? (
+                <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-sm">
+                  {dealsForClient[0].title}
+                </div>
+              ) : draft.deal_id ? (
+                <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-sm">
+                  Deal vinculado
+                </div>
+              ) : shouldCreateDealInline ? (
+                <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+                  <p className="text-xs font-medium text-amber-800">
+                    Este cliente nao tem deal aberto. Vamos criar um deal automaticamente ao salvar.
+                  </p>
+                  <Input
+                    value={draft.new_deal_title}
+                    onChange={(e) => setDraft((c) => ({ ...c, new_deal_title: e.target.value }))}
+                    placeholder="Titulo do novo deal"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                  Selecione um cliente para vincular o compromisso a um deal.
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

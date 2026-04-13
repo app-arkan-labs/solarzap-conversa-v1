@@ -9,6 +9,7 @@ import { InternalCrmConversationActionsSheet } from '@/modules/internal-crm/comp
 import { InternalCrmConversationList } from '@/modules/internal-crm/components/inbox/InternalCrmConversationList';
 import { ClientNotesSheet } from '@/modules/internal-crm/components/inbox/ClientNotesSheet';
 import { InternalCrmAppointmentModal } from '@/modules/internal-crm/components/calendar/InternalCrmAppointmentModal';
+import { buildAutoDealTitle, getOpenDealsForClient } from '@/modules/internal-crm/lib/commercialFlow';
 import { useInternalCrmInbox } from '@/modules/internal-crm/hooks/useInternalCrmInbox';
 import { useInternalCrmClients, useInternalCrmMutation } from '@/modules/internal-crm/hooks/useInternalCrmApi';
 import type { InternalCrmAttachmentKind, InternalCrmMediaVariant } from '@/modules/internal-crm/lib/chatMedia';
@@ -48,6 +49,9 @@ export default function InternalCrmInboxPage() {
 
   const appointmentMutation = useInternalCrmMutation({
     invalidate: [['internal-crm', 'client-detail'], ['internal-crm', 'appointments']],
+  });
+  const upsertDealMutation = useInternalCrmMutation({
+    invalidate: [['internal-crm', 'deals'], ['internal-crm', 'client-detail'], ['internal-crm', 'appointments']],
   });
 
   useEffect(() => {
@@ -288,6 +292,54 @@ export default function InternalCrmInboxPage() {
     setAppointmentModalOpen(false);
   };
 
+  const saveAppointmentWithDealLink = async (payload: Record<string, unknown>) => {
+    const clientId = String(selectedClientId || payload.client_id || '');
+    if (!clientId) return;
+
+    const availableDeals = getOpenDealsForClient(inbox.clientDetailQuery.data?.deals || [], clientId);
+    let resolvedDealId = String(payload.deal_id || '');
+
+    if (!resolvedDealId) {
+      if (availableDeals.length === 1) {
+        resolvedDealId = availableDeals[0].id;
+      } else if (availableDeals.length === 0) {
+        const targetClient = clients.find((client) => client.id === clientId);
+        const created = await upsertDealMutation.mutateAsync({
+          action: 'upsert_deal',
+          client_id: clientId,
+          title: String(payload.new_deal_title || buildAutoDealTitle({
+            companyName: targetClient?.company_name,
+            contactName: targetClient?.primary_contact_name,
+          })),
+          owner_user_id: targetClient?.owner_user_id || null,
+          stage_code: 'chamada_agendada',
+          probability: 5,
+          notes: null,
+          items: [],
+        }) as { deal?: { id?: string } };
+        resolvedDealId = created.deal?.id || '';
+      }
+    }
+
+    if (!resolvedDealId) {
+      toast({
+        title: 'Selecione um deal',
+        description: 'Este cliente possui mais de um deal aberto. Escolha qual deve ser vinculado.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    await appointmentMutation.mutateAsync({
+      action: 'upsert_appointment',
+      ...payload,
+      client_id: clientId,
+      deal_id: resolvedDealId,
+    });
+    toast({ title: 'Reuniao agendada' });
+    setAppointmentModalOpen(false);
+  };
+
   const navigatePipeline = () => {
     const targetClientId = selectedClientId || inbox.selectedConversation?.client_id || '';
     navigate(targetClientId ? `/admin/crm/pipeline?client=${targetClientId}` : '/admin/crm/pipeline');
@@ -401,9 +453,10 @@ export default function InternalCrmInboxPage() {
         onOpenChange={setAppointmentModalOpen}
         appointment={null}
         clients={clients}
+        deals={inbox.clientDetailQuery.data?.deals || []}
         defaultStartAt={new Date().toISOString()}
         isSubmitting={appointmentMutation.isPending}
-        onSave={saveAppointment}
+        onSave={saveAppointmentWithDealLink}
       />
     </div>
   );

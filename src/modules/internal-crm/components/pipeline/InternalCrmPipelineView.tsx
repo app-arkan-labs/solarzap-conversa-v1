@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRightLeft,
@@ -29,7 +30,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -38,13 +38,20 @@ import {
 import { useMobileViewport } from '@/hooks/useMobileViewport';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrencyBr, TokenBadge } from '@/modules/internal-crm/components/InternalCrmUi';
-import { DealDetailPanel } from '@/modules/internal-crm/components/pipeline/DealDetailPanel';
+import {
+  DealDetailPanel,
+  type DealDetailQuickSaveInput,
+} from '@/modules/internal-crm/components/pipeline/DealDetailPanel';
 import { PipelineFilters } from '@/modules/internal-crm/components/pipeline/PipelineFilters';
 import { DealCheckoutModal } from '@/modules/internal-crm/components/pipeline/modals/DealCheckoutModal';
 import { DealCommentsSheet } from '@/modules/internal-crm/components/pipeline/modals/DealCommentsSheet';
 import { EditDealModal } from '@/modules/internal-crm/components/pipeline/modals/EditDealModal';
 import { MarkAsLostModal } from '@/modules/internal-crm/components/pipeline/modals/MarkAsLostModal';
 import { MarkAsWonModal } from '@/modules/internal-crm/components/pipeline/modals/MarkAsWonModal';
+import {
+  NewDealSimpleModal,
+  type NewDealData,
+} from '@/modules/internal-crm/components/pipeline/modals/NewDealSimpleModal';
 import { InternalCrmAppointmentModal } from '@/modules/internal-crm/components/calendar/InternalCrmAppointmentModal';
 import { CrmExportClientsModal } from '@/modules/internal-crm/components/clients/CrmExportClientsModal';
 import { CrmImportClientsModal } from '@/modules/internal-crm/components/clients/CrmImportClientsModal';
@@ -63,7 +70,26 @@ import {
   INTERNAL_CRM_PIPELINE_STAGE_ORDER,
   normalizeInternalCrmStageCode,
 } from '@/modules/internal-crm/components/pipeline/stageCatalog';
-import type { InternalCrmAppointment, InternalCrmDealSummary } from '@/modules/internal-crm/types';
+import {
+  buildSimpleDealItem,
+  getDealPrimaryBillingType,
+  getDealPrimaryValueCents,
+  getDealReferenceCode,
+  getVisibleInternalCrmProducts,
+} from '@/modules/internal-crm/components/pipeline/dealCatalog';
+import {
+  appendAppointmentIfMissing,
+  buildAutoDealTitle,
+  deriveDealStageFromAppointmentStatus,
+  patchClientStageInList,
+  patchDealSummaryInList,
+  patchAppointmentInList,
+} from '@/modules/internal-crm/lib/commercialFlow';
+import type {
+  InternalCrmAppointment,
+  InternalCrmClientSummary,
+  InternalCrmDealSummary,
+} from '@/modules/internal-crm/types';
 import { cn } from '@/lib/utils';
 import { InternalCrmFilterBar } from '@/modules/internal-crm/components/InternalCrmPageLayout';
 
@@ -120,8 +146,19 @@ function hasTrackingAttribution(value: unknown): boolean {
   return Object.keys(extractTrackingAttribution(value)).length > 0;
 }
 
+function mapDraftItems(items: InternalCrmDealSummary['items']): DealDraft['items'] {
+  return (items || []).map((item) => ({
+    product_code: item.product_code,
+    billing_type: item.billing_type,
+    payment_method: item.payment_method,
+    unit_price_cents: item.unit_price_cents,
+    quantity: item.quantity,
+  }));
+}
+
 function buildDealDraftFromCard(card: InternalCrmPipelineBoardCard): DealDraft {
   const context = asRecord(card.deal.commercial_context);
+  const draftItems = mapDraftItems(card.deal.items);
   return {
     id: card.deal.id,
     client_id: card.deal.client_id,
@@ -129,15 +166,23 @@ function buildDealDraftFromCard(card: InternalCrmPipelineBoardCard): DealDraft {
     stage_code: normalizeInternalCrmStageCode(card.deal.stage_code),
     probability: Number(card.deal.probability || 0),
     notes: card.deal.notes || '',
-    items: (card.deal.items || []).length > 0
-      ? (card.deal.items || []).map((item) => ({
-          product_code: item.product_code,
-          billing_type: item.billing_type,
-          payment_method: item.payment_method,
-          unit_price_cents: item.unit_price_cents,
-          quantity: item.quantity,
-        }))
-      : EMPTY_DEAL_DRAFT.items,
+    items:
+      draftItems.length > 0
+        ? draftItems
+        : [
+            {
+              ...buildSimpleDealItem({
+                valueCents: getDealPrimaryValueCents(card.deal),
+                billingType: getDealPrimaryBillingType(card.deal),
+              }),
+            },
+          ].map((item) => ({
+            product_code: item.product_code,
+            billing_type: item.billing_type,
+            payment_method: item.payment_method,
+            unit_price_cents: item.unit_price_cents,
+            quantity: item.quantity,
+          })),
     primary_offer_code: card.deal.primary_offer_code || '',
     closed_product_code: card.deal.closed_product_code || '',
     mentorship_variant: card.deal.mentorship_variant || '',
@@ -152,6 +197,120 @@ function buildDealDraftFromCard(card: InternalCrmPipelineBoardCard): DealDraft {
     trial_ends_at: asString(context.trial_ends_at),
     scheduling_link: asString(context.scheduling_link),
     meeting_link: asString(context.meeting_link),
+  };
+}
+
+function buildQuickDealPayload(
+  card: InternalCrmPipelineBoardCard,
+  input: DealDetailQuickSaveInput,
+  products: ReturnType<typeof getVisibleInternalCrmProducts>,
+) {
+  const existingCommercialContext = asRecord(card.deal.commercial_context);
+  const quickItem = buildSimpleDealItem({
+    valueCents: input.valueCents,
+    billingType: input.billingType,
+  });
+  const referenceCode = getDealReferenceCode(card.deal, products);
+
+  return {
+    action: 'upsert_deal' as const,
+    deal_id: card.deal.id,
+    client_id: card.deal.client_id,
+    title: input.title.trim(),
+    owner_user_id: input.ownerUserId || null,
+    stage_code: normalizeInternalCrmStageCode(card.deal.stage_code),
+    probability: Math.max(0, Math.min(100, Number(card.deal.probability || 0))),
+    notes: input.notes.trim() || null,
+    items: [
+      {
+        product_code: quickItem.product_code,
+        billing_type: quickItem.billing_type,
+        payment_method: quickItem.payment_method,
+        unit_price_cents: quickItem.unit_price_cents,
+        quantity: quickItem.quantity,
+      },
+    ],
+    primary_offer_code: card.deal.primary_offer_code || null,
+    closed_product_code: card.deal.closed_product_code || referenceCode || null,
+    mentorship_variant: card.deal.mentorship_variant || null,
+    next_offer_code: card.deal.next_offer_code || null,
+    next_offer_at: card.deal.next_offer_at || null,
+    software_status: card.deal.software_status,
+    landing_page_status: card.deal.landing_page_status,
+    traffic_status: card.deal.traffic_status,
+    trial_status: card.deal.trial_status,
+    commercial_context: {
+      ...existingCommercialContext,
+    },
+  };
+}
+
+function buildNewDealDraft(
+  data: NewDealData,
+  products: ReturnType<typeof getVisibleInternalCrmProducts>,
+): DealDraft {
+  const selectedProduct = products.find((product) => product.product_code === data.product_code);
+
+  return {
+    ...EMPTY_DEAL_DRAFT,
+    client_id: data.client_id,
+    title: data.title.trim(),
+    stage_code: normalizeInternalCrmStageCode(data.stage_code),
+    notes: data.notes.trim(),
+    items: selectedProduct
+      ? [
+          {
+            product_code: selectedProduct.product_code,
+            billing_type: selectedProduct.billing_type,
+            payment_method: selectedProduct.payment_method,
+            unit_price_cents: Number(selectedProduct.price_cents || 0),
+            quantity: 1,
+          },
+        ]
+      : [],
+  };
+}
+
+function buildNewAppointmentPayload(input: {
+  clientId: string;
+  dealId: string;
+  companyName: string;
+  ownerUserId: string;
+  appointment: NewDealData['appointment'];
+}): Record<string, unknown> {
+  const [year, month, day] = input.appointment.date.split('-').map(Number);
+  const [hours, minutes] = input.appointment.time.split(':').map(Number);
+  const startAt = new Date(year, month - 1, day, hours, minutes);
+  const durationMinutes = Math.max(15, Number(input.appointment.duration_minutes || 60));
+  const endAt = new Date(startAt.getTime() + durationMinutes * 60_000);
+
+  return {
+    client_id: input.clientId,
+    deal_id: input.dealId,
+    owner_user_id: input.ownerUserId,
+    title: `Reuniao - ${input.companyName}`,
+    appointment_type: 'meeting',
+    status: 'scheduled',
+    start_at: startAt.toISOString(),
+    end_at: endAt.toISOString(),
+    location: input.appointment.location.trim() || null,
+    notes: input.appointment.notes.trim() || null,
+  };
+}
+
+function buildImportedDealDraft(input: {
+  clientId: string;
+  companyName: string;
+  contactName?: string | null;
+  notes?: string | null;
+}): DealDraft {
+  return {
+    ...EMPTY_DEAL_DRAFT,
+    client_id: input.clientId,
+    title: buildAutoDealTitle({ companyName: input.companyName, contactName: input.contactName }),
+    stage_code: 'novo_lead',
+    notes: input.notes?.trim() || '',
+    items: [],
   };
 }
 
@@ -205,6 +364,7 @@ export function InternalCrmPipelineView() {
   const [searchParams, setSearchParams] = useSearchParams();
   const isMobileViewport = useMobileViewport();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [stageCode, setStageCode] = useState('all');
   const [status, setStatus] = useState<'all' | 'open' | 'won' | 'lost'>('all');
@@ -229,6 +389,7 @@ export function InternalCrmPipelineView() {
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [newDealOpen, setNewDealOpen] = useState(false);
   const [editDealOpen, setEditDealOpen] = useState(false);
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -268,6 +429,22 @@ export function InternalCrmPipelineView() {
       ['internal-crm', 'conversations'],
       internalCrmQueryKeys.pipelineStages(),
     ],
+    onSuccess: async (data) => {
+      const updatedDeal = (data as { deal?: InternalCrmDealSummary | null })?.deal;
+      if (!updatedDeal?.id) return;
+
+      queryClient.setQueriesData(
+        { queryKey: ['internal-crm', 'deals'], exact: false },
+        (previous: { ok: true; deals: InternalCrmDealSummary[] } | undefined) => {
+          if (!previous?.deals) return previous;
+          const nextDeals = patchDealSummaryInList(previous.deals, updatedDeal);
+          if (nextDeals) {
+            return { ...previous, deals: nextDeals };
+          }
+          return previous;
+        },
+      );
+    },
   });
 
   const moveDealMutation = useInternalCrmMutation({
@@ -278,6 +455,21 @@ export function InternalCrmPipelineView() {
       ['internal-crm', 'appointments'],
       ['internal-crm', 'conversations'],
     ],
+    onSuccess: async (data) => {
+      const updatedDeal = (data as { deal?: InternalCrmDealSummary | null })?.deal;
+      if (!updatedDeal?.id) return;
+
+      queryClient.setQueriesData(
+        { queryKey: ['internal-crm', 'deals'], exact: false },
+        (previous: { ok: true; deals: InternalCrmDealSummary[] } | undefined) => {
+          if (!previous?.deals) return previous;
+          return {
+            ...previous,
+            deals: patchDealSummaryInList(previous.deals, updatedDeal) || previous.deals,
+          };
+        },
+      );
+    },
   });
 
   const deleteDealMutation = useInternalCrmMutation({
@@ -320,10 +512,61 @@ export function InternalCrmPipelineView() {
   });
 
   const products = board.productsQuery.data?.products || [];
+  const visibleProducts = useMemo(() => getVisibleInternalCrmProducts(products), [products]);
   const appointments = board.appointmentsQuery.data?.appointments || [];
   const stages = board.stageOptions;
   const members = board.members;
   const clients = board.clientsQuery.data?.clients || [];
+
+  const applyOptimisticStageMove = useCallback((card: InternalCrmPipelineBoardCard, targetStageCode: string) => {
+    const normalizedStageCode = normalizeInternalCrmStageCode(targetStageCode);
+    const optimisticUpdatedAt = new Date().toISOString();
+
+    queryClient.setQueriesData(
+      { queryKey: ['internal-crm', 'deals'], exact: false },
+      (previous: { ok: true; deals: InternalCrmDealSummary[] } | undefined) => {
+        if (!previous?.deals) return previous;
+        return {
+          ...previous,
+          deals: previous.deals.map((deal) =>
+            deal.id === card.deal.id
+              ? {
+                  ...deal,
+                  stage_code: normalizedStageCode,
+                  updated_at: optimisticUpdatedAt,
+                }
+              : deal,
+          ),
+        };
+      },
+    );
+
+    queryClient.setQueriesData(
+      { queryKey: ['internal-crm', 'clients'], exact: false },
+      (previous: { ok: true; clients: Array<Record<string, unknown>> } | undefined) => {
+        if (!previous?.clients) return previous;
+        return {
+          ...previous,
+          clients: patchClientStageInList(previous.clients, card.deal.client_id, normalizedStageCode) || previous.clients,
+        };
+      },
+    );
+
+    setSelectedCard((current) =>
+      current?.id === card.id
+        ? {
+            ...current,
+            stageCode: normalizedStageCode,
+            stageLabel: getInternalCrmStageLabel(normalizedStageCode),
+            deal: {
+              ...current.deal,
+              stage_code: normalizedStageCode,
+              updated_at: optimisticUpdatedAt,
+            },
+          }
+        : current,
+    );
+  }, [queryClient]);
 
   const cardsById = useMemo(() => {
     return new Map(board.cards.map((card) => [card.id, card]));
@@ -495,7 +738,7 @@ export function InternalCrmPipelineView() {
       card.deal.closed_product_code ||
       card.deal.primary_offer_code ||
       card.deal.items?.[0]?.product_code ||
-      products[0]?.product_code ||
+      visibleProducts[0]?.product_code ||
       '';
     const fallbackCents = card.deal.one_time_total_cents > 0
       ? card.deal.one_time_total_cents
@@ -555,17 +798,27 @@ export function InternalCrmPipelineView() {
       return;
     }
 
-    await moveDealMutation.mutateAsync({
-      action: 'move_deal_stage',
-      deal_id: card.deal.id,
-      stage_code: normalizedStageCode,
-    });
+    applyOptimisticStageMove(card, normalizedStageCode);
+
+    try {
+      await moveDealMutation.mutateAsync({
+        action: 'move_deal_stage',
+        deal_id: card.deal.id,
+        stage_code: normalizedStageCode,
+      });
+    } catch (error) {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['internal-crm', 'deals'] }),
+        queryClient.invalidateQueries({ queryKey: ['internal-crm', 'clients'] }),
+      ]);
+      throw error;
+    }
 
     toast({
       title: 'Lead movido!',
       description: options?.successMessage || `Movido para ${getInternalCrmStageLabel(normalizedStageCode)}`,
     });
-  }, [moveDealMutation, openAppointmentModalForCard, toast]);
+  }, [applyOptimisticStageMove, moveDealMutation, openAppointmentModalForCard, queryClient, toast]);
 
   const handleDrop = async (e: React.DragEvent, targetStageCode: string) => {
     if (isMobileViewport) return;
@@ -616,12 +869,6 @@ export function InternalCrmPipelineView() {
     }
   };
 
-  const handleMoveToStageById = useCallback((dealId: string, targetStageCode: string) => {
-    const card = cardsById.get(dealId);
-    if (!card) return;
-    void handleMoveToStage(card, targetStageCode);
-  }, [cardsById, handleMoveToStage]);
-
   const handleSaveNotes = async (dealId: string, notes: string) => {
     await saveNotesMutation.mutateAsync({
       action: 'save_deal_notes',
@@ -662,15 +909,8 @@ export function InternalCrmPipelineView() {
   }, [deleteDealMutation, selectedCard?.id, toast]);
 
   const handleOpenNewDeal = () => {
-    if (clients.length === 0) {
-      toast({ title: 'Cadastre um cliente primeiro', description: 'Crie ao menos um cliente antes de abrir um novo deal.', variant: 'destructive' });
-      return;
-    }
-
     setSelectedCard(null);
-    setEditingDraft(EMPTY_DEAL_DRAFT);
-    setEditingOwnerUserId('');
-    setEditDealOpen(true);
+    setNewDealOpen(true);
   };
 
   const handleOpenEditDeal = (card: InternalCrmPipelineBoardCard) => {
@@ -680,29 +920,188 @@ export function InternalCrmPipelineView() {
     setEditDealOpen(true);
   };
 
+  const handleSaveNewDeal = useCallback(async (data: NewDealData) => {
+    try {
+      if (!data.title.trim()) {
+        toast({ title: 'Preencha o titulo do deal', variant: 'destructive' });
+        return;
+      }
+
+      if (data.client_mode === 'existing' && !data.client_id.trim()) {
+        toast({ title: 'Selecione um cliente', variant: 'destructive' });
+        return;
+      }
+
+      if (data.client_mode === 'create' && (!data.new_client.company_name.trim() || !data.new_client.primary_contact_name.trim())) {
+        toast({ title: 'Preencha empresa e contato principal', variant: 'destructive' });
+        return;
+      }
+
+      const normalizedStageCode = normalizeInternalCrmStageCode(data.stage_code);
+      if (normalizedStageCode === 'chamada_agendada' && (!data.appointment.date || !data.appointment.time)) {
+        toast({ title: 'Informe data e horario da reuniao', variant: 'destructive' });
+        return;
+      }
+
+      let resolvedClientId = data.client_id;
+      let resolvedCompanyName =
+        clients.find((client) => client.id === data.client_id)?.company_name ||
+        data.new_client.company_name.trim() ||
+        'Cliente';
+      const ownerUserId = '';
+
+      if (data.client_mode === 'create') {
+        const clientResult = await upsertClientMutation.mutateAsync({
+          action: 'upsert_client',
+          company_name: data.new_client.company_name.trim(),
+          primary_contact_name: data.new_client.primary_contact_name.trim(),
+          primary_phone: data.new_client.primary_phone.trim() || null,
+          primary_email: data.new_client.primary_email.trim() || null,
+          source_channel: data.new_client.source_channel || 'manual',
+          current_stage_code: normalizedStageCode,
+          lifecycle_status: 'lead',
+        });
+
+        const createdClientId = (clientResult as { client?: { id?: string; company_name?: string | null } })?.client?.id || '';
+        if (!createdClientId) {
+          throw new Error('Nao foi possivel criar o contato no CRM interno.');
+        }
+        resolvedClientId = createdClientId;
+        resolvedCompanyName = (clientResult as { client?: { company_name?: string | null } })?.client?.company_name || resolvedCompanyName;
+      }
+
+      const draft = buildNewDealDraft(
+        {
+          ...data,
+          client_id: resolvedClientId,
+        },
+        visibleProducts,
+      );
+
+      const dealResult = await upsertDealMutation.mutateAsync(
+        buildDealPayload(draft, ownerUserId, {}),
+      );
+
+      const createdDeal = (dealResult as { deal?: InternalCrmDealSummary | null })?.deal;
+      const createdDealId = createdDeal?.id || '';
+      if (!createdDealId) {
+        throw new Error('Nao foi possivel criar o deal.');
+      }
+
+      if (normalizedStageCode === 'chamada_agendada') {
+        try {
+          await appointmentMutation.mutateAsync({
+            action: 'upsert_appointment',
+            ...buildNewAppointmentPayload({
+              clientId: resolvedClientId,
+              dealId: createdDealId,
+              companyName: resolvedCompanyName,
+              ownerUserId,
+              appointment: data.appointment,
+            }),
+          });
+        } catch (error) {
+          try {
+            await deleteDealMutation.mutateAsync({
+              action: 'delete_deal',
+              deal_id: createdDealId,
+            });
+          } catch {
+            // best effort rollback to avoid leaving inconsistent stage without appointment
+          }
+
+          throw new Error('O deal nao foi mantido porque a reuniao nao conseguiu ser criada.');
+        }
+      }
+
+      setNewDealOpen(false);
+      toast({
+        title: normalizedStageCode === 'chamada_agendada' ? 'Deal e reuniao criados' : 'Deal criado',
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro ao criar deal',
+        description: error instanceof Error ? error.message : 'Nao foi possivel concluir a criacao do deal.',
+        variant: 'destructive',
+      });
+    }
+  }, [appointmentMutation, clients, deleteDealMutation, toast, upsertClientMutation, upsertDealMutation, visibleProducts]);
+
+  const handleSaveQuickDeal = useCallback(async (input: DealDetailQuickSaveInput) => {
+    const card = cardsById.get(input.dealId);
+    if (!card) return;
+    if (!input.title.trim()) {
+      toast({ title: 'Preencha o titulo do deal', variant: 'destructive' });
+      return;
+    }
+
+    await upsertDealMutation.mutateAsync(buildQuickDealPayload(card, input, visibleProducts));
+
+    const normalizedTargetStage = normalizeInternalCrmStageCode(input.stageCode);
+    if (normalizedTargetStage !== card.stageCode) {
+      if (['chamada_agendada', 'fechou', 'nao_fechou'].includes(normalizedTargetStage)) {
+        setDetailPanelOpen(false);
+      }
+      await handleMoveToStage(card, normalizedTargetStage);
+    }
+
+    toast({ title: 'Deal atualizado' });
+  }, [cardsById, handleMoveToStage, toast, upsertDealMutation, visibleProducts]);
+
   const handleSaveEditDeal = async () => {
     if (!editingDraft.client_id || !editingDraft.title.trim()) {
       toast({ title: 'Preencha cliente e titulo', variant: 'destructive' });
       return;
     }
 
+    const currentStageCode = activeSelectedCard
+      ? normalizeInternalCrmStageCode(activeSelectedCard.deal.stage_code)
+      : normalizeInternalCrmStageCode(editingDraft.stage_code);
+    const targetStageCode = normalizeInternalCrmStageCode(editingDraft.stage_code);
+
     await upsertDealMutation.mutateAsync(
       buildDealPayload(
-        editingDraft,
+        {
+          ...editingDraft,
+          stage_code: currentStageCode,
+        },
         editingOwnerUserId,
         activeSelectedCard ? asRecord(activeSelectedCard.deal.commercial_context) : {},
       ),
     );
+
+    if (activeSelectedCard && targetStageCode !== currentStageCode) {
+      await handleMoveToStage(activeSelectedCard, targetStageCode);
+    }
 
     setEditDealOpen(false);
     toast({ title: editingDraft.id ? 'Deal atualizado' : 'Deal criado' });
   };
 
   const handleImportClient = async (record: Record<string, string>) => {
-    await upsertClientMutation.mutateAsync({
+    const clientResult = await upsertClientMutation.mutateAsync({
       action: 'upsert_client',
+      current_stage_code: 'novo_lead',
+      lifecycle_status: 'lead',
       ...record,
     });
+
+    const client = (clientResult as { client?: { id?: string; company_name?: string | null; primary_contact_name?: string | null } })?.client;
+    const clientId = client?.id || '';
+    if (!clientId) {
+      throw new Error('Cliente importado sem id retornado pela API.');
+    }
+
+    const draft = buildImportedDealDraft({
+      clientId,
+      companyName: client?.company_name || record.company_name || '',
+      contactName: client?.primary_contact_name || record.primary_contact_name || '',
+      notes: record.notes || '',
+    });
+
+    await upsertDealMutation.mutateAsync(
+      buildDealPayload(draft, '', {}),
+    );
   };
 
   const confirmDealWon = async () => {
@@ -779,6 +1178,54 @@ export function InternalCrmPipelineView() {
     setSelectedAppointment(null);
     setAppointmentDefaults(null);
     const savedAppointment = (result as { appointment?: InternalCrmAppointment }).appointment || null;
+    if (savedAppointment?.id) {
+      queryClient.setQueriesData(
+        { queryKey: ['internal-crm', 'appointments'], exact: false },
+        (previous: { ok: true; appointments: InternalCrmAppointment[] } | undefined) => {
+          if (!previous?.appointments) return previous;
+          return {
+            ...previous,
+            appointments:
+              patchAppointmentInList(previous.appointments, savedAppointment) ||
+              appendAppointmentIfMissing(previous.appointments, savedAppointment) ||
+              previous.appointments,
+          };
+        },
+      );
+
+      const nextStage = deriveDealStageFromAppointmentStatus(savedAppointment.status);
+      if (savedAppointment.deal_id && nextStage) {
+        queryClient.setQueriesData(
+          { queryKey: ['internal-crm', 'deals'], exact: false },
+          (previous: { ok: true; deals: InternalCrmDealSummary[] } | undefined) => {
+            if (!previous?.deals) return previous;
+            return {
+              ...previous,
+              deals: previous.deals.map((deal) =>
+                deal.id === savedAppointment.deal_id
+                  ? {
+                      ...deal,
+                      stage_code: nextStage,
+                      updated_at: new Date().toISOString(),
+                    }
+                  : deal,
+              ),
+            };
+          },
+        );
+
+        queryClient.setQueriesData(
+          { queryKey: ['internal-crm', 'clients'], exact: false },
+          (previous: { ok: true; clients: InternalCrmClientSummary[] } | undefined) => {
+            if (!previous?.clients) return previous;
+            return {
+              ...previous,
+              clients: patchClientStageInList(previous.clients, savedAppointment.client_id, nextStage) || previous.clients,
+            };
+          },
+        );
+      }
+    }
     const type = String(savedAppointment?.appointment_type || payload.appointment_type || 'meeting');
     const title = type === 'call' ? 'Ligacao agendada' : type === 'visit' ? 'Visita agendada' : 'Reuniao agendada';
     toast({ title });
@@ -1110,7 +1557,7 @@ export function InternalCrmPipelineView() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleOpenEditDeal(card); }} className="gap-2 cursor-pointer">
                                   <FileText className="w-4 h-4 text-amber-500" />
-                                  <span>Editar Deal</span>
+                                  <span>Editar avancado</span>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={(e) => { e.stopPropagation(); void handleDeleteDeal(card); }}
@@ -1238,11 +1685,26 @@ export function InternalCrmPipelineView() {
       <DealDetailPanel
         open={detailPanelOpen}
         onOpenChange={setDetailPanelOpen}
-        deal={selectedDeal}
+        card={activeSelectedCard}
         products={products}
         stages={stages}
-        onSaveNotes={handleSaveNotes}
-        onMoveToStage={handleMoveToStageById}
+        members={members}
+        onSaveQuickEdit={handleSaveQuickDeal}
+        onOpenClient={() => {
+          if (activeSelectedCard) handleOpenClient(activeSelectedCard);
+        }}
+        onOpenConversation={() => {
+          if (activeSelectedCard) handleOpenConversation(activeSelectedCard);
+        }}
+        onOpenComments={() => {
+          if (activeSelectedCard) setCommentsOpen(true);
+        }}
+        onCall={() => {
+          if (activeSelectedCard) handleCall(activeSelectedCard);
+        }}
+        onScheduleMeeting={() => {
+          if (activeSelectedCard) openAppointmentModalForCard(activeSelectedCard, 'meeting');
+        }}
         onMarkWon={() => {
           if (activeSelectedCard) {
             setDetailPanelOpen(false);
@@ -1268,7 +1730,28 @@ export function InternalCrmPipelineView() {
             setCheckoutModalOpen(true);
           }
         }}
-        isSaving={saveNotesMutation.isPending}
+        onOpenAdvanced={() => {
+          if (activeSelectedCard) {
+            setDetailPanelOpen(false);
+            handleOpenEditDeal(activeSelectedCard);
+          }
+        }}
+        isSaving={upsertDealMutation.isPending}
+      />
+
+      <NewDealSimpleModal
+        open={newDealOpen}
+        onOpenChange={setNewDealOpen}
+        clients={clients}
+        stages={stages}
+        products={visibleProducts}
+        onSave={handleSaveNewDeal}
+        isSaving={
+          upsertClientMutation.isPending ||
+          upsertDealMutation.isPending ||
+          appointmentMutation.isPending ||
+          deleteDealMutation.isPending
+        }
       />
 
       <EditDealModal
@@ -1278,7 +1761,7 @@ export function InternalCrmPipelineView() {
         onDraftChange={setEditingDraft}
         clients={clients}
         stages={stages}
-        products={products}
+        products={visibleProducts}
         members={members}
         ownerUserId={editingOwnerUserId}
         onOwnerUserIdChange={setEditingOwnerUserId}
@@ -1292,7 +1775,7 @@ export function InternalCrmPipelineView() {
         dealTitle={selectedDeal?.title || ''}
         productCode={wonProductCode}
         valueReais={wonValueReais}
-        products={products}
+        products={visibleProducts}
         isSubmitting={moveDealMutation.isPending}
         onProductCodeChange={(value) => {
           setWonProductCode(value);
@@ -1339,6 +1822,7 @@ export function InternalCrmPipelineView() {
         onOpenChange={handleAppointmentModalOpenChange}
         appointment={selectedAppointment}
         clients={clients}
+        deals={board.dealsQuery.data?.deals || []}
         defaultStartAt={new Date().toISOString()}
         defaults={appointmentDefaults}
         isSubmitting={appointmentMutation.isPending}

@@ -6,6 +6,7 @@ import {
   overlapsBusyRange,
   resolveMinimumLeadSlotStart,
 } from '../_shared/appointmentScheduling.ts';
+import { clampBroadcastIntervalSeconds } from '../_shared/broadcastDispatch.ts';
 import { resolveRequestCors } from '../_shared/cors.ts';
 import {
   buildTrackingSnapshot,
@@ -617,7 +618,7 @@ async function listProducts(serviceClient: ReturnType<typeof createClient>) {
   const [{ data: products, error: productsError }, { data: prices, error: pricesError }] = await Promise.all([
     schema
       .from('products')
-      .select('product_code, name, billing_type, payment_method, is_active, sort_order')
+      .select('product_code, name, billing_type, payment_method, is_active, sort_order, metadata')
       .order('sort_order', { ascending: true }),
     schema
       .from('product_prices')
@@ -3224,30 +3225,85 @@ async function listCampaigns(serviceClient: ReturnType<typeof createClient>) {
 
   if (recipientsError) throw { status: 500, code: 'campaign_recipients_query_failed', error: recipientsError };
 
-  const counters = new Map<string, { total: number; pending: number; sent: number; failed: number }>();
+  const counters = new Map<string, {
+    total: number;
+    pending: number;
+    processing: number;
+    sent: number;
+    failed: number;
+    skipped: number;
+    canceled: number;
+  }>();
   for (const row of recipients || []) {
     const campaignId = String(row.campaign_id || '');
     if (!campaignId) continue;
-    const current = counters.get(campaignId) || { total: 0, pending: 0, sent: 0, failed: 0 };
+    const current = counters.get(campaignId) || {
+      total: 0,
+      pending: 0,
+      processing: 0,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+      canceled: 0,
+    };
     current.total += 1;
     const status = String(row.status || 'pending');
     if (status === 'pending') current.pending += 1;
+    if (status === 'processing') current.processing += 1;
     if (status === 'sent') current.sent += 1;
     if (status === 'failed') current.failed += 1;
+    if (status === 'skipped') current.skipped += 1;
+    if (status === 'canceled') current.canceled += 1;
     counters.set(campaignId, current);
   }
 
   return campaigns.map((campaign) => {
-    const count = counters.get(String(campaign.id)) || { total: 0, pending: 0, sent: 0, failed: 0 };
+    const count = counters.get(String(campaign.id)) || {
+      total: 0,
+      pending: 0,
+      processing: 0,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+      canceled: 0,
+    };
     return {
       ...campaign,
       messages: Array.isArray(campaign.messages) ? campaign.messages : [],
       recipients_total: count.total,
       recipients_pending: count.pending,
+      recipients_processing: count.processing,
       recipients_sent: count.sent,
       recipients_failed: count.failed,
+      recipients_skipped: count.skipped,
+      recipients_canceled: count.canceled,
     };
   });
+}
+
+async function activateInternalCrmCampaign(
+  schema: ReturnType<typeof crmSchema>,
+  campaignId: string,
+  startedAt?: string | null,
+) {
+  const { data, error } = await schema
+    .from('broadcast_campaigns')
+    .update({
+      status: 'running',
+      started_at: startedAt || nowIso(),
+      finished_at: null,
+      next_dispatch_at: nowIso(),
+      updated_at: nowIso(),
+    })
+    .eq('id', campaignId)
+    .select('*')
+    .single();
+
+  if (error || !data?.id) {
+    throw { status: 500, code: 'campaign_status_update_failed', error };
+  }
+
+  return data;
 }
 
 async function upsertCampaign(
@@ -3266,6 +3322,8 @@ async function upsertCampaign(
   const messages = Array.isArray(payload.messages)
     ? payload.messages.map((item) => String(item || '').trim()).filter(Boolean)
     : [];
+  const requestedStatus = asString(payload.status) || 'draft';
+  const normalizedIntervalSeconds = clampBroadcastIntervalSeconds(payload.interval_seconds, 60);
 
   const { data, error } = await crmSchema(serviceClient)
     .from('broadcast_campaigns')
@@ -3276,8 +3334,9 @@ async function upsertCampaign(
       owner_user_id: asString(payload.owner_user_id) || identity.user_id,
       target_filters: isRecord(payload.target_filters) ? payload.target_filters : {},
       messages,
-      status: asString(payload.status) || 'draft',
-      interval_seconds: Math.max(10, Math.min(86400, asNumber(payload.interval_seconds, 15))),
+      status: requestedStatus,
+      interval_seconds: normalizedIntervalSeconds,
+      next_dispatch_at: requestedStatus === 'running' ? nowIso() : before?.next_dispatch_at || nowIso(),
     })
     .select('*')
     .single();
@@ -3326,6 +3385,7 @@ async function updateCampaignStatus(
       status,
       started_at: status === 'running' ? nowIso() : before?.started_at,
       finished_at: ['completed', 'canceled'].includes(status) ? nowIso() : null,
+      next_dispatch_at: status === 'running' ? nowIso() : before?.next_dispatch_at,
       updated_at: nowIso(),
     })
     .eq('id', campaignId)
@@ -3412,7 +3472,7 @@ async function runCampaignBatch(
 ) {
   const schema = crmSchema(serviceClient);
   const campaignId = asString(payload.campaign_id);
-  const batchSize = Math.max(1, Math.min(50, asNumber(payload.batch_size, 20)));
+  const batchSize = Math.max(1, Math.min(200, asNumber(payload.batch_size, 20)));
 
   let campaignBefore: Record<string, unknown> | null = null;
   let effectiveCampaignId = campaignId;
@@ -3429,28 +3489,34 @@ async function runCampaignBatch(
 
     campaignBefore = existingCampaign;
     if (String(existingCampaign.status || '') !== 'running') {
-      const { data: updatedCampaign, error: updateError } = await schema
-        .from('broadcast_campaigns')
+      const { error: resetProcessingError } = await schema
+        .from('broadcast_recipients')
         .update({
-          status: 'running',
-          started_at: existingCampaign.started_at || nowIso(),
-          finished_at: null,
+          status: 'pending',
+          processing_started_at: null,
+          next_attempt_at: nowIso(),
+          last_error: null,
           updated_at: nowIso(),
         })
-        .eq('id', campaignId)
-        .select('*')
-        .single();
+        .eq('campaign_id', campaignId)
+        .eq('status', 'processing');
 
-      if (updateError || !updatedCampaign?.id) {
-        throw { status: 500, code: 'campaign_status_update_failed', error: updateError };
+      if (resetProcessingError) {
+        throw { status: 500, code: 'campaign_recipients_reset_failed', error: resetProcessingError };
       }
+
+      const updatedCampaign = await activateInternalCrmCampaign(
+        schema,
+        campaignId,
+        existingCampaign.started_at ? String(existingCampaign.started_at) : null,
+      );
       effectiveCampaignId = String(updatedCampaign.id);
     }
   }
 
   const workerResult = await invokeInternalEdgeFunction('internal-crm-broadcast-worker', {
     campaign_id: effectiveCampaignId,
-    batch_size: batchSize,
+    batch_size: campaignId ? 1 : batchSize,
   });
 
   await writeAuditLog(serviceClient, identity, 'run_campaign_batch', req, {
@@ -5496,8 +5562,15 @@ async function intakeLandingLead(
     asString(payload.link_reuniao) ||
     asString(payload.meeting_link) ||
     asString(funnel?.meeting_link);
+  const funnelMetadata = asRecord(funnel?.metadata);
+  const inferredOfferCode =
+    asString(payload.primary_offer_code) ||
+    asString(existingDeal?.primary_offer_code) ||
+    asString(funnelMetadata.default_offer_code) ||
+    asString(funnelMetadata.entry_intent_code);
   const dealCommercialContext = mergeRecord(existingDeal?.commercial_context, {
     source: 'landing_page',
+    funnel_slug: funnelSlug || asString(funnel?.funnel_slug),
     ...(resolvedSchedulingLink ? { scheduling_link: resolvedSchedulingLink } : {}),
     ...(resolvedMeetingLink ? { meeting_link: resolvedMeetingLink } : {}),
     ...(asString(trackingSnapshot.landing_page_url) ? { landing_page_url: asString(trackingSnapshot.landing_page_url) } : {}),
@@ -5515,7 +5588,7 @@ async function intakeLandingLead(
     status: resolveDealStatusForStage(dealStageCode, asString(existingDeal?.status) || 'open'),
     probability: resolveStageProbability(dealStageCode, asNumber(existingDeal?.probability, 0)),
     expected_close_at: appointmentStartAt,
-    primary_offer_code: asString(payload.primary_offer_code) || asString(existingDeal?.primary_offer_code) || 'landing_page',
+    primary_offer_code: inferredOfferCode || null,
     commercial_context: dealCommercialContext,
     updated_at: nowIso(),
   }).select('*').single();
@@ -5833,9 +5906,17 @@ async function createDealCheckoutLink(
     : (await schema.from('clients').select('*').eq('id', effectiveDeal.client_id).maybeSingle()).data;
   if (!effectiveClient?.id) throw { status: 404, code: 'not_found' };
 
-  const lineItems = (items || []).filter((item) => ['stripe', 'hybrid'].includes(String(item.payment_method || '')));
+  const productCodes = Array.from(
+    new Set((items || []).map((item) => asString(item.product_code)).filter(Boolean)),
+  );
+  const { data: productRows } = productCodes.length > 0
+    ? await schema.from('products').select('product_code, name').in('product_code', productCodes)
+    : { data: [] };
+  const productNameMap = new Map((productRows || []).map((product) => [asString(product.product_code), asString(product.name)]));
+
+  const lineItems = (items || []).filter((item) => Math.max(0, asNumber(item.unit_price_cents, 0)) > 0);
   if (lineItems.length === 0) {
-    throw { status: 400, code: 'invalid_payload', message: 'Deal sem itens Stripe para gerar checkout.' };
+    throw { status: 400, code: 'invalid_payload', message: 'Deal sem itens validos para gerar checkout.' };
   }
 
   const customer = await stripe.customers.create({
@@ -5855,13 +5936,18 @@ async function createDealCheckoutLink(
       return { price: stripePriceId, quantity: Math.max(1, asNumber(item.quantity, 1)) };
     }
 
+    const isCustomDealProduct = ['custom_deal_one_time', 'custom_deal_recurring'].includes(asString(item.product_code));
     return {
       price_data: {
         currency: 'brl',
         unit_amount: asNumber(item.unit_price_cents, 0),
         ...(String(item.billing_type || '') === 'recurring' ? { recurring: { interval: 'month' } } : {}),
         product_data: {
-          name: String(item.product_code || 'Produto CRM'),
+          name:
+            (isCustomDealProduct ? asString(effectiveDeal.title) : '') ||
+            productNameMap.get(asString(item.product_code)) ||
+            humanizeToken(item.product_code) ||
+            'Produto CRM',
         },
       },
       quantity: Math.max(1, asNumber(item.quantity, 1)),
@@ -7401,9 +7487,9 @@ async function executeBroadcastAssistantJob(
       owner_user_id: asString(job.client_id) ? null : asString(payload.owner_user_id),
       target_filters: targetFilters,
       messages,
-      status: 'running',
-      started_at: nowIso(),
-      updated_at: nowIso(),
+      status: 'draft',
+      interval_seconds: clampBroadcastIntervalSeconds(payload.interval_seconds, 60),
+      next_dispatch_at: nowIso(),
     })
     .select('*')
     .single();
@@ -7436,9 +7522,11 @@ async function executeBroadcastAssistantJob(
     };
   }
 
+  await activateInternalCrmCampaign(schema, String(campaign.id), nowIso());
+
   const workerResult = await invokeInternalEdgeFunction('internal-crm-broadcast-worker', {
     campaign_id: campaign.id,
-    batch_size: clamp(asNumber(payload.batch_size, 20), 1, 50),
+    batch_size: 1,
   });
 
   return {

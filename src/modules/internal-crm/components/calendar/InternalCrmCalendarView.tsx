@@ -1,4 +1,5 @@
 import { Component, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Archive,
   CalendarDays,
@@ -37,7 +38,21 @@ import { InternalCrmCalendarFilters } from '@/modules/internal-crm/components/ca
 import { InternalCrmEventFeedbackModal } from '@/modules/internal-crm/components/calendar/InternalCrmEventFeedbackModal';
 import { InternalCrmEventArchiveModal } from '@/modules/internal-crm/components/calendar/InternalCrmEventArchiveModal';
 import { useInternalCrmCalendar } from '@/modules/internal-crm/hooks/useInternalCrmCalendar';
-import type { InternalCrmAppointment } from '@/modules/internal-crm/types';
+import type {
+  InternalCrmAppointment,
+  InternalCrmClientSummary,
+  InternalCrmDealSummary,
+} from '@/modules/internal-crm/types';
+import {
+  appendAppointmentIfMissing,
+  appendDealSummaryIfMissing,
+  buildAutoDealTitle,
+  deriveDealStageFromAppointmentStatus,
+  getOpenDealsForClient,
+  patchAppointmentInList,
+  patchClientStageInList,
+  patchDealSummaryInList,
+} from '@/modules/internal-crm/lib/commercialFlow';
 import { cn } from '@/lib/utils';
 
 /* ── Constants ────────────────────────────────────── */
@@ -135,6 +150,28 @@ function getDisplayStatus(appointment: InternalCrmAppointment): { label: string;
   };
 }
 
+function buildCalendarDealPayload(input: {
+  clientId: string;
+  companyName?: string | null;
+  contactName?: string | null;
+  ownerUserId?: string | null;
+  stageCode?: string | null;
+}) {
+  return {
+    action: 'upsert_deal' as const,
+    client_id: input.clientId,
+    title: buildAutoDealTitle({
+      companyName: input.companyName,
+      contactName: input.contactName,
+    }),
+    owner_user_id: input.ownerUserId || null,
+    stage_code: input.stageCode || 'novo_lead',
+    probability: 5,
+    notes: null,
+    items: [],
+  };
+}
+
 /* ── ErrorBoundary ────────────────────────────────── */
 
 class CalendarErrorBoundary extends Component<{ children: ReactNode; onError?: () => void }, { hasError: boolean }> {
@@ -158,6 +195,7 @@ class CalendarErrorBoundary extends Component<{ children: ReactNode; onError?: (
 export function InternalCrmCalendarView() {
   const { toast } = useToast();
   const isMobile = useMobileViewport();
+  const queryClient = useQueryClient();
 
   const [monthAnchor, setMonthAnchor] = useState(() => {
     const now = new Date();
@@ -204,6 +242,7 @@ export function InternalCrmCalendarView() {
 
   const appointments = calendarModule.appointmentsQuery.data?.appointments || [];
   const clients = calendarModule.clientsQuery.data?.clients || [];
+  const openDeals = calendarModule.dealsQuery.data?.deals || [];
   const googleCalendarStatus = calendarModule.googleCalendarQuery.data;
   const isGoogleConnected = Boolean(googleCalendarStatus?.connected);
   const googleEmail = googleCalendarStatus?.connection?.account_email || '';
@@ -268,6 +307,95 @@ export function InternalCrmCalendarView() {
     setFeedbackModalOpen(true);
   }
 
+  function patchCalendarCachesFromAppointment(appointment: InternalCrmAppointment) {
+    const nextStage = deriveDealStageFromAppointmentStatus(appointment.status);
+
+    queryClient.setQueriesData(
+      { queryKey: ['internal-crm', 'appointments'], exact: false },
+      (previous: { ok: true; appointments: InternalCrmAppointment[] } | undefined) => {
+        if (!previous?.appointments) return previous;
+        const nextAppointments = patchAppointmentInList(previous.appointments, appointment) || appendAppointmentIfMissing(previous.appointments, appointment) || previous.appointments;
+        return {
+          ...previous,
+          appointments: nextAppointments,
+        };
+      },
+    );
+
+    if (!appointment.deal_id || !nextStage) return;
+
+    queryClient.setQueriesData(
+      { queryKey: ['internal-crm', 'deals'], exact: false },
+      (previous: { ok: true; deals: InternalCrmDealSummary[] } | undefined) => {
+        if (!previous?.deals) return previous;
+        return {
+          ...previous,
+          deals: previous.deals.map((deal) =>
+            deal.id === appointment.deal_id
+              ? {
+                  ...deal,
+                  stage_code: nextStage,
+                  updated_at: new Date().toISOString(),
+                }
+              : deal,
+          ),
+        };
+      },
+    );
+
+    queryClient.setQueriesData(
+      { queryKey: ['internal-crm', 'clients'], exact: false },
+      (previous: { ok: true; clients: InternalCrmClientSummary[] } | undefined) => {
+        if (!previous?.clients) return previous;
+        return {
+          ...previous,
+          clients: patchClientStageInList(previous.clients, appointment.client_id, nextStage) || previous.clients,
+        };
+      },
+    );
+  }
+
+  async function ensureOpenDealForClient(input: {
+    clientId: string;
+    preferredDealId?: string | null;
+    preferredTitle?: string | null;
+    stageCode?: string | null;
+  }) {
+    const selectedClient = clients.find((client) => client.id === input.clientId);
+    const clientDeals = getOpenDealsForClient(openDeals, input.clientId);
+    if (input.preferredDealId) return input.preferredDealId;
+    if (clientDeals.length === 1) return clientDeals[0].id;
+    if (clientDeals.length > 1) return null;
+
+    const created = await calendarModule.upsertDealMutation.mutateAsync(
+      {
+        ...buildCalendarDealPayload({
+          clientId: input.clientId,
+          companyName: selectedClient?.company_name,
+          contactName: selectedClient?.primary_contact_name,
+          ownerUserId: selectedClient?.owner_user_id,
+          stageCode: input.stageCode,
+        }),
+        ...(input.preferredTitle ? { title: input.preferredTitle } : {}),
+      },
+    ) as { deal?: InternalCrmDealSummary };
+
+    const createdDeal = created.deal;
+    if (createdDeal?.id) {
+      queryClient.setQueriesData(
+        { queryKey: ['internal-crm', 'deals'], exact: false },
+        (previous: { ok: true; deals: InternalCrmDealSummary[] } | undefined) => {
+          if (!previous?.deals) return previous;
+          return {
+            ...previous,
+            deals: appendDealSummaryIfMissing(previous.deals, createdDeal) || previous.deals,
+          };
+        },
+      );
+    }
+    return createdDeal?.id || null;
+  }
+
   function handleDayClick(day: Date | null) {
     if (!day) return;
     if (isMobile) {
@@ -281,10 +409,39 @@ export function InternalCrmCalendarView() {
 
   async function handleSaveAppointment(payload: Record<string, unknown>) {
     try {
+      const clientId = String(payload.client_id || '');
+      if (!clientId) {
+        toast({ title: 'Selecione um cliente', variant: 'destructive' });
+        return;
+      }
+
+      const appointmentStage = deriveDealStageFromAppointmentStatus(String(payload.status || 'scheduled'));
+      const resolvedDealId = await ensureOpenDealForClient({
+        clientId,
+        preferredDealId: String(payload.deal_id || ''),
+        preferredTitle: String(payload.new_deal_title || ''),
+        stageCode: appointmentStage,
+      });
+
+      if (!resolvedDealId) {
+        toast({
+          title: 'Selecione um deal',
+          description: 'Este cliente possui mais de um deal aberto. Escolha qual deve ser vinculado.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       const result = (await calendarModule.upsertAppointmentMutation.mutateAsync({
         action: 'upsert_appointment',
         ...payload,
+        deal_id: resolvedDealId,
       })) as { ok: true; appointment: InternalCrmAppointment };
+
+      patchCalendarCachesFromAppointment({
+        ...result.appointment,
+        deal_id: resolvedDealId,
+      });
 
       let googleWarn = false;
       if (isGoogleConnected && result.appointment?.id) {
@@ -303,7 +460,7 @@ export function InternalCrmCalendarView() {
       setAppointmentModalOpen(false);
       setEditingAppointment(null);
       setDefaultStartAt(null);
-    } catch {
+    } catch (error) {
       toast({ title: 'Falha ao salvar', description: 'Não foi possível salvar o compromisso.', variant: 'destructive' });
     }
   }
@@ -325,10 +482,11 @@ export function InternalCrmCalendarView() {
   async function handleSaveFeedback(payload: { status: InternalCrmAppointment['status']; notes: string }) {
     if (!feedbackAppointment) return;
     try {
-      await calendarModule.upsertAppointmentMutation.mutateAsync({
+      const result = await calendarModule.upsertAppointmentMutation.mutateAsync({
         action: 'upsert_appointment',
         appointment_id: feedbackAppointment.id,
         client_id: feedbackAppointment.client_id,
+        deal_id: feedbackAppointment.deal_id,
         title: feedbackAppointment.title,
         appointment_type: feedbackAppointment.appointment_type,
         status: payload.status,
@@ -336,7 +494,8 @@ export function InternalCrmCalendarView() {
         end_at: feedbackAppointment.end_at,
         location: feedbackAppointment.location,
         notes: payload.notes || feedbackAppointment.notes,
-      });
+      }) as { ok: true; appointment: InternalCrmAppointment };
+      patchCalendarCachesFromAppointment(result.appointment);
       toast({ title: 'Feedback registrado' });
       setFeedbackModalOpen(false);
       setFeedbackAppointment(null);
@@ -699,6 +858,7 @@ export function InternalCrmCalendarView() {
           }}
           appointment={editingAppointment}
           clients={clients}
+          deals={openDeals}
           defaultStartAt={defaultStartAt}
           isSubmitting={calendarModule.upsertAppointmentMutation.isPending}
           onSave={handleSaveAppointment}
