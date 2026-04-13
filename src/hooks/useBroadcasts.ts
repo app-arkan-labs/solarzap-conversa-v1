@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { normalizeImportedClientType } from '@/utils/importClientType';
+import { clampBroadcastTimerSeconds } from '@/utils/broadcastTimer';
 import type { ClientType } from '@/types/solarzap';
 import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import {
@@ -60,12 +61,6 @@ const normalizePhone = (value: string): string => {
   return digits;
 };
 
-const clampIntervalSeconds = (value: number | undefined): number => {
-  const candidate = Number(value ?? 15);
-  if (!Number.isFinite(candidate)) return 15;
-  return Math.max(10, Math.round(candidate));
-};
-
 const sanitizeMessages = (messages: unknown): string[] => {
   if (!Array.isArray(messages)) return [];
   return messages
@@ -101,7 +96,7 @@ const toBroadcastCampaign = (row: CampaignRow): BroadcastCampaign => ({
   name: String(row.name || ''),
   messages: sanitizeMessages(row.messages),
   instance_name: String(row.instance_name || ''),
-  interval_seconds: Number(row.interval_seconds || 15),
+  interval_seconds: clampBroadcastTimerSeconds(Number(row.interval_seconds || 60)),
   status: String(row.status || 'draft') as BroadcastCampaignStatus,
   total_recipients: Number(row.total_recipients || 0),
   sent_count: Number(row.sent_count || 0),
@@ -375,7 +370,7 @@ export function useBroadcasts() {
       name: String(input.name || '').trim(),
       messages,
       instance_name: String(input.instance_name || '').trim(),
-      interval_seconds: clampIntervalSeconds(input.interval_seconds),
+      interval_seconds: clampBroadcastTimerSeconds(input.interval_seconds ?? undefined),
       status: 'draft' as BroadcastCampaignStatus,
       source_channel: input.source_channel || 'cold_list',
       pipeline_stage: input.pipeline_stage || 'novo_lead',
@@ -422,6 +417,7 @@ export function useBroadcasts() {
     if (status === 'running') {
       payload.started_at = (extraPayload.started_at as string | undefined) || new Date().toISOString();
       payload.completed_at = null;
+      payload.next_dispatch_at = new Date().toISOString();
     }
 
     if (status === 'completed' || status === 'canceled') {
@@ -436,6 +432,16 @@ export function useBroadcasts() {
 
     if (updateError) throw updateError;
   }, [orgId]);
+
+  const invokeWorker = useCallback(async (campaignId: string) => {
+    try {
+      await supabase.functions.invoke('broadcast-worker', {
+        body: { campaign_id: campaignId, batch_size: 1 },
+      });
+    } catch {
+      // Cron handles the steady-state dispatch; a missed kick-off should not block the UI.
+    }
+  }, []);
 
   const startCampaign = useCallback(async (campaignId: string) => {
     if (!orgId) return;
@@ -486,7 +492,8 @@ export function useBroadcasts() {
 
     await setCampaignStatus(campaignId, 'running');
     await fetchCampaigns();
-  }, [fetchCampaignById, fetchCampaigns, getCampaignRecipientCounts, orgId, refreshCampaignProgress, setCampaignStatus]);
+    void invokeWorker(campaignId);
+  }, [fetchCampaignById, fetchCampaigns, getCampaignRecipientCounts, invokeWorker, orgId, refreshCampaignProgress, setCampaignStatus]);
 
   const pauseCampaign = useCallback(async (campaignId: string) => {
     await setCampaignStatus(campaignId, 'paused');

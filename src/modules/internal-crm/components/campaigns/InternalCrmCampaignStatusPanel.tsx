@@ -1,7 +1,3 @@
-/**
- * InternalCrmCampaignStatusPanel – 100% copy of BroadcastStatusPanel adapted for
- * admin panel using AdminBroadcastCampaign / AdminBroadcastRecipient types.
- */
 import { useMemo, useState } from 'react';
 import { CheckCircle2, Clock3, Loader2, Pause, Play, Square, XCircle } from 'lucide-react';
 import {
@@ -16,41 +12,43 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { AdminBroadcastCampaign, AdminBroadcastRecipient } from '@/hooks/useAdminBroadcasts';
-import { formatBroadcastInterval } from '@/utils/broadcastTimer';
+import type { InternalCrmCampaign, InternalCrmCampaignRecipient } from '@/modules/internal-crm/types';
+import { BROADCAST_MIN_TIMER_SECONDS, formatBroadcastInterval } from '@/utils/broadcastTimer';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  campaign: AdminBroadcastCampaign | null;
-  recipients: AdminBroadcastRecipient[];
+  campaign: InternalCrmCampaign | null;
+  recipients: InternalCrmCampaignRecipient[];
   onPause: (campaignId: string) => Promise<void>;
   onResume: (campaignId: string) => Promise<void>;
   onCancel: (campaignId: string) => Promise<void>;
 }
 
-const statusLabels: Record<AdminBroadcastRecipient['status'], string> = {
+const statusLabels: Record<InternalCrmCampaignRecipient['status'], string> = {
   pending: 'Pendente',
-  sending: 'Enviando',
+  processing: 'Processando',
   sent: 'Enviado',
   failed: 'Falhou',
   skipped: 'Ignorado',
+  canceled: 'Cancelado',
 };
 
-const statusBadgeClass: Record<AdminBroadcastRecipient['status'], string> = {
+const statusBadgeClass: Record<InternalCrmCampaignRecipient['status'], string> = {
   pending: 'bg-muted text-muted-foreground',
-  sending: 'bg-blue-500/15 text-blue-700 border-blue-500/30',
+  processing: 'bg-blue-500/15 text-blue-700 border-blue-500/30',
   sent: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30',
   failed: 'bg-destructive/15 text-destructive border-destructive/30',
   skipped: 'bg-amber-500/15 text-amber-700 border-amber-500/30',
+  canceled: 'bg-zinc-300 text-zinc-800 border-zinc-400',
 };
 
-const RecipientStatusIcon = ({ status }: { status: AdminBroadcastRecipient['status'] }) => {
+function RecipientStatusIcon({ status }: { status: InternalCrmCampaignRecipient['status'] }) {
   if (status === 'sent') return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
   if (status === 'failed') return <XCircle className="w-4 h-4 text-destructive" />;
-  if (status === 'sending') return <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />;
+  if (status === 'processing') return <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />;
   return <Clock3 className="w-4 h-4 text-muted-foreground" />;
-};
+}
 
 export function InternalCrmCampaignStatusPanel({
   isOpen,
@@ -65,33 +63,48 @@ export function InternalCrmCampaignStatusPanel({
 
   const counts = useMemo(() => {
     return recipients.reduce(
-      (acc, r) => { acc[r.status] += 1; return acc; },
-      { pending: 0, sending: 0, sent: 0, failed: 0, skipped: 0 },
+      (acc, recipient) => {
+        acc[recipient.status] += 1;
+        return acc;
+      },
+      { pending: 0, processing: 0, sent: 0, failed: 0, skipped: 0, canceled: 0 },
     );
   }, [recipients]);
 
-  const total = campaign?.total_recipients || recipients.length;
+  const total = campaign?.recipients_total || recipients.length;
   const done = (campaign?.sent_count || 0) + (campaign?.failed_count || 0);
   const progressValue = total > 0 ? Math.min(100, (done / total) * 100) : 0;
-  const remainingRecipients = counts.pending + counts.sending;
-  const estimatedSeconds = (campaign?.interval_seconds || 15) * remainingRecipients;
+  const remainingRecipients = counts.pending + counts.processing;
+  const estimatedSeconds = (campaign?.interval_seconds || BROADCAST_MIN_TIMER_SECONDS) * remainingRecipients;
 
   const handlePause = async () => {
     if (!campaign) return;
     setActionLoading('pause');
-    try { await onPause(campaign.id); } finally { setActionLoading(null); }
+    try {
+      await onPause(campaign.id);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleResume = async () => {
     if (!campaign) return;
     setActionLoading('resume');
-    try { await onResume(campaign.id); } finally { setActionLoading(null); }
+    try {
+      await onResume(campaign.id);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleCancel = async () => {
     if (!campaign) return;
     setActionLoading('cancel');
-    try { await onCancel(campaign.id); } finally { setActionLoading(null); }
+    try {
+      await onCancel(campaign.id);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   if (!campaign) return null;
@@ -101,7 +114,7 @@ export function InternalCrmCampaignStatusPanel({
       <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{campaign.name}</DialogTitle>
-          <DialogDescription>Acompanhamento em tempo real dos destinatários da campanha.</DialogDescription>
+          <DialogDescription>Acompanhamento em tempo real dos destinatarios da campanha.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -132,11 +145,13 @@ export function InternalCrmCampaignStatusPanel({
             <Progress value={progressValue} />
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 text-xs flex-wrap">
             <Badge className={statusBadgeClass.sent}>Enviado: {counts.sent}</Badge>
             <Badge className={statusBadgeClass.failed}>Falhou: {counts.failed}</Badge>
             <Badge className={statusBadgeClass.pending}>Pendente: {counts.pending}</Badge>
-            <Badge className={statusBadgeClass.sending}>Enviando: {counts.sending}</Badge>
+            <Badge className={statusBadgeClass.processing}>Processando: {counts.processing}</Badge>
+            <Badge className={statusBadgeClass.skipped}>Ignorado: {counts.skipped}</Badge>
+            <Badge className={statusBadgeClass.canceled}>Cancelado: {counts.canceled}</Badge>
           </div>
         </div>
 
@@ -145,10 +160,10 @@ export function InternalCrmCampaignStatusPanel({
             {recipients.map((recipient) => (
               <div key={recipient.id} className="rounded-md border p-2 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{recipient.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{recipient.phone}</p>
-                  {recipient.error_message && (
-                    <p className="text-xs text-destructive truncate">{recipient.error_message}</p>
+                  <p className="text-sm font-medium truncate">{recipient.recipient_name || 'Sem nome'}</p>
+                  <p className="text-xs text-muted-foreground truncate">{recipient.recipient_phone}</p>
+                  {recipient.last_error && (
+                    <p className="text-xs text-destructive truncate">{recipient.last_error}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -158,7 +173,7 @@ export function InternalCrmCampaignStatusPanel({
               </div>
             ))}
             {recipients.length === 0 && (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum destinatário encontrado para esta campanha.</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum destinatario encontrado para esta campanha.</p>
             )}
           </div>
         </ScrollArea>

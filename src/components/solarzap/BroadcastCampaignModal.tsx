@@ -60,7 +60,7 @@ const STEP_LABELS: Record<Step, string> = {
 
 const DEFAULT_MESSAGES = [''];
 const PREVIEW_CONTACTS_LIMIT = 40;
-const TIMER_PRESETS_SECONDS = [15, 60, 300, 3_600, 86_400];
+const TIMER_PRESETS_SECONDS = [60, 300, 900, 3_600, 86_400];
 
 export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }: BroadcastCampaignModalProps) {
   const { user, orgId } = useAuth();
@@ -80,7 +80,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
   const [pipelineStage, setPipelineStage] = useState<PipelineStage>('novo_lead');
   const [leadClientType, setLeadClientType] = useState<ClientType>('residencial');
   const [messages, setMessages] = useState<string[]>(DEFAULT_MESSAGES);
-  const [timerSeconds, setTimerSeconds] = useState(15);
+  const [timerSeconds, setTimerSeconds] = useState(BROADCAST_MIN_TIMER_SECONDS);
   const [contacts, setContacts] = useState<ImportedContactRow[]>([]);
   const [uploadedFileName, setUploadedFileName] = useState('');
   const [invalidRows, setInvalidRows] = useState(0);
@@ -189,7 +189,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
     setPipelineStage('novo_lead');
     setLeadClientType('residencial');
     setMessages(DEFAULT_MESSAGES);
-    setTimerSeconds(15);
+    setTimerSeconds(BROADCAST_MIN_TIMER_SECONDS);
     setContacts([]);
     setUploadedFileName('');
     setInvalidRows(0);
@@ -246,7 +246,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
 
     if (step === 4) {
       if (clampBroadcastTimerSeconds(timerSeconds) < BROADCAST_MIN_TIMER_SECONDS) {
-        toast({ title: 'O timer minimo e 10 segundos', variant: 'destructive' });
+        toast({ title: 'O timer minimo e 60 segundos', variant: 'destructive' });
         return false;
       }
     }
@@ -695,14 +695,14 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
           {step === 4 && (
             <div className="space-y-6">
               <div className="space-y-3">
-                <Label>Intervalo entre mensagens (minimo 10s, sem limite maximo)</Label>
+                <Label>Intervalo entre mensagens (minimo 60s, sem limite maximo)</Label>
                 <div className="flex items-center gap-3">
                   <Slider
                     min={BROADCAST_MIN_TIMER_SECONDS}
                     max={BROADCAST_SLIDER_MAX_TIMER_SECONDS}
                     step={10}
                     value={[Math.min(timerSeconds, BROADCAST_SLIDER_MAX_TIMER_SECONDS)]}
-                    onValueChange={(values) => setTimerSeconds(clampBroadcastTimerSeconds(values[0] || 15))}
+                    onValueChange={(values) => setTimerSeconds(clampBroadcastTimerSeconds(values[0] || BROADCAST_MIN_TIMER_SECONDS))}
                   />
                   <Input
                     type="number"
@@ -737,9 +737,9 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                   Randomizacao anti-bloqueio
                 </p>
                 <p className="text-muted-foreground">
-                  O sistema aplica variacao automatica de +/-30% no intervalo por destinatario para reduzir padrao repetitivo.
+                  O sistema aplica variacao automatica de ate +/-30% no intervalo por destinatario, sempre respeitando o minimo operacional de 60 segundos.
                 </p>
-                <p className="text-xs text-amber-600">Timer minimo de seguranca: 10s.</p>
+                <p className="text-xs text-amber-600">Timer minimo de seguranca: 60s.</p>
               </div>
             </div>
           )}
@@ -767,7 +767,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Intervalo base</p>
                   <p className="font-semibold">
-                    {formatBroadcastInterval(normalizedTimerSeconds)} ({normalizedTimerSeconds}s, +/-30%)
+                    {formatBroadcastInterval(normalizedTimerSeconds)} ({normalizedTimerSeconds}s, variacao de ate +/-30%)
                   </p>
                 </div>
                 <div className="rounded-lg border p-3">

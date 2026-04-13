@@ -9,6 +9,7 @@
  * Uses evolution-proxy edge function for message delivery.
  */
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { selectRotatingBroadcastMessage } from '../_shared/broadcastDispatch.ts';
 import { resolveRequestCors } from '../_shared/cors.ts';
 
 type ClaimedRecipientRow = {
@@ -18,6 +19,7 @@ type ClaimedRecipientRow = {
   instance_name: string;
   messages: unknown;
   interval_seconds: number | null;
+  dispatch_order: number;
   recipient_name: string;
   recipient_phone: string;
   recipient_email: string | null;
@@ -65,28 +67,6 @@ function normalizePhone(value: string): string {
     return `55${digits}`;
   }
   return digits;
-}
-
-function sanitizeMessages(messages: unknown): string[] {
-  if (!Array.isArray(messages)) return [];
-  return messages
-    .map((entry) => String(entry ?? '').trim())
-    .filter((entry) => entry.length > 0);
-}
-
-function clampIntervalSeconds(raw: unknown): number {
-  const value = Number(raw);
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(3600, Math.round(value)));
-}
-
-function pickRandomMessage(messages: unknown): string {
-  const pool = sanitizeMessages(messages);
-  if (pool.length === 0) {
-    throw new Error('campaign_messages_empty');
-  }
-  const idx = Math.floor(Math.random() * pool.length);
-  return pool[idx];
 }
 
 /* ── Auth resolution ────────────────────────────────────────── */
@@ -247,27 +227,6 @@ async function markRecipientFailure(
   if (error) throw error;
 }
 
-async function markRecipientDeferredByInterval(
-  serviceClient: ReturnType<typeof createClient>,
-  row: ClaimedRecipientRow,
-  nextAttemptAt: string,
-) {
-  const restoredAttemptCount = Math.max(0, Number(row.attempt_count || 0) - 1);
-  const { error } = await serviceClient
-    .from('admin_broadcast_recipients')
-    .update({
-      status: 'pending',
-      error_message: null,
-      processing_started_at: null,
-      next_attempt_at: nextAttemptAt,
-      attempt_count: restoredAttemptCount,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', row.recipient_id);
-
-  if (error) throw error;
-}
-
 /* ── Process a single claimed recipient ─────────────────────── */
 
 async function processClaimedRecipient(
@@ -281,7 +240,7 @@ async function processClaimedRecipient(
     const phone = normalizePhone(row.recipient_phone);
     if (!phone) throw new Error('invalid_recipient_phone');
 
-    const message = pickRandomMessage(row.messages);
+    const message = selectRotatingBroadcastMessage(row.messages, row.dispatch_order);
     const personalised = message.replace(/\{\{name\}\}/g, row.recipient_name || 'contato');
 
     await sendWhatsAppViaProxy(
@@ -388,29 +347,13 @@ Deno.serve(async (req) => {
       processed: 0,
       sent: 0,
       failed: 0,
-      deferred: 0,
       errors: [] as Array<{ recipient_id: string; campaign_id: string; error: string }>,
     };
 
     const affectedCampaignIds = new Set<string>();
-    const nextAvailableByCampaign = new Map<string, number>();
 
     for (const job of jobs) {
       affectedCampaignIds.add(job.campaign_id);
-      const intervalSeconds = clampIntervalSeconds(job.interval_seconds);
-      const nowMs = Date.now();
-      const nextAvailableAtMs = nextAvailableByCampaign.get(job.campaign_id) ?? nowMs;
-
-      // Respect interval between messages
-      if (intervalSeconds > 0 && nowMs < nextAvailableAtMs) {
-        await markRecipientDeferredByInterval(
-          serviceClient,
-          job,
-          new Date(nextAvailableAtMs).toISOString(),
-        );
-        summary.deferred += 1;
-        continue;
-      }
 
       const outcome = await processClaimedRecipient(
         serviceClient,
@@ -419,11 +362,6 @@ Deno.serve(async (req) => {
         internalApiKey,
         job,
       );
-
-      if (intervalSeconds > 0) {
-        const anchorMs = Math.max(nowMs, nextAvailableAtMs);
-        nextAvailableByCampaign.set(job.campaign_id, anchorMs + (intervalSeconds * 1000));
-      }
 
       summary.processed += 1;
       if (outcome.success) {

@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { clampBroadcastTimerSeconds } from '@/utils/broadcastTimer';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -77,12 +78,6 @@ const normalizePhone = (value: string): string => {
   return digits;
 };
 
-const clampIntervalSeconds = (value: number | undefined): number => {
-  const candidate = Number(value ?? 15);
-  if (!Number.isFinite(candidate)) return 15;
-  return Math.max(10, Math.round(candidate));
-};
-
 const sanitizeMessages = (messages: unknown): string[] => {
   if (!Array.isArray(messages)) return [];
   return messages.map((e) => String(e ?? '').trim()).filter((e) => e.length > 0);
@@ -94,7 +89,7 @@ const toAdminCampaign = (row: CampaignRow): AdminBroadcastCampaign => ({
   name: String(row.name || ''),
   messages: sanitizeMessages(row.messages),
   instance_name: String(row.instance_name || ''),
-  interval_seconds: Number(row.interval_seconds || 15),
+  interval_seconds: clampBroadcastTimerSeconds(Number(row.interval_seconds || 60)),
   status: String(row.status || 'draft') as AdminBroadcastCampaignStatus,
   total_recipients: Number(row.total_recipients || 0),
   sent_count: Number(row.sent_count || 0),
@@ -281,7 +276,7 @@ export function useAdminBroadcasts() {
       name: String(input.name || '').trim(),
       messages,
       instance_name: String(input.instance_name || '').trim(),
-      interval_seconds: clampIntervalSeconds(input.interval_seconds),
+      interval_seconds: clampBroadcastTimerSeconds(input.interval_seconds ?? undefined),
       status: 'draft' as AdminBroadcastCampaignStatus,
     };
 
@@ -318,6 +313,7 @@ export function useAdminBroadcasts() {
     if (status === 'running') {
       payload.started_at = (extra.started_at as string | undefined) || new Date().toISOString();
       payload.completed_at = null;
+      payload.next_dispatch_at = new Date().toISOString();
     }
     if (status === 'completed' || status === 'canceled') {
       payload.completed_at = new Date().toISOString();
@@ -332,7 +328,7 @@ export function useAdminBroadcasts() {
   const invokeWorker = useCallback(async (campaignId: string) => {
     try {
       await supabase.functions.invoke('admin-broadcast-worker', {
-        body: { campaign_id: campaignId, batch_size: 20 },
+        body: { campaign_id: campaignId, batch_size: 1 },
       });
     } catch {
       // worker might not be deployed yet – continue silently
@@ -442,21 +438,6 @@ export function useAdminBroadcasts() {
     const interval = setInterval(() => { void fetchCampaigns(); }, POLLING_MS);
     return () => { clearInterval(interval); };
   }, [fetchCampaigns, user]);
-
-  // Periodically invoke worker for running campaigns
-  useEffect(() => {
-    const hasRunning = campaigns.some((c) => c.status === 'running');
-    if (!hasRunning) return;
-
-    const interval = setInterval(() => {
-      for (const c of campaigns) {
-        if (c.status === 'running') {
-          void invokeWorker(c.id);
-        }
-      }
-    }, 10_000);
-    return () => clearInterval(interval);
-  }, [campaigns, invokeWorker]);
 
   return {
     campaigns,

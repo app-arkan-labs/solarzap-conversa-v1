@@ -10,8 +10,8 @@ import { cn } from '@/lib/utils';
 import { useInternalCrmClients } from '@/modules/internal-crm/hooks/useInternalCrmApi';
 
 type Props = {
-  selected: string[];
-  onSelectionChange: (clients: Array<{ id: string; name: string; phone: string }>) => void;
+  selected: Array<{ id: string; name: string; phone: string; email?: string }>;
+  onSelectionChange: (clients: Array<{ id: string; name: string; phone: string; email?: string }>) => void;
 };
 
 const STAGE_LABELS: Record<string, string> = {
@@ -35,47 +35,52 @@ export function CrmClientSelector({ selected, onSelectionChange }: Props) {
 
   const clients = data?.clients || [];
 
-  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const selectedSet = useMemo(() => new Set(selected.map((entry) => entry.id)), [selected]);
+  function toSelectableClient(client: (typeof clients)[number]) {
+    return {
+      id: client.id,
+      name: client.company_name || client.primary_contact_name || '',
+      phone: client.primary_phone || '',
+      email: client.primary_email || '',
+    };
+  }
+  const visibleSelectableClients = useMemo(
+    () => clients.filter((client) => Boolean(client.primary_phone)).map(toSelectableClient),
+    [clients],
+  );
+  const visibleSelectableIds = useMemo(
+    () => new Set(visibleSelectableClients.map((client) => client.id)),
+    [visibleSelectableClients],
+  );
+  const selectedVisibleCount = useMemo(
+    () => visibleSelectableClients.filter((client) => selectedSet.has(client.id)).length,
+    [selectedSet, visibleSelectableClients],
+  );
+  const allVisibleSelected = visibleSelectableClients.length > 0 && selectedVisibleCount === visibleSelectableClients.length;
 
   function toggleClient(clientId: string) {
     const client = clients.find((c) => c.id === clientId);
     if (!client) return;
 
-    let next: string[];
+    let next: Array<{ id: string; name: string; phone: string; email?: string }>;
     if (selectedSet.has(clientId)) {
-      next = selected.filter((id) => id !== clientId);
+      next = selected.filter((entry) => entry.id !== clientId);
     } else {
-      next = [...selected, clientId];
+      next = [...selected, toSelectableClient(client)];
     }
 
-    const result = next
-      .map((id) => {
-        const c = clients.find((cl) => cl.id === id);
-        if (!c) return null;
-        return {
-          id: c.id,
-          name: c.company_name || c.primary_contact_name || '',
-          phone: c.primary_phone || '',
-        };
-      })
-      .filter(Boolean) as Array<{ id: string; name: string; phone: string }>;
-
-    onSelectionChange(result);
+    onSelectionChange(next);
   }
 
   function toggleAll() {
-    if (selectedSet.size === clients.length && clients.length > 0) {
-      onSelectionChange([]);
+    if (allVisibleSelected) {
+      onSelectionChange(selected.filter((entry) => !visibleSelectableIds.has(entry.id)));
     } else {
-      onSelectionChange(
-        clients
-          .filter((c) => c.primary_phone)
-          .map((c) => ({
-            id: c.id,
-            name: c.company_name || c.primary_contact_name || '',
-            phone: c.primary_phone || '',
-          })),
-      );
+      const nextById = new Map(selected.map((entry) => [entry.id, entry]));
+      for (const client of visibleSelectableClients) {
+        nextById.set(client.id, client);
+      }
+      onSelectionChange(Array.from(nextById.values()));
     }
   }
 
@@ -107,10 +112,10 @@ export function CrmClientSelector({ selected, onSelectionChange }: Props) {
       <div className="flex items-center justify-between">
         <Label className="text-xs text-muted-foreground flex items-center gap-2">
           <Checkbox
-            checked={clients.length > 0 && selectedSet.size === clients.length}
+            checked={allVisibleSelected}
             onCheckedChange={toggleAll}
           />
-          Selecionar todos ({clients.length})
+          Selecionar todos ({visibleSelectableClients.length})
         </Label>
         {selectedSet.size > 0 && (
           <Badge variant="secondary" className="text-xs">
@@ -128,18 +133,29 @@ export function CrmClientSelector({ selected, onSelectionChange }: Props) {
               const isSelected = selectedSet.has(c.id);
               const hasPhone = Boolean(c.primary_phone);
               return (
-                <label
+                <div
                   key={c.id}
                   className={cn(
                     'flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50 transition-colors',
                     isSelected && 'bg-primary/5',
                     !hasPhone && 'opacity-40 pointer-events-none',
                   )}
+                  role="button"
+                  tabIndex={hasPhone ? 0 : -1}
+                  onClick={() => hasPhone && toggleClient(c.id)}
+                  onKeyDown={(event) => {
+                    if (!hasPhone) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      toggleClient(c.id);
+                    }
+                  }}
                 >
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={() => toggleClient(c.id)}
                     disabled={!hasPhone}
+                    onClick={(event) => event.stopPropagation()}
                   />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{c.company_name || c.primary_contact_name || 'Sem nome'}</p>
@@ -151,7 +167,7 @@ export function CrmClientSelector({ selected, onSelectionChange }: Props) {
                     </Badge>
                   )}
                   {isSelected && <Check className="h-4 w-4 text-primary shrink-0" />}
-                </label>
+                </div>
               );
             })
           )}

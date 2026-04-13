@@ -1,9 +1,9 @@
-export const BROADCAST_MIN_TIMER_SECONDS = 10;
+export const BROADCAST_MIN_TIMER_SECONDS = 60;
 export const BROADCAST_SLIDER_MAX_TIMER_SECONDS = 86_400;
 
-export const clampBroadcastTimerSeconds = (value: number, fallback = 15): number => {
+export const clampBroadcastTimerSeconds = (value: number, fallback = BROADCAST_MIN_TIMER_SECONDS): number => {
   const candidate = Number(value);
-  const safeFallback = Number.isFinite(fallback) ? Math.round(fallback) : 15;
+  const safeFallback = Number.isFinite(fallback) ? Math.round(fallback) : BROADCAST_MIN_TIMER_SECONDS;
 
   if (!Number.isFinite(candidate)) {
     return Math.max(BROADCAST_MIN_TIMER_SECONDS, safeFallback);

@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { BroadcastCampaign, BroadcastRecipient } from '@/types/broadcast';
-import { formatBroadcastInterval } from '@/utils/broadcastTimer';
+import { BROADCAST_MIN_TIMER_SECONDS, formatBroadcastInterval } from '@/utils/broadcastTimer';
 
 interface BroadcastStatusPanelProps {
   isOpen: boolean;
@@ -73,7 +73,7 @@ export function BroadcastStatusPanel({
   const done = (campaign?.sent_count || 0) + (campaign?.failed_count || 0);
   const progressValue = total > 0 ? Math.min(100, (done / total) * 100) : 0;
   const remainingRecipients = counts.pending + counts.sending;
-  const estimatedSeconds = (campaign?.interval_seconds || 15) * remainingRecipients;
+  const estimatedSeconds = (campaign?.interval_seconds || BROADCAST_MIN_TIMER_SECONDS) * remainingRecipients;
 
   const handlePause = async () => {
     if (!campaign) return;
