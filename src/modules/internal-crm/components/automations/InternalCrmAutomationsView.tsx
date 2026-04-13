@@ -1109,7 +1109,7 @@ export function InternalCrmAutomationsView() {
                     <Settings2 className="h-4 w-4 text-primary" />
                     Configuracao de envio
                   </CardTitle>
-                  <CardDescription>Defina a instancia padrao, o cooldown e quem recebe alertas internos.</CardDescription>
+                  <CardDescription>Defina a instancia usada nas automacoes para clientes. Os alertas internos saem sempre pela SolarZap.</CardDescription>
                 </div>
                 <Badge
                   className={cn(
@@ -1165,7 +1165,7 @@ export function InternalCrmAutomationsView() {
               ) : null}
 
               <div className="space-y-2">
-                <Label>Instancia WhatsApp padrao</Label>
+                <Label>Instancia das automacoes para clientes</Label>
                 <Select
                   value={settingsDraft.defaultWhatsappInstanceId}
                   onValueChange={(value) => setSettingsDraft((current) => ({ ...current, defaultWhatsappInstanceId: value }))}
@@ -1184,7 +1184,7 @@ export function InternalCrmAutomationsView() {
                 </Select>
                 {selectedInstance ? (
                   <p className="text-xs text-muted-foreground">
-                    Status da instancia padrao: {formatInstanceStatus(selectedInstance)}.
+                    Status da instancia selecionada para os clientes: {formatInstanceStatus(selectedInstance)}.
                   </p>
                 ) : null}
               </div>
@@ -1226,6 +1226,11 @@ export function InternalCrmAutomationsView() {
                 <p className="text-xs text-muted-foreground">
                   Separe por virgula, ponto e virgula ou quebra de linha. Duplicidades sao removidas ao salvar.
                 </p>
+              </div>
+
+              <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
+                Alertas internos do CRM usam a instancia <strong className="text-foreground">SolarZap</strong>.
+                A selecao acima vale apenas para mensagens automaticas enviadas aos clientes.
               </div>
 
               <Separator />

@@ -1646,11 +1646,16 @@ async function resolveAutomationContextEntities(
 
   if (clientResult.error) throw { status: 500, code: 'automation_context_client_query_failed', error: clientResult.error };
 
+  let resolvedConversation = conversationResult.data || null;
+  if (!resolvedConversation?.id && effectiveClientId) {
+    resolvedConversation = await findLatestWhatsappConversationForClient(schema, effectiveClientId);
+  }
+
   return {
     client: clientResult.data || null,
     deal: dealResult.data || null,
     appointment: appointmentResult.data || null,
-    conversation: conversationResult.data || null,
+    conversation: resolvedConversation,
   };
 }
 
@@ -4063,6 +4068,20 @@ async function upsertAppointment(
   const before = appointmentId
     ? (await schema.from('appointments').select('*').eq('id', appointmentId).maybeSingle()).data
     : null;
+  const latestWhatsappConversation = await findLatestWhatsappConversationForClient(schema, clientId);
+  const incomingMetadata = isRecord(payload.metadata) ? payload.metadata : {};
+  const resolvedAppointmentWhatsappInstanceId =
+    asString(payload.whatsapp_instance_id) ||
+    asString(asRecord(incomingMetadata).whatsapp_instance_id) ||
+    asString(asRecord(before?.metadata).whatsapp_instance_id) ||
+    asString(latestWhatsappConversation?.whatsapp_instance_id);
+  const appointmentMetadata = mergeRecord(
+    before?.metadata,
+    mergeRecord(
+      incomingMetadata,
+      resolvedAppointmentWhatsappInstanceId ? { whatsapp_instance_id: resolvedAppointmentWhatsappInstanceId } : {},
+    ),
+  );
 
   const { data, error } = await schema.from('appointments').upsert({
     id: appointmentId || undefined,
@@ -4076,7 +4095,7 @@ async function upsertAppointment(
     end_at: parsedEndAt ? parsedEndAt.toISOString() : null,
     location: asString(payload.location),
     notes: asString(payload.notes),
-    metadata: isRecord(payload.metadata) ? payload.metadata : {},
+    metadata: appointmentMetadata,
   }).select('*').single();
 
   if (error || !data?.id) throw { status: 500, code: 'appointment_upsert_failed', error };
@@ -4131,8 +4150,10 @@ async function upsertAppointment(
     client_id: clientId,
     deal_id: asString(data.deal_id),
     appointment_id: String(data.id),
+    conversation_id: asString(payload.conversation_id) || asString(latestWhatsappConversation?.id),
     appointment_type: asString(data.appointment_type) || 'call',
     appointment_start_at: asString(data.start_at),
+    whatsapp_instance_id: resolvedAppointmentWhatsappInstanceId,
     link_reuniao: asString(asRecord(data.metadata).meeting_link),
     link_agendamento: asString(asRecord(data.metadata).scheduling_link),
   };
@@ -5533,6 +5554,7 @@ async function intakeLandingLead(
   if (!client?.id) throw { status: 500, code: 'landing_lead_client_upsert_failed' };
 
   await ensurePrimaryContactForClient(schema, client);
+  const latestWhatsappConversation = await findLatestWhatsappConversationForClient(schema, String(client.id));
 
   const preferredDealId = asString(payload.existing_deal_id);
   const preferredDeal = preferredDealId
@@ -5604,6 +5626,10 @@ async function intakeLandingLead(
   if (hasScheduledCall && appointmentStartAt) {
     const parsedAppointmentAt = new Date(appointmentStartAt);
     if (Number.isNaN(parsedAppointmentAt.getTime())) throw { status: 400, code: 'invalid_payload' };
+    const resolvedLeadWhatsappInstanceId =
+      asString(payload.whatsapp_instance_id) ||
+      asString(asRecord(payload.client_metadata).whatsapp_instance_id) ||
+      asString(latestWhatsappConversation?.whatsapp_instance_id);
 
     const { data: appointmentData, error: appointmentError } = await schema.from('appointments').insert({
       client_id: client.id,
@@ -5618,6 +5644,7 @@ async function intakeLandingLead(
         ...(resolvedMeetingLink ? { meeting_link: resolvedMeetingLink } : {}),
         ...(resolvedSchedulingLink ? { scheduling_link: resolvedSchedulingLink } : {}),
         ...(asString(trackingSnapshot.landing_page_url) ? { landing_page_url: asString(trackingSnapshot.landing_page_url) } : {}),
+        ...(resolvedLeadWhatsappInstanceId ? { whatsapp_instance_id: resolvedLeadWhatsappInstanceId } : {}),
       },
     }).select('*').single();
 
@@ -5629,10 +5656,15 @@ async function intakeLandingLead(
     client_id: String(client.id),
     deal_id: String(deal.id),
     appointment_id: asString(appointment?.id),
+    conversation_id: asString(latestWhatsappConversation?.id),
     nome: primaryContactName,
     empresa: companyName,
     primary_phone: primaryPhone,
     primary_email: primaryEmail,
+    whatsapp_instance_id:
+      asString(payload.whatsapp_instance_id) ||
+      asString(asRecord(payload.client_metadata).whatsapp_instance_id) ||
+      asString(latestWhatsappConversation?.whatsapp_instance_id),
     has_scheduled_call: hasScheduledCall,
     ...(resolvedSchedulingLink ? { link_agendamento: resolvedSchedulingLink } : {}),
     ...(resolvedMeetingLink ? { link_reuniao: resolvedMeetingLink } : {}),
@@ -6524,6 +6556,7 @@ async function processAgentJobs(serviceClient: ReturnType<typeof createClient>) 
 async function resolveConnectedInternalCrmInstance(
   schema: ReturnType<typeof crmSchema>,
   preferredInstanceId: string | null,
+  options: { allowFallback?: boolean } = {},
 ) {
   if (preferredInstanceId) {
     const { data: preferred } = await schema
@@ -6536,6 +6569,10 @@ async function resolveConnectedInternalCrmInstance(
     if (preferred?.id) return preferred;
   }
 
+  if (options.allowFallback === false) {
+    return null;
+  }
+
   const { data: fallback } = await schema
     .from('whatsapp_instances')
     .select('id, instance_name, status')
@@ -6545,6 +6582,49 @@ async function resolveConnectedInternalCrmInstance(
     .maybeSingle();
 
   return fallback || null;
+}
+
+async function resolveSolarZapInternalNotificationInstance(
+  schema: ReturnType<typeof crmSchema>,
+) {
+  const { data: byDisplayName } = await schema
+    .from('whatsapp_instances')
+    .select('id, instance_name, status')
+    .eq('status', 'connected')
+    .eq('display_name', 'SolarZap')
+    .limit(1)
+    .maybeSingle();
+
+  if (byDisplayName?.id) return byDisplayName;
+
+  const { data: byInstanceName } = await schema
+    .from('whatsapp_instances')
+    .select('id, instance_name, status')
+    .eq('status', 'connected')
+    .ilike('instance_name', '%solarzap%')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return byInstanceName || null;
+}
+
+async function findLatestWhatsappConversationForClient(
+  schema: ReturnType<typeof crmSchema>,
+  clientId: string | null,
+) {
+  if (!clientId) return null;
+
+  const { data } = await schema
+    .from('conversations')
+    .select('*')
+    .eq('client_id', clientId)
+    .eq('channel', 'whatsapp')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return data || null;
 }
 
 async function ensurePrimaryContactForClient(
@@ -6716,9 +6796,15 @@ async function dispatchAutomationWhatsappLead(
     return { status: 'failed', reason: 'missing_client_phone' };
   }
 
+  const preferredLeadInstanceId = asString(settings.default_whatsapp_instance_id);
+  if (!preferredLeadInstanceId) {
+    return { status: 'failed', reason: 'missing_lead_whatsapp_instance' };
+  }
+
   const connectedInstance = await resolveConnectedInternalCrmInstance(
     schema,
-    asString(templatePayload.whatsapp_instance_id) || asString(settings.default_whatsapp_instance_id),
+    preferredLeadInstanceId,
+    { allowFallback: false },
   );
 
   if (!connectedInstance?.id || !connectedInstance.instance_name) {
@@ -6794,10 +6880,7 @@ async function dispatchAutomationWhatsappAdmin(
     return { status: 'skipped', reason: 'admin_numbers_not_configured' };
   }
 
-  const connectedInstance = await resolveConnectedInternalCrmInstance(
-    schema,
-    asString(templatePayload.whatsapp_instance_id) || asString(settings.default_whatsapp_instance_id),
-  );
+  const connectedInstance = await resolveSolarZapInternalNotificationInstance(schema);
 
   if (!connectedInstance?.id || !connectedInstance.instance_name) {
     return { status: 'failed', reason: 'no_connected_whatsapp_instance' };
