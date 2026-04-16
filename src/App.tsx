@@ -29,6 +29,7 @@ const TermsOfService = lazyWithRetry(() => import("./pages/TermsOfService"), "ap
 const Pricing = lazyWithRetry(() => import("./pages/Pricing"), "app:pricing");
 const Onboarding = lazyWithRetry(() => import("./pages/Onboarding"), "app:onboarding");
 const Admin = lazyWithRetry(() => import("./pages/Admin"), "app:admin");
+const ContractsEmbed = lazyWithRetry(() => import("./pages/ContractsEmbed"), "app:contracts-embed");
 
 let authRecoveryInFlight: Promise<void> | null = null;
 
@@ -165,6 +166,7 @@ const App = () => {
                       <Route path="/termos" element={<TermsOfService />} />
                       <Route path="/pricing" element={<Pricing />} />
                       <Route path="/billing" element={<Pricing />} />
+                      <Route path="/embed/contracts" element={<ContractsEmbed />} />
                       <Route
                         path="/onboarding"
                         element={

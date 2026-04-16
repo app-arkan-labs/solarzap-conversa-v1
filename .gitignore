@@ -51,3 +51,4 @@ fix_imports.cjs
 vite.config.ts.timestamp-*.mjs
 implementation_plan.md.resolved
 artifacts/
+output/

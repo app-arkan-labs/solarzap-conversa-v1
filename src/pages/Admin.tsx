@@ -21,6 +21,7 @@ import InternalCrmFinancePage from '@/modules/internal-crm/pages/InternalCrmFina
 import InternalCrmCalendarPage from '@/modules/internal-crm/pages/InternalCrmCalendarPage';
 import InternalCrmIntegrationsPage from '@/modules/internal-crm/pages/InternalCrmIntegrationsPage';
 import { InternalCrmPageLayout } from '@/modules/internal-crm/components/InternalCrmPageLayout';
+import { ContractsWorkspace } from '@/modules/contracts/components/ContractsWorkspace';
 
 export default function Admin() {
   return (
@@ -32,6 +33,7 @@ export default function Admin() {
         <Route index element={<AdminDashboard />} />
         <Route path="orgs" element={<OrgsList />} />
         <Route path="orgs/:id" element={<OrgDetails />} />
+        <Route path="contracts" element={<Navigate to="/admin/crm/contracts" replace />} />
         <Route path="financeiro" element={<FinancialPanel />} />
         <Route path="audit" element={<AuditLogViewer />} />
         <Route path="flags" element={<FeatureFlagsPanel />} />
@@ -78,6 +80,14 @@ export default function Admin() {
           element={
             <InternalCrmPageLayout mode="immersive">
               <InternalCrmClientsPage />
+            </InternalCrmPageLayout>
+          }
+        />
+        <Route
+          path="contracts"
+          element={
+            <InternalCrmPageLayout>
+              <ContractsWorkspace mode="crm_admin" />
             </InternalCrmPageLayout>
           }
         />

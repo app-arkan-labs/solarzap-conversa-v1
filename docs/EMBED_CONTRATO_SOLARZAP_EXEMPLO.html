@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Embed Contrato SolarZap</title>
+    <style>
+      :root {
+        --embed-bg: #f8fafc;
+        --embed-panel: #ffffff;
+        --embed-border: #e2e8f0;
+        --embed-text: #0f172a;
+        --embed-muted: #475569;
+        --embed-accent: #0f766e;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        background: var(--embed-bg);
+        color: var(--embed-text);
+      }
+
+      .embed-shell {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .embed-card {
+        border: 1px solid var(--embed-border);
+        background: var(--embed-panel);
+        border-radius: 28px;
+        padding: 24px;
+        box-shadow: 0 24px 60px -40px rgba(15, 23, 42, 0.28);
+      }
+
+      .embed-header h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        line-height: 1.1;
+      }
+
+      .embed-header p {
+        margin: 0;
+        color: var(--embed-muted);
+        line-height: 1.6;
+      }
+
+      .embed-state {
+        margin-top: 18px;
+        padding: 14px 16px;
+        border-radius: 18px;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .embed-state.loading {
+        background: #ecfeff;
+        border: 1px solid #a5f3fc;
+        color: #155e75;
+      }
+
+      .embed-state.error {
+        background: #fff1f2;
+        border: 1px solid #fecdd3;
+        color: #9f1239;
+      }
+
+      .embed-frame-wrap {
+        margin-top: 20px;
+        border: 1px solid var(--embed-border);
+        border-radius: 24px;
+        overflow: hidden;
+        background: #fff;
+        min-height: 920px;
+      }
+
+      .embed-frame {
+        width: 100%;
+        min-height: 920px;
+        border: 0;
+        display: block;
+        background: #fff;
+      }
+
+      .is-hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="embed-shell">
+      <div class="embed-card">
+        <div class="embed-header">
+          <h1>Formalização contratual</h1>
+          <p>
+            Este bloco carrega o módulo contratual público do SolarZap por iframe,
+            usando uma URL assinada emitida pelo backend.
+          </p>
+        </div>
+
+        <div id="embed-loading" class="embed-state loading">
+          Preparando sessão contratual...
+        </div>
+
+        <div id="embed-error" class="embed-state error is-hidden">
+          Não foi possível carregar o contrato.
+        </div>
+
+        <div id="embed-frame-wrap" class="embed-frame-wrap is-hidden">
+          <iframe
+            id="solarzap-contract-iframe"
+            class="embed-frame"
+            title="Formalização contratual SolarZap"
+            loading="lazy"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allow="clipboard-write"
+          ></iframe>
+        </div>
+      </div>
+    </section>
+
+    <script>
+      async function fetchEmbedUrl() {
+        const response = await fetch("/api/solarzap/contract-embed-url", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            orgId: "UUID_DA_ORG",
+            sellerUserId: "UUID_DO_VENDEDOR",
+            leadId: null,
+            opportunityId: null,
+            allowedOrigin: window.location.origin,
+            ttlMinutes: 240,
+            lockFields: [
+              "empresaNome",
+              "empresaRazaoSocial",
+              "cnpj",
+              "responsavelNome",
+              "responsavelEmail",
+              "responsavelTelefone",
+              "planoSugerido"
+            ],
+            prefill: {
+              empresaNome: "Solar Prime",
+              empresaRazaoSocial: "Solar Prime Energia Ltda",
+              cnpj: "12.345.678/0001-99",
+              responsavelNome: "João Pedro Martins",
+              responsavelEmail: "joao@solarprime.com.br",
+              responsavelTelefone: "(14) 99999-9999",
+              planoSugerido: "plano_c",
+              condicaoEspecialAtiva: true,
+              condicaoEspecialDescricao: "reunião extra de coleta completa + landing page incluída"
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || "Falha ao obter iframeUrl");
+        }
+
+        return await response.json();
+      }
+
+      async function mountContractEmbed() {
+        const loadingEl = document.getElementById("embed-loading");
+        const errorEl = document.getElementById("embed-error");
+        const wrapEl = document.getElementById("embed-frame-wrap");
+        const iframeEl = document.getElementById("solarzap-contract-iframe");
+
+        try {
+          const payload = await fetchEmbedUrl();
+          if (!payload || !payload.iframeUrl) {
+            throw new Error("Resposta sem iframeUrl");
+          }
+
+          iframeEl.src = payload.iframeUrl;
+          wrapEl.classList.remove("is-hidden");
+          loadingEl.classList.add("is-hidden");
+        } catch (error) {
+          console.error("Embed contratual falhou:", error);
+          loadingEl.classList.add("is-hidden");
+          errorEl.textContent =
+            "Não foi possível carregar o contrato. Verifique o backend que emite a iframeUrl assinada.";
+          errorEl.classList.remove("is-hidden");
+        }
+      }
+
+      mountContractEmbed();
+    </script>
+  </body>
+</html>

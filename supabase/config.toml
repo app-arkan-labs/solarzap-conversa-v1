@@ -49,6 +49,15 @@ verify_jwt = false
 [functions.proposal-storage-intent]
 verify_jwt = false
 
+[functions.contract-storage-intent]
+verify_jwt = false
+
+[functions.contract-embed-link]
+verify_jwt = false
+
+[functions.contract-embed-api]
+verify_jwt = false
+
 [functions.proposal-share-link]
 verify_jwt = false
 

@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CircuitBoard,
   DollarSign,
+  FileText,
   Flag,
   Home,
   KanbanSquare,
@@ -51,6 +52,13 @@ export const adminCrmPrimaryItems: AdminCrmNavItem[] = [
     subtitle: 'Base comercial, relacionamento e historico.',
     icon: Building2,
     patterns: ['/admin/crm/clients'],
+  },
+  {
+    to: '/admin/crm/contracts',
+    label: 'Contratos',
+    subtitle: 'Formalizacao, preview, PDF e sessao publica de embed.',
+    icon: FileText,
+    patterns: ['/admin/crm/contracts'],
   },
   {
     to: '/admin/crm/campaigns',
