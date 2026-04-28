@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, Eye, FileText, Loader2, PenSquare } from 'lucide-react';
+import { Download, Eye, Loader2, PenSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ContractPreview } from './ContractPreview';
 import { ContractStatusBadge } from './ContractStatusBadge';
@@ -126,15 +126,15 @@ export function ContractsEmbedSurface({ token }: ContractsEmbedSurfaceProps) {
               </Button>
               <Button
                 type="button"
-                onClick={() => void contractEmbed.generatePdf(activeValues).then(syncResult)}
-                disabled={contractEmbed.isGeneratingPdf}
+                onClick={() => void contractEmbed.generateWord(activeValues).then(syncResult)}
+                disabled={contractEmbed.isGeneratingWord}
               >
-                {contractEmbed.isGeneratingPdf ? (
+                {contractEmbed.isGeneratingWord ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Download className="mr-2 h-4 w-4" />
                 )}
-                PDF
+                Word
               </Button>
             </div>
           </div>
@@ -184,10 +184,17 @@ export function ContractsEmbedSurface({ token }: ContractsEmbedSurfaceProps) {
           syncResult(result);
           return result;
         }}
+        onGenerateWord={async (values) => {
+          const result = await contractEmbed.generateWord(values);
+          syncResult(result);
+          return result;
+        }}
         isSavingDraft={contractEmbed.isSavingDraft}
         isMarkingReviewReady={contractEmbed.isMarkingReviewReady}
         isGeneratingPreview={contractEmbed.isGeneratingPreview}
         isGeneratingPdf={contractEmbed.isGeneratingPdf}
+        isGeneratingWord={contractEmbed.isGeneratingWord}
+        finalExportKind="word"
         title="Formalizacao comercial"
         subtitle="Sessao publica de formalizacao preparada para embed controlado na apresentacao comercial."
         showMockSeedButton={false}

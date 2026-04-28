@@ -6,12 +6,44 @@ export type ContractEmbedPrefill = {
   empresaNome?: string;
   empresaRazaoSocial?: string;
   cnpj?: string;
+  enderecoLogradouro?: string;
+  enderecoNumero?: string;
+  enderecoComplemento?: string;
+  enderecoBairro?: string;
+  enderecoCidade?: string;
+  enderecoEstado?: string;
+  enderecoCep?: string;
   responsavelNome?: string;
   responsavelEmail?: string;
   responsavelTelefone?: string;
+  responsavelNacionalidade?: string;
+  responsavelEstadoCivil?: string;
+  responsavelProfissao?: string;
+  responsavelCpf?: string;
+  responsavelRg?: string;
+  responsavelCargo?: string;
   planoSugerido?: ContractPlanCode;
   condicaoEspecialAtiva?: boolean;
   condicaoEspecialDescricao?: string;
+  observacoesComerciais?: string;
+  observacaoFunil?: string;
+  baseInicial?: string;
+  incluiReuniaoExtra?: boolean;
+  incluiLandingPage?: boolean;
+  includeReuniaoExtra?: boolean;
+  includeLandingPage?: boolean;
+  valorImplantacao?: number | string;
+  valorRecorrente?: number | string;
+  dataAssinatura?: string;
+  dataInicio?: string;
+  dataPrimeiroVencimento?: string;
+  diaVencimentoMensal?: number | string;
+  formaPagamento?: string;
+  paymentMethod?: string;
+  formaPagamentoImplantacao?: string;
+  formaPagamentoRecorrencia?: string;
+  vigenciaInicialMeses?: number | string;
+  prazoCancelamentoDias?: number | string;
   sellerUserId?: string;
   salesSessionId?: string;
   lockFields?: string[];
@@ -31,7 +63,70 @@ type BuildDefaultsInput = {
 const asString = (value: unknown, max = 1200): string =>
   String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
-const asBoolean = (value: unknown): boolean => value === true;
+const normalizeSearchText = (value: unknown) =>
+  asString(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const pickText = (...values: unknown[]) => {
+  for (const value of values) {
+    const text = asString(value);
+    if (text) return text;
+  }
+  return '';
+};
+
+const asBoolean = (value: unknown): boolean => {
+  if (value === true) return true;
+  if (typeof value === 'string') {
+    return ['1', 'true', 'sim', 'yes'].includes(normalizeSearchText(value));
+  }
+  return false;
+};
+
+const asNumber = (value: unknown, fallback: number): number => {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+
+  const raw = asString(value);
+  const cleaned = raw.replace(/[^\d,.-]/g, '');
+  const normalized = cleaned.includes(',')
+    ? cleaned.replace(/\./g, '').replace(',', '.')
+    : cleaned.replace(/\.(?=\d{3}(?:\D|$))/g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const asInt = (value: unknown, fallback: number, min: number, max: number): number => {
+  const parsed = Math.round(asNumber(value, fallback));
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+};
+
+const asDateInput = (value: unknown, fallback: string): string => {
+  const text = asString(value, 32);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : fallback;
+};
+
+const normalizeImplantationPayment = (value: unknown, fallback: string) => {
+  const text = normalizeSearchText(value);
+  if (!text) return fallback;
+  if (text.includes('pix')) return 'Pix';
+  if (text.includes('boleto')) return 'boleto';
+  if (text.includes('cartao') || text.includes('link')) return 'cartao';
+  if (text.includes('transfer')) return 'transferencia';
+  return asString(value, 80) || fallback;
+};
+
+const normalizeRecurrencePayment = (value: unknown, fallback: string) => {
+  const text = normalizeSearchText(value);
+  if (!text) return fallback;
+  if (text.includes('pix')) return 'Pix mensal';
+  if (text.includes('boleto')) return 'boleto mensal';
+  if (text.includes('cartao') || text.includes('link')) return 'cartao recorrente';
+  return asString(value, 80) || fallback;
+};
 
 const envString = (key: string, fallback: string): string => {
   const plain = asString(Deno.env.get(key), 255);
@@ -196,7 +291,43 @@ const deepMerge = (base: Record<string, unknown>, override: Record<string, unkno
 export const buildInitialContractValues = (input: BuildDefaultsInput) => {
   const lockFields = input.prefill?.lockFields ?? [];
   const defaultPlanCode = input.prefill?.planoSugerido || 'plano_b';
-  const specialActive = asBoolean(input.prefill?.condicaoEspecialAtiva);
+  const today = todayIso();
+  const specialDescription = pickText(input.prefill?.condicaoEspecialDescricao);
+  const commercialNotes = pickText(
+    input.prefill?.observacoesComerciais,
+    input.prefill?.baseInicial,
+    input.prefill?.observacaoFunil,
+  );
+  const specialSearchText = normalizeSearchText(`${specialDescription} ${commercialNotes}`);
+  const includeReuniaoExtra =
+    asBoolean(input.prefill?.incluiReuniaoExtra) ||
+    asBoolean(input.prefill?.includeReuniaoExtra) ||
+    specialSearchText.includes('reuniao extra');
+  const includeLandingPage =
+    asBoolean(input.prefill?.incluiLandingPage) ||
+    asBoolean(input.prefill?.includeLandingPage) ||
+    specialSearchText.includes('landing');
+  const specialActive =
+    input.prefill?.condicaoEspecialAtiva === undefined
+      ? Boolean(specialDescription || commercialNotes || includeReuniaoExtra || includeLandingPage)
+      : asBoolean(input.prefill?.condicaoEspecialAtiva);
+  const paymentMethod = pickText(input.prefill?.formaPagamento, input.prefill?.paymentMethod);
+  const payment = {
+    dataAssinatura: asDateInput(input.prefill?.dataAssinatura, today),
+    dataInicio: asDateInput(input.prefill?.dataInicio, today),
+    dataPrimeiroVencimento: asDateInput(input.prefill?.dataPrimeiroVencimento, today),
+    diaVencimentoMensal: asInt(input.prefill?.diaVencimentoMensal, 1, 1, 31),
+    formaPagamentoImplantacao: normalizeImplantationPayment(
+      input.prefill?.formaPagamentoImplantacao ?? paymentMethod,
+      'Pix',
+    ),
+    formaPagamentoRecorrencia: normalizeRecurrencePayment(
+      input.prefill?.formaPagamentoRecorrencia ?? paymentMethod,
+      'boleto mensal',
+    ),
+    valorImplantacao: asNumber(input.prefill?.valorImplantacao, 0),
+    valorRecorrente: asNumber(input.prefill?.valorRecorrente, 0),
+  };
 
   const values = {
     legalData: {
@@ -205,23 +336,23 @@ export const buildInitialContractValues = (input: BuildDefaultsInput) => {
         nomeFantasia: asString(input.prefill?.empresaNome),
         cnpj: asString(input.prefill?.cnpj),
         endereco: {
-          logradouro: '',
-          numero: '',
-          complemento: '',
-          bairro: '',
-          cidade: '',
-          estado: '',
-          cep: '',
+          logradouro: asString(input.prefill?.enderecoLogradouro),
+          numero: asString(input.prefill?.enderecoNumero),
+          complemento: asString(input.prefill?.enderecoComplemento),
+          bairro: asString(input.prefill?.enderecoBairro),
+          cidade: asString(input.prefill?.enderecoCidade),
+          estado: asString(input.prefill?.enderecoEstado, 2).toUpperCase(),
+          cep: asString(input.prefill?.enderecoCep),
         },
       },
       responsavel: {
         nome: asString(input.prefill?.responsavelNome),
-        nacionalidade: 'brasileiro',
-        estadoCivil: '',
-        profissao: '',
-        cpf: '',
-        rg: '',
-        cargo: '',
+        nacionalidade: asString(input.prefill?.responsavelNacionalidade) || 'brasileiro',
+        estadoCivil: asString(input.prefill?.responsavelEstadoCivil),
+        profissao: asString(input.prefill?.responsavelProfissao),
+        cpf: asString(input.prefill?.responsavelCpf),
+        rg: asString(input.prefill?.responsavelRg),
+        cargo: asString(input.prefill?.responsavelCargo),
         email: asString(input.prefill?.responsavelEmail),
         telefone: asString(input.prefill?.responsavelTelefone),
       },
@@ -234,31 +365,22 @@ export const buildInitialContractValues = (input: BuildDefaultsInput) => {
         representanteCpf: envString('CONTRACTOR_REPRESENTANTE_CPF', 'CPF em configuracao'),
       },
       plano: buildPlanSnapshot(defaultPlanCode, {
-        valorImplantacao: 0,
-        valorRecorrente: 0,
-        includeLandingPage: false,
-        includeReuniaoExtra: false,
+        valorImplantacao: payment.valorImplantacao,
+        valorRecorrente: payment.valorRecorrente,
+        includeLandingPage,
+        includeReuniaoExtra,
       }),
       condicaoEspecial: {
         ativa: specialActive,
-        descricao: asString(input.prefill?.condicaoEspecialDescricao),
-        observacoesComerciais: '',
-        incluiReuniaoExtra: false,
-        incluiLandingPage: false,
+        descricao: specialDescription,
+        observacoesComerciais: commercialNotes,
+        incluiReuniaoExtra: includeReuniaoExtra,
+        incluiLandingPage: includeLandingPage,
       },
-      pagamento: {
-        dataAssinatura: todayIso(),
-        dataInicio: todayIso(),
-        dataPrimeiroVencimento: todayIso(),
-        diaVencimentoMensal: 1,
-        formaPagamentoImplantacao: 'Pix',
-        formaPagamentoRecorrencia: 'boleto mensal',
-        valorImplantacao: 0,
-        valorRecorrente: 0,
-      },
+      pagamento: payment,
       recorrencia: {
-        vigenciaInicialMeses: 3,
-        prazoCancelamentoDias: 30,
+        vigenciaInicialMeses: asInt(input.prefill?.vigenciaInicialMeses, 3, 3, 120),
+        prazoCancelamentoDias: asInt(input.prefill?.prazoCancelamentoDias, 30, 1, 365),
         prazoExportacaoDadosDias: 30,
         multaInadimplenciaPercentual: 2,
         jurosInadimplenciaPercentual: 1,

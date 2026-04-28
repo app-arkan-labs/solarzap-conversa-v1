@@ -274,11 +274,140 @@ export const createDefaultContractFormValues = (
   };
 };
 
+const asPrefillText = (value: unknown, max = 1200): string =>
+  String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+
+const pickPrefillText = (...values: unknown[]) => {
+  for (const value of values) {
+    const text = asPrefillText(value);
+    if (text) return text;
+  }
+  return '';
+};
+
+const normalizeSearchText = (value: unknown) =>
+  asPrefillText(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const asPrefillBoolean = (value: unknown): boolean => {
+  if (value === true) return true;
+  if (typeof value === 'string') {
+    return ['1', 'true', 'sim', 'yes'].includes(normalizeSearchText(value));
+  }
+  return false;
+};
+
+const asPrefillNumber = (value: unknown, fallback: number): number => {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+
+  const raw = asPrefillText(value);
+  const cleaned = raw.replace(/[^\d,.-]/g, '');
+  const normalized = cleaned.includes(',')
+    ? cleaned.replace(/\./g, '').replace(',', '.')
+    : cleaned.replace(/\.(?=\d{3}(?:\D|$))/g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const asPrefillInt = (
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number => {
+  const parsed = Math.round(asPrefillNumber(value, fallback));
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+};
+
+const asDateInput = (value: unknown, fallback: string): string => {
+  const text = asPrefillText(value, 32);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : fallback;
+};
+
+const normalizeImplantationPayment = (value: unknown, fallback: string) => {
+  const text = normalizeSearchText(value);
+  if (!text) return fallback;
+  if (text.includes('pix')) return 'Pix';
+  if (text.includes('boleto')) return 'boleto';
+  if (text.includes('cartao') || text.includes('link')) return 'cartao';
+  if (text.includes('transfer')) return 'transferencia';
+  return asPrefillText(value, 80) || fallback;
+};
+
+const normalizeRecurrencePayment = (value: unknown, fallback: string) => {
+  const text = normalizeSearchText(value);
+  if (!text) return fallback;
+  if (text.includes('pix')) return 'Pix mensal';
+  if (text.includes('boleto')) return 'boleto mensal';
+  if (text.includes('cartao') || text.includes('link')) return 'cartao recorrente';
+  return asPrefillText(value, 80) || fallback;
+};
+
 export const applyExternalPrefill = (
   values: ContractFormalizationFormValues,
   prefill?: ContractExternalPrefill | null,
 ): ContractFormalizationFormValues => {
   if (!prefill) return values;
+
+  const specialDescription = pickPrefillText(prefill.condicaoEspecialDescricao);
+  const commercialNotes = pickPrefillText(
+    prefill.observacoesComerciais,
+    prefill.baseInicial,
+    prefill.observacaoFunil,
+  );
+  const specialSearchText = normalizeSearchText(`${specialDescription} ${commercialNotes}`);
+  const includesReuniaoExtra =
+    asPrefillBoolean(prefill.incluiReuniaoExtra) ||
+    asPrefillBoolean(prefill.includeReuniaoExtra) ||
+    specialSearchText.includes('reuniao extra');
+  const includesLandingPage =
+    asPrefillBoolean(prefill.incluiLandingPage) ||
+    asPrefillBoolean(prefill.includeLandingPage) ||
+    specialSearchText.includes('landing');
+  const specialActive =
+    prefill.condicaoEspecialAtiva === undefined
+      ? Boolean(specialDescription || commercialNotes || includesReuniaoExtra || includesLandingPage)
+      : asPrefillBoolean(prefill.condicaoEspecialAtiva);
+  const paymentMethod = pickPrefillText(prefill.formaPagamento, prefill.paymentMethod);
+  const payment = {
+    ...values.legalData.pagamento,
+    dataAssinatura: asDateInput(
+      prefill.dataAssinatura,
+      values.legalData.pagamento.dataAssinatura,
+    ),
+    dataInicio: asDateInput(prefill.dataInicio, values.legalData.pagamento.dataInicio),
+    dataPrimeiroVencimento: asDateInput(
+      prefill.dataPrimeiroVencimento,
+      values.legalData.pagamento.dataPrimeiroVencimento,
+    ),
+    diaVencimentoMensal: asPrefillInt(
+      prefill.diaVencimentoMensal,
+      values.legalData.pagamento.diaVencimentoMensal,
+      1,
+      31,
+    ),
+    formaPagamentoImplantacao: normalizeImplantationPayment(
+      prefill.formaPagamentoImplantacao ?? paymentMethod,
+      values.legalData.pagamento.formaPagamentoImplantacao,
+    ),
+    formaPagamentoRecorrencia: normalizeRecurrencePayment(
+      prefill.formaPagamentoRecorrencia ?? paymentMethod,
+      values.legalData.pagamento.formaPagamentoRecorrencia,
+    ),
+    valorImplantacao: asPrefillNumber(
+      prefill.valorImplantacao,
+      values.legalData.pagamento.valorImplantacao,
+    ),
+    valorRecorrente: asPrefillNumber(
+      prefill.valorRecorrente,
+      values.legalData.pagamento.valorRecorrente,
+    ),
+  };
+  const planCode = prefill.planoSugerido ?? values.legalData.plano.codigo;
 
   return {
     ...values,
@@ -293,30 +422,78 @@ export const applyExternalPrefill = (
           prefill.empresaNome ??
           values.legalData.contratante.razaoSocial,
         cnpj: prefill.cnpj ?? values.legalData.contratante.cnpj,
+        endereco: {
+          ...values.legalData.contratante.endereco,
+          logradouro:
+            prefill.enderecoLogradouro ??
+            values.legalData.contratante.endereco.logradouro,
+          numero:
+            prefill.enderecoNumero ?? values.legalData.contratante.endereco.numero,
+          complemento:
+            prefill.enderecoComplemento ??
+            values.legalData.contratante.endereco.complemento,
+          bairro:
+            prefill.enderecoBairro ?? values.legalData.contratante.endereco.bairro,
+          cidade:
+            prefill.enderecoCidade ?? values.legalData.contratante.endereco.cidade,
+          estado:
+            prefill.enderecoEstado ?? values.legalData.contratante.endereco.estado,
+          cep: prefill.enderecoCep ?? values.legalData.contratante.endereco.cep,
+        },
       },
       responsavel: {
         ...values.legalData.responsavel,
         nome: prefill.responsavelNome ?? values.legalData.responsavel.nome,
+        nacionalidade:
+          prefill.responsavelNacionalidade ??
+          values.legalData.responsavel.nacionalidade,
+        estadoCivil:
+          prefill.responsavelEstadoCivil ??
+          values.legalData.responsavel.estadoCivil,
+        profissao:
+          prefill.responsavelProfissao ?? values.legalData.responsavel.profissao,
+        cpf: prefill.responsavelCpf ?? values.legalData.responsavel.cpf,
+        rg: prefill.responsavelRg ?? values.legalData.responsavel.rg,
+        cargo: prefill.responsavelCargo ?? values.legalData.responsavel.cargo,
         email: prefill.responsavelEmail ?? values.legalData.responsavel.email,
         telefone:
           prefill.responsavelTelefone ?? values.legalData.responsavel.telefone,
       },
       condicaoEspecial: {
         ...values.legalData.condicaoEspecial,
-        ativa:
-          prefill.condicaoEspecialAtiva ??
-          values.legalData.condicaoEspecial.ativa,
+        ativa: specialActive,
         descricao:
-          prefill.condicaoEspecialDescricao ??
+          specialDescription ||
           values.legalData.condicaoEspecial.descricao,
+        observacoesComerciais:
+          commercialNotes || values.legalData.condicaoEspecial.observacoesComerciais,
+        incluiReuniaoExtra: includesReuniaoExtra,
+        incluiLandingPage: includesLandingPage,
       },
-      plano:
-        prefill.planoSugerido && prefill.planoSugerido !== values.legalData.plano.codigo
-          ? buildPlanSnapshot(prefill.planoSugerido, {
-              valorImplantacao: values.legalData.pagamento.valorImplantacao,
-              valorRecorrente: values.legalData.pagamento.valorRecorrente,
-            })
-          : values.legalData.plano,
+      pagamento: payment,
+      recorrencia: {
+        ...values.legalData.recorrencia,
+        vigenciaInicialMeses: asPrefillInt(
+          prefill.vigenciaInicialMeses,
+          values.legalData.recorrencia.vigenciaInicialMeses,
+          3,
+          120,
+        ),
+        prazoCancelamentoDias: asPrefillInt(
+          prefill.prazoCancelamentoDias,
+          values.legalData.recorrencia.prazoCancelamentoDias,
+          1,
+          365,
+        ),
+      },
+      plano: buildPlanSnapshot(planCode, {
+        valorImplantacao: payment.valorImplantacao,
+        valorRecorrente: payment.valorRecorrente,
+        quantidadeReunioesImplantacao:
+          values.legalData.plano.quantidadeReunioesImplantacao,
+        includeReuniaoExtra: includesReuniaoExtra,
+        includeLandingPage: includesLandingPage,
+      }),
     },
     internalMetadata: {
       ...values.internalMetadata,

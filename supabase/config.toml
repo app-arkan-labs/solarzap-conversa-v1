@@ -55,6 +55,9 @@ verify_jwt = false
 [functions.contract-embed-link]
 verify_jwt = false
 
+[functions.contract-embed-public-link]
+verify_jwt = false
+
 [functions.contract-embed-api]
 verify_jwt = false
 

@@ -58,6 +58,8 @@ type PersistResult = {
   renderResult: ContractRenderResult;
 };
 
+type FinalExportKind = 'pdf' | 'word';
+
 interface ContractWizardDialogProps {
   open: boolean;
   initialValues: ContractFormalizationFormValues | null;
@@ -69,10 +71,15 @@ interface ContractWizardDialogProps {
   onGeneratePdf: (
     values: ContractFormalizationFormValues,
   ) => Promise<PersistResult & { pdfFileName: string }>;
+  onGenerateWord?: (
+    values: ContractFormalizationFormValues,
+  ) => Promise<PersistResult & { wordFileName: string }>;
   isSavingDraft?: boolean;
   isMarkingReviewReady?: boolean;
   isGeneratingPreview?: boolean;
   isGeneratingPdf?: boolean;
+  isGeneratingWord?: boolean;
+  finalExportKind?: FinalExportKind;
   title?: string;
   subtitle?: string;
   showMockSeedButton?: boolean;
@@ -167,10 +174,13 @@ export function ContractWizardDialog({
   onMarkReviewReady,
   onGeneratePreview,
   onGeneratePdf,
+  onGenerateWord,
   isSavingDraft = false,
   isMarkingReviewReady = false,
   isGeneratingPreview = false,
   isGeneratingPdf = false,
+  isGeneratingWord = false,
+  finalExportKind = 'pdf',
   title = 'Formalizacao contratual SolarZap',
   subtitle = 'Wizard central do contrato unico, com vigencia inicial de 3 meses, recorrencia no mesmo instrumento e anexos dinamicos por plano.',
   showMockSeedButton = true,
@@ -201,7 +211,14 @@ export function ContractWizardDialog({
   if (!values) return null;
 
   const isBusy =
-    isSavingDraft || isMarkingReviewReady || isGeneratingPreview || isGeneratingPdf;
+    isSavingDraft ||
+    isMarkingReviewReady ||
+    isGeneratingPreview ||
+    isGeneratingPdf ||
+    isGeneratingWord;
+  const isGeneratingFinalExport =
+    finalExportKind === 'word' ? isGeneratingWord : isGeneratingPdf;
+  const finalExportLabel = finalExportKind === 'word' ? 'Word' : 'PDF';
 
   const updateField = (path: string, nextValue: unknown) => {
     setValues((current) => (current ? setValueAtPath(current, path, nextValue) : current));
@@ -249,7 +266,18 @@ export function ContractWizardDialog({
     setCurrentStep(8);
   };
 
-  const handleGeneratePdf = async () => {
+  const handleGenerateFinalExport = async () => {
+    if (finalExportKind === 'word' && onGenerateWord) {
+      const result = await onGenerateWord(values);
+      setValues(result.values);
+      setPreviewResult(result.renderResult);
+      toast({
+        title: 'Word exportado',
+        description: `${result.wordFileName} foi gerado no modulo contratual.`,
+      });
+      return;
+    }
+
     const result = await onGeneratePdf(values);
     setValues(result.values);
     setPreviewResult(result.renderResult);
@@ -857,13 +885,13 @@ export function ContractWizardDialog({
     <div className="space-y-6">
       <ContractPreview
         renderResult={previewResult || derivedPreview}
-        emptyStateTitle="Gere o preview antes do PDF"
-        emptyStateDescription="O PDF usa exatamente a mesma renderizacao do preview contratual."
+        emptyStateTitle={`Gere o preview antes do ${finalExportLabel}`}
+        emptyStateDescription={`O ${finalExportLabel} usa exatamente a mesma renderizacao do preview contratual.`}
       />
       <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
         <p>
           Contrato numero <strong>{values.internalMetadata.contractNumber}</strong> pronto
-          para exportacao em PDF, com anexo do plano{' '}
+          para exportacao em {finalExportLabel}, com anexo do plano{' '}
           <strong>{values.legalData.plano.codigo}</strong>
           {values.legalData.condicaoEspecial.ativa ? ' e anexo de condicao especial ativo.' : '.'}
         </p>
@@ -919,7 +947,8 @@ export function ContractWizardDialog({
           <aside className="border-b border-slate-200 bg-slate-50/80 px-4 py-5 lg:border-b-0 lg:border-r">
             <div className="space-y-2">
               {WIZARD_STEPS.map((step) => {
-                const Icon = step.icon;
+                const Icon = step.id === 8 && finalExportKind === 'word' ? FileText : step.icon;
+                const label = step.id === 8 ? finalExportLabel : step.label;
                 const isActive = currentStep === step.id;
                 const isDone = currentStep > step.id;
 
@@ -949,7 +978,7 @@ export function ContractWizardDialog({
                     </span>
                     <div>
                       <p className="text-xs uppercase tracking-[0.18em] opacity-70">Etapa {step.id}</p>
-                      <p className="text-sm font-semibold">{step.label}</p>
+                      <p className="text-sm font-semibold">{label}</p>
                     </div>
                   </button>
                 );
@@ -1022,13 +1051,13 @@ export function ContractWizardDialog({
                   </Button>
                 ) : null}
                 {currentStep === 8 ? (
-                  <Button type="button" onClick={handleGeneratePdf} disabled={isBusy}>
-                    {isGeneratingPdf ? (
+                  <Button type="button" onClick={handleGenerateFinalExport} disabled={isBusy}>
+                    {isGeneratingFinalExport ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Download className="mr-2 h-4 w-4" />
                     )}
-                    Gerar PDF
+                    Gerar {finalExportLabel}
                   </Button>
                 ) : null}
               </div>

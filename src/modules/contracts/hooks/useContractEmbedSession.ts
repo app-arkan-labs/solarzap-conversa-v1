@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { generateContractPdfBlob } from '../lib/pdf';
+import { generateContractWordBlob } from '../lib/word';
 import { renderContractDocument } from '../lib/templateEngine';
 import { slugifyToken } from '../lib/formatters';
 import type {
@@ -181,6 +182,50 @@ export const useContractEmbedSession = (token: string) => {
     },
   });
 
+  const wordMutation = useMutation({
+    mutationFn: async (values: ContractFormalizationFormValues) => {
+      const renderResult = renderContractDocument(values);
+      const companyName =
+        values.legalData.contratante.nomeFantasia ||
+        values.legalData.contratante.razaoSocial;
+      const wordBlob = generateContractWordBlob(renderResult, {
+        contractNumber: values.internalMetadata.contractNumber,
+        companyName,
+      });
+      const fileName = `${slugifyToken(values.internalMetadata.contractNumber)}-${slugifyToken(
+        companyName,
+      )}.doc`;
+
+      const response = await invokeEmbedAction<{ values: ContractFormalizationFormValues }>(
+        token,
+        'save_preview',
+        {
+          values,
+          render: {
+            html: renderResult.html,
+            markdown: renderResult.markdown,
+            placeholders: renderResult.placeholders,
+            commercialSummary: renderResult.commercialSummary,
+            includedAnnexes: renderResult.includedAnnexes,
+          },
+        },
+      );
+
+      downloadBlob(wordBlob, fileName);
+      return {
+        values: response.values,
+        renderResult,
+        wordFileName: fileName,
+      };
+    },
+    onSuccess: (result) => {
+      toast({
+        title: 'Word gerado',
+        description: `${result.wordFileName} foi baixado pelo navegador.`,
+      });
+    },
+  });
+
   return {
     resolveQuery,
     session: resolveQuery.data?.session || null,
@@ -194,5 +239,7 @@ export const useContractEmbedSession = (token: string) => {
     isGeneratingPreview: previewMutation.isPending,
     generatePdf: pdfMutation.mutateAsync,
     isGeneratingPdf: pdfMutation.isPending,
+    generateWord: wordMutation.mutateAsync,
+    isGeneratingWord: wordMutation.isPending,
   };
 };
