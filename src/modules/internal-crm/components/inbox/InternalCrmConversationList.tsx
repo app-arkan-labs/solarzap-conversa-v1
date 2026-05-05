@@ -3,10 +3,8 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import {
-  getInternalCrmStageMeta,
-  normalizeInternalCrmStageCode,
-} from '@/modules/internal-crm/components/pipeline/stageCatalog';
+import { getInternalCrmStageMeta } from '@/modules/internal-crm/components/pipeline/stageCatalog';
+import { resolveInternalCrmPipelineStageView } from '@/modules/internal-crm/lib/inboxStage';
 import type {
   InternalCrmConversationSummary,
   InternalCrmWhatsappInstance,
@@ -65,24 +63,12 @@ function getAvatarColor(name: string) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
-}
-
-function getInstanceColor(instance: InternalCrmWhatsappInstance | null): string | null {
-  if (!instance) return null;
-  const metadata = asRecord(instance.metadata);
-  const metadataColor = typeof metadata.color === 'string' ? metadata.color.trim() : '';
-  const explicitColor = typeof instance.color === 'string' ? instance.color.trim() : '';
-  return explicitColor || metadataColor || '#25D366';
-}
-
 export function InternalCrmConversationList(props: InternalCrmConversationListProps) {
   const normalizedSearch = props.search.trim().toLowerCase();
   const stageOptions = [
     { value: 'all', label: 'Todas as etapas' },
     ...Array.from(new Set(props.conversations
-      .map((conversation) => normalizeInternalCrmStageCode(conversation.current_stage_code))
+      .map((conversation) => resolveInternalCrmPipelineStageView({ conversation }).code)
       .filter(Boolean)))
       .map((stageCode) => ({
         value: stageCode,
@@ -98,13 +84,11 @@ export function InternalCrmConversationList(props: InternalCrmConversationListPr
     })),
   ];
 
-  const instancesById = new Map(props.instances.map((instance) => [instance.id, instance]));
-
   const filteredConversations = props.conversations
     .filter((conversation) => conversation.status !== 'archived')
     .filter((conversation) => {
       if (props.stageFilter === 'all') return true;
-      return normalizeInternalCrmStageCode(conversation.current_stage_code) === props.stageFilter;
+      return resolveInternalCrmPipelineStageView({ conversation }).code === props.stageFilter;
     })
     .filter((conversation) => {
       if (props.instanceFilter === 'all') return true;
@@ -187,24 +171,22 @@ export function InternalCrmConversationList(props: InternalCrmConversationListPr
             const isActive = conversation.id === props.selectedConversationId;
             const name = getDisplayName(conversation);
             const unread = Number(conversation.unread_count || 0);
-            const stageMeta = getInternalCrmStageMeta(conversation.current_stage_code || 'novo_lead');
-            const instance = instancesById.get(String(conversation.whatsapp_instance_id || '')) || null;
-            const instanceColor = getInstanceColor(instance);
+            const stage = resolveInternalCrmPipelineStageView({ conversation });
 
             return (
               <button
                 key={conversation.id}
                 type="button"
                 className={cn(
-                  'w-full border-b border-border/40 px-3 py-3.5 text-left transition-colors',
-                  isActive ? 'bg-primary/8' : 'hover:bg-muted/40',
+                  'w-full border-b border-border/40 px-4 py-3.5 text-left transition-colors',
+                  isActive ? 'bg-primary/8' : 'hover:bg-muted/35',
                 )}
                 onClick={() => props.onSelectConversation(conversation.id)}
               >
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3.5">
                   <div
                     className={cn(
-                      'flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white',
+                      'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white',
                       getAvatarColor(name),
                     )}
                   >
@@ -232,26 +214,13 @@ export function InternalCrmConversationList(props: InternalCrmConversationListPr
                       ) : null}
                     </div>
 
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <div className="mt-2 flex items-center gap-1.5">
                       <span
                         className="inline-flex h-5 items-center rounded-full px-2 text-[10px] font-semibold text-white"
-                        style={{ backgroundColor: stageMeta?.color || '#64748b' }}
+                        style={{ backgroundColor: stage.color }}
                       >
-                        {stageMeta?.label || 'Etapa'}
+                        {stage.label}
                       </span>
-                      {instance ? (
-                        <span className="inline-flex h-5 items-center gap-1 rounded-full border border-border/60 px-2 text-[10px] text-muted-foreground">
-                          {instanceColor ? (
-                            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: instanceColor }} />
-                          ) : null}
-                          <span className="max-w-[90px] truncate">{instance.display_name || instance.instance_name}</span>
-                        </span>
-                      ) : null}
-                      {conversation.next_action ? (
-                        <span className="inline-flex h-5 items-center rounded-full border border-border/60 px-2 text-[10px] text-muted-foreground">
-                          {conversation.next_action}
-                        </span>
-                      ) : null}
                     </div>
                   </div>
                 </div>

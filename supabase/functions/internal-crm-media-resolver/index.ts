@@ -282,8 +282,8 @@ const resolvePlaceholderBody = (
   if (normalizedVariant === 'sticker') return 'Sticker recebido';
   if (normalizedVariant === 'gif') return 'GIF recebido';
   if (attachmentType === 'image') return 'Imagem recebida';
-  if (attachmentType === 'video') return 'Vídeo recebido';
-  if (attachmentType === 'audio') return 'Áudio recebido';
+  if (attachmentType === 'video') return 'Video recebido';
+  if (attachmentType === 'audio') return 'Audio recebido';
   return 'Documento recebido';
 };
 
@@ -406,7 +406,7 @@ async function resolveSingleMedia(
   const shouldReplaceBodyWithTranscript =
     attachmentType === 'audio'
     && Boolean(transcriptText)
-    && (!currentBody || currentBody === placeholderBody || currentBody.startsWith('🎤 '));
+    && (!currentBody || currentBody === placeholderBody || currentBody.startsWith('Audio: '));
 
   const updatePayload: Record<string, unknown> = {
     attachment_url: publicUrl,
@@ -420,7 +420,7 @@ async function resolveSingleMedia(
   };
 
   if (shouldReplaceBodyWithTranscript && transcriptText) {
-    updatePayload.body = `🎤 ${transcriptText}`;
+    updatePayload.body = `Audio: ${transcriptText}`;
   } else if (!currentBody) {
     updatePayload.body = placeholderBody;
   }
@@ -600,3 +600,4 @@ Deno.serve(async (req) => {
     });
   }
 });
+

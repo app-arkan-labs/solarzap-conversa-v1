@@ -20,10 +20,7 @@ import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { formatDateTime } from '@/modules/internal-crm/components/InternalCrmUi';
-import {
-  getInternalCrmStageMeta,
-  normalizeInternalCrmStageCode,
-} from '@/modules/internal-crm/components/pipeline/stageCatalog';
+import { resolveInternalCrmPipelineStageView } from '@/modules/internal-crm/lib/inboxStage';
 import type {
   InternalCrmClientDetail,
   InternalCrmConversationSummary,
@@ -120,13 +117,10 @@ export function InternalCrmActionsPanelFull(props: InternalCrmActionsPanelFullPr
     return null;
   }
 
-  const stageCode = normalizeInternalCrmStageCode(
-    detail?.deals?.find((deal) => deal.status === 'open')?.stage_code ||
-      client?.current_stage_code ||
-      props.conversation.current_stage_code ||
-      'novo_lead',
-  );
-  const stage = getInternalCrmStageMeta(stageCode);
+  const stage = resolveInternalCrmPipelineStageView({
+    conversation: props.conversation,
+    detail,
+  });
 
   const handleChange = (field: keyof ClientFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -198,7 +192,7 @@ export function InternalCrmActionsPanelFull(props: InternalCrmActionsPanelFullPr
       {/* Current Stage Badge */}
       <div className="px-4 pb-4 pt-2 border-b border-border space-y-3">
         <Badge className="text-white text-sm px-3 py-1 border-0" style={{ backgroundColor: stage?.color || '#2196F3' }}>
-          {stage?.icon || '●'} {stage?.label || 'Novo Lead'}
+          {stage.icon || '●'} {stage.label || 'Novo Lead'}
         </Badge>
       </div>
 

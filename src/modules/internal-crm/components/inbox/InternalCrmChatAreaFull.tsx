@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   Reply,
   Search,
+  MessageSquare,
   CheckCheck,
   Check,
   Clock,
@@ -26,10 +27,7 @@ import { useToast } from '@/hooks/use-toast';
 import EmojiPicker, { EmojiClickData, Theme, Categories } from 'emoji-picker-react';
 import { MessageContent } from '@/components/solarzap/MessageContent';
 import { InternalCrmInstanceSelector } from '@/modules/internal-crm/components/inbox/InternalCrmInstanceSelector';
-import {
-  getInternalCrmStageMeta,
-  normalizeInternalCrmStageCode,
-} from '@/modules/internal-crm/components/pipeline/stageCatalog';
+import { resolveInternalCrmPipelineStageView } from '@/modules/internal-crm/lib/inboxStage';
 import {
   resolveInternalCrmAttachmentKind,
   resolveInternalCrmMediaVariant,
@@ -190,9 +188,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
     pending: false, prevScrollTop: 0, prevScrollHeight: 0,
   });
 
-  const stageMeta = getInternalCrmStageMeta(
-    normalizeInternalCrmStageCode(props.conversation?.current_stage_code || 'novo_lead'),
-  );
+  const stageView = resolveInternalCrmPipelineStageView({ conversation: props.conversation });
   const isInstanceConnected = props.instance?.status === 'connected';
   const canSend = !props.sendBlockedReason;
 
@@ -488,8 +484,10 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
     return (
       <div className="flex h-full flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
         <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted/60 flex items-center justify-center text-3xl">💬</div>
-          <p className="text-muted-foreground">Selecione uma conversa para visualizar o histórico.</p>
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted/60">
+            <MessageSquare className="h-7 w-7 text-muted-foreground" />
+          </div>
+          <p className="text-muted-foreground">Selecione uma conversa para visualizar o historico.</p>
         </div>
       </div>
     );
@@ -536,9 +534,9 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
               <p className="truncate text-sm font-semibold text-foreground">{name}</p>
               <Badge
                 className="h-5 shrink-0 border-0 px-2 text-[10px] font-semibold text-white"
-                style={{ backgroundColor: stageMeta?.color || '#64748b' }}
+                style={{ backgroundColor: stageView.color }}
               >
-                {stageMeta?.label || 'Etapa'}
+                {stageView.label}
               </Badge>
             </div>
             <p className="truncate text-xs text-muted-foreground">
@@ -615,7 +613,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
         onScroll={handleMessagesScroll}
         data-testid="crm-inbox-chat-scroll"
       >
-        <div className="flex min-h-full max-w-3xl mx-auto flex-col space-y-1 py-2 px-4">
+        <div className="flex min-h-full flex-col space-y-1 px-4 py-2">
           {visibleMessages.length === 0 ? (
             <div className="text-center text-sm text-muted-foreground py-8">
               Nenhuma mensagem nesta conversa.

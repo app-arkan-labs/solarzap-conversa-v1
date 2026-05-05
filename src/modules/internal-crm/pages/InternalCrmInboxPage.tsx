@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,11 @@ import { useInternalCrmInbox } from '@/modules/internal-crm/hooks/useInternalCrm
 import { useInternalCrmClients, useInternalCrmMutation } from '@/modules/internal-crm/hooks/useInternalCrmApi';
 import type { InternalCrmAttachmentKind, InternalCrmMediaVariant } from '@/modules/internal-crm/lib/chatMedia';
 
+const INBOX_LEAD_LIST_WIDTH_STORAGE_KEY = 'internal_crm_inbox_lead_list_width';
+const INBOX_LEAD_LIST_WIDTH_MIN = 300;
+const INBOX_LEAD_LIST_WIDTH_MAX = 520;
+const INBOX_LEAD_LIST_WIDTH_DEFAULT = 360;
+
 export default function InternalCrmInboxPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -23,11 +28,24 @@ export default function InternalCrmInboxPage() {
   const [instanceFilter, setInstanceFilter] = useState('all');
   const [messageBody, setMessageBody] = useState('');
   const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
-  const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(true);
+  const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
+  const [leadListWidth, setLeadListWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return INBOX_LEAD_LIST_WIDTH_DEFAULT;
+    const raw = window.localStorage.getItem(INBOX_LEAD_LIST_WIDTH_STORAGE_KEY);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    if (!Number.isFinite(parsed)) return INBOX_LEAD_LIST_WIDTH_DEFAULT;
+    return Math.min(INBOX_LEAD_LIST_WIDTH_MAX, Math.max(INBOX_LEAD_LIST_WIDTH_MIN, parsed));
+  });
+  const [isResizingLeadList, setIsResizingLeadList] = useState(false);
+  const [isDesktopViewport, setIsDesktopViewport] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(min-width: 1024px)').matches;
+  });
   const [notesSheetOpen, setNotesSheetOpen] = useState(false);
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
   const [isSendingMedia, setIsSendingMedia] = useState(false);
   const autoReadSignatureRef = useRef<string>('');
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
 
   const inbox = useInternalCrmInbox(selectedConversationId, {});
   const conversations = useMemo(
@@ -98,6 +116,69 @@ export default function InternalCrmInboxPage() {
     setSearchParams(nextParams, { replace: true });
   }, [conversations, searchParams, setSearchParams]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(INBOX_LEAD_LIST_WIDTH_STORAGE_KEY, String(leadListWidth));
+  }, [leadListWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(min-width: 1024px)');
+    const updateViewport = (matches: boolean) => {
+      setIsDesktopViewport(matches);
+      if (!matches) {
+        setIsResizingLeadList(false);
+      }
+    };
+
+    updateViewport(media.matches);
+
+    const onChange = (event: MediaQueryListEvent) => updateViewport(event.matches);
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', onChange);
+      return () => media.removeEventListener('change', onChange);
+    }
+
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isResizingLeadList) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const container = workspaceRef.current;
+      if (!container) return;
+      const left = container.getBoundingClientRect().left;
+      const maxByViewport = Math.floor(container.clientWidth * 0.4);
+      const maxAllowed = Math.min(INBOX_LEAD_LIST_WIDTH_MAX, Math.max(INBOX_LEAD_LIST_WIDTH_MIN, maxByViewport));
+      const nextWidth = event.clientX - left;
+      setLeadListWidth(Math.min(maxAllowed, Math.max(INBOX_LEAD_LIST_WIDTH_MIN, nextWidth)));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingLeadList(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingLeadList]);
+
+  const handleLeadListResizeStart = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!isDesktopViewport) return;
+    event.preventDefault();
+    setIsResizingLeadList(true);
+  };
+
   const sendMessage = async () => {
     if (!selectedConversationId || !messageBody.trim()) return;
     await inbox.appendMessageMutation.mutateAsync({
@@ -128,7 +209,7 @@ export default function InternalCrmInboxPage() {
     isVoiceNote?: boolean;
     preferSticker?: boolean;
   }) => {
-    if (!selectedConversationId) throw new Error('Conversa não selecionada.');
+    if (!selectedConversationId) throw new Error('Conversa nao selecionada.');
 
     const { data, error } = await inbox.supabaseClient.functions.invoke('internal-crm-storage-intent', {
       body: {
@@ -299,7 +380,7 @@ export default function InternalCrmInboxPage() {
       ...payload,
       client_id: selectedClientId || payload.client_id,
     });
-    toast({ title: 'Reunião agendada' });
+    toast({ title: 'Reuniao agendada' });
     setAppointmentModalOpen(false);
   };
 
@@ -359,14 +440,15 @@ export default function InternalCrmInboxPage() {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden" data-testid="crm-inbox-root">
       <div
-        className={cn(
-          'grid h-full min-h-0 min-w-0 flex-1 grid-cols-1 bg-card lg:grid-cols-[360px_minmax(0,1fr)]',
-          isDetailsPanelOpen && 'xl:grid-cols-[360px_minmax(0,1fr)_340px]',
-        )}
+        ref={workspaceRef}
+        className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-card"
         data-testid="crm-inbox-workspace"
       >
           {/* Conversation list */}
-          <div className={cn('min-h-0 overflow-hidden', selectedConversationId ? 'hidden lg:block' : 'block')}>
+          <div
+            className={cn('min-h-0 overflow-hidden', selectedConversationId ? 'hidden lg:block' : 'block')}
+            style={isDesktopViewport ? { width: leadListWidth, minWidth: leadListWidth, maxWidth: leadListWidth } : undefined}
+          >
             <InternalCrmConversationList
               conversations={conversations}
               selectedConversationId={selectedConversationId}
@@ -382,8 +464,27 @@ export default function InternalCrmInboxPage() {
             />
           </div>
 
-          {/* Chat area — full version */}
-          <div className={cn('min-h-0 overflow-hidden border-l border-border/40', !selectedConversationId ? 'hidden lg:block' : 'block')}>
+          {isDesktopViewport ? (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Redimensionar lista de leads"
+              className={cn(
+                'hidden w-1.5 cursor-col-resize border-l border-r border-border/30 bg-transparent transition-colors lg:block',
+                isResizingLeadList ? 'bg-primary/30' : 'hover:bg-primary/20',
+              )}
+              onMouseDown={handleLeadListResizeStart}
+            />
+          ) : null}
+
+
+          {/* Chat area */}
+          <div
+            className={cn(
+              'min-h-0 min-w-0 flex-1 overflow-hidden border-l border-border/40',
+              !selectedConversationId ? 'hidden lg:block' : 'block',
+            )}
+          >
             <InternalCrmChatAreaFull
               conversation={inbox.selectedConversation}
               messages={inbox.messages}
@@ -406,8 +507,8 @@ export default function InternalCrmInboxPage() {
                   });
                 } catch (error) {
                   toast({
-                    title: 'Falha ao reprocessar mídia',
-                    description: error instanceof Error ? error.message : 'Não foi possível reenfileirar a mídia.',
+                    title: 'Falha ao reprocessar midia',
+                    description: error instanceof Error ? error.message : 'Nao foi possivel reenfileirar a midia.',
                     variant: 'destructive',
                   });
                 }
@@ -427,9 +528,9 @@ export default function InternalCrmInboxPage() {
             />
           </div>
 
-          {/* Actions panel (desktop) — full version */}
+          {/* Actions panel (desktop) */}
           {isDetailsPanelOpen && (
-            <div className="hidden min-h-0 border-l border-border/40 xl:block">
+            <div className="hidden min-h-0 w-[340px] border-l border-border/40 xl:block">
               <InternalCrmActionsPanelFull
                 conversation={inbox.selectedConversation}
                 detail={inbox.clientDetailQuery.data || null}

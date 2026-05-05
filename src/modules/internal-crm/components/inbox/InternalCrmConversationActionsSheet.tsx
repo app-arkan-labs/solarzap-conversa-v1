@@ -1,10 +1,7 @@
 import { Calendar, Kanban, MessageSquare, Phone, PhoneCall, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import {
-  getInternalCrmStageMeta,
-  normalizeInternalCrmStageCode,
-} from '@/modules/internal-crm/components/pipeline/stageCatalog';
+import { resolveInternalCrmPipelineStageView } from '@/modules/internal-crm/lib/inboxStage';
 import type {
   InternalCrmClientDetail,
   InternalCrmConversationSummary,
@@ -23,13 +20,10 @@ type InternalCrmConversationActionsSheetProps = {
 
 export function InternalCrmConversationActionsSheet(props: InternalCrmConversationActionsSheetProps) {
   const client = props.detail?.client;
-  const stageCode = normalizeInternalCrmStageCode(
-    props.detail?.deals?.find((deal) => deal.status === 'open')?.stage_code ||
-      client?.current_stage_code ||
-      props.conversation?.current_stage_code ||
-      'novo_lead',
-  );
-  const stageMeta = getInternalCrmStageMeta(stageCode);
+  const stageView = resolveInternalCrmPipelineStageView({
+    conversation: props.conversation,
+    detail: props.detail,
+  });
 
   const quickActions = [
     {
@@ -106,9 +100,9 @@ export function InternalCrmConversationActionsSheet(props: InternalCrmConversati
             <p className="text-muted-foreground">{client?.primary_phone || props.conversation?.primary_phone || '-'}</p>
             <span
               className="inline-flex h-6 items-center rounded-full px-2.5 text-xs font-semibold text-white"
-              style={{ backgroundColor: stageMeta?.color || '#64748b' }}
+              style={{ backgroundColor: stageView.color }}
             >
-              {stageMeta?.label || 'Etapa'}
+              {stageView.label}
             </span>
           </div>
 

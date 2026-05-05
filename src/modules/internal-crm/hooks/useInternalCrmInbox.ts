@@ -30,7 +30,12 @@ export function useInternalCrmInbox(selectedConversationId: string | null, filte
 
   const selectedConversation = useMemo(() => {
     if (conversationDetailQuery.data?.conversation?.id === selectedConversationId) {
-      return conversationDetailQuery.data.conversation;
+      const summaryConversation =
+        conversationsQuery.data?.conversations.find((conversation) => conversation.id === selectedConversationId) || null;
+      return {
+        ...(summaryConversation || {}),
+        ...conversationDetailQuery.data.conversation,
+      };
     }
 
     return conversationsQuery.data?.conversations.find((conversation) => conversation.id === selectedConversationId) || null;

@@ -3052,17 +3052,47 @@ async function getConversationDetail(serviceClient: ReturnType<typeof createClie
   if (conversationError) throw { status: 500, code: 'conversation_query_failed', error: conversationError };
   if (!conversation?.id) throw { status: 404, code: 'not_found' };
 
-  const [{ data: messages, error: messagesError }, { data: client }, { data: instance }] = await Promise.all([
+  const [{ data: messages, error: messagesError }, { data: client }, { data: instance }, { data: primaryOpenDeal }] = await Promise.all([
     schema.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true }),
     schema.from('clients').select('id, company_name, primary_contact_name, primary_phone, primary_email, source_channel, owner_user_id, current_stage_code, lifecycle_status, last_contact_at, next_action, next_action_at, linked_public_org_id, updated_at').eq('id', conversation.client_id).maybeSingle(),
     conversation.whatsapp_instance_id ? schema.from('whatsapp_instances').select('*').eq('id', conversation.whatsapp_instance_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    schema
+      .from('deals')
+      .select('id, stage_code, status, updated_at')
+      .eq('client_id', conversation.client_id)
+      .eq('status', 'open')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (messagesError) throw { status: 500, code: 'messages_query_failed', error: messagesError };
+  const stageCode =
+    asString(primaryOpenDeal?.stage_code) ||
+    asString(client?.current_stage_code) ||
+    asString(conversation.current_stage_code) ||
+    'novo_lead';
+
+  const enrichedConversation = {
+    ...conversation,
+    client_company_name: asString(client?.company_name),
+    primary_contact_name: asString(client?.primary_contact_name),
+    primary_phone: asString(client?.primary_phone),
+    primary_email: asString(client?.primary_email),
+    current_stage_code: stageCode,
+    stage_label: resolveBlueprintStageLabel(stageCode),
+    stage_color: resolveBlueprintStageColor(stageCode),
+    primary_open_deal_id: asString(primaryOpenDeal?.id),
+    primary_open_deal_stage_code: asString(primaryOpenDeal?.stage_code),
+    lifecycle_status: asString(client?.lifecycle_status),
+    source_channel: asString(client?.source_channel),
+    next_action: asString(client?.next_action),
+    next_action_at: asString(client?.next_action_at),
+  };
 
   return {
     ok: true,
-    conversation,
+    conversation: enrichedConversation,
     messages: messages || [],
     client: client || null,
     whatsapp_instance: instance || null,
@@ -3273,10 +3303,23 @@ async function retryMessageMedia(
     })
     .eq('id', messageId);
 
+  let instanceName = asString(asRecord(message.metadata).instance_name);
+  if (!instanceName && asString(message.whatsapp_instance_id)) {
+    const { data: instance } = await schema
+      .from('whatsapp_instances')
+      .select('instance_name')
+      .eq('id', asString(message.whatsapp_instance_id))
+      .maybeSingle();
+    instanceName = asString(instance?.instance_name);
+  }
+  if (!instanceName) {
+    throw { status: 400, code: 'invalid_payload', message: 'Mensagem sem instance_name para reprocessamento.' };
+  }
+
   const result = await invokeInternalEdgeFunction('internal-crm-media-resolver', {
     messageId,
     waMessageId: asString(message.wa_message_id),
-    instanceName: asString(asRecord(message.metadata).instance_name),
+    instanceName,
     mimeType: asString(message.attachment_mimetype),
     fileName: asString(message.attachment_name),
     messageType: asString(message.message_type),
@@ -6917,7 +6960,33 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
   // Only advance pipeline stage on inbound messages (not outbound from phone)
   if (!fromMe) {
     const resolvedStage = resolveBlueprintStageCode(client.current_stage_code, 'novo_lead');
-    if (resolvedStage === 'novo_lead') clientUpdatePayload.current_stage_code = 'respondeu';
+    const { data: primaryOpenDeal } = await schema
+      .from('deals')
+      .select('id, stage_code, status, probability')
+      .eq('client_id', client.id)
+      .eq('status', 'open')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const openDealStage = resolveBlueprintStageCode(primaryOpenDeal?.stage_code, resolvedStage);
+
+    if (openDealStage === 'novo_lead') {
+      const nextStageCode = 'respondeu';
+      if (primaryOpenDeal?.id) {
+        await schema
+          .from('deals')
+          .update({
+            stage_code: nextStageCode,
+            status: resolveDealStatusForStage(nextStageCode, asString(primaryOpenDeal.status) || 'open'),
+            probability: resolveStageProbability(nextStageCode, asNumber(primaryOpenDeal.probability, 0)),
+            updated_at: nowIso(),
+          })
+          .eq('id', primaryOpenDeal.id);
+      }
+      clientUpdatePayload.current_stage_code = nextStageCode;
+    } else if (resolvedStage === 'novo_lead') {
+      clientUpdatePayload.current_stage_code = 'respondeu';
+    }
   }
   await schema.from('clients').update(clientUpdatePayload).eq('id', client.id);
 
