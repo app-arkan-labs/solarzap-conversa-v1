@@ -1,7 +1,5 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import {
-  Phone,
-  Search,
   Paperclip,
   Smile,
   Mic,
@@ -11,20 +9,27 @@ import {
   Copy,
   ArrowLeft,
   Reply,
-  MoreVertical,
-  Archive,
+  Search,
   CheckCheck,
   Check,
   Clock,
   StickyNote,
+  Bot,
+  UserCog,
   PanelRightOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import EmojiPicker, { EmojiClickData, Theme, Categories } from 'emoji-picker-react';
 import { MessageContent } from '@/components/solarzap/MessageContent';
+import { InternalCrmInstanceSelector } from '@/modules/internal-crm/components/inbox/InternalCrmInstanceSelector';
+import {
+  getInternalCrmStageMeta,
+  normalizeInternalCrmStageCode,
+} from '@/modules/internal-crm/components/pipeline/stageCatalog';
 import {
   resolveInternalCrmAttachmentKind,
   resolveInternalCrmMediaVariant,
@@ -58,7 +63,12 @@ const BOTTOM_STICKY_THRESHOLD_PX = 80;
 type InternalCrmChatAreaFullProps = {
   conversation: InternalCrmConversationSummary | null;
   messages: InternalCrmMessage[];
+  instances: InternalCrmWhatsappInstance[];
+  selectedInstanceId: string | null;
+  onSelectInstance: (instanceId: string) => void;
   instance: InternalCrmWhatsappInstance | null;
+  onToggleInstanceAi?: (enabled: boolean) => Promise<void> | void;
+  isTogglingInstanceAi?: boolean;
   messageBody: string;
   onMessageBodyChange: (value: string) => void;
   onSendMessage: () => void;
@@ -81,8 +91,7 @@ type InternalCrmChatAreaFullProps = {
   ) => Promise<void>;
   onRetryMessageMedia?: (messageId: string) => Promise<void>;
   isSending: boolean;
-  isUpdatingStatus?: boolean;
-  onUpdateStatus: (status: 'open' | 'resolved' | 'archived') => void;
+  sendBlockedReason?: string | null;
   onOpenActions: () => void;
   onBack: () => void;
   isDetailsPanelOpen?: boolean;
@@ -181,8 +190,11 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
     pending: false, prevScrollTop: 0, prevScrollHeight: 0,
   });
 
-  const canResolve = props.conversation && props.conversation.status !== 'resolved';
-  const canArchive = props.conversation && props.conversation.status !== 'archived';
+  const stageMeta = getInternalCrmStageMeta(
+    normalizeInternalCrmStageCode(props.conversation?.current_stage_code || 'novo_lead'),
+  );
+  const isInstanceConnected = props.instance?.status === 'connected';
+  const canSend = !props.sendBlockedReason;
 
   // Reset state when conversation changes
   useEffect(() => {
@@ -191,14 +203,15 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
     setReplyTarget(null);
     setIsSelectionMode(false);
     setSelectedMessages(new Set());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.conversation?.id]);
 
   // Update start index when new messages arrive
   useEffect(() => {
-    const newStart = Math.max(0, props.messages.length - INITIAL_MESSAGES_BATCH);
-    if (newStart > visibleStartIndex) {
-      setVisibleStartIndex(newStart);
-    }
+    setVisibleStartIndex((previous) => {
+      const nextStart = Math.max(0, props.messages.length - INITIAL_MESSAGES_BATCH);
+      return nextStart > previous ? nextStart : previous;
+    });
   }, [props.messages.length]);
 
   // Auto-scroll to bottom
@@ -267,6 +280,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
 
   // --- Handlers ---
   const handleSend = () => {
+    if (!canSend) return;
     if (!props.messageBody.trim()) return;
     props.onSendMessage();
     setReplyTarget(null);
@@ -311,6 +325,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!props.onSendAttachment || !e.target.files) return;
+    if (!canSend) return;
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 16 * 1024 * 1024) {
@@ -341,6 +356,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault(); e.stopPropagation(); setIsDragging(false); dragCounterRef.current = 0;
     if (!props.onSendAttachment) return;
+    if (!canSend) return;
     const files = Array.from(e.dataTransfer.files).slice(0, 10);
     for (const file of files) {
       if (file.size > 16 * 1024 * 1024) { toast({ title: 'Arquivo grande', description: `${file.name} excede 16 MB.`, variant: 'destructive' }); continue; }
@@ -367,6 +383,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
   };
 
   const handleRecordToggle = async () => {
+    if (!canSend) return;
     if (!props.onSendAudio) {
       toast({ title: 'Áudio indisponível', description: 'O envio de áudio ainda não foi configurado.', variant: 'destructive' });
       return;
@@ -515,7 +532,15 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
             {name.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-foreground">{name}</p>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground">{name}</p>
+              <Badge
+                className="h-5 shrink-0 border-0 px-2 text-[10px] font-semibold text-white"
+                style={{ backgroundColor: stageMeta?.color || '#64748b' }}
+              >
+                {stageMeta?.label || 'Etapa'}
+              </Badge>
+            </div>
             <p className="truncate text-xs text-muted-foreground">
               {props.conversation.primary_phone || props.conversation.primary_email || ''}
             </p>
@@ -523,21 +548,53 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
         </button>
 
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          {props.instance && (
-            <Badge variant="secondary" className="h-7 px-2 text-[10px] mr-1 max-w-[140px] truncate">
-              {props.instance.status === 'connected' ? '🟢' : '🔴'} {props.instance.display_name || props.instance.instance_name}
-            </Badge>
-          )}
-          {canResolve && (
-            <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => props.onUpdateStatus('resolved')} disabled={props.isUpdatingStatus}>
-              <CheckCheck className="mr-1 h-3.5 w-3.5" /> Resolver
-            </Button>
-          )}
-          {canArchive && (
-            <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => props.onUpdateStatus('archived')} disabled={props.isUpdatingStatus}>
-              <Archive className="mr-1 h-3.5 w-3.5" /> Arquivar
-            </Button>
-          )}
+          <div
+            className={cn(
+              'mr-2 hidden items-center gap-2 rounded-lg border border-border/50 bg-muted/40 px-2 py-1 md:flex',
+              (!isInstanceConnected || props.instance?.ai_enabled === false) && 'opacity-80',
+            )}
+          >
+            <div className="flex items-center gap-1.5">
+              {!isInstanceConnected || props.instance?.ai_enabled === false ? (
+                <UserCog className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <Bot className="h-4 w-4 text-primary" />
+              )}
+              <span className="text-xs font-medium">
+                {!isInstanceConnected
+                  ? 'Instancia Pausada'
+                  : props.instance?.ai_enabled === false
+                    ? 'IA Pausada'
+                    : 'IA Ativa'}
+              </span>
+            </div>
+            <Switch
+              checked={Boolean(props.instance && props.instance.ai_enabled !== false)}
+              onCheckedChange={(checked) => {
+                void props.onToggleInstanceAi?.(checked);
+              }}
+              disabled={!props.instance || !isInstanceConnected || props.isTogglingInstanceAi}
+              className="scale-75"
+            />
+          </div>
+
+          <InternalCrmInstanceSelector
+            instances={props.instances}
+            selectedInstanceId={props.selectedInstanceId}
+            onSelectInstance={props.onSelectInstance}
+            className="mr-2 hidden sm:flex"
+          />
+
+          <button
+            onClick={() => {
+              toast({ title: 'Busca em breve', description: 'A busca de mensagens sera ativada nesta tela.' });
+            }}
+            className="hidden p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors md:block"
+            title="Pesquisar mensagens"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+          <div className="hidden h-5 w-px self-center bg-border md:block" />
           <button
             onClick={() => setIsSelectionMode(!isSelectionMode)}
             className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
@@ -556,6 +613,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto chat-bg-pattern custom-scrollbar"
         onScroll={handleMessagesScroll}
+        data-testid="crm-inbox-chat-scroll"
       >
         <div className="flex min-h-full max-w-3xl mx-auto flex-col space-y-1 py-2 px-4">
           {visibleMessages.length === 0 ? (
@@ -779,6 +837,11 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
       {/* ====== MESSAGE INPUT — copied from SolarZap ====== */}
       {!isSelectionMode && (
         <div className={cn('px-4 py-3 border-t border-border bg-card shrink-0', replyTarget && 'border-t-0')}>
+          {props.sendBlockedReason ? (
+            <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+              {props.sendBlockedReason}
+            </div>
+          ) : null}
           {isRecording && (
             <div className="mb-2 flex items-center justify-between rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
               <span className="font-medium">Gravando áudio...</span>
@@ -812,6 +875,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
             {/* Attachment */}
             <button
               onClick={() => fileInputRef.current?.click()}
+              disabled={!canSend}
               className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
               title="Anexar arquivo"
             >
@@ -828,7 +892,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
             {/* Audio record */}
             <button
               onClick={() => { void handleRecordToggle(); }}
-              disabled={props.isSending}
+              disabled={props.isSending || !canSend}
               className={cn(
                 'p-2 rounded-lg transition-colors',
                 isRecording
@@ -845,6 +909,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
               ref={inputRef}
               rows={1}
               value={props.messageBody}
+              disabled={!canSend}
               onChange={(e) => {
                 props.onMessageBodyChange(e.target.value);
                 // Auto-resize
@@ -859,10 +924,10 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
             {/* Send */}
             <button
               onClick={handleSend}
-              disabled={props.isSending || isRecording || !props.messageBody.trim()}
+              disabled={props.isSending || isRecording || !props.messageBody.trim() || !canSend}
               className={cn(
                 'p-2.5 rounded-lg transition-colors',
-                props.messageBody.trim()
+                props.messageBody.trim() && canSend
                   ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                   : 'text-muted-foreground bg-muted/50',
               )}

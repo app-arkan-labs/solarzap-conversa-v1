@@ -65,6 +65,8 @@ const KNOWN_INTERNAL_CRM_ERROR_CODES: InternalCrmApiErrorCode[] = [
   'admin_lookup_failed',
   'not_found',
   'invalid_payload',
+  'instance_not_connected',
+  'slot_unavailable',
   'action_not_allowed',
   'unknown_internal_crm_error',
 ];
@@ -182,6 +184,7 @@ function normalizeInternalCrmApiErrorCode(input: {
 
   if (normalizedRawCode.includes('not_found')) return 'not_found';
   if (normalizedRawCode.includes('payload')) return 'invalid_payload';
+  if (normalizedRawCode.includes('slot_unavailable')) return 'slot_unavailable';
   if (normalizedRawCode.includes('action')) return 'action_not_allowed';
 
   return 'unknown_internal_crm_error';

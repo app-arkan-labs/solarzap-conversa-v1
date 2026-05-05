@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import {
@@ -14,9 +14,15 @@ export type InternalCrmInboxFilters = {
   status?: 'open' | 'resolved' | 'archived' | 'all';
 };
 
+const INTERNAL_CRM_SELECTED_INSTANCE_STORAGE_KEY = 'internal_crm_selected_instance_id';
+
 export function useInternalCrmInbox(selectedConversationId: string | null, filters: InternalCrmInboxFilters) {
   const queryClient = useQueryClient();
   const normalizedStatus = filters.status && filters.status !== 'all' ? filters.status : undefined;
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(INTERNAL_CRM_SELECTED_INSTANCE_STORAGE_KEY);
+  });
 
   const conversationsQuery = useInternalCrmConversations({ status: normalizedStatus });
   const conversationDetailQuery = useInternalCrmConversationDetail(selectedConversationId);
@@ -32,12 +38,52 @@ export function useInternalCrmInbox(selectedConversationId: string | null, filte
 
   const selectedClientId = selectedConversation?.client_id || conversationDetailQuery.data?.client?.id || null;
   const clientDetailQuery = useInternalCrmClientDetail(selectedClientId);
+  const selectedConversationInstanceId =
+    conversationDetailQuery.data?.whatsapp_instance?.id ||
+    conversationDetailQuery.data?.conversation?.whatsapp_instance_id ||
+    selectedConversation?.whatsapp_instance_id ||
+    null;
+  const selectedConversationStableId =
+    selectedConversation?.id || conversationDetailQuery.data?.conversation?.id || null;
+  const lastConversationIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedConversationStableId) {
+      lastConversationIdRef.current = null;
+      return;
+    }
+    if (lastConversationIdRef.current === selectedConversationStableId) return;
+    lastConversationIdRef.current = selectedConversationStableId;
+    if (selectedConversationInstanceId) {
+      setSelectedInstanceId(selectedConversationInstanceId);
+    }
+  }, [selectedConversationInstanceId, selectedConversationStableId]);
+
+  useEffect(() => {
+    const instances = instancesQuery.data?.instances || [];
+    if (instances.length === 0) return;
+
+    if (selectedInstanceId && instances.some((instance) => instance.id === selectedInstanceId)) {
+      return;
+    }
+
+    const fallback = instances.find((instance) => instance.status === 'connected') || instances[0];
+    if (fallback?.id && fallback.id !== selectedInstanceId) {
+      setSelectedInstanceId(fallback.id);
+    }
+  }, [instancesQuery.data?.instances, selectedInstanceId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!selectedInstanceId) {
+      window.localStorage.removeItem(INTERNAL_CRM_SELECTED_INSTANCE_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(INTERNAL_CRM_SELECTED_INSTANCE_STORAGE_KEY, selectedInstanceId);
+  }, [selectedInstanceId]);
 
   const selectedInstance = useMemo(() => {
-    const preferredInstanceId =
-      conversationDetailQuery.data?.whatsapp_instance?.id ||
-      conversationDetailQuery.data?.conversation?.whatsapp_instance_id ||
-      selectedConversation?.whatsapp_instance_id;
+    const preferredInstanceId = selectedInstanceId || selectedConversationInstanceId;
 
     if (!preferredInstanceId) {
       return conversationDetailQuery.data?.whatsapp_instance || null;
@@ -49,10 +95,10 @@ export function useInternalCrmInbox(selectedConversationId: string | null, filte
       null
     );
   }, [
-    conversationDetailQuery.data?.conversation?.whatsapp_instance_id,
     conversationDetailQuery.data?.whatsapp_instance,
     instancesQuery.data?.instances,
-    selectedConversation?.whatsapp_instance_id,
+    selectedConversationInstanceId,
+    selectedInstanceId,
   ]);
 
   const invalidateConversationKeys = useMemo(() => {
@@ -202,6 +248,9 @@ export function useInternalCrmInbox(selectedConversationId: string | null, filte
     selectedConversation,
     selectedClientId,
     selectedInstance,
+    selectedInstanceId,
+    setSelectedInstanceId,
+    instances: instancesQuery.data?.instances || [],
     messages: conversationDetailQuery.data?.messages || [],
     appendMessageMutation,
     markConversationReadMutation,

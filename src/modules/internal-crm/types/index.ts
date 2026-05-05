@@ -92,6 +92,8 @@ export type InternalCrmApiErrorCode =
   | 'admin_lookup_failed'
   | 'not_found'
   | 'invalid_payload'
+  | 'instance_not_connected'
+  | 'slot_unavailable'
   | 'action_not_allowed'
   | 'unknown_internal_crm_error';
 
@@ -381,6 +383,10 @@ export type InternalCrmConversationSummary = {
   primary_phone?: string | null;
   primary_email?: string | null;
   current_stage_code?: string | null;
+  stage_label?: string | null;
+  stage_color?: string | null;
+  primary_open_deal_id?: string | null;
+  primary_open_deal_stage_code?: string | null;
   lifecycle_status?: 'lead' | 'customer_onboarding' | 'active_customer' | 'churn_risk' | 'churned';
   source_channel?: string | null;
   next_action?: string | null;

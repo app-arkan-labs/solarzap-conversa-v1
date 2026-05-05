@@ -196,10 +196,52 @@ function normalizePhone(value: unknown): string {
   return digits;
 }
 
-function normalizeRemoteJid(remoteJid: string | null): string | null {
+function isInternalCrmGroupOrBroadcastJid(remoteJid: string | null): boolean {
+  if (!remoteJid) return false;
+  const normalized = remoteJid.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === 'status@broadcast') return true;
+  if (normalized.endsWith('@g.us')) return true;
+  if (normalized.endsWith('@broadcast')) return true;
+  return false;
+}
+
+function normalizeInternalCrmRemoteJid(remoteJid: string | null): string | null {
   if (!remoteJid) return null;
-  const digits = normalizePhone(remoteJid.replace(/@(s\.whatsapp\.net|c\.us)$/i, '').replace(/:\d+$/, ''));
+  const normalized = remoteJid.trim();
+  if (!normalized) return null;
+  if (isInternalCrmGroupOrBroadcastJid(normalized)) return null;
+
+  const withoutDeviceId = normalized.replace(/:\d+$/, '');
+  const bareIdentifier = withoutDeviceId.replace(/@(s\.whatsapp\.net|c\.us|lid)$/i, '');
+  const digits = normalizePhone(bareIdentifier);
   return digits ? `${digits}@s.whatsapp.net` : null;
+}
+
+function normalizeRemoteJid(remoteJid: string | null): string | null {
+  return normalizeInternalCrmRemoteJid(remoteJid);
+}
+
+function extractInternalCrmContactPhoneFromWebhook(messageNode: Record<string, unknown>): string {
+  const keyNode = asRecord(messageNode.key);
+  const fallbackCandidates: Array<unknown> = [
+    keyNode.remoteJid,
+    messageNode.remoteJid,
+    keyNode.participant,
+    messageNode.participant,
+    messageNode.number,
+  ];
+
+  for (const candidate of fallbackCandidates) {
+    const normalized = normalizeInternalCrmRemoteJid(asString(candidate));
+    if (normalized) {
+      return normalizePhone(normalized);
+    }
+    const fromRaw = normalizePhone(candidate);
+    if (fromRaw) return fromRaw;
+  }
+
+  return '';
 }
 
 function normalizeSearchToken(value: unknown): string {
@@ -239,6 +281,26 @@ const BLUEPRINT_STAGE_DEFAULT_PROBABILITY: Record<string, number> = {
   negociacao: 75,
   fechou: 100,
   nao_fechou: 5,
+};
+const BLUEPRINT_STAGE_LABEL: Record<string, string> = {
+  novo_lead: 'Novo Lead',
+  respondeu: 'Respondeu',
+  chamada_agendada: 'Reuniao Agendada',
+  chamada_realizada: 'Reuniao Realizada',
+  nao_compareceu: 'Nao Compareceu',
+  negociacao: 'Negociacao',
+  fechou: 'Fechou Contrato',
+  nao_fechou: 'Nao Fechou',
+};
+const BLUEPRINT_STAGE_COLOR: Record<string, string> = {
+  novo_lead: '#2196F3',
+  respondeu: '#FF9800',
+  chamada_agendada: '#3F51B5',
+  chamada_realizada: '#4CAF50',
+  nao_compareceu: '#F44336',
+  negociacao: '#FFC107',
+  fechou: '#8BC34A',
+  nao_fechou: '#607D8B',
 };
 const MENTORSHIP_SESSION_TARGET: Record<string, number> = {
   mentoria_1000_1_encontro: 1,
@@ -314,6 +376,16 @@ function resolveLifecycleStatusForStage(
 function resolveStageProbability(stageCode: unknown, fallback = 0): number {
   const resolvedStageCode = resolveBlueprintStageCode(stageCode, 'novo_lead');
   return BLUEPRINT_STAGE_DEFAULT_PROBABILITY[resolvedStageCode] ?? fallback;
+}
+
+function resolveBlueprintStageLabel(stageCode: unknown): string {
+  const resolvedStageCode = resolveBlueprintStageCode(stageCode, 'novo_lead');
+  return BLUEPRINT_STAGE_LABEL[resolvedStageCode] || humanizeToken(resolvedStageCode) || 'Novo Lead';
+}
+
+function resolveBlueprintStageColor(stageCode: unknown): string {
+  const resolvedStageCode = resolveBlueprintStageCode(stageCode, 'novo_lead');
+  return BLUEPRINT_STAGE_COLOR[resolvedStageCode] || '#64748b';
 }
 
 type AppointmentCommercialKind = 'meeting' | 'call' | 'visit' | 'other';
@@ -1281,10 +1353,21 @@ async function upsertDeal(
     });
   }
 
+  const { data: clientBeforeLifecycle } = await schema
+    .from('clients')
+    .select('lifecycle_status')
+    .eq('id', clientId)
+    .maybeSingle();
+
   await schema
     .from('clients')
     .update({
       current_stage_code: dealData.stage_code,
+      lifecycle_status: resolveLifecycleStatusForStage(
+        dealData.stage_code,
+        dealData.status,
+        asString(clientBeforeLifecycle?.lifecycle_status) || 'lead',
+      ),
       owner_user_id: dealData.owner_user_id || identity.user_id,
       updated_at: nowIso(),
     })
@@ -1390,31 +1473,85 @@ async function deleteDeal(
 
   const clientId = asString(before.client_id);
   const deletedStageCode = asString(before.stage_code);
-
-  const { error } = await schema.from('deals').delete().eq('id', dealId);
-  if (error) throw { status: 500, code: 'deal_delete_failed', error };
+  const deleteClientWhenLastDeal = asBoolean(payload.delete_client_when_last_deal, false);
 
   const { data: replacementDeal, error: replacementError } = await schema
     .from('deals')
     .select('id, stage_code, owner_user_id, updated_at')
     .eq('client_id', clientId)
+    .neq('id', dealId)
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (replacementError) throw { status: 500, code: 'deal_query_failed', error: replacementError };
 
+  if (!replacementDeal?.id && deleteClientWhenLastDeal) {
+    const { data: clientBefore } = await schema.from('clients').select('*').eq('id', clientId).maybeSingle();
+    const { error: clientDeleteError } = await schema.from('clients').delete().eq('id', clientId);
+    if (clientDeleteError) {
+      throw {
+        status: 500,
+        code: 'client_delete_failed',
+        message: clientDeleteError.message || 'Falha ao excluir cliente vinculado ao deal.',
+        error: clientDeleteError,
+      };
+    }
+
+    await writeAuditLog(serviceClient, identity, 'delete_deal', req, {
+      target_type: 'deal',
+      target_id: dealId,
+      client_id: clientId,
+      deal_id: dealId,
+      before: {
+        ...before,
+        deleted_stage_code: deletedStageCode,
+      },
+      after: {
+        deleted_client_id: clientId,
+        replacement_deal_id: null,
+        replacement_stage_code: null,
+      },
+    });
+
+    await writeAuditLog(serviceClient, identity, 'delete_client', req, {
+      target_type: 'client',
+      target_id: clientId,
+      client_id: clientId,
+      before: clientBefore,
+      after: null,
+      reason: 'deleted_with_last_deal',
+    });
+
+    return {
+      ok: true,
+      deleted_deal_id: dealId,
+      deleted_client_id: clientId,
+      replacement_deal_id: null,
+      replacement_stage_code: null,
+    };
+  }
+
+  const { error } = await schema.from('deals').delete().eq('id', dealId);
+  if (error) throw { status: 500, code: 'deal_delete_failed', error };
+
   const nextStageCode = asString(replacementDeal?.stage_code) || 'novo_lead';
   const nextOwnerUserId = asString(replacementDeal?.owner_user_id) || asString(before.owner_user_id) || identity.user_id;
 
-  await schema
+  const { error: clientUpdateError } = await schema
     .from('clients')
     .update({
       current_stage_code: nextStageCode,
+      lifecycle_status: resolveLifecycleStatusForStage(
+        nextStageCode,
+        asString(replacementDeal?.status) || 'open',
+        'lead',
+      ),
       owner_user_id: nextOwnerUserId,
       updated_at: nowIso(),
     })
     .eq('id', clientId);
+  if (clientUpdateError) throw { status: 500, code: 'client_update_failed', error: clientUpdateError };
 
   await syncInternalCrmTrackingBridge({
     supabase: serviceClient,
@@ -1542,6 +1679,9 @@ async function applyDealStageChange(
   const before = params.deal;
   const dealId = asString(before.id);
   const clientId = asString(before.client_id);
+  const { data: clientBefore } = clientId
+    ? await schema.from('clients').select('lifecycle_status').eq('id', clientId).maybeSingle()
+    : { data: null };
   const stageCode = resolveBlueprintStageCode(params.stage_code, resolveBlueprintStageCode(before.stage_code, 'novo_lead'));
   const status = resolveDealStatusForStage(stageCode, asString(before.status) || 'open');
   const updatePayload: Record<string, unknown> = {
@@ -1576,7 +1716,7 @@ async function applyDealStageChange(
   if (clientId) {
     await schema.from('clients').update({
       current_stage_code: stageCode,
-      lifecycle_status: resolveLifecycleStatusForStage(stageCode, status, asString(before.lifecycle_status) || 'lead'),
+      lifecycle_status: resolveLifecycleStatusForStage(stageCode, status, asString(clientBefore?.lifecycle_status) || 'lead'),
       updated_at: nowIso(),
     }).eq('id', clientId);
   }
@@ -2839,7 +2979,7 @@ async function listConversations(serviceClient: ReturnType<typeof createClient>,
   const clientIds = rows.map((row) => row.client_id).filter(Boolean);
   const conversationIds = rows.map((row) => String(row.id)).filter(Boolean);
 
-  const [{ data: clients }, { data: unreadMessages, error: unreadError }] = await Promise.all([
+  const [{ data: clients }, { data: unreadMessages, error: unreadError }, { data: openDeals }] = await Promise.all([
     schema
       .from('clients')
       .select('id, company_name, primary_contact_name, primary_phone, primary_email, current_stage_code, lifecycle_status, source_channel, next_action, next_action_at')
@@ -2851,6 +2991,14 @@ async function listConversations(serviceClient: ReturnType<typeof createClient>,
           .in('conversation_id', conversationIds)
           .eq('direction', 'inbound')
           .is('read_at', null)
+      : Promise.resolve({ data: [], error: null }),
+    clientIds.length > 0
+      ? schema
+          .from('deals')
+          .select('id, client_id, stage_code, status, updated_at')
+          .in('client_id', clientIds)
+          .eq('status', 'open')
+          .order('updated_at', { ascending: false })
       : Promise.resolve({ data: [], error: null }),
   ]);
 
@@ -2864,16 +3012,28 @@ async function listConversations(serviceClient: ReturnType<typeof createClient>,
     if (!conversationId) continue;
     unreadCountByConversationId.set(conversationId, (unreadCountByConversationId.get(conversationId) || 0) + 1);
   }
+  const primaryOpenDealByClientId = new Map<string, Record<string, unknown>>();
+  for (const deal of openDeals || []) {
+    const clientId = asString(deal.client_id);
+    if (!clientId || primaryOpenDealByClientId.has(clientId)) continue;
+    primaryOpenDealByClientId.set(clientId, deal as Record<string, unknown>);
+  }
 
   return rows.map((row) => {
     const client = clientMap.get(String(row.client_id || ''));
+    const primaryOpenDeal = primaryOpenDealByClientId.get(String(row.client_id || ''));
+    const stageCode = asString(primaryOpenDeal?.stage_code) || asString(client?.current_stage_code) || 'novo_lead';
     return {
       ...row,
       client_company_name: asString(client?.company_name),
       primary_contact_name: asString(client?.primary_contact_name),
       primary_phone: asString(client?.primary_phone),
       primary_email: asString(client?.primary_email),
-      current_stage_code: asString(client?.current_stage_code),
+      current_stage_code: stageCode,
+      stage_label: resolveBlueprintStageLabel(stageCode),
+      stage_color: resolveBlueprintStageColor(stageCode),
+      primary_open_deal_id: asString(primaryOpenDeal?.id),
+      primary_open_deal_stage_code: asString(primaryOpenDeal?.stage_code),
       lifecycle_status: asString(client?.lifecycle_status),
       source_channel: asString(client?.source_channel),
       next_action: asString(client?.next_action),
@@ -2926,6 +3086,22 @@ async function appendMessage(
   const body = asString(payload.body);
   const messageType = asString(payload.message_type) || 'text';
   const internalOnlyNote = conversation.channel === 'manual_note' || messageType === 'note';
+  const requestedInstanceId = asString(payload.whatsapp_instance_id);
+  const resolvedConversationInstanceId = requestedInstanceId || asString(conversation.whatsapp_instance_id);
+
+  if (!internalOnlyNote && !resolvedConversationInstanceId) {
+    throw { status: 400, code: 'invalid_payload', message: 'Conversa sem instancia para envio.' };
+  }
+
+  if (resolvedConversationInstanceId && resolvedConversationInstanceId !== asString(conversation.whatsapp_instance_id)) {
+    await schema
+      .from('conversations')
+      .update({
+        whatsapp_instance_id: resolvedConversationInstanceId,
+        updated_at: nowIso(),
+      })
+      .eq('id', conversationId);
+  }
 
   const attachmentUrl = asString(payload.attachment_url);
   const attachmentMimetype = asString(payload.attachment_mimetype);
@@ -2942,14 +3118,17 @@ async function appendMessage(
   let deliveryStatus = internalOnlyNote ? 'sent' : 'pending';
   if (!internalOnlyNote) {
     const [{ data: instance }, { data: client }] = await Promise.all([
-      conversation.whatsapp_instance_id
-        ? schema.from('whatsapp_instances').select('*').eq('id', conversation.whatsapp_instance_id).maybeSingle()
+      resolvedConversationInstanceId
+        ? schema.from('whatsapp_instances').select('*').eq('id', resolvedConversationInstanceId).maybeSingle()
         : Promise.resolve({ data: null }),
       schema.from('clients').select('primary_phone').eq('id', conversation.client_id).maybeSingle(),
     ]);
 
     if (!instance?.instance_name || !client?.primary_phone) {
       throw { status: 400, code: 'invalid_payload', message: 'Conversa sem instancia ou telefone para envio.' };
+    }
+    if (asString(instance.status) !== 'connected') {
+      throw { status: 409, code: 'instance_not_connected', message: 'A instancia selecionada nao esta conectada.' };
     }
     if (!body && !attachmentUrl) {
       throw { status: 400, code: 'invalid_payload', message: 'Mensagem sem corpo e sem anexo.' };
@@ -3019,7 +3198,7 @@ async function appendMessage(
 
   const insertPayload = {
     conversation_id: conversationId,
-    whatsapp_instance_id: conversation.whatsapp_instance_id,
+    whatsapp_instance_id: resolvedConversationInstanceId || conversation.whatsapp_instance_id,
     direction: 'outbound',
     body: persistedBody,
     message_type: messageType,
@@ -3565,6 +3744,7 @@ async function listAppointments(serviceClient: ReturnType<typeof createClient>, 
 
   const status = asString(payload.status);
   if (status) query = query.eq('status', status);
+  else if (!asBoolean(payload.include_canceled, false)) query = query.neq('status', 'canceled');
 
   const ownerUserId = asString(payload.owner_user_id);
   if (ownerUserId) query = query.eq('owner_user_id', ownerUserId);
@@ -3894,6 +4074,62 @@ async function handlePublicLpBookSlot(
   const appointmentStartAtRaw = asString(payload.appointment_start_at);
   if (!clientId || !dealId || !appointmentStartAtRaw) throw { status: 400, code: 'invalid_payload' };
 
+  const formSessionId = asString(payload.form_session_id);
+  const replaceExistingAppointment = asBoolean(payload.replace_existing_appointment, false);
+  const existingAppointmentId = asString(payload.existing_appointment_id) || asString(payload.appointment_id);
+  let existingSessionAppointment: Record<string, unknown> | null = null;
+
+  if (existingAppointmentId) {
+    const { data, error } = await crmSchema(serviceClient)
+      .from('appointments')
+      .select('*')
+      .eq('id', existingAppointmentId)
+      .eq('client_id', clientId)
+      .maybeSingle();
+
+    if (error) throw { status: 500, code: 'landing_existing_appointment_query_failed', error };
+    existingSessionAppointment = data;
+  }
+
+  if (!existingSessionAppointment?.id && formSessionId) {
+    const { data, error } = await crmSchema(serviceClient)
+      .from('appointments')
+      .select('*')
+      .eq('client_id', clientId)
+      .contains('metadata', { form_session_id: formSessionId })
+      .in('status', ['scheduled', 'confirmed'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw { status: 500, code: 'landing_existing_appointment_query_failed', error };
+    existingSessionAppointment = data;
+  }
+
+  if (existingSessionAppointment?.id && !asString(existingSessionAppointment.deal_id)) {
+    const { data: patchedAppointment } = await crmSchema(serviceClient)
+      .from('appointments')
+      .update({ deal_id: dealId, updated_at: nowIso() })
+      .eq('id', String(existingSessionAppointment.id))
+      .select('*')
+      .maybeSingle();
+
+    existingSessionAppointment = patchedAppointment || existingSessionAppointment;
+  }
+
+  if (existingSessionAppointment?.id && !replaceExistingAppointment) {
+    return {
+      ok: true,
+      appointment: existingSessionAppointment,
+      stage_code: 'chamada_agendada',
+      meeting_link:
+        asString(asRecord(existingSessionAppointment.metadata).meeting_link) ||
+        asString(existingSessionAppointment.location) ||
+        asString(funnel.meeting_link),
+      bridge: { ok: true, bridge: null, publicLeadId: null, skippedReason: 'existing_appointment' },
+    };
+  }
+
   const appointmentStartAt = new Date(appointmentStartAtRaw);
   if (Number.isNaN(appointmentStartAt.getTime()) || appointmentStartAt.getTime() <= Date.now()) {
     throw { status: 400, code: 'invalid_payload' };
@@ -3920,7 +4156,12 @@ async function handlePublicLpBookSlot(
 
   if (appointmentsError) throw { status: 500, code: 'landing_slots_query_failed', error: appointmentsError };
 
-  const busyRanges = (appointments || []).map((appointment) => {
+  const ignoredBusyAppointmentId = replaceExistingAppointment
+    ? asString(existingSessionAppointment?.id)
+    : null;
+  const busyRanges = (appointments || []).filter((appointment) => {
+    return !ignoredBusyAppointmentId || asString(appointment.id) !== ignoredBusyAppointmentId;
+  }).map((appointment) => {
     const start = new Date(String(appointment.start_at || ''));
     const endRaw = asString(appointment.end_at);
     const end = endRaw
@@ -3958,6 +4199,7 @@ async function handlePublicLpBookSlot(
   let appointmentResult;
   try {
     appointmentResult = await upsertAppointment(serviceClient, identity, {
+      appointment_id: replaceExistingAppointment ? asString(existingSessionAppointment?.id) : undefined,
       client_id: clientId,
       deal_id: dealId,
       owner_user_id: ownerUserId,
@@ -3967,6 +4209,7 @@ async function handlePublicLpBookSlot(
       start_at: appointmentStartAt.toISOString(),
       end_at: appointmentEndAt.toISOString(),
       location: meetingLink,
+      process_automation_due_now: false,
       metadata: {
         meeting_link: meetingLink,
         form_session_id: asString(payload.form_session_id),
@@ -4098,7 +4341,21 @@ async function upsertAppointment(
     metadata: appointmentMetadata,
   }).select('*').single();
 
-  if (error || !data?.id) throw { status: 500, code: 'appointment_upsert_failed', error };
+  if (error || !data?.id) {
+    if (
+      asString((error as Record<string, unknown>)?.code) === '23P01' ||
+      String((error as Record<string, unknown>)?.message || '').includes('internal_crm_appointments_owner_no_active_overlap')
+    ) {
+      throw {
+        status: 409,
+        code: 'slot_unavailable',
+        message: 'Este horario ja possui um compromisso ativo.',
+        error,
+      };
+    }
+
+    throw { status: 500, code: 'appointment_upsert_failed', error };
+  }
 
   await schema.from('clients').update({ updated_at: nowIso() }).eq('id', clientId);
 
@@ -4161,6 +4418,7 @@ async function upsertAppointment(
   const beforeStartAt = asString(before?.start_at);
   const isRescheduled = Boolean(before?.id) && beforeStartAt !== asString(data.start_at);
   const statusChanged = Boolean(before?.id) && asString(before?.status) !== asString(data.status);
+  const shouldProcessAutomationDueNow = asBoolean(payload.process_automation_due_now, true);
 
   if (!before?.id || isRescheduled || (statusChanged && ['scheduled', 'confirmed'].includes(String(data.status || '')))) {
     if (isRescheduled) {
@@ -4168,14 +4426,14 @@ async function upsertAppointment(
         ...appointmentEventBase,
         event_at: appointmentEventAt,
         event_key: `appointment_rescheduled:${String(data.id)}:${appointmentEventAt}`,
-      }, { processDueNow: true });
+      }, { processDueNow: shouldProcessAutomationDueNow });
     }
 
     await queueAutomationEvent(serviceClient, 'appointment_scheduled', {
       ...appointmentEventBase,
       event_at: appointmentEventAt,
       event_key: `appointment_scheduled:${String(data.id)}:${appointmentEventAt}`,
-    }, { processDueNow: true });
+    }, { processDueNow: shouldProcessAutomationDueNow });
   }
 
   if (statusChanged && String(data.status || '') === 'canceled') {
@@ -4183,7 +4441,7 @@ async function upsertAppointment(
       ...appointmentEventBase,
       event_at: nowIso(),
       event_key: `appointment_canceled:${String(data.id)}:${nowIso()}`,
-    }, { processDueNow: true });
+    }, { processDueNow: shouldProcessAutomationDueNow });
   }
 
   if (statusChanged && String(data.status || '') === 'done') {
@@ -4191,7 +4449,7 @@ async function upsertAppointment(
       ...appointmentEventBase,
       event_at: nowIso(),
       event_key: `appointment_done:${String(data.id)}:${nowIso()}`,
-    }, { processDueNow: true });
+    }, { processDueNow: shouldProcessAutomationDueNow });
   }
 
   if (statusChanged && String(data.status || '') === 'no_show') {
@@ -4199,7 +4457,7 @@ async function upsertAppointment(
       ...appointmentEventBase,
       event_at: nowIso(),
       event_key: `appointment_no_show:${String(data.id)}:${nowIso()}`,
-    }, { processDueNow: true });
+    }, { processDueNow: shouldProcessAutomationDueNow });
   }
 
   if (dealForAppointment?.id && appointmentStageCode) {
@@ -5677,7 +5935,7 @@ async function intakeLandingLead(
   const automation = suppressAutomation
     ? []
     : [
-        await queueAutomationEvent(serviceClient, 'lp_form_submitted', intakePayload, { processDueNow: true }),
+        await queueAutomationEvent(serviceClient, 'lp_form_submitted', intakePayload, { processDueNow: false }),
       ];
 
   if (!suppressAutomation && appointment?.id) {
@@ -5688,7 +5946,7 @@ async function intakeLandingLead(
       appointment_start_at: appointment.start_at,
       event_at: nowIso(),
       event_key: `appointment_scheduled:${String(appointment.id)}:${appointment.start_at}`,
-    }, { processDueNow: true }));
+    }, { processDueNow: false }));
   }
 
   await writeAuditLog(serviceClient, identity, 'intake_landing_lead', req, {
@@ -6144,6 +6402,53 @@ async function provisionCustomer(
   };
 }
 
+async function getInternalCrmAdminNotificationPhones(schema: ReturnType<typeof crmSchema>) {
+  const { data, error } = await schema
+    .from('automation_settings')
+    .select('admin_notification_numbers')
+    .eq('scope_key', INTERNAL_CRM_AUTOMATION_SCOPE_KEY)
+    .maybeSingle();
+
+  if (error) return new Set<string>();
+
+  return new Set(
+    normalizeTextArray(data?.admin_notification_numbers)
+      .map((value) => normalizePhone(value))
+      .filter(Boolean),
+  );
+}
+
+async function logIgnoredInternalCrmWebhookEvent(
+  schema: ReturnType<typeof crmSchema>,
+  payload: {
+    instance_id: string;
+    event: string;
+    reason: string;
+    raw_remote_jid?: string | null;
+    normalized_remote_jid?: string | null;
+    phone?: string | null;
+    wa_message_id?: string | null;
+    from_me?: boolean | null;
+    raw_payload?: Record<string, unknown>;
+  },
+) {
+  try {
+    await schema.from('webhook_ignored_events').insert({
+      instance_id: payload.instance_id,
+      event: payload.event,
+      reason: payload.reason,
+      raw_remote_jid: payload.raw_remote_jid || null,
+      normalized_remote_jid: payload.normalized_remote_jid || null,
+      phone: payload.phone || null,
+      wa_message_id: payload.wa_message_id || null,
+      from_me: payload.from_me ?? null,
+      raw_payload: payload.raw_payload || {},
+    });
+  } catch {
+    // no-op: ignored events logging must not break webhook processing
+  }
+}
+
 async function handleWebhookInbound(serviceClient: ReturnType<typeof createClient>, body: Record<string, unknown>) {
   const schema = crmSchema(serviceClient);
   const event = (
@@ -6167,6 +6472,30 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
   }
 
   const eventData = isRecord(body.data) ? body.data : body;
+  const ignore = async (
+    reason: string,
+    extra: {
+      rawRemoteJid?: string | null;
+      normalizedRemoteJid?: string | null;
+      phone?: string | null;
+      waMessageId?: string | null;
+      fromMe?: boolean | null;
+      includePayload?: boolean;
+    } = {},
+  ) => {
+    await logIgnoredInternalCrmWebhookEvent(schema, {
+      instance_id: String(instance.id),
+      event,
+      reason,
+      raw_remote_jid: extra.rawRemoteJid || null,
+      normalized_remote_jid: extra.normalizedRemoteJid || null,
+      phone: extra.phone || null,
+      wa_message_id: extra.waMessageId || null,
+      from_me: extra.fromMe ?? null,
+      raw_payload: extra.includePayload ? body : undefined,
+    });
+    return { ok: true, ignored: true, reason };
+  };
 
   if (event === 'QRCODE_UPDATED') {
     const qrCode = extractInternalInstanceQrCode(eventData) || extractInternalInstanceQrCode(body);
@@ -6230,6 +6559,7 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
       await schema
         .from('messages')
         .update({ delivery_status: mappedStatus, ...(mappedStatus === 'read' ? { read_at: nowIso() } : {}) })
+        .eq('whatsapp_instance_id', instance.id)
         .eq('wa_message_id', updateWaMessageId);
       return { ok: true, event, wa_message_id: updateWaMessageId, delivery_status: mappedStatus };
     }
@@ -6255,11 +6585,58 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     asString(messageNode.remoteJid) ||
     asString((messageNode.key as Record<string, unknown> | undefined)?.remoteJid) ||
     asString(messageNode.number);
-  const remoteJid = normalizeRemoteJid(rawRemoteJid);
-  const phone = normalizePhone(remoteJid || rawRemoteJid || '');
+  if (isInternalCrmGroupOrBroadcastJid(rawRemoteJid)) {
+    return await ignore('group_or_broadcast_jid', { rawRemoteJid, includePayload: false });
+  }
+
+  const remoteJid = normalizeInternalCrmRemoteJid(rawRemoteJid);
+  const phone = extractInternalCrmContactPhoneFromWebhook(messageNode);
   const waMessageId =
     asString((messageNode.key as Record<string, unknown> | undefined)?.id) ||
     asString(messageNode.id);
+
+  if (!phone) {
+    return await ignore('missing_contact_phone', {
+      rawRemoteJid,
+      normalizedRemoteJid: remoteJid,
+      waMessageId,
+      fromMe,
+    });
+  }
+
+  if (!waMessageId) {
+    return await ignore('missing_wa_message_id', {
+      rawRemoteJid,
+      normalizedRemoteJid: remoteJid,
+      phone,
+      fromMe,
+    });
+  }
+
+  const adminNotificationNumbers = await getInternalCrmAdminNotificationPhones(schema);
+  if (adminNotificationNumbers.has(phone)) {
+    return await ignore('admin_notification_number', {
+      rawRemoteJid,
+      normalizedRemoteJid: remoteJid,
+      phone,
+      waMessageId,
+      fromMe,
+    });
+  }
+
+  const existingMessage = await schema
+    .from('messages')
+    .select('id')
+    .eq('whatsapp_instance_id', instance.id)
+    .eq('wa_message_id', waMessageId)
+    .limit(1)
+    .maybeSingle();
+  if (existingMessage.error) {
+    throw { status: 500, code: 'webhook_message_query_failed', error: existingMessage.error };
+  }
+  if (existingMessage.data?.id) {
+    return { ok: true, duplicate: true, wa_message_id: waMessageId };
+  }
 
   // --- Resolve message type and text content (support media + text) ---
   const msg = messageNode as Record<string, unknown>;
@@ -6315,58 +6692,31 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
       buildInternalCrmAttachmentPlaceholder(dbMessageType, { media_variant: mediaVariant });
   }
 
-  if (!phone || (!bodyText && !isMediaMessage)) {
-    return { ok: true, ignored: true, reason: 'missing_phone_or_body' };
-  }
-
-  const ownerUserId = asString(instance.owner_user_id);
-
-  // --- FIX: Lookup by phone globally first (without owner scope) to prevent duplicates ---
-  let client: Record<string, unknown> | null = null;
-
-  // 1. Direct lookup by primary_phone (no owner filter)
-  const { data: clientByPhone } = await schema
-    .from('clients')
-    .select('*')
-    .eq('primary_phone', phone)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (clientByPhone?.id) {
-    client = clientByPhone;
-  } else {
-    // 2. Lookup via client_contacts.phone (no owner filter)
-    const { data: contactByPhone } = await schema
-      .from('client_contacts')
-      .select('client_id')
-      .eq('phone', phone)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (contactByPhone?.client_id) {
-      const { data: clientByContact } = await schema
-        .from('clients')
-        .select('*')
-        .eq('id', String(contactByPhone.client_id))
-        .maybeSingle();
-      if (clientByContact?.id) client = clientByContact;
-    }
-  }
-
-  // 3. Fallback: scoped lookup (original behavior)
-  if (!client?.id) {
-    client = await resolveScopedClient(schema, {
-      ownerUserId,
-      primaryPhone: phone,
+  if (!bodyText && !isMediaMessage) {
+    return await ignore('missing_body', {
+      rawRemoteJid,
+      normalizedRemoteJid: remoteJid,
+      phone,
+      waMessageId,
+      fromMe,
     });
   }
 
-  // 4. Create new client only if truly not found — use pushName from WhatsApp payload
+  const ownerUserId = asString(instance.owner_user_id);
+  let client = await resolveScopedClient(schema, {
+    ownerUserId,
+    primaryPhone: phone,
+  });
+
   if (!client?.id) {
     if (fromMe) {
-      return { ok: true, ignored: true, reason: 'from_me_client_not_found' };
+      return await ignore('from_me_client_not_found', {
+        rawRemoteJid,
+        normalizedRemoteJid: remoteJid,
+        phone,
+        waMessageId,
+        fromMe,
+      });
     }
     const displayName = inboundPushName || phone;
 
@@ -6443,6 +6793,7 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     .select('*')
     .eq('client_id', client.id)
     .eq('whatsapp_instance_id', instance.id)
+    .eq('channel', 'whatsapp')
     .in('status', ['open', 'resolved'])
     .order('updated_at', { ascending: false })
     .limit(1)
@@ -6458,25 +6809,49 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
   }
 
   if (!conversation?.id) {
-    conversation = (await schema.from('conversations').insert({
-      client_id: client.id,
-      contact_id: contact?.id || null,
-      whatsapp_instance_id: instance.id,
-      channel: 'whatsapp',
-      status: 'open',
-      subject: client.company_name,
-      last_message_at: nowIso(),
-      last_message_preview: bodyText || '',
-    }).select('*').single()).data;
+    const insertedConversation = await schema
+      .from('conversations')
+      .insert({
+        client_id: client.id,
+        contact_id: contact?.id || null,
+        whatsapp_instance_id: instance.id,
+        channel: 'whatsapp',
+        status: 'open',
+        subject: client.company_name,
+        last_message_at: nowIso(),
+        last_message_preview: bodyText || '',
+      })
+      .select('*')
+      .single();
+
+    if (insertedConversation.error && asString(insertedConversation.error.code) === '23505') {
+      const { data: existingConversation } = await schema
+        .from('conversations')
+        .select('*')
+        .eq('client_id', client.id)
+        .eq('whatsapp_instance_id', instance.id)
+        .eq('channel', 'whatsapp')
+        .in('status', ['open', 'resolved'])
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      conversation = existingConversation || null;
+    } else {
+      if (insertedConversation.error || !insertedConversation.data?.id) {
+        throw { status: 500, code: 'webhook_conversation_insert_failed', error: insertedConversation.error };
+      }
+      conversation = insertedConversation.data;
+    }
   }
 
-  // Dedup by wa_message_id — skip if this exact message was already saved
-  // (e.g. outbound sent via CRM appendMessage, or inbound already processed)
-  if (waMessageId) {
-    const existingMessage = await schema.from('messages').select('id').eq('wa_message_id', waMessageId).maybeSingle();
-    if (existingMessage.data?.id) {
-      return { ok: true, duplicate: true };
-    }
+  if (!conversation?.id) {
+    return await ignore('conversation_not_available_after_insert', {
+      rawRemoteJid,
+      normalizedRemoteJid: remoteJid,
+      phone,
+      waMessageId,
+      fromMe,
+    });
   }
 
   // Determine direction: fromMe → outbound (sent from WhatsApp phone), else inbound
@@ -6499,7 +6874,7 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     attachment_ready: isMediaMessage ? false : true,
     attachment_mimetype: isMediaMessage ? mediaMimeType : null,
     attachment_name: isMediaMessage ? mediaFileName : null,
-    wa_message_id: waMessageId,
+    wa_message_id: waMessageId || null,
     remote_jid: remoteJid,
     delivery_status: fromMe ? 'sent' : 'delivered',
     metadata: messageMetadata,

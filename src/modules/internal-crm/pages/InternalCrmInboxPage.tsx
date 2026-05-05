@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { InternalCrmActionsPanelFull } from '@/modules/internal-crm/components/inbox/InternalCrmActionsPanelFull';
@@ -19,8 +18,9 @@ export default function InternalCrmInboxPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
-  const [status, setStatus] = useState<'all' | 'open' | 'resolved' | 'archived'>('open');
   const [search, setSearch] = useState('');
+  const [stageFilter, setStageFilter] = useState('all');
+  const [instanceFilter, setInstanceFilter] = useState('all');
   const [messageBody, setMessageBody] = useState('');
   const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(true);
@@ -29,7 +29,7 @@ export default function InternalCrmInboxPage() {
   const [isSendingMedia, setIsSendingMedia] = useState(false);
   const autoReadSignatureRef = useRef<string>('');
 
-  const inbox = useInternalCrmInbox(selectedConversationId, { status });
+  const inbox = useInternalCrmInbox(selectedConversationId, {});
   const conversations = useMemo(
     () => inbox.conversationsQuery.data?.conversations ?? [],
     [inbox.conversationsQuery.data?.conversations],
@@ -55,17 +55,18 @@ export default function InternalCrmInboxPage() {
   });
 
   useEffect(() => {
-    if (conversations.length === 0) {
+    const selectableConversations = conversations.filter((conversation) => conversation.status !== 'archived');
+    if (selectableConversations.length === 0) {
       setSelectedConversationId(null);
       return;
     }
     if (!selectedConversationId) {
-      setSelectedConversationId(conversations[0].id);
+      setSelectedConversationId(selectableConversations[0].id);
       return;
     }
-    const existsInCurrentStatus = conversations.some((c) => c.id === selectedConversationId);
+    const existsInCurrentStatus = selectableConversations.some((c) => c.id === selectedConversationId);
     if (!existsInCurrentStatus) {
-      setSelectedConversationId(conversations[0].id);
+      setSelectedConversationId(selectableConversations[0].id);
     }
   }, [conversations, selectedConversationId]);
 
@@ -87,11 +88,6 @@ export default function InternalCrmInboxPage() {
     const requestedConversationId = searchParams.get('conversation');
     if (!requestedConversationId) return;
 
-    if (status !== 'all') {
-      setStatus('all');
-      return;
-    }
-
     const matchedConversation = conversations.find((conversation) => conversation.id === requestedConversationId);
     if (!matchedConversation) return;
 
@@ -100,7 +96,7 @@ export default function InternalCrmInboxPage() {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete('conversation');
     setSearchParams(nextParams, { replace: true });
-  }, [conversations, searchParams, setSearchParams, status]);
+  }, [conversations, searchParams, setSearchParams]);
 
   const sendMessage = async () => {
     if (!selectedConversationId || !messageBody.trim()) return;
@@ -109,6 +105,7 @@ export default function InternalCrmInboxPage() {
       conversation_id: selectedConversationId,
       body: messageBody,
       message_type: inbox.selectedConversation?.channel === 'manual_note' ? 'note' : 'text',
+      whatsapp_instance_id: inbox.selectedInstance?.id || inbox.selectedInstanceId || undefined,
     });
     setMessageBody('');
   };
@@ -210,6 +207,7 @@ export default function InternalCrmInboxPage() {
         metadata: {
           media_variant: prepared.mediaVariant,
         },
+        whatsapp_instance_id: inbox.selectedInstance?.id || inbox.selectedInstanceId || undefined,
       });
     } finally {
       setIsSendingMedia(false);
@@ -252,6 +250,7 @@ export default function InternalCrmInboxPage() {
           media_variant: prepared.mediaVariant,
           duration_seconds: durationSeconds,
         },
+        whatsapp_instance_id: inbox.selectedInstance?.id || inbox.selectedInstanceId || undefined,
       });
     } finally {
       setIsSendingMedia(false);
@@ -268,18 +267,30 @@ export default function InternalCrmInboxPage() {
     toast({ title: 'Cliente atualizado' });
   };
 
-  const updateConversationStatus = async (nextStatus: 'open' | 'resolved' | 'archived') => {
-    if (!selectedConversationId) return;
-    await inbox.updateConversationStatusMutation.mutateAsync({
-      action: 'update_conversation_status',
-      conversation_id: selectedConversationId,
-      status: nextStatus,
+  const sendBlockedReason = useMemo(() => {
+    const selectedConversation = inbox.selectedConversation;
+    if (!selectedConversation) return null;
+    if (selectedConversation.channel === 'manual_note') return null;
+
+    if (!inbox.selectedInstance?.id) {
+      return 'Selecione uma instancia conectada para enviar mensagens.';
+    }
+
+    if (inbox.selectedInstance.status !== 'connected') {
+      return 'A instancia selecionada esta pausada. Conecte-a ou selecione outra instancia.';
+    }
+
+    return null;
+  }, [inbox.selectedConversation, inbox.selectedInstance]);
+
+  const handleToggleInstanceAi = async (enabled: boolean) => {
+    if (!inbox.selectedInstance?.id) return;
+    await inbox.upsertInstanceMutation.mutateAsync({
+      action: 'upsert_instance',
+      instance_id: inbox.selectedInstance.id,
+      ai_enabled: enabled,
     });
-    setActionsSheetOpen(false);
-    toast({
-      title: 'Status atualizado',
-      description: nextStatus === 'open' ? 'Conversa reaberta.' : nextStatus === 'resolved' ? 'Conversa resolvida.' : 'Conversa arquivada.',
-    });
+    toast({ title: enabled ? 'IA ativada' : 'IA pausada' });
   };
 
   const saveAppointment = async (payload: Record<string, unknown>) => {
@@ -346,12 +357,14 @@ export default function InternalCrmInboxPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-      <div className="min-h-0 flex-1 overflow-hidden rounded-[28px] border border-border/60 bg-card/88 shadow-[0_24px_70px_-42px_rgba(15,23,42,0.24)] backdrop-blur-sm">
-        <div className={cn(
-          'grid h-full min-h-0 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]',
-          isDetailsPanelOpen && 'xl:grid-cols-[320px_minmax(0,1fr)_340px]',
-        )}>
+    <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden" data-testid="crm-inbox-root">
+      <div
+        className={cn(
+          'grid h-full min-h-0 min-w-0 flex-1 grid-cols-1 bg-card lg:grid-cols-[360px_minmax(0,1fr)]',
+          isDetailsPanelOpen && 'xl:grid-cols-[360px_minmax(0,1fr)_340px]',
+        )}
+        data-testid="crm-inbox-workspace"
+      >
           {/* Conversation list */}
           <div className={cn('min-h-0 overflow-hidden', selectedConversationId ? 'hidden lg:block' : 'block')}>
             <InternalCrmConversationList
@@ -360,8 +373,11 @@ export default function InternalCrmInboxPage() {
               onSelectConversation={setSelectedConversationId}
               search={search}
               onSearchChange={setSearch}
-              status={status}
-              onStatusChange={(v) => setStatus(v as 'all' | 'open' | 'resolved' | 'archived')}
+              stageFilter={stageFilter}
+              onStageFilterChange={setStageFilter}
+              instanceFilter={instanceFilter}
+              onInstanceFilterChange={setInstanceFilter}
+              instances={inbox.instances}
               isLoading={inbox.conversationsQuery.isLoading}
             />
           </div>
@@ -371,7 +387,12 @@ export default function InternalCrmInboxPage() {
             <InternalCrmChatAreaFull
               conversation={inbox.selectedConversation}
               messages={inbox.messages}
+              instances={inbox.instances}
+              selectedInstanceId={inbox.selectedInstanceId}
+              onSelectInstance={inbox.setSelectedInstanceId}
               instance={inbox.selectedInstance}
+              onToggleInstanceAi={handleToggleInstanceAi}
+              isTogglingInstanceAi={inbox.upsertInstanceMutation.isPending}
               messageBody={messageBody}
               onMessageBodyChange={setMessageBody}
               onSendMessage={sendMessage}
@@ -392,8 +413,7 @@ export default function InternalCrmInboxPage() {
                 }
               }}
               isSending={inbox.appendMessageMutation.isPending || isSendingMedia}
-              isUpdatingStatus={inbox.updateConversationStatusMutation.isPending}
-              onUpdateStatus={updateConversationStatus}
+              sendBlockedReason={sendBlockedReason}
               onOpenActions={() => {
                 // On xl+ toggle the right panel; on smaller screens open sheet
                 if (window.innerWidth >= 1280) {
@@ -423,7 +443,6 @@ export default function InternalCrmInboxPage() {
             </div>
           )}
         </div>
-      </div>
 
       {/* Mobile actions sheet */}
       <InternalCrmConversationActionsSheet
@@ -431,11 +450,10 @@ export default function InternalCrmInboxPage() {
         onOpenChange={setActionsSheetOpen}
         conversation={inbox.selectedConversation}
         detail={inbox.clientDetailQuery.data || null}
-        onUpdateStatus={updateConversationStatus}
         onScheduleMeeting={() => setAppointmentModalOpen(true)}
+        onScheduleCall={() => setAppointmentModalOpen(true)}
         onOpenComments={() => setNotesSheetOpen(true)}
         onNavigatePipeline={navigatePipeline}
-        isUpdatingStatus={inbox.updateConversationStatusMutation.isPending}
       />
 
       {/* Notes sheet */}

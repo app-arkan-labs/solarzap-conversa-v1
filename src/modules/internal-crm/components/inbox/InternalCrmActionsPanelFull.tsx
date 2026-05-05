@@ -6,6 +6,7 @@ import {
   Calendar,
   Kanban,
   MapPin,
+  Flame,
   X,
   Save,
   Loader2,
@@ -18,7 +19,6 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatDateTime } from '@/modules/internal-crm/components/InternalCrmUi';
 import {
   getInternalCrmStageMeta,
@@ -120,7 +120,12 @@ export function InternalCrmActionsPanelFull(props: InternalCrmActionsPanelFullPr
     return null;
   }
 
-  const stageCode = normalizeInternalCrmStageCode(props.conversation.current_stage_code || 'novo_lead');
+  const stageCode = normalizeInternalCrmStageCode(
+    detail?.deals?.find((deal) => deal.status === 'open')?.stage_code ||
+      client?.current_stage_code ||
+      props.conversation.current_stage_code ||
+      'novo_lead',
+  );
   const stage = getInternalCrmStageMeta(stageCode);
 
   const handleChange = (field: keyof ClientFormData, value: string) => {
@@ -164,11 +169,14 @@ export function InternalCrmActionsPanelFull(props: InternalCrmActionsPanelFullPr
   };
 
   return (
-    <div className="h-full w-full border-l border-border bg-card overflow-y-auto custom-scrollbar sm:w-[340px]">
-      {/* Header with 🔥 STATUS and close button — identical to SolarZap */}
+    <div
+      className="h-full w-full border-l border-border bg-card overflow-y-auto custom-scrollbar sm:w-[340px]"
+      data-testid="crm-inbox-actions-panel"
+    >
+      {/* Header with STATUS and close button */}
       <div className="p-4 bg-muted/50 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-lg">🔥</span>
+          <Flame className="h-4 w-4 text-orange-500" />
           <span className="text-sm font-medium text-muted-foreground">STATUS</span>
         </div>
         <div className="flex items-center gap-2">
