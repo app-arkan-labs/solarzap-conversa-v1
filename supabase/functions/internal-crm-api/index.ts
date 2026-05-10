@@ -2715,6 +2715,8 @@ async function upsertInstance(
   const hasAiEnabled = Object.prototype.hasOwnProperty.call(payload, 'ai_enabled');
   const hasAssistantIdentityName = Object.prototype.hasOwnProperty.call(payload, 'assistant_identity_name');
   const hasAssistantPromptOverride = Object.prototype.hasOwnProperty.call(payload, 'assistant_prompt_override');
+  const nextOwnerUserId = asString(payload.owner_user_id) || asString(before?.owner_user_id) || identity.user_id;
+  const nextLinkedPublicOrgId = asString(payload.linked_public_org_id) || asString(before?.linked_public_org_id);
 
   const { data, error } = await crmSchema(serviceClient)
     .from('whatsapp_instances')
@@ -2729,6 +2731,8 @@ async function upsertInstance(
       assistant_prompt_override: hasAssistantPromptOverride
         ? asString(payload.assistant_prompt_override)
         : asString(before?.assistant_prompt_override),
+      owner_user_id: nextOwnerUserId,
+      linked_public_org_id: nextLinkedPublicOrgId,
       metadata: nextMetadata,
     })
     .select('*')
@@ -2963,6 +2967,7 @@ async function listConversations(serviceClient: ReturnType<typeof createClient>,
   let query = schema
     .from('conversations')
     .select('*')
+    .is('merged_into_conversation_id', null)
     .order('last_message_at', { ascending: false, nullsFirst: false })
     .order('updated_at', { ascending: false });
 
@@ -6745,78 +6750,82 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     });
   }
 
-  const ownerUserId = asString(instance.owner_user_id);
-  let client = await resolveScopedClient(schema, {
-    ownerUserId,
-    primaryPhone: phone,
-  });
+  const { data: threadData, error: threadError } = await schema
+    .rpc('get_or_create_whatsapp_thread', {
+      p_instance_id: String(instance.id),
+      p_remote_jid: remoteJid,
+      p_phone: phone,
+      p_display_name: inboundPushName || phone,
+      p_from_me: fromMe,
+      p_allow_create: !fromMe,
+    })
+    .maybeSingle();
 
-  if (!client?.id) {
-    if (fromMe) {
-      return await ignore('from_me_client_not_found', {
+  if (threadError) {
+    const threadErrorMessage = asString(threadError.message) || asString(threadError.code) || 'thread_resolution_failed';
+    const ignoredThreadErrors = new Set([
+      'instance_scope_missing',
+      'from_me_client_not_found',
+      'missing_contact_phone',
+      'instance_not_found',
+    ]);
+    const ignoredReason = Array.from(ignoredThreadErrors).find((reason) => threadErrorMessage.includes(reason));
+    if (ignoredReason) {
+      return await ignore(ignoredReason, {
         rawRemoteJid,
         normalizedRemoteJid: remoteJid,
         phone,
         waMessageId,
         fromMe,
+        includePayload: ignoredReason === 'instance_scope_missing',
       });
     }
-    const displayName = inboundPushName || phone;
-
-    const createdClient = await schema.from('clients').insert({
-      company_name: displayName,
-      primary_contact_name: displayName,
-      primary_phone: phone,
-      source_channel: 'whatsapp',
-      owner_user_id: ownerUserId,
-      current_stage_code: 'novo_lead',
-      lifecycle_status: 'lead',
-      last_contact_at: nowIso(),
-    }).select('*').single();
-
-    if (createdClient.error || !createdClient.data?.id) {
-      throw { status: 500, code: 'webhook_client_upsert_failed', error: createdClient.error };
-    }
-
-    client = createdClient.data;
+    throw { status: 500, code: 'webhook_thread_resolution_failed', error: threadError };
   }
 
-  let contact = null;
-  if (client?.id) {
-    contact = (await schema
-      .from('client_contacts')
-      .select('*')
-      .eq('client_id', client.id)
-      .eq('phone', phone)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()).data;
+  const thread = isRecord(threadData) ? threadData : {};
+  const threadClientId = asString(thread.client_id);
+  const threadContactId = asString(thread.contact_id);
+  const threadConversationId = asString(thread.conversation_id);
 
-    if (!contact?.id) {
-      contact = (await schema
-        .from('client_contacts')
-        .select('*')
-        .eq('client_id', client.id)
-        .eq('is_primary', true)
-        .maybeSingle()).data;
-    }
-  }
-
-  if (!contact?.id) {
-    const createdContact = await schema.from('client_contacts').insert({
-      client_id: client.id,
-      name: client.primary_contact_name || inboundPushName || `Contato ${phone}`,
+  if (!threadClientId || !threadConversationId) {
+    return await ignore('thread_resolution_missing_ids', {
+      rawRemoteJid,
+      normalizedRemoteJid: remoteJid,
       phone,
-      email: client.primary_email,
-      role_label: 'Contato principal',
-      is_primary: true,
-    }).select('*').single();
+      waMessageId,
+      fromMe,
+    });
+  }
 
-    if (createdContact.error || !createdContact.data?.id) {
-      throw { status: 500, code: 'webhook_contact_insert_failed', error: createdContact.error };
-    }
+  const [
+    { data: clientData, error: clientError },
+    { data: contactData, error: contactError },
+    { data: conversationData, error: conversationError },
+  ] = await Promise.all([
+    schema.from('clients').select('*').eq('id', threadClientId).maybeSingle(),
+    threadContactId
+      ? schema.from('client_contacts').select('*').eq('id', threadContactId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    schema.from('conversations').select('*').eq('id', threadConversationId).maybeSingle(),
+  ]);
 
-    contact = createdContact.data;
+  if (clientError) throw { status: 500, code: 'webhook_client_query_failed', error: clientError };
+  if (contactError) throw { status: 500, code: 'webhook_contact_query_failed', error: contactError };
+  if (conversationError) throw { status: 500, code: 'webhook_conversation_query_failed', error: conversationError };
+
+  let client = clientData as Record<string, unknown> | null;
+  let contact = contactData as Record<string, unknown> | null;
+  const conversation = conversationData as Record<string, unknown> | null;
+
+  if (!client?.id || !conversation?.id) {
+    return await ignore('thread_entities_not_available', {
+      rawRemoteJid,
+      normalizedRemoteJid: remoteJid,
+      phone,
+      waMessageId,
+      fromMe,
+    });
   }
 
   if (!fromMe && inboundPushName) {
@@ -6831,72 +6840,6 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     contact = reconciledIdentity.contact;
   }
 
-  let conversation = (await schema
-    .from('conversations')
-    .select('*')
-    .eq('client_id', client.id)
-    .eq('whatsapp_instance_id', instance.id)
-    .eq('channel', 'whatsapp')
-    .in('status', ['open', 'resolved'])
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()).data;
-
-  // Reopen resolved conversation on new inbound message
-  if (conversation?.id && conversation.status === 'resolved' && !fromMe) {
-    await schema.from('conversations').update({
-      status: 'open',
-      updated_at: nowIso(),
-    }).eq('id', conversation.id);
-    conversation.status = 'open';
-  }
-
-  if (!conversation?.id) {
-    const insertedConversation = await schema
-      .from('conversations')
-      .insert({
-        client_id: client.id,
-        contact_id: contact?.id || null,
-        whatsapp_instance_id: instance.id,
-        channel: 'whatsapp',
-        status: 'open',
-        subject: client.company_name,
-        last_message_at: nowIso(),
-        last_message_preview: bodyText || '',
-      })
-      .select('*')
-      .single();
-
-    if (insertedConversation.error && asString(insertedConversation.error.code) === '23505') {
-      const { data: existingConversation } = await schema
-        .from('conversations')
-        .select('*')
-        .eq('client_id', client.id)
-        .eq('whatsapp_instance_id', instance.id)
-        .eq('channel', 'whatsapp')
-        .in('status', ['open', 'resolved'])
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      conversation = existingConversation || null;
-    } else {
-      if (insertedConversation.error || !insertedConversation.data?.id) {
-        throw { status: 500, code: 'webhook_conversation_insert_failed', error: insertedConversation.error };
-      }
-      conversation = insertedConversation.data;
-    }
-  }
-
-  if (!conversation?.id) {
-    return await ignore('conversation_not_available_after_insert', {
-      rawRemoteJid,
-      normalizedRemoteJid: remoteJid,
-      phone,
-      waMessageId,
-      fromMe,
-    });
-  }
-
   // Determine direction: fromMe → outbound (sent from WhatsApp phone), else inbound
   const direction = fromMe ? 'outbound' : 'inbound';
   const messageMetadata = mergeRecord(body, {
@@ -6906,6 +6849,8 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     attachment_name: mediaFileName,
   });
   const previewText = buildInternalCrmMessagePreview(dbMessageType, bodyText || '', messageMetadata);
+
+  const canonicalRemoteJid = asString(conversation.remote_jid) || remoteJid || `${phone}@s.whatsapp.net`;
 
   const { data: message, error: messageError } = await schema.from('messages').insert({
     conversation_id: conversation.id,
@@ -6918,18 +6863,23 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     attachment_mimetype: isMediaMessage ? mediaMimeType : null,
     attachment_name: isMediaMessage ? mediaFileName : null,
     wa_message_id: waMessageId || null,
-    remote_jid: remoteJid,
+    remote_jid: canonicalRemoteJid,
     delivery_status: fromMe ? 'sent' : 'delivered',
     metadata: messageMetadata,
   }).select('*').single();
 
   if (messageError || !message?.id) {
+    if (asString(messageError?.code) === '23505') {
+      return { ok: true, duplicate: true, wa_message_id: waMessageId };
+    }
     throw { status: 500, code: 'webhook_message_insert_failed', error: messageError };
   }
 
   await schema.from('conversations').update({
     last_message_at: message.created_at,
     last_message_preview: previewText,
+    remote_jid: canonicalRemoteJid,
+    contact_phone: phone,
     updated_at: nowIso(),
   }).eq('id', conversation.id);
 

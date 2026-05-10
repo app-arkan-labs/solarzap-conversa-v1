@@ -361,6 +361,8 @@ export type InternalCrmWhatsappInstance = {
   phone_number: string | null;
   webhook_url: string | null;
   qr_code_base64: string | null;
+  owner_user_id?: string | null;
+  linked_public_org_id?: string | null;
   metadata?: Record<string, unknown> | null;
   color?: string | null;
   created_at?: string;
@@ -376,6 +378,10 @@ export type InternalCrmConversationSummary = {
   channel: 'whatsapp' | 'manual_note';
   status: 'open' | 'resolved' | 'archived';
   subject: string | null;
+  remote_jid?: string | null;
+  contact_phone?: string | null;
+  merged_into_conversation_id?: string | null;
+  merged_at?: string | null;
   last_message_at: string | null;
   last_message_preview: string | null;
   client_company_name?: string | null;
