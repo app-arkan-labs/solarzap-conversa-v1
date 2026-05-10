@@ -461,6 +461,33 @@ function mergeRecord(base: unknown, patch: unknown): Record<string, unknown> {
   };
 }
 
+function buildInternalCrmMediaResolverMessagePayload(
+  messageNode: Record<string, unknown>,
+  msgObj: Record<string, unknown> | null,
+  rawMsgType: string | null,
+): Record<string, unknown> | null {
+  if (!rawMsgType || !msgObj) return null;
+
+  return {
+    ...messageNode,
+    key: asRecord(messageNode.key),
+    message: msgObj,
+    messageType: rawMsgType,
+  };
+}
+
+function resolverErrorLooksHandled(error: unknown): boolean {
+  const details = asRecord(asRecord(error).details);
+  const code = asString(details.code) || asString(details.error);
+  if (asString(details.messageId) || asString(details.message_id)) return true;
+  return Boolean(code && [
+    'FATAL_NO_BASE64',
+    'STORAGE_FAIL',
+    'DB_UPDATE_FAIL',
+    'MAX_ATTEMPTS_EXHAUSTED',
+  ].includes(code));
+}
+
 function normalizeTextArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -6723,6 +6750,9 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
         : (rawMsgType === 'audioMessage' && asBoolean(mediaNode.ptt))
           ? 'voice_note'
           : 'standard';
+  const mediaResolverMessagePayload = isMediaMessage
+    ? buildInternalCrmMediaResolverMessagePayload(msg, msgObj, rawMsgType || null)
+    : null;
 
   // Extract text body — support text, captions, and media placeholders
   let bodyText =
@@ -6847,6 +6877,7 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     media_variant: mediaVariant,
     attachment_mimetype: mediaMimeType,
     attachment_name: mediaFileName,
+    ...(mediaResolverMessagePayload ? { media_resolver_message: mediaResolverMessagePayload } : {}),
   });
   const previewText = buildInternalCrmMessagePreview(dbMessageType, bodyText || '', messageMetadata);
 
@@ -6893,12 +6924,16 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
         fileName: mediaFileName,
         messageType: dbMessageType,
         mediaVariant,
+        evolutionMessage: mediaResolverMessagePayload,
       });
     } catch (resolverError) {
-      await schema.from('messages').update({
-        attachment_error: true,
-        attachment_error_message: `RESOLVER_DISPATCH_FAILED:${shortErrorMessage(resolverError)}`,
-      }).eq('id', message.id);
+      if (!resolverErrorLooksHandled(resolverError)) {
+        await schema.from('messages').update({
+          attachment_ready: true,
+          attachment_error: true,
+          attachment_error_message: `RESOLVER_DISPATCH_FAILED:${shortErrorMessage(resolverError)}`,
+        }).eq('id', message.id);
+      }
     }
   }
 

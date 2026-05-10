@@ -5,6 +5,7 @@ import { validateServiceInvocationAuth } from '../_shared/invocationAuth.ts';
 const DELIVERY_BUCKET = 'internal-crm-chat-delivery';
 const ATTACHMENT_BUCKET = 'internal-crm-chat-attachments';
 const FETCH_RETRY_ATTEMPTS = 3;
+const EVOLUTION_FETCH_TIMEOUT_MS = 12_000;
 const RETRY_PENDING_BATCH_DEFAULT = 25;
 const RETRY_PENDING_MIN_AGE_SECONDS_DEFAULT = 30;
 const RETRY_PENDING_MAX_ATTEMPTS_DEFAULT = 5;
@@ -25,8 +26,16 @@ type InternalCrmMessageRow = {
   attachment_last_attempt_at: string | null;
   wa_message_id: string | null;
   remote_jid: string | null;
+  whatsapp_instance_id: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
+};
+
+type MediaFetchResult = {
+  base64: string | null;
+  mimeType: string | null;
+  strategy: string;
+  error?: string;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -49,6 +58,16 @@ const shortErrorMessage = (error: unknown): string => {
 };
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = EVOLUTION_FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 const decodeBase64 = (base64: string): Uint8Array => {
   const binary = atob(base64.replace(/^data:.*;base64,/, ''));
@@ -147,45 +166,180 @@ async function transcribeAudioWithOpenAI(base64Audio: string, mimeType: string):
   }
 }
 
+const firstNestedString = (
+  value: unknown,
+  keyNames: string[],
+  max = 240,
+  depth = 0,
+): string => {
+  if (depth > 5) return '';
+  if (isRecord(value)) {
+    for (const key of keyNames) {
+      const direct = value[key];
+      if (typeof direct === 'string' && direct.trim()) {
+        return asString(direct, max);
+      }
+    }
+
+    for (const item of Object.values(value)) {
+      const nested = firstNestedString(item, keyNames, max, depth + 1);
+      if (nested) return nested;
+    }
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = firstNestedString(item, keyNames, max, depth + 1);
+      if (nested) return nested;
+    }
+  }
+
+  return '';
+};
+
+const extractEvolutionBase64 = (payload: unknown): string =>
+  firstNestedString(payload, ['base64'], 50_000_000);
+
+const extractEvolutionMimeType = (payload: unknown): string =>
+  firstNestedString(payload, ['mimetype', 'mimeType', 'contentType'], 180);
+
+const normalizeEvolutionMessagePayload = (value: unknown): Record<string, unknown> | null => {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) return null;
+
+  const data = asRecord(record.data);
+  if (Object.keys(data).length > 0 && (isRecord(data.key) || isRecord(data.message))) {
+    return data;
+  }
+
+  const nestedMessage = asRecord(record.message);
+  if (Object.keys(nestedMessage).length > 0 && (isRecord(nestedMessage.key) || isRecord(nestedMessage.message))) {
+    return nestedMessage;
+  }
+
+  if (isRecord(record.key) || isRecord(record.message)) {
+    return record;
+  }
+
+  return null;
+};
+
+const collectEvolutionMessageCandidates = (
+  inputMessage: unknown,
+  rowMetadata: Record<string, unknown>,
+): Array<{ strategy: string; message: Record<string, unknown> }> => {
+  const rawCandidates: Array<{ strategy: string; value: unknown }> = [
+    { strategy: 'request_full_payload', value: inputMessage },
+    { strategy: 'metadata_media_resolver_message', value: rowMetadata.media_resolver_message },
+    { strategy: 'metadata_data_payload', value: rowMetadata.data },
+    { strategy: 'metadata_evolution_message', value: rowMetadata.evolution_message },
+  ];
+
+  const seen = new Set<string>();
+  const candidates: Array<{ strategy: string; message: Record<string, unknown> }> = [];
+  for (const candidate of rawCandidates) {
+    const message = normalizeEvolutionMessagePayload(candidate.value);
+    if (!message) continue;
+    const key = JSON.stringify({
+      id: asString(asRecord(message.key).id, 180),
+      remoteJid: asString(asRecord(message.key).remoteJid, 180),
+      messageType: asString(message.messageType, 80),
+      keys: Object.keys(asRecord(message.message)).sort(),
+    });
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push({ strategy: candidate.strategy, message });
+  }
+
+  return candidates;
+};
+
+async function postEvolutionMediaRequest(
+  evolutionUrl: string,
+  evolutionApiKey: string,
+  instanceName: string,
+  strategy: string,
+  body: Record<string, unknown>,
+): Promise<MediaFetchResult> {
+  const response = await fetchWithTimeout(`${evolutionUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: evolutionApiKey },
+    body: JSON.stringify(body),
+  });
+  const responseText = await response.text();
+  let payload: unknown = null;
+  if (responseText) {
+    try {
+      payload = JSON.parse(responseText);
+    } catch {
+      payload = null;
+    }
+  }
+
+  if (!response.ok) {
+    return {
+      base64: null,
+      mimeType: null,
+      strategy,
+      error: `${response.status}:${responseText.slice(0, 160)}`,
+    };
+  }
+
+  const base64 = extractEvolutionBase64(payload);
+  return {
+    base64: base64 || null,
+    mimeType: extractEvolutionMimeType(payload) || null,
+    strategy,
+    ...(base64 ? {} : { error: 'ok_without_base64' }),
+  };
+}
+
 async function fetchMediaBase64(
   evolutionUrl: string,
   evolutionApiKey: string,
   instanceName: string,
   waMessageId: string,
-): Promise<{ base64: string } | null> {
+  evolutionMessages: Array<{ strategy: string; message: Record<string, unknown> }>,
+): Promise<MediaFetchResult> {
+  const errors: string[] = [];
   for (let attempt = 1; attempt <= FETCH_RETRY_ATTEMPTS; attempt += 1) {
-    try {
-      const urlA = `${evolutionUrl}/chat/getBase64FromMediaMessage/${instanceName}`;
-      const payloadA = {
-        message: {
-          key: { id: waMessageId },
-        },
-        convertToMp4: false,
-      };
-      const responseA = await fetch(urlA, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: evolutionApiKey },
-        body: JSON.stringify(payloadA),
-      });
+    const getBase64Strategies: Array<{ strategy: string; body: Record<string, unknown> }> = [
+      ...evolutionMessages.map((item) => ({
+        strategy: item.strategy,
+        body: { message: item.message, convertToMp4: false },
+      })),
+      {
+        strategy: 'key_id_only',
+        body: { message: { key: { id: waMessageId } }, convertToMp4: false },
+      },
+    ];
 
-      if (responseA.ok) {
-        const data = await responseA.json().catch(() => ({}));
-        const base64 = asString((data as Record<string, unknown>)?.base64, 50_000_000)
-          || asString(asRecord((data as Record<string, unknown>)?.data)?.base64, 50_000_000);
-        if (base64) return { base64 };
+    for (const item of getBase64Strategies) {
+      try {
+        const result = await postEvolutionMediaRequest(
+          evolutionUrl,
+          evolutionApiKey,
+          instanceName,
+          item.strategy,
+          item.body,
+        );
+        if (result.base64) return result;
+        errors.push(`${item.strategy}:${result.error || 'no_base64'}`);
+      } catch (error) {
+        errors.push(`${item.strategy}:${shortErrorMessage(error)}`);
+        console.warn('[internal-crm-media-resolver] get_base64_strategy_failed', {
+          instanceName,
+          waMessageId: waMessageId.slice(0, 8),
+          attempt,
+          strategy: item.strategy,
+          error: shortErrorMessage(error),
+        });
       }
-    } catch (error) {
-      console.warn('[internal-crm-media-resolver] strategy_a_failed', {
-        instanceName,
-        waMessageId,
-        attempt,
-        error: shortErrorMessage(error),
-      });
     }
 
     try {
       const urlB = `${evolutionUrl}/chat/findMessage/${instanceName}`;
-      const responseB = await fetch(urlB, {
+      const responseB = await fetchWithTimeout(urlB, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: evolutionApiKey },
         body: JSON.stringify({ sessionId: instanceName, messageId: waMessageId }),
@@ -193,17 +347,27 @@ async function fetchMediaBase64(
 
       if (responseB.ok) {
         const data = await responseB.json().catch(() => ({}));
-        const base64 = asString((data as Record<string, unknown>)?.base64, 50_000_000)
-          || asString(asRecord((data as Record<string, unknown>)?.data)?.base64, 50_000_000);
-        if (base64) return { base64 };
+        const base64 = extractEvolutionBase64(data);
+        if (base64) {
+          return {
+            base64,
+            mimeType: extractEvolutionMimeType(data) || null,
+            strategy: 'find_message',
+          };
+        }
+        errors.push('find_message:ok_without_base64');
+      } else {
+        const text = await responseB.text();
+        errors.push(`find_message:${responseB.status}:${text.slice(0, 160)}`);
       }
     } catch (error) {
       console.warn('[internal-crm-media-resolver] strategy_b_failed', {
         instanceName,
-        waMessageId,
+        waMessageId: waMessageId.slice(0, 8),
         attempt,
         error: shortErrorMessage(error),
       });
+      errors.push(`find_message:${shortErrorMessage(error)}`);
     }
 
     if (attempt < FETCH_RETRY_ATTEMPTS) {
@@ -211,7 +375,12 @@ async function fetchMediaBase64(
     }
   }
 
-  return null;
+  return {
+    base64: null,
+    mimeType: null,
+    strategy: 'exhausted',
+    error: errors.slice(-6).join(' | ') || 'not_attempted',
+  };
 }
 
 async function loadMessageRow(
@@ -220,22 +389,24 @@ async function loadMessageRow(
 ): Promise<InternalCrmMessageRow | null> {
   const schema = crmSchema(admin);
   if (input.messageId) {
-    const { data } = await schema
+    const { data, error } = await schema
       .from('messages')
       .select('*')
       .eq('id', input.messageId)
       .maybeSingle();
+    if (error) throw error;
     return (data as InternalCrmMessageRow | null) || null;
   }
 
   if (input.waMessageId) {
-    const { data } = await schema
+    const { data, error } = await schema
       .from('messages')
       .select('*')
       .eq('wa_message_id', input.waMessageId)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (error) throw error;
     return (data as InternalCrmMessageRow | null) || null;
   }
 
@@ -251,6 +422,32 @@ async function updateMessageRow(
     .from('messages')
     .update(changes)
     .eq('id', messageId);
+}
+
+async function resolveInstanceNameForMessage(
+  admin: ReturnType<typeof createClient>,
+  row: InternalCrmMessageRow,
+  explicitInstanceName?: string | null,
+): Promise<string> {
+  const metadata = asRecord(row.metadata);
+  const directName =
+    asString(explicitInstanceName, 180)
+    || asString(metadata.instance_name, 180)
+    || asString(metadata.instanceName, 180)
+    || asString(asRecord(metadata.data).instance, 180);
+
+  if (directName) return directName;
+
+  const instanceId = asString(row.whatsapp_instance_id, 120);
+  if (!instanceId) return '';
+
+  const { data } = await crmSchema(admin)
+    .from('whatsapp_instances')
+    .select('instance_name')
+    .eq('id', instanceId)
+    .maybeSingle();
+
+  return asString(asRecord(data).instance_name, 180);
 }
 
 const resolveAttachmentType = (
@@ -299,6 +496,7 @@ async function resolveSingleMedia(
     fileName?: string | null;
     messageType?: string | null;
     mediaVariant?: string | null;
+    evolutionMessage?: Record<string, unknown> | null;
     maxAttempts?: number;
   },
 ) {
@@ -311,12 +509,14 @@ async function resolveSingleMedia(
   }
 
   const waMessageId = asString(input.waMessageId || row.wa_message_id, 180);
-  const instanceName = asString(input.instanceName, 180);
+  const instanceName = await resolveInstanceNameForMessage(admin, row, input.instanceName);
   const mimeType = asString(input.mimeType || row.attachment_mimetype, 180) || 'application/octet-stream';
   const fileName = asString(input.fileName || row.attachment_name, 220) || `${row.message_type}.${extensionFromMime(mimeType)}`;
   const mediaVariant = asString(input.mediaVariant || asRecord(row.metadata).media_variant, 32) || 'standard';
   const messageType = asString(input.messageType || row.message_type, 32) || row.message_type;
   const maxAttempts = asPositiveInt(input.maxAttempts, RETRY_PENDING_MAX_ATTEMPTS_DEFAULT, 1, 15);
+  const rowMetadata = asRecord(row.metadata);
+  const evolutionMessages = collectEvolutionMessageCandidates(input.evolutionMessage, rowMetadata);
 
   if (!waMessageId) throw new Error('wa_message_id_missing');
   if (!instanceName) throw new Error('instance_name_missing');
@@ -331,15 +531,21 @@ async function resolveSingleMedia(
   });
 
   const mediaFetchStartedAt = perfNow();
-  const media = await fetchMediaBase64(evolutionUrl, evolutionApiKey, instanceName, waMessageId);
+  const media = await fetchMediaBase64(evolutionUrl, evolutionApiKey, instanceName, waMessageId, evolutionMessages);
   if (!media?.base64) {
     const finalizeAsReady = attemptCount >= maxAttempts;
     await updateMessageRow(admin, row.id, {
       attachment_error: true,
-      attachment_error_message: 'FATAL_NO_BASE64',
+      attachment_error_message: `FATAL_NO_BASE64:${media?.error || 'unknown'}`,
       ...(finalizeAsReady ? { attachment_ready: true } : {}),
     });
-    return { success: false, code: 'FATAL_NO_BASE64', messageId: row.id, attempts: attemptCount };
+    return {
+      success: false,
+      code: 'FATAL_NO_BASE64',
+      messageId: row.id,
+      attempts: attemptCount,
+      strategy: media?.strategy || 'unknown',
+    };
   }
 
   await ensurePublicBucket(admin, DELIVERY_BUCKET);
@@ -348,18 +554,18 @@ async function resolveSingleMedia(
   const uploadStartedAt = perfNow();
   const bytes = decodeBase64(media.base64);
   const fileSize = bytes.length;
-  const extension = fileName.includes('.') ? fileName.split('.').pop() || extensionFromMime(mimeType) : extensionFromMime(mimeType);
+  const resolvedMimeType = media.mimeType || mimeType;
   const storagePath = sanitizePathPart(`${row.id}/${Date.now()}_${sanitizePathPart(fileName.replace(/\s+/g, '_'))}`);
 
   let publicUrl = '';
   let usedBucket = '';
   let lastUploadError: unknown = null;
 
-  for (const bucketName of [DELIVERY_BUCKET, ATTACHMENT_BUCKET] as const) {
+  for (const bucketName of [ATTACHMENT_BUCKET, DELIVERY_BUCKET] as const) {
     const { error } = await admin.storage
       .from(bucketName)
       .upload(storagePath, bytes, {
-        contentType: mimeType,
+        contentType: resolvedMimeType,
         upsert: true,
       });
 
@@ -388,17 +594,19 @@ async function resolveSingleMedia(
     };
   }
 
-  const attachmentType = resolveAttachmentType(messageType, mimeType, mediaVariant);
+  const attachmentType = resolveAttachmentType(messageType, resolvedMimeType, mediaVariant);
   const nextMetadata = {
-    ...asRecord(row.metadata),
+    ...rowMetadata,
     media_variant: mediaVariant,
     storage_bucket: usedBucket,
+    storage_path: storagePath,
     resolver_source: 'internal-crm-media-resolver',
+    resolver_strategy: media.strategy,
   };
 
   let transcriptText: string | null = null;
   if (attachmentType === 'audio') {
-    transcriptText = await transcribeAudioWithOpenAI(media.base64, mimeType);
+    transcriptText = await transcribeAudioWithOpenAI(media.base64, resolvedMimeType);
   }
 
   const placeholderBody = resolvePlaceholderBody(attachmentType, mediaVariant);
@@ -411,7 +619,7 @@ async function resolveSingleMedia(
   const updatePayload: Record<string, unknown> = {
     attachment_url: publicUrl,
     attachment_ready: true,
-    attachment_mimetype: mimeType,
+    attachment_mimetype: resolvedMimeType,
     attachment_name: fileName,
     attachment_size: fileSize,
     attachment_error: false,
@@ -462,7 +670,7 @@ async function processPendingMedia(
     .eq('attachment_ready', false)
     .in('message_type', ['image', 'video', 'audio', 'document'])
     .lte('created_at', cutoffIso)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(maxBatch);
 
   if (error) throw error;
@@ -481,17 +689,32 @@ async function processPendingMedia(
       continue;
     }
 
-    const result = await resolveSingleMedia(admin, evolutionUrl, evolutionApiKey, {
-      messageId: row.id,
-      waMessageId: row.wa_message_id,
-      instanceName: asString(asRecord(row.metadata).instance_name, 180),
-      mimeType: row.attachment_mimetype,
-      fileName: row.attachment_name,
-      messageType: row.message_type,
-      mediaVariant: asString(asRecord(row.metadata).media_variant, 32),
-      maxAttempts,
-    });
-    results.push(result);
+    try {
+      const result = await resolveSingleMedia(admin, evolutionUrl, evolutionApiKey, {
+        messageId: row.id,
+        waMessageId: row.wa_message_id,
+        instanceName: asString(asRecord(row.metadata).instance_name, 180),
+        mimeType: row.attachment_mimetype,
+        fileName: row.attachment_name,
+        messageType: row.message_type,
+        mediaVariant: asString(asRecord(row.metadata).media_variant, 32),
+        maxAttempts,
+      });
+      results.push(result);
+    } catch (error) {
+      const errorMessage = shortErrorMessage(error);
+      await updateMessageRow(admin, row.id, {
+        attachment_ready: true,
+        attachment_error: true,
+        attachment_error_message: `RETRY_PENDING_FAILED:${errorMessage}`,
+      });
+      results.push({
+        messageId: row.id,
+        success: false,
+        code: 'RETRY_PENDING_FAILED',
+        error: errorMessage,
+      });
+    }
   }
 
   return {
@@ -579,6 +802,7 @@ Deno.serve(async (req) => {
       fileName: asString(body.fileName || body.file_name, 220),
       messageType: asString(body.messageType || body.message_type, 32),
       mediaVariant: asString(body.mediaVariant || body.media_variant, 32),
+      evolutionMessage: asRecord(body.evolutionMessage || body.evolution_message || body.message),
       maxAttempts: body.maxAttempts,
     });
 
