@@ -2393,6 +2393,27 @@ async function invokeInternalEdgeFunction(functionName: string, payload: Record<
   return isRecord(responsePayload) ? responsePayload : { ok: true };
 }
 
+function waitForBackgroundTask(task: Promise<unknown>) {
+  const runtime = asRecord((globalThis as unknown as Record<string, unknown>).EdgeRuntime);
+  const waitUntil = runtime.waitUntil;
+  if (typeof waitUntil === 'function') {
+    waitUntil.call(runtime, task);
+    return;
+  }
+
+  void task;
+}
+
+function enqueueInternalEdgeFunction(functionName: string, payload: Record<string, unknown>, onError?: (error: unknown) => Promise<void>) {
+  const task = invokeInternalEdgeFunction(functionName, payload).catch(async (error) => {
+    if (onError) {
+      await onError(error);
+    }
+  });
+
+  waitForBackgroundTask(task);
+}
+
 type GoogleCalendarConnection = {
   user_id: string;
   account_email: string | null;
@@ -6893,6 +6914,7 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     attachment_ready: isMediaMessage ? false : true,
     attachment_mimetype: isMediaMessage ? mediaMimeType : null,
     attachment_name: isMediaMessage ? mediaFileName : null,
+    attachment_error_message: isMediaMessage ? 'MEDIA_RESOLVER_QUEUED' : null,
     wa_message_id: waMessageId || null,
     remote_jid: canonicalRemoteJid,
     delivery_status: fromMe ? 'sent' : 'delivered',
@@ -6915,8 +6937,9 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
   }).eq('id', conversation.id);
 
   if (isMediaMessage && message?.id) {
-    try {
-      await invokeInternalEdgeFunction('internal-crm-media-resolver', {
+    enqueueInternalEdgeFunction(
+      'internal-crm-media-resolver',
+      {
         messageId: String(message.id),
         waMessageId,
         instanceName,
@@ -6925,16 +6948,16 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
         messageType: dbMessageType,
         mediaVariant,
         evolutionMessage: mediaResolverMessagePayload,
-      });
-    } catch (resolverError) {
-      if (!resolverErrorLooksHandled(resolverError)) {
+      },
+      async (resolverError) => {
+        if (resolverErrorLooksHandled(resolverError)) return;
         await schema.from('messages').update({
-          attachment_ready: true,
+          attachment_ready: false,
           attachment_error: true,
           attachment_error_message: `RESOLVER_DISPATCH_FAILED:${shortErrorMessage(resolverError)}`,
         }).eq('id', message.id);
-      }
-    }
+      },
+    );
   }
 
   const clientUpdatePayload: Record<string, unknown> = {
