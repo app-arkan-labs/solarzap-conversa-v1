@@ -20,6 +20,8 @@ import {
   extractAutomationTemplateTokens,
   mergeAutomationTemplatePayload,
   normalizeAutomationTemplateValue as normalizeTemplateValue,
+  normalizeAutomationPersonFirstName,
+  normalizeAutomationPersonFullName,
   renderAutomationTemplate,
 } from './templatePayload.ts';
 
@@ -541,9 +543,20 @@ function automationConditionMatches(condition: Record<string, unknown>, payload:
   return true;
 }
 
-function resolveAutomationScheduledAt(rule: Record<string, unknown>, payload: Record<string, unknown>): string {
+type AutomationScheduleDecision = {
+  scheduledAt: string | null;
+  skipReason: string | null;
+  dueNow: boolean;
+};
+
+function resolveAutomationScheduleDecision(
+  rule: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): AutomationScheduleDecision {
   const metadata = asRecord(rule.metadata);
   const anchor = asString(metadata.schedule_anchor) || 'event_time';
+  const delayMinutes = asNumber(rule.delay_minutes, 0);
+  const currentTimeMs = Date.now();
 
   let baseAt = asString(payload.event_at) || nowIso();
   if (anchor === 'appointment_start' && asString(payload.appointment_start_at)) {
@@ -554,11 +567,20 @@ function resolveAutomationScheduledAt(rule: Record<string, unknown>, payload: Re
   }
 
   const baseDate = new Date(baseAt);
-  if (Number.isNaN(baseDate.getTime())) return nowIso();
+  if (Number.isNaN(baseDate.getTime())) {
+    return { scheduledAt: nowIso(), skipReason: null, dueNow: true };
+  }
 
-  const shifted = new Date(baseDate.getTime() + (asNumber(rule.delay_minutes, 0) * 60_000));
-  if (shifted.getTime() < Date.now()) return nowIso();
-  return shifted.toISOString();
+  const shifted = new Date(baseDate.getTime() + (delayMinutes * 60_000));
+  if (shifted.getTime() <= currentTimeMs) {
+    if (anchor === 'appointment_start' && delayMinutes < 0) {
+      return { scheduledAt: null, skipReason: 'skipped_due_before_creation', dueNow: false };
+    }
+
+    return { scheduledAt: nowIso(), skipReason: null, dueNow: true };
+  }
+
+  return { scheduledAt: shifted.toISOString(), skipReason: null, dueNow: false };
 }
 
 function buildAutomationEventKey(eventType: string, payload: Record<string, unknown>): string {
@@ -1859,6 +1881,15 @@ function buildAutomationTemplatePayload(
     asString(appointmentMetadata.landing_page_url) ||
     asString(attributionSnapshot.landing_page_url);
 
+  const rawLeadName =
+    asString(payload.nome) ||
+    asString(payload.nome_completo) ||
+    asString(client.primary_contact_name) ||
+    asString(client.company_name) ||
+    'Cliente';
+  const formattedFirstName = normalizeAutomationPersonFirstName(rawLeadName, 'Cliente');
+  const formattedFullName = normalizeAutomationPersonFullName(rawLeadName, formattedFirstName);
+
   const basePayload = {
     client_id: asString(payload.client_id) || asString(client.id),
     deal_id: asString(payload.deal_id) || asString(deal.id),
@@ -1872,11 +1903,8 @@ function buildAutomationTemplatePayload(
       asString(payload.whatsapp_instance_id) ||
       asString(conversation.whatsapp_instance_id) ||
       asString(appointmentMetadata.whatsapp_instance_id),
-    nome:
-      asString(payload.nome) ||
-      asString(client.primary_contact_name) ||
-      asString(client.company_name) ||
-      'Lead',
+    nome: formattedFirstName,
+    nome_completo: formattedFullName,
     empresa: asString(payload.empresa) || asString(client.company_name) || '',
     etapa: asString(payload.etapa) || humanizeToken(stageCode),
     stage_code: stageCode,
@@ -1886,8 +1914,7 @@ function buildAutomationTemplatePayload(
       asString(payload.scheduling_link) ||
       asString(commercialContext.scheduling_link) ||
       asString(appointmentMetadata.scheduling_link) ||
-      landingPageUrl ||
-      buildInternalCrmUrl(asString(client.id)),
+      '',
     link_reuniao:
       asString(payload.link_reuniao) ||
       asString(payload.meeting_link) ||
@@ -2008,6 +2035,7 @@ async function queueAutomationEvent(
   const queuedRunIds: string[] = [];
   const dueRunIds: string[] = [];
   const skippedAutomationKeys: string[] = [];
+  const skippedRunIds: string[] = [];
 
   for (const rule of rules || []) {
     if (!automationConditionMatches(asRecord(rule.condition), eventPayload)) {
@@ -2015,12 +2043,65 @@ async function queueAutomationEvent(
       continue;
     }
 
-    const scheduledAt = resolveAutomationScheduledAt(rule, eventPayload);
+    const scheduleDecision = resolveAutomationScheduleDecision(rule, eventPayload);
     const eventKey = buildAutomationEventKey(eventType, {
       ...eventPayload,
       anchor_key: asString(payload.anchor_key) || asString(eventPayload.offer_code) || asString(rule.automation_key),
     });
     const dedupeKey = `${asString(rule.automation_key) || String(rule.id)}:${eventKey}`;
+    const templateBody = renderAutomationTemplate(asString(rule.template), eventPayload);
+    const runPayload = mergeRecord(eventPayload, {
+      automation_name: asString(rule.name),
+      automation_key: asString(rule.automation_key),
+      template_body: templateBody,
+      rule_metadata: asRecord(rule.metadata),
+      event_key: eventKey,
+      ...(scheduleDecision.skipReason ? { skip_reason: scheduleDecision.skipReason } : {}),
+    });
+
+    if (scheduleDecision.skipReason) {
+      const skippedAt = nowIso();
+      const { data: skippedRun, error: skippedRunError } = await schema
+        .from('automation_runs')
+        .insert({
+          automation_id: rule.id,
+          automation_key: rule.automation_key,
+          client_id: asString(eventPayload.client_id),
+          deal_id: asString(eventPayload.deal_id),
+          appointment_id: asString(eventPayload.appointment_id),
+          conversation_id: asString(eventPayload.conversation_id),
+          trigger_event: eventType,
+          channel: rule.channel,
+          status: 'skipped',
+          scheduled_at: skippedAt,
+          processed_at: skippedAt,
+          dedupe_key: dedupeKey,
+          payload: runPayload,
+          result_payload: {
+            skip_reason: scheduleDecision.skipReason,
+            event_key: eventKey,
+          },
+        })
+        .select('id')
+        .single();
+
+      if (skippedRunError) {
+        if (String((skippedRunError as { code?: unknown }).code || '') !== '23505') {
+          throw { status: 500, code: 'automation_run_insert_failed', error: skippedRunError };
+        }
+      } else if (skippedRun?.id) {
+        skippedRunIds.push(String(skippedRun.id));
+      }
+
+      skippedAutomationKeys.push(`${String(rule.automation_key || rule.id)}:${scheduleDecision.skipReason}`);
+      await schema
+        .from('automation_rules')
+        .update({ last_run_at: skippedAt, last_run_status: 'skipped', updated_at: skippedAt })
+        .eq('id', rule.id);
+      continue;
+    }
+
+    const scheduledAt = scheduleDecision.scheduledAt || nowIso();
 
     const { data: run, error: runError } = await schema
       .from('automation_runs')
@@ -2035,13 +2116,7 @@ async function queueAutomationEvent(
         channel: rule.channel,
         scheduled_at: scheduledAt,
         dedupe_key: dedupeKey,
-        payload: mergeRecord(eventPayload, {
-          automation_name: asString(rule.name),
-          automation_key: asString(rule.automation_key),
-          template_body: renderAutomationTemplate(asString(rule.template), eventPayload),
-          rule_metadata: asRecord(rule.metadata),
-          event_key: eventKey,
-        }),
+        payload: runPayload,
       })
       .select('*')
       .single();
@@ -2067,7 +2142,7 @@ async function queueAutomationEvent(
         .eq('id', asString(eventPayload.deal_id));
     }
 
-    if (new Date(scheduledAt).getTime() <= Date.now()) {
+    if (scheduleDecision.dueNow || new Date(scheduledAt).getTime() <= Date.now()) {
       dueRunIds.push(String(run.id));
     }
   }
@@ -2078,6 +2153,7 @@ async function queueAutomationEvent(
 
   return {
     queued_run_ids: queuedRunIds,
+    skipped_run_ids: skippedRunIds,
     skipped_automation_keys: skippedAutomationKeys,
     processed,
   };
@@ -4515,20 +4591,21 @@ async function upsertAppointment(
   const isRescheduled = Boolean(before?.id) && beforeStartAt !== asString(data.start_at);
   const statusChanged = Boolean(before?.id) && asString(before?.status) !== asString(data.status);
   const shouldProcessAutomationDueNow = asBoolean(payload.process_automation_due_now, true);
+  const appointmentStartEventKey = asString(data.start_at) || appointmentEventAt;
 
   if (!before?.id || isRescheduled || (statusChanged && ['scheduled', 'confirmed'].includes(String(data.status || '')))) {
     if (isRescheduled) {
       await queueAutomationEvent(serviceClient, 'appointment_rescheduled', {
         ...appointmentEventBase,
         event_at: appointmentEventAt,
-        event_key: `appointment_rescheduled:${String(data.id)}:${appointmentEventAt}`,
+        event_key: `appointment_rescheduled:${String(data.id)}:${appointmentStartEventKey}`,
       }, { processDueNow: shouldProcessAutomationDueNow });
     }
 
     await queueAutomationEvent(serviceClient, 'appointment_scheduled', {
       ...appointmentEventBase,
       event_at: appointmentEventAt,
-      event_key: `appointment_scheduled:${String(data.id)}:${appointmentEventAt}`,
+      event_key: `appointment_scheduled:${String(data.id)}:${appointmentStartEventKey}`,
     }, { processDueNow: shouldProcessAutomationDueNow });
   }
 
@@ -4536,7 +4613,7 @@ async function upsertAppointment(
     await queueAutomationEvent(serviceClient, 'appointment_canceled', {
       ...appointmentEventBase,
       event_at: nowIso(),
-      event_key: `appointment_canceled:${String(data.id)}:${nowIso()}`,
+      event_key: `appointment_canceled:${String(data.id)}`,
     }, { processDueNow: shouldProcessAutomationDueNow });
   }
 
@@ -4544,7 +4621,7 @@ async function upsertAppointment(
     await queueAutomationEvent(serviceClient, 'appointment_done', {
       ...appointmentEventBase,
       event_at: nowIso(),
-      event_key: `appointment_done:${String(data.id)}:${nowIso()}`,
+      event_key: `appointment_done:${String(data.id)}`,
     }, { processDueNow: shouldProcessAutomationDueNow });
   }
 
@@ -4552,7 +4629,7 @@ async function upsertAppointment(
     await queueAutomationEvent(serviceClient, 'appointment_no_show', {
       ...appointmentEventBase,
       event_at: nowIso(),
-      event_key: `appointment_no_show:${String(data.id)}:${nowIso()}`,
+      event_key: `appointment_no_show:${String(data.id)}`,
     }, { processDueNow: shouldProcessAutomationDueNow });
   }
 
@@ -5932,8 +6009,7 @@ async function intakeLandingLead(
 
   const resolvedSchedulingLink =
     asString(payload.link_agendamento) ||
-    asString(payload.scheduling_link) ||
-    asString(trackingSnapshot.landing_page_url);
+    asString(payload.scheduling_link);
   const resolvedMeetingLink =
     asString(payload.link_reuniao) ||
     asString(payload.meeting_link) ||

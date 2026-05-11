@@ -1,10 +1,78 @@
 type TemplatePayloadRecord = Record<string, unknown>;
 
+const NON_PERSON_VALUE_PATTERNS = [
+  /@/,
+  /https?:\/\//i,
+  /\bwww\./i,
+  /^\+?[\d\s().-]{7,}$/,
+];
+
+const NAME_PREFIXES_TO_SKIP = new Set(['sr', 'sra', 'dr', 'dra', 'mr', 'mrs', 'ms']);
+const LOWERCASE_NAME_PARTICLES = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
+
 export function normalizeAutomationTemplateValue(value: unknown): string {
   if (value == null) return '';
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return '';
+}
+
+function looksLikeNonPersonValue(value: string): boolean {
+  const normalized = value.trim();
+  if (!normalized) return true;
+  return NON_PERSON_VALUE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function toTitleCaseToken(token: string): string {
+  return token
+    .split(/([-'])/g)
+    .map((part) => {
+      if (part === '-' || part === "'") return part;
+      const lowered = part.toLocaleLowerCase('pt-BR');
+      const chars = Array.from(lowered);
+      if (chars.length === 0) return '';
+      return `${chars[0].toLocaleUpperCase('pt-BR')}${chars.slice(1).join('')}`;
+    })
+    .join('');
+}
+
+function extractNameTokens(value: unknown): string[] {
+  const raw = normalizeAutomationTemplateValue(value)
+    .replace(/[<>()[\]{}"“”]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!raw || looksLikeNonPersonValue(raw)) return [];
+
+  return [...raw.matchAll(/[\p{L}\p{M}][\p{L}\p{M}'-]*/gu)]
+    .map((match) => match[0])
+    .filter(Boolean);
+}
+
+export function normalizeAutomationPersonFullName(value: unknown, fallback = 'Cliente'): string {
+  const tokens = extractNameTokens(value);
+  if (tokens.length === 0) return fallback;
+
+  const formattedTokens = tokens
+    .map((token, index) => {
+      const normalized = token.toLocaleLowerCase('pt-BR');
+      if (index > 0 && LOWERCASE_NAME_PARTICLES.has(normalized)) return normalized;
+      return toTitleCaseToken(token);
+    })
+    .filter(Boolean);
+
+  return formattedTokens.join(' ') || fallback;
+}
+
+export function normalizeAutomationPersonFirstName(value: unknown, fallback = 'Cliente'): string {
+  const tokens = extractNameTokens(value);
+  if (tokens.length === 0) return fallback;
+
+  const firstNameToken =
+    tokens.find((token) => !NAME_PREFIXES_TO_SKIP.has(token.toLocaleLowerCase('pt-BR').replace(/\./g, ''))) ||
+    tokens[0];
+
+  return toTitleCaseToken(firstNameToken) || fallback;
 }
 
 export function renderAutomationTemplate(

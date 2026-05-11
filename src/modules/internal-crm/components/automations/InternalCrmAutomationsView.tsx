@@ -53,7 +53,7 @@ type SettingsDraft = {
   notificationCooldownMinutes: string;
 };
 
-const COMMON_TEMPLATE_TOKENS = ['{{nome}}', '{{data_hora}}', '{{hora}}', '{{link_agendamento}}', '{{link_reuniao}}'];
+const COMMON_TEMPLATE_TOKENS = ['{{nome}}', '{{nome_completo}}', '{{data_hora}}', '{{hora}}', '{{link_reuniao}}'];
 
 const TRIGGER_META: Record<
   string,
