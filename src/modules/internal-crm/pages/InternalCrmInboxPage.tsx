@@ -404,7 +404,7 @@ export default function InternalCrmInboxPage() {
             contactName: targetClient?.primary_contact_name,
           })),
           owner_user_id: targetClient?.owner_user_id || null,
-          stage_code: 'chamada_agendada',
+          stage_code: 'novo_lead',
           probability: 5,
           notes: null,
           items: [],

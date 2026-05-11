@@ -35,9 +35,13 @@ const TYPE_LABELS: Record<string, string> = {
   call: 'Ligação',
   demo: 'Demonstração',
   meeting: 'Reunião',
-  visit: 'Visita',
   other: 'Outro',
 };
+
+const APPOINTMENT_TYPE_OPTIONS = [
+  { value: 'call', label: 'Chamada' },
+  { value: 'meeting', label: 'Reuniao' },
+];
 
 const STATUS_LABELS: Record<string, string> = {
   scheduled: 'Agendado',
@@ -214,6 +218,7 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
       end_at: endDate.toISOString(),
       location: draft.location.trim() || null,
       notes: draft.notes.trim() || null,
+      move_pipeline_on_save: draft.appointment_type === 'meeting',
     });
   }
 
@@ -310,8 +315,8 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
                 <Select value={draft.appointment_type} onValueChange={(v) => setDraft((c) => ({ ...c, appointment_type: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {Object.entries(TYPE_LABELS).map(([k, l]) => (
-                      <SelectItem key={k} value={k}>{l}</SelectItem>
+                    {APPOINTMENT_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -377,6 +382,16 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
                 onChange={(e) => setDraft((c) => ({ ...c, notes: e.target.value }))}
                 placeholder="Pontos a discutir, contexto do lead..."
               />
+            </div>
+            <div className={cn(
+              'rounded-lg border px-3 py-2 text-xs',
+              draft.appointment_type === 'call'
+                ? 'border-blue-200 bg-blue-50 text-blue-900'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-900',
+            )}>
+              {draft.appointment_type === 'call'
+                ? 'Chamada aparece na agenda e nao move a etapa da pipeline.'
+                : 'Reuniao move o lead para Reuniao Marcada; ao marcar como realizada, move para Reuniao Realizada.'}
             </div>
           </div>
 

@@ -57,6 +57,10 @@ export type NewDealData = {
   };
 };
 
+type NewDealSimpleState = Omit<ReturnType<typeof buildEmptyState>, 'clientMode'> & {
+  clientMode: 'existing' | 'create';
+};
+
 type NewDealSimpleModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -99,9 +103,9 @@ function buildEmptyState() {
 }
 
 export function NewDealSimpleModal(props: NewDealSimpleModalProps) {
-  const [state, setState] = useState(buildEmptyState);
+  const [state, setState] = useState<NewDealSimpleState>(() => buildEmptyState());
   const visibleProducts = useMemo(() => getVisibleInternalCrmProducts(props.products), [props.products]);
-  const requiresAppointment = state.stageCode === 'chamada_agendada';
+  const requiresAppointment = state.stageCode === 'reuniao_marcada';
 
   useEffect(() => {
     if (props.open) return;

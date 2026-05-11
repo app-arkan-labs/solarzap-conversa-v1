@@ -43,6 +43,36 @@ export function getDefaultStageEventMap(): StageEventMap {
       google_ads: null,
       ga4: 'generate_lead',
     },
+    mql: {
+      event_key: 'mql',
+      meta: 'CompleteRegistration',
+      google_ads: 'qualified_lead',
+      ga4: 'generate_lead',
+    },
+    reuniao_marcada: {
+      event_key: 'reuniao_marcada',
+      meta: 'Schedule',
+      google_ads: 'schedule',
+      ga4: 'schedule_appointment',
+    },
+    reuniao_realizada: {
+      event_key: 'reuniao_realizada',
+      meta: null,
+      google_ads: null,
+      ga4: null,
+    },
+    contrato_fechado: {
+      event_key: 'contrato_fechado',
+      meta: null,
+      google_ads: null,
+      ga4: null,
+    },
+    venda_finalizada: {
+      event_key: 'venda_finalizada',
+      meta: 'Purchase',
+      google_ads: 'purchase',
+      ga4: 'purchase',
+    },
     agendou_reuniao: {
       event_key: 'agendou_reuniao',
       meta: null,

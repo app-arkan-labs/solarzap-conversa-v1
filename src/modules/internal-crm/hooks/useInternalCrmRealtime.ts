@@ -38,7 +38,7 @@ export function useInternalCrmRealtime(enabled: boolean) {
 
       invalidateTimer = setTimeout(() => {
         void queryClient.invalidateQueries({
-          queryKey: internalCrmQueryKeys.all(),
+          queryKey: internalCrmQueryKeys.all,
           refetchType: 'active',
         });
       }, 150);
@@ -68,4 +68,3 @@ export function useInternalCrmRealtime(enabled: boolean) {
     };
   }, [enabled, queryClient]);
 }
-

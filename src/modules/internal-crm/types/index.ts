@@ -14,6 +14,7 @@ export type InternalCrmApiAction =
   | 'list_deals'
   | 'upsert_deal'
   | 'move_deal_stage'
+  | 'record_call_outcome'
   | 'delete_deal'
   | 'create_deal_checkout_link'
   | 'list_tasks'
@@ -484,6 +485,7 @@ export type InternalCrmAppointment = {
   google_sync_status: 'not_synced' | 'synced' | 'error' | 'disconnected';
   google_last_synced_at: string | null;
   google_sync_error: string | null;
+  metadata?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
   client_company_name?: string | null;

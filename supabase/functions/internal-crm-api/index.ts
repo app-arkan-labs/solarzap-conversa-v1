@@ -75,6 +75,7 @@ const ACTION_PERMISSIONS: Record<string, ActionPermission> = {
   list_deals: { minCrmRole: 'read_only', requireMfa: true },
   upsert_deal: { minCrmRole: 'sales', requireMfa: true },
   move_deal_stage: { minCrmRole: 'sales', requireMfa: true },
+  record_call_outcome: { minCrmRole: 'sales', requireMfa: true },
   delete_deal: { minCrmRole: 'sales', requireMfa: true },
   save_deal_notes: { minCrmRole: 'sales', requireMfa: true },
   create_deal_checkout_link: { minCrmRole: 'sales', requireMfa: true },
@@ -263,45 +264,50 @@ function resolveRequestIp(req: Request): string | null {
 const INTERNAL_CRM_AUTOMATION_SCOPE_KEY = 'default';
 const LEGACY_STAGE_CODE_MAP: Record<string, string> = {
   lead_entrante: 'novo_lead',
-  contato_iniciado: 'respondeu',
-  qualificado: 'respondeu',
-  demo_agendada: 'chamada_agendada',
-  agendou_reuniao: 'chamada_agendada',
-  reuniao_agendada: 'chamada_agendada',
-  reuniao_realizada: 'chamada_realizada',
-  proposta_enviada: 'negociacao',
-  aguardando_pagamento: 'negociacao',
-  ganho: 'fechou',
+  respondeu: 'tentando_contato',
+  contato_iniciado: 'tentando_contato',
+  qualificado: 'mql',
+  chamada_agendada: 'tentando_contato',
+  chamada_realizada: 'reuniao_realizada',
+  nao_compareceu: 'tentando_contato',
+  negociacao: 'reuniao_realizada',
+  demo_agendada: 'reuniao_marcada',
+  agendou_reuniao: 'reuniao_marcada',
+  reuniao_agendada: 'reuniao_marcada',
+  proposta_enviada: 'reuniao_realizada',
+  aguardando_pagamento: 'contrato_fechado',
+  fechou: 'venda_finalizada',
+  ganho: 'venda_finalizada',
   perdido: 'nao_fechou',
 };
 const BLUEPRINT_STAGE_DEFAULT_PROBABILITY: Record<string, number> = {
   novo_lead: 5,
-  respondeu: 15,
-  chamada_agendada: 35,
-  chamada_realizada: 55,
-  nao_compareceu: 20,
-  negociacao: 75,
-  fechou: 100,
+  tentando_contato: 10,
+  mql: 35,
+  reuniao_marcada: 50,
+  reuniao_realizada: 70,
+  contrato_fechado: 90,
+  venda_finalizada: 100,
   nao_fechou: 5,
 };
 const BLUEPRINT_STAGE_LABEL: Record<string, string> = {
   novo_lead: 'Novo Lead',
-  respondeu: 'Respondeu',
-  chamada_agendada: 'Reuniao Agendada',
-  chamada_realizada: 'Reuniao Realizada',
-  nao_compareceu: 'Nao Compareceu',
-  negociacao: 'Negociacao',
-  fechou: 'Fechou Contrato',
+  tentando_contato: 'Tentando Contato',
+  mql: 'MQL',
+  reuniao_marcada: 'Reuniao Marcada',
+  reuniao_realizada: 'Reuniao Realizada',
+  contrato_fechado: 'Contrato Fechado',
+  venda_finalizada: 'Venda Finalizada',
   nao_fechou: 'Nao Fechou',
 };
 const BLUEPRINT_STAGE_COLOR: Record<string, string> = {
   novo_lead: '#2196F3',
-  respondeu: '#FF9800',
-  chamada_agendada: '#3F51B5',
-  chamada_realizada: '#4CAF50',
-  nao_compareceu: '#F44336',
-  negociacao: '#FFC107',
-  fechou: '#8BC34A',
+  tentando_contato: '#F59E0B',
+  mql: '#0EA5E9',
+  reuniao_marcada: '#6366F1',
+  reuniao_realizada: '#14B8A6',
+  contrato_fechado: '#22C55E',
+  venda_finalizada: '#15803D',
   nao_fechou: '#607D8B',
 };
 const MENTORSHIP_SESSION_TARGET: Record<string, number> = {
@@ -354,7 +360,7 @@ function resolveBlueprintStageCode(value: unknown, fallback = 'novo_lead'): stri
 
 function resolveDealStatusForStage(stageCode: unknown, fallback = 'open'): 'open' | 'won' | 'lost' {
   const resolvedStageCode = resolveBlueprintStageCode(stageCode, 'novo_lead');
-  if (resolvedStageCode === 'fechou') return 'won';
+  if (resolvedStageCode === 'venda_finalizada') return 'won';
   if (resolvedStageCode === 'nao_fechou') return 'lost';
   if (fallback === 'won' || fallback === 'lost') return 'open';
   return fallback === 'lost' ? 'lost' : fallback === 'won' ? 'won' : 'open';
@@ -1473,7 +1479,7 @@ async function moveDealStage(
     syncedAt: nowIso(),
   });
 
-  if (resolveBlueprintStageCode(stageCode, 'novo_lead') === 'fechou') {
+  if (['contrato_fechado', 'venda_finalizada'].includes(resolveBlueprintStageCode(stageCode, 'novo_lead'))) {
     await queueAutomationEvent(serviceClient, 'deal_closed', {
       client_id: String(before.client_id || ''),
       deal_id: dealId,
@@ -4290,10 +4296,13 @@ async function handlePublicLpBookSlot(
   }
 
   if (existingSessionAppointment?.id && !replaceExistingAppointment) {
+    const existingStageCode = classifyAppointmentCommercialKind(existingSessionAppointment.appointment_type) === 'meeting'
+      ? 'reuniao_marcada'
+      : 'novo_lead';
     return {
       ok: true,
       appointment: existingSessionAppointment,
-      stage_code: 'chamada_agendada',
+      stage_code: existingStageCode,
       meeting_link:
         asString(asRecord(existingSessionAppointment.metadata).meeting_link) ||
         asString(existingSessionAppointment.location) ||
@@ -4309,6 +4318,7 @@ async function handlePublicLpBookSlot(
 
   const timezone = asString(payload.timezone) || asString(funnel.timezone) || 'America/Sao_Paulo';
   const appointmentTypeRaw = asString(payload.appointment_type) || asString(funnel.appointment_type) || 'call';
+  const bookedStageCode = classifyAppointmentCommercialKind(appointmentTypeRaw) === 'meeting' ? 'reuniao_marcada' : 'novo_lead';
   const durationMinutes = LP_PUBLIC_SLOT_MINUTES;
 
   if (!isPublicLpSlotWithinWindow(appointmentStartAt.toISOString(), appointmentTypeRaw, timezone)) {
@@ -4382,6 +4392,7 @@ async function handlePublicLpBookSlot(
       end_at: appointmentEndAt.toISOString(),
       location: meetingLink,
       process_automation_due_now: false,
+      move_pipeline_on_save: bookedStageCode === 'reuniao_marcada',
       metadata: {
         meeting_link: meetingLink,
         form_session_id: asString(payload.form_session_id),
@@ -4437,7 +4448,7 @@ async function handlePublicLpBookSlot(
         serviceClient,
         internalClientId: clientId,
         internalDealId: dealId,
-        stageCode: 'chamada_agendada',
+        stageCode: bookedStageCode,
         linkedPublicOrgId,
         linkedPublicUserId,
         ownerUserId,
@@ -4448,7 +4459,7 @@ async function handlePublicLpBookSlot(
   return {
     ok: true,
     appointment: syncedAppointment,
-    stage_code: 'chamada_agendada',
+    stage_code: bookedStageCode,
     meeting_link: syncedEventLink || meetingLink,
     bridge,
   };
@@ -4560,10 +4571,12 @@ async function upsertAppointment(
     dealForAppointment = updatedDeal;
   }
 
+  const shouldMovePipelineOnSave = asBoolean(payload.move_pipeline_on_save, false);
+  const appointmentKind = classifyAppointmentCommercialKind(data.appointment_type);
   const appointmentStageCode =
-    data.status === 'no_show' ? 'nao_compareceu' :
-    data.status === 'done' ? 'chamada_realizada' :
-    ['scheduled', 'confirmed'].includes(String(data.status || '')) ? 'chamada_agendada' : null;
+    shouldMovePipelineOnSave && appointmentKind === 'meeting' && data.status === 'done' ? 'reuniao_realizada' :
+    shouldMovePipelineOnSave && appointmentKind === 'meeting' && ['scheduled', 'confirmed'].includes(String(data.status || '')) ? 'reuniao_marcada' :
+    null;
 
   if (dealForAppointment?.id && appointmentStageCode) {
     await applyDealStageChange(schema, {
@@ -4660,6 +4673,296 @@ async function upsertAppointment(
   });
 
   return { ok: true, appointment: data };
+}
+
+function resolveArkanCadenceAfterCall(step: string | null, outcome: string) {
+  if (outcome !== 'no_answer') {
+    return { nextStep: step || 'initial_5m', nextCallAt: null as string | null, messageKey: null as string | null, status: outcome };
+  }
+
+  const currentStep = step || 'initial_5m';
+  if (currentStep === 'initial_5m') {
+    return {
+      nextStep: '2h',
+      nextCallAt: addMinutesIso(nowIso(), 120),
+      messageKey: 'arkan_contact_message_1',
+      status: 'active',
+    };
+  }
+  if (currentStep === '2h') {
+    return {
+      nextStep: '24h',
+      nextCallAt: addMinutesIso(nowIso(), 24 * 60),
+      messageKey: null,
+      status: 'active',
+    };
+  }
+  if (currentStep === '24h') {
+    return {
+      nextStep: '48h',
+      nextCallAt: addMinutesIso(nowIso(), 24 * 60),
+      messageKey: 'arkan_contact_message_24h',
+      status: 'active',
+    };
+  }
+  if (currentStep === '48h') {
+    return {
+      nextStep: '72h',
+      nextCallAt: addMinutesIso(nowIso(), 24 * 60),
+      messageKey: 'arkan_contact_message_48h',
+      status: 'active',
+    };
+  }
+  if (currentStep === '72h') {
+    return {
+      nextStep: 'recovery_15d',
+      nextCallAt: addMinutesIso(nowIso(), 15 * 24 * 60),
+      messageKey: 'arkan_contact_message_72h',
+      status: 'closed_door',
+    };
+  }
+  if (currentStep === 'recovery_15d') {
+    return {
+      nextStep: 'recovery_30d',
+      nextCallAt: addMinutesIso(nowIso(), 15 * 24 * 60),
+      messageKey: null,
+      status: 'recovery_30d',
+    };
+  }
+  return {
+    nextStep: 'lost_no_response',
+    nextCallAt: null,
+    messageKey: null,
+    status: 'lost_no_response',
+  };
+}
+
+async function recordCallOutcome(
+  serviceClient: ReturnType<typeof createClient>,
+  identity: AdminIdentity,
+  payload: Record<string, unknown>,
+  req: Request,
+) {
+  const schema = crmSchema(serviceClient);
+  const clientId = asString(payload.client_id);
+  const dealId = asString(payload.deal_id);
+  const appointmentId = asString(payload.appointment_id);
+  const outcome = asString(payload.outcome) || 'no_answer';
+  const method = asString(payload.method) || 'phone';
+  if (!clientId || !dealId) throw { status: 400, code: 'invalid_payload' };
+
+  if (!['no_answer', 'answered', 'reschedule', 'invalid_number', 'no_interest'].includes(outcome)) {
+    throw { status: 400, code: 'invalid_payload' };
+  }
+
+  const { data: deal, error: dealError } = await schema.from('deals').select('*').eq('id', dealId).maybeSingle();
+  if (dealError) throw { status: 500, code: 'deal_query_failed', error: dealError };
+  if (!deal?.id) throw { status: 404, code: 'not_found' };
+
+  const { data: client, error: clientError } = await schema.from('clients').select('*').eq('id', clientId).maybeSingle();
+  if (clientError) throw { status: 500, code: 'client_query_failed', error: clientError };
+  if (!client?.id) throw { status: 404, code: 'not_found' };
+
+  const beforeAppointment = appointmentId
+    ? (await schema.from('appointments').select('*').eq('id', appointmentId).maybeSingle()).data
+    : null;
+
+  const existingContext = asRecord(deal.commercial_context);
+  const existingArkanContext = asRecord(existingContext.arkan);
+  const existingCadence = asRecord(existingArkanContext.contact_cadence);
+  const providedCadenceStep = asString(payload.cadence_step) || asString(existingCadence.current_step) || 'initial_5m';
+  const attemptCount = Math.max(1, Math.min(10, asNumber(payload.attempt_count, 1)));
+  const now = nowIso();
+  const qualification = asRecord(payload.qualification);
+  const mqlGradeRaw = payload.mql_grade ?? qualification.mql_grade;
+  const mqlGrade = mqlGradeRaw == null || mqlGradeRaw === ''
+    ? null
+    : Math.trunc(asNumber(mqlGradeRaw, 0));
+
+  if (mqlGrade != null && ![1, 2, 3, 4].includes(mqlGrade)) {
+    throw { status: 400, code: 'invalid_payload', message: 'mql_grade deve ser 1, 2, 3 ou 4.' };
+  }
+
+  let nextCallAt = asString(payload.next_call_at);
+  let messageKey: string | null = null;
+  let nextStep = providedCadenceStep;
+  let cadenceStatus = outcome;
+
+  if (outcome === 'no_answer') {
+    const cadence = resolveArkanCadenceAfterCall(providedCadenceStep, outcome);
+    nextStep = cadence.nextStep;
+    nextCallAt = cadence.nextCallAt;
+    messageKey = cadence.messageKey;
+    cadenceStatus = cadence.status;
+  } else if (outcome === 'answered') {
+    cadenceStatus = asBoolean(payload.move_to_mql, false) ? 'qualified' : 'responded';
+    nextCallAt = null;
+  } else if (outcome === 'reschedule') {
+    cadenceStatus = 'paused';
+    if (!nextCallAt) throw { status: 400, code: 'invalid_payload', message: 'next_call_at obrigatorio para reagendamento.' };
+  } else {
+    cadenceStatus = outcome === 'invalid_number' ? 'stopped' : 'stopped';
+    nextCallAt = null;
+  }
+
+  let updatedAppointment = beforeAppointment;
+  if (beforeAppointment?.id) {
+    const nextAppointmentMetadata = mergeRecord(beforeAppointment.metadata, {
+      commercial_kind: 'call',
+      call_method: method,
+      call_outcome: outcome,
+      call_attempt_count: attemptCount,
+      cadence_step: providedCadenceStep,
+      recorded_at: now,
+    });
+    const { data, error } = await schema
+      .from('appointments')
+      .update({
+        status: outcome === 'reschedule' ? 'scheduled' : outcome === 'invalid_number' || outcome === 'no_interest' ? 'canceled' : 'done',
+        notes: asString(payload.notes) || asString(beforeAppointment.notes),
+        metadata: nextAppointmentMetadata,
+        updated_at: now,
+      })
+      .eq('id', beforeAppointment.id)
+      .select('*')
+      .single();
+    if (error || !data?.id) throw { status: 500, code: 'appointment_update_failed', error };
+    updatedAppointment = data;
+  }
+
+  let nextAppointment = null;
+  if (nextCallAt) {
+    const parsedNextCallAt = new Date(nextCallAt);
+    if (Number.isNaN(parsedNextCallAt.getTime())) throw { status: 400, code: 'invalid_payload' };
+    const endAt = new Date(parsedNextCallAt.getTime() + 30 * 60_000).toISOString();
+    const companyName = asString(client.company_name) || asString(client.primary_contact_name) || 'Lead';
+    const { data, error } = await schema.from('appointments').insert({
+      client_id: clientId,
+      deal_id: dealId,
+      owner_user_id: asString(deal.owner_user_id) || asString(client.owner_user_id) || identity.user_id,
+      title: `Chamada ARKAN - ${companyName}`,
+      appointment_type: 'call',
+      status: 'scheduled',
+      start_at: parsedNextCallAt.toISOString(),
+      end_at: endAt,
+      metadata: {
+        commercial_kind: 'call',
+        cadence_step: nextStep,
+        created_by_flow: 'arkan_contact_cadence',
+        previous_call_outcome: outcome,
+      },
+    }).select('*').single();
+    if (error || !data?.id) throw { status: 500, code: 'next_call_insert_failed', error };
+    nextAppointment = data;
+  }
+
+  const nextQualification = mqlGrade
+    ? mergeRecord(asRecord(existingArkanContext.qualification), {
+        ...qualification,
+        mql_grade: mqlGrade,
+        updated_at: now,
+      })
+    : mergeRecord(asRecord(existingArkanContext.qualification), qualification);
+
+  const nextCommercialContext = mergeRecord(existingContext, {
+    arkan: mergeRecord(existingArkanContext, {
+      contact_cadence: mergeRecord(existingCadence, {
+        status: cadenceStatus,
+        current_step: nextStep,
+        last_call_result: outcome,
+        last_call_method: method,
+        call_attempt_count: asNumber(existingCadence.call_attempt_count, 0) + attemptCount,
+        last_message_key: messageKey || asString(existingCadence.last_message_key),
+        last_call_at: now,
+        next_call_at: nextCallAt,
+      }),
+      ...(Object.keys(nextQualification).length > 0 ? { qualification: nextQualification } : {}),
+    }),
+  });
+
+  const { data: updatedDeal, error: updateDealError } = await schema
+    .from('deals')
+    .update({
+      commercial_context: nextCommercialContext,
+      updated_at: now,
+    })
+    .eq('id', dealId)
+    .select('*')
+    .single();
+  if (updateDealError || !updatedDeal?.id) throw { status: 500, code: 'deal_context_update_failed', error: updateDealError };
+
+  let finalDeal = updatedDeal;
+  const currentStage = resolveBlueprintStageCode(updatedDeal.stage_code, 'novo_lead');
+  const shouldMoveToTrying = outcome === 'no_answer' && currentStage === 'novo_lead' && asBoolean(payload.move_to_tentando_contato, true);
+  const shouldMoveToMql = outcome === 'answered' && asBoolean(payload.move_to_mql, false);
+
+  if (shouldMoveToTrying || shouldMoveToMql) {
+    finalDeal = await applyDealStageChange(schema, {
+      deal: updatedDeal,
+      stage_code: shouldMoveToMql ? 'mql' : 'tentando_contato',
+      notes: shouldMoveToMql ? 'call_outcome:qualified_mql' : 'call_outcome:no_answer',
+      changed_by_user_id: identity.user_id,
+    });
+  }
+
+  const latestWhatsappConversation = await findLatestWhatsappConversationForClient(schema, clientId);
+  const eventBase = {
+    client_id: clientId,
+    deal_id: dealId,
+    appointment_id: asString(updatedAppointment?.id) || appointmentId,
+    conversation_id: asString(payload.conversation_id) || asString(latestWhatsappConversation?.id),
+    cadence_step: providedCadenceStep,
+    next_cadence_step: nextStep,
+    cadence_message_key: messageKey,
+    nome: asString(client.primary_contact_name) || asString(client.company_name),
+    empresa: asString(client.company_name),
+    primary_phone: asString(client.primary_phone),
+    whatsapp_instance_id:
+      asString(payload.whatsapp_instance_id) ||
+      asString(asRecord(latestWhatsappConversation?.metadata).whatsapp_instance_id) ||
+      asString(latestWhatsappConversation?.whatsapp_instance_id),
+    event_at: now,
+  };
+
+  const automation: unknown[] = [];
+  if (messageKey) {
+    automation.push(await queueAutomationEvent(serviceClient, 'call_no_answer', {
+      ...eventBase,
+      event_key: `call_no_answer:${dealId}:${providedCadenceStep}:${now}`,
+    }, { processDueNow: true }));
+  }
+
+  if (outcome === 'answered') {
+    automation.push(await queueAutomationEvent(serviceClient, 'call_answered', {
+      ...eventBase,
+      event_key: `call_answered:${dealId}:${now}`,
+    }, { processDueNow: true }));
+  }
+
+  await writeAuditLog(serviceClient, identity, 'record_call_outcome', req, {
+    target_type: 'deal',
+    target_id: dealId,
+    client_id: clientId,
+    deal_id: dealId,
+    before: {
+      deal,
+      appointment: beforeAppointment,
+    },
+    after: {
+      deal: finalDeal,
+      appointment: updatedAppointment,
+      next_appointment: nextAppointment,
+      outcome,
+    },
+  });
+
+  return {
+    ok: true,
+    deal: finalDeal,
+    appointment: updatedAppointment,
+    next_appointment: nextAppointment,
+    automation,
+  };
 }
 
 async function deleteAppointment(
@@ -5921,6 +6224,13 @@ async function intakeLandingLead(
 
   const hasScheduledCall = asBoolean(payload.has_scheduled_call, Boolean(asString(payload.scheduled_at) || asString(payload.appointment_start_at)));
   const appointmentStartAt = asString(payload.scheduled_at) || asString(payload.appointment_start_at);
+  const incomingAppointmentType = normalizeAppointmentType(payload.appointment_type);
+  const isScheduledMeeting = hasScheduledCall && classifyAppointmentCommercialKind(incomingAppointmentType) === 'meeting';
+  const intakeStageCode = isScheduledMeeting ? 'reuniao_marcada' : 'novo_lead';
+  const resolvedAppointmentStartAtRaw = hasScheduledCall && appointmentStartAt
+    ? appointmentStartAt
+    : addMinutesIso(nowIso(), 5);
+  const resolvedAppointmentType = isScheduledMeeting ? incomingAppointmentType : 'call';
 
   let client = await resolveScopedClient(schema, {
     linkedPublicOrgId,
@@ -5938,7 +6248,7 @@ async function intakeLandingLead(
       primary_email: primaryEmail,
       source_channel: 'landing_page',
       owner_user_id: ownerUserId,
-      current_stage_code: hasScheduledCall ? 'chamada_agendada' : 'novo_lead',
+      current_stage_code: intakeStageCode,
       lifecycle_status: 'lead',
       last_contact_at: nowIso(),
       linked_public_org_id: linkedPublicOrgId,
@@ -5974,7 +6284,7 @@ async function intakeLandingLead(
       primary_email: primaryEmail,
       source_channel: 'landing_page',
       owner_user_id: ownerUserId || asString(client.owner_user_id) || identity.user_id,
-      current_stage_code: hasScheduledCall ? 'chamada_agendada' : resolveBlueprintStageCode(client.current_stage_code, 'novo_lead'),
+      current_stage_code: isScheduledMeeting ? intakeStageCode : resolveBlueprintStageCode(client.current_stage_code, 'novo_lead'),
       linked_public_org_id: linkedPublicOrgId || asString(client.linked_public_org_id),
       linked_public_user_id: linkedPublicUserId || asString(client.linked_public_user_id),
       updated_at: nowIso(),
@@ -6020,6 +6330,8 @@ async function intakeLandingLead(
     asString(existingDeal?.primary_offer_code) ||
     asString(funnelMetadata.default_offer_code) ||
     asString(funnelMetadata.entry_intent_code);
+  const existingArkanContext = asRecord(asRecord(existingDeal?.commercial_context).arkan);
+  const existingCadenceContext = asRecord(existingArkanContext.contact_cadence);
   const dealCommercialContext = mergeRecord(existingDeal?.commercial_context, {
     source: 'landing_page',
     funnel_slug: funnelSlug || asString(funnel?.funnel_slug),
@@ -6028,9 +6340,28 @@ async function intakeLandingLead(
     ...(asString(trackingSnapshot.landing_page_url) ? { landing_page_url: asString(trackingSnapshot.landing_page_url) } : {}),
     form_payload: asRecord(payload.form_payload),
     attribution: trackingSnapshot,
+    arkan: mergeRecord(existingArkanContext, isScheduledMeeting
+      ? {
+          contact_cadence: mergeRecord(existingCadenceContext, {
+            status: 'meeting_booked',
+            current_step: asString(existingCadenceContext.current_step) || 'initial_5m',
+            next_call_at: null,
+          }),
+          meeting_booked_at: nowIso(),
+          meeting_start_at: resolvedAppointmentStartAtRaw,
+          meeting_source: 'landing_page',
+        }
+      : {
+          contact_cadence: mergeRecord(existingCadenceContext, {
+            status: 'not_started',
+            current_step: 'initial_5m',
+            call_attempt_count: asNumber(existingCadenceContext.call_attempt_count, 0),
+            next_call_at: resolvedAppointmentStartAtRaw,
+          }),
+        }),
   });
 
-  const dealStageCode = hasScheduledCall ? 'chamada_agendada' : 'novo_lead';
+  const dealStageCode = intakeStageCode;
   const { data: deal, error: dealError } = await schema.from('deals').upsert({
     id: asString(payload.deal_id) || asString(existingDeal?.id) || undefined,
     client_id: client.id,
@@ -6039,7 +6370,7 @@ async function intakeLandingLead(
     stage_code: dealStageCode,
     status: resolveDealStatusForStage(dealStageCode, asString(existingDeal?.status) || 'open'),
     probability: resolveStageProbability(dealStageCode, asNumber(existingDeal?.probability, 0)),
-    expected_close_at: appointmentStartAt,
+    expected_close_at: isScheduledMeeting ? resolvedAppointmentStartAtRaw : null,
     primary_offer_code: inferredOfferCode || null,
     commercial_context: dealCommercialContext,
     updated_at: nowIso(),
@@ -6053,8 +6384,8 @@ async function intakeLandingLead(
   }).eq('id', client.id);
 
   let appointment = null;
-  if (hasScheduledCall && appointmentStartAt) {
-    const parsedAppointmentAt = new Date(appointmentStartAt);
+  if (resolvedAppointmentStartAtRaw) {
+    const parsedAppointmentAt = new Date(resolvedAppointmentStartAtRaw);
     if (Number.isNaN(parsedAppointmentAt.getTime())) throw { status: 400, code: 'invalid_payload' };
     const resolvedLeadWhatsappInstanceId =
       asString(payload.whatsapp_instance_id) ||
@@ -6065,12 +6396,20 @@ async function intakeLandingLead(
       client_id: client.id,
       deal_id: deal.id,
       owner_user_id: ownerUserId,
-      title: asString(payload.appointment_title) || `Chamada ARKAN - ${companyName}`,
-      appointment_type: asString(payload.appointment_type) || 'call',
+      title: asString(payload.appointment_title) || (resolvedAppointmentType === 'call' ? `Chamada ARKAN - ${companyName}` : `Reuniao ARKAN - ${companyName}`),
+      appointment_type: resolvedAppointmentType,
       status: 'scheduled',
       start_at: parsedAppointmentAt.toISOString(),
       location: resolvedMeetingLink,
       metadata: {
+        commercial_kind: classifyAppointmentCommercialKind(resolvedAppointmentType),
+        ...(resolvedAppointmentType === 'call' ? {
+          cadence_step: 'initial_5m',
+          created_by_flow: 'arkan_contact_cadence',
+          attempt_group: 1,
+        } : {
+          created_by_flow: 'arkan_meeting_booking',
+        }),
         ...(resolvedMeetingLink ? { meeting_link: resolvedMeetingLink } : {}),
         ...(resolvedSchedulingLink ? { scheduling_link: resolvedSchedulingLink } : {}),
         ...(asString(trackingSnapshot.landing_page_url) ? { landing_page_url: asString(trackingSnapshot.landing_page_url) } : {}),
@@ -6096,6 +6435,7 @@ async function intakeLandingLead(
       asString(asRecord(payload.client_metadata).whatsapp_instance_id) ||
       asString(latestWhatsappConversation?.whatsapp_instance_id),
     has_scheduled_call: hasScheduledCall,
+    appointment_type: resolvedAppointmentType,
     ...(resolvedSchedulingLink ? { link_agendamento: resolvedSchedulingLink } : {}),
     ...(resolvedMeetingLink ? { link_reuniao: resolvedMeetingLink } : {}),
     ...(asString(trackingSnapshot.landing_page_url) ? { landing_page_url: asString(trackingSnapshot.landing_page_url) } : {}),
@@ -7041,35 +7381,34 @@ async function handleWebhookInbound(serviceClient: ReturnType<typeof createClien
     last_contact_at: message.created_at,
     updated_at: nowIso(),
   };
-  // Only advance pipeline stage on inbound messages (not outbound from phone)
+  // Inbound WhatsApp only updates contact context. Pipeline movement stays explicit.
   if (!fromMe) {
-    const resolvedStage = resolveBlueprintStageCode(client.current_stage_code, 'novo_lead');
     const { data: primaryOpenDeal } = await schema
       .from('deals')
-      .select('id, stage_code, status, probability')
+      .select('id, commercial_context')
       .eq('client_id', client.id)
       .eq('status', 'open')
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    const openDealStage = resolveBlueprintStageCode(primaryOpenDeal?.stage_code, resolvedStage);
-
-    if (openDealStage === 'novo_lead') {
-      const nextStageCode = 'respondeu';
-      if (primaryOpenDeal?.id) {
-        await schema
-          .from('deals')
-          .update({
-            stage_code: nextStageCode,
-            status: resolveDealStatusForStage(nextStageCode, asString(primaryOpenDeal.status) || 'open'),
-            probability: resolveStageProbability(nextStageCode, asNumber(primaryOpenDeal.probability, 0)),
-            updated_at: nowIso(),
-          })
-          .eq('id', primaryOpenDeal.id);
-      }
-      clientUpdatePayload.current_stage_code = nextStageCode;
-    } else if (resolvedStage === 'novo_lead') {
-      clientUpdatePayload.current_stage_code = 'respondeu';
+    if (primaryOpenDeal?.id) {
+      const dealContext = asRecord(primaryOpenDeal.commercial_context);
+      const arkanContext = asRecord(dealContext.arkan);
+      const cadenceContext = asRecord(arkanContext.contact_cadence);
+      await schema
+        .from('deals')
+        .update({
+          commercial_context: mergeRecord(dealContext, {
+            arkan: mergeRecord(arkanContext, {
+              contact_cadence: mergeRecord(cadenceContext, {
+                status: 'responded',
+                last_whatsapp_reply_at: message.created_at,
+              }),
+            }),
+          }),
+          updated_at: nowIso(),
+        })
+        .eq('id', primaryOpenDeal.id);
     }
   }
   await schema.from('clients').update(clientUpdatePayload).eq('id', client.id);
@@ -8174,7 +8513,7 @@ async function executeStandardAgentJob(
     await schema
       .from('clients')
       .update({
-        current_stage_code: resolveBlueprintStageCode(payload.target_stage_code, 'respondeu'),
+        current_stage_code: resolveBlueprintStageCode(payload.target_stage_code, 'mql'),
         updated_at: nowIso(),
       })
       .eq('id', clientId);
@@ -8393,6 +8732,8 @@ async function dispatchUserAction(
       return await upsertDeal(serviceClient, identity, payload, req);
     case 'move_deal_stage':
       return await moveDealStage(serviceClient, identity, payload, req);
+    case 'record_call_outcome':
+      return await recordCallOutcome(serviceClient, identity, payload, req);
     case 'delete_deal':
       return await deleteDeal(serviceClient, identity, payload, req);
     case 'save_deal_notes':

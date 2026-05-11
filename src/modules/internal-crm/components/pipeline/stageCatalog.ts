@@ -1,12 +1,11 @@
 export type InternalCrmCanonicalStageCode =
   | 'novo_lead'
-  | 'respondeu'
-  | 'chamada_agendada'
-  | 'chamada_realizada'
-  | 'nao_compareceu'
-  | 'negociacao'
-  | 'fechou'
-  | 'nao_fechou';
+  | 'tentando_contato'
+  | 'mql'
+  | 'reuniao_marcada'
+  | 'reuniao_realizada'
+  | 'contrato_fechado'
+  | 'venda_finalizada';
 
 type InternalCrmStageMeta = {
   label: string;
@@ -19,28 +18,30 @@ type InternalCrmStageMeta = {
 
 export const INTERNAL_CRM_PIPELINE_STAGE_ORDER: InternalCrmCanonicalStageCode[] = [
   'novo_lead',
-  'respondeu',
-  'chamada_agendada',
-  'chamada_realizada',
-  'nao_compareceu',
-  'negociacao',
-  'fechou',
-  'nao_fechou',
+  'tentando_contato',
+  'mql',
+  'reuniao_marcada',
+  'reuniao_realizada',
+  'contrato_fechado',
+  'venda_finalizada',
 ];
 
 export const INTERNAL_CRM_STAGE_ALIASES: Record<string, InternalCrmCanonicalStageCode> = {
   lead_entrante: 'novo_lead',
-  contato_iniciado: 'respondeu',
-  qualificado: 'respondeu',
-  demo_agendada: 'chamada_agendada',
-  proposta_enviada: 'negociacao',
-  aguardando_pagamento: 'negociacao',
-  ganho: 'fechou',
-  perdido: 'nao_fechou',
-  agendou_reuniao: 'chamada_agendada',
-  reuniao_agendada: 'chamada_agendada',
-  reuniao_realizada: 'chamada_realizada',
-  contrato_fechado: 'fechou',
+  respondeu: 'tentando_contato',
+  contato_iniciado: 'tentando_contato',
+  qualificado: 'mql',
+  chamada_agendada: 'tentando_contato',
+  chamada_realizada: 'reuniao_realizada',
+  nao_compareceu: 'tentando_contato',
+  negociacao: 'reuniao_realizada',
+  demo_agendada: 'reuniao_marcada',
+  proposta_enviada: 'reuniao_realizada',
+  aguardando_pagamento: 'contrato_fechado',
+  fechou: 'venda_finalizada',
+  ganho: 'venda_finalizada',
+  agendou_reuniao: 'reuniao_marcada',
+  reuniao_agendada: 'reuniao_marcada',
 };
 
 export const INTERNAL_CRM_STAGE_META: Record<InternalCrmCanonicalStageCode, InternalCrmStageMeta> = {
@@ -49,57 +50,49 @@ export const INTERNAL_CRM_STAGE_META: Record<InternalCrmCanonicalStageCode, Inte
     shortLabel: 'Novo Lead',
     color: '#2196F3',
     icon: 'N',
-    nextActionLabel: 'Abrir conversa',
+    nextActionLabel: 'Ligar agora',
   },
-  respondeu: {
-    label: 'Respondeu',
-    shortLabel: 'Respondeu',
-    color: '#FF9800',
-    icon: 'R',
+  tentando_contato: {
+    label: 'Tentando Contato',
+    shortLabel: 'Tentando',
+    color: '#F59E0B',
+    icon: 'T',
+    nextActionLabel: 'Registrar chamada',
+  },
+  mql: {
+    label: 'MQL',
+    shortLabel: 'MQL',
+    color: '#0EA5E9',
+    icon: 'M',
     nextActionLabel: 'Agendar reuniao',
   },
-  chamada_agendada: {
-    label: 'Reuniao Agendada',
-    shortLabel: 'Agendada',
-    color: '#3F51B5',
-    icon: 'A',
-    nextActionLabel: 'Realizar reuniao',
+  reuniao_marcada: {
+    label: 'Reuniao Marcada',
+    shortLabel: 'Marcada',
+    color: '#6366F1',
+    icon: 'R',
+    nextActionLabel: 'Abrir reuniao',
   },
-  chamada_realizada: {
+  reuniao_realizada: {
     label: 'Reuniao Realizada',
     shortLabel: 'Realizada',
-    color: '#4CAF50',
+    color: '#14B8A6',
+    icon: 'R',
+    nextActionLabel: 'Registrar contrato',
+  },
+  contrato_fechado: {
+    label: 'Contrato Fechado',
+    shortLabel: 'Contrato',
+    color: '#22C55E',
     icon: 'C',
-    nextActionLabel: 'Gerar checkout',
+    nextActionLabel: 'Confirmar pagamento',
   },
-  nao_compareceu: {
-    label: 'Nao Compareceu',
-    shortLabel: 'No-show',
-    color: '#F44336',
-    icon: '!',
-    nextActionLabel: 'Reagendar',
-  },
-  negociacao: {
-    label: 'Negociacao',
-    shortLabel: 'Negociacao',
-    color: '#FFC107',
-    icon: '$',
-    nextActionLabel: 'Fechar negociacao',
-  },
-  fechou: {
-    label: 'Fechou Contrato',
-    shortLabel: 'Fechou',
-    color: '#8BC34A',
-    icon: 'F',
-    nextActionLabel: 'Provisionar conta',
-    terminal: true,
-  },
-  nao_fechou: {
-    label: 'Nao Fechou',
-    shortLabel: 'Perdido',
-    color: '#607D8B',
-    icon: '!',
-    nextActionLabel: 'Reativar lead',
+  venda_finalizada: {
+    label: 'Venda Finalizada',
+    shortLabel: 'Finalizada',
+    color: '#15803D',
+    icon: 'V',
+    nextActionLabel: 'Ver cliente',
     terminal: true,
   },
 };

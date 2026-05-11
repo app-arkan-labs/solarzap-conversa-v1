@@ -14,11 +14,16 @@ export function buildAutoDealTitle(input: {
 
 export function deriveDealStageFromAppointmentStatus(
   status: string | null | undefined,
+  appointmentType?: string | null | undefined,
+  options?: { movePipelineOnSave?: boolean },
 ): string | null {
+  const kind = String(appointmentType || '').trim().toLowerCase();
+  const isMeeting = kind === 'meeting' || kind === 'demo';
+  if (!isMeeting || options?.movePipelineOnSave !== true) return null;
+
   const normalized = String(status || '').trim().toLowerCase();
-  if (normalized === 'no_show') return 'nao_compareceu';
-  if (normalized === 'done') return 'chamada_realizada';
-  if (normalized === 'scheduled' || normalized === 'confirmed') return 'chamada_agendada';
+  if (normalized === 'done') return 'reuniao_realizada';
+  if (normalized === 'scheduled' || normalized === 'confirmed') return 'reuniao_marcada';
   return null;
 }
 
@@ -88,4 +93,3 @@ export function appendAppointmentIfMissing(
   if (appointments.some((appointment) => appointment.id === createdAppointment.id)) return appointments;
   return [createdAppointment, ...appointments];
 }
-

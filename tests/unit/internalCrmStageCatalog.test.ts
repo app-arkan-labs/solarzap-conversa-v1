@@ -6,26 +6,25 @@ import {
 } from '@/modules/internal-crm/components/pipeline/stageCatalog';
 
 describe('internal CRM stage catalog', () => {
-  it('normalizes legacy meeting stages into the canonical scheduled stage', () => {
-    expect(normalizeInternalCrmStageCode('agendou_reuniao')).toBe('chamada_agendada');
-    expect(normalizeInternalCrmStageCode('reuniao_agendada')).toBe('chamada_agendada');
-    expect(normalizeInternalCrmStageCode('demo_agendada')).toBe('chamada_agendada');
+  it('normalizes legacy meeting stages into the canonical meeting stage', () => {
+    expect(normalizeInternalCrmStageCode('agendou_reuniao')).toBe('reuniao_marcada');
+    expect(normalizeInternalCrmStageCode('reuniao_agendada')).toBe('reuniao_marcada');
+    expect(normalizeInternalCrmStageCode('demo_agendada')).toBe('reuniao_marcada');
   });
 
-  it('keeps only one scheduled meeting stage in the visible board order', () => {
+  it('keeps the simplified ARKAN pipeline in the visible board order', () => {
     expect(INTERNAL_CRM_PIPELINE_STAGE_ORDER).toEqual([
       'novo_lead',
-      'respondeu',
-      'chamada_agendada',
-      'chamada_realizada',
-      'nao_compareceu',
-      'negociacao',
-      'fechou',
-      'nao_fechou',
+      'tentando_contato',
+      'mql',
+      'reuniao_marcada',
+      'reuniao_realizada',
+      'contrato_fechado',
+      'venda_finalizada',
     ]);
   });
 
   it('renders the canonical label for the legacy alias', () => {
-    expect(getInternalCrmStageLabel('agendou_reuniao')).toBe('Reuniao Agendada');
+    expect(getInternalCrmStageLabel('agendou_reuniao')).toBe('Reuniao Marcada');
   });
 });

@@ -47,8 +47,6 @@ export function InternalCrmCalendarFilters(props: InternalCrmCalendarFiltersProp
               <SelectItem value="call">Ligação</SelectItem>
               <SelectItem value="demo">Demonstração</SelectItem>
               <SelectItem value="meeting">Reunião</SelectItem>
-              <SelectItem value="visit">Visita</SelectItem>
-              <SelectItem value="other">Outro</SelectItem>
             </SelectContent>
           </Select>
 

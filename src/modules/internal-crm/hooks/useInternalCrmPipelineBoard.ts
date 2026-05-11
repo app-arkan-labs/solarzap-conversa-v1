@@ -184,7 +184,7 @@ export function useInternalCrmPipelineBoard(filters: InternalCrmPipelineBoardFil
           stage_code: stageCode,
           name: getInternalCrmStageLabel(stageCode),
           sort_order: (INTERNAL_CRM_PIPELINE_STAGE_ORDER.indexOf(stageCode) + 1) * 10,
-          is_terminal: ['fechou', 'nao_fechou'].includes(stageCode),
+          is_terminal: stageCode === 'venda_finalizada',
           win_probability: 0,
           color_token: null,
         });

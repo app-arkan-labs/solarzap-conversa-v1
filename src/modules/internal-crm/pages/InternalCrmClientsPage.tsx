@@ -53,6 +53,10 @@ import type { InternalCrmClientSummary, InternalCrmStage } from '@/modules/inter
 
 const STAGE_COLORS: Record<string, string> = {
   novo_lead: 'bg-[#2196F3]',
+  tentando_contato: 'bg-[#F59E0B]',
+  mql: 'bg-[#0EA5E9]',
+  reuniao_marcada: 'bg-[#6366F1]',
+  venda_finalizada: 'bg-[#15803D]',
   respondeu: 'bg-[#FF9800]',
   reuniao_agendada: 'bg-[#9C27B0]',
   reuniao_realizada: 'bg-[#4CAF50]',

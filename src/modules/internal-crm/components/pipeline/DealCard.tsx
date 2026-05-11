@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { formatCurrencyBr } from '@/modules/internal-crm/components/InternalCrmUi';
 import type { InternalCrmDealSummary, InternalCrmStage } from '@/modules/internal-crm/types';
+import { getInternalCrmStageLabel } from '@/modules/internal-crm/components/pipeline/stageCatalog';
 import { cn } from '@/lib/utils';
 
 const STAGE_LABELS: Record<string, string> = {
@@ -100,7 +101,7 @@ export function DealCard(props: DealCardProps) {
                         props.onMoveToStage(stage.stage_code);
                       }}
                     >
-                      {STAGE_LABELS[stage.stage_code] || stage.name}
+                      {getInternalCrmStageLabel(stage.stage_code, stage.name)}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuSubContent>

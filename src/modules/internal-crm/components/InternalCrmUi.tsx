@@ -58,12 +58,17 @@ function badgeVariantByToken(token: string): string {
     case 'call':
     case 'demo':
     case 'novo_lead':
+    case 'mql':
       return 'bg-sky-100 text-sky-800 border-sky-200';
     case 'resolved':
     case 'meeting':
     case 'confirmed':
     case 'agendou_reuniao':
     case 'chamada_agendada':
+    case 'reuniao_marcada':
+    case 'reuniao_realizada':
+    case 'contrato_fechado':
+    case 'venda_finalizada':
     case 'completed':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     case 'archived':
@@ -89,6 +94,7 @@ function badgeVariantByToken(token: string): string {
     case 'contato_iniciado':
     case 'qualificado':
     case 'respondeu':
+    case 'tentando_contato':
     case 'offered':
       return 'bg-amber-100 text-amber-800 border-amber-200';
     case 'demo_agendada':

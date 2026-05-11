@@ -52,6 +52,10 @@ import {
   NewDealSimpleModal,
   type NewDealData,
 } from '@/modules/internal-crm/components/pipeline/modals/NewDealSimpleModal';
+import {
+  InternalCrmCallFlowModal,
+  type InternalCrmCallOutcomePayload,
+} from '@/modules/internal-crm/components/calls/InternalCrmCallFlowModal';
 import { InternalCrmAppointmentModal } from '@/modules/internal-crm/components/calendar/InternalCrmAppointmentModal';
 import { CrmExportClientsModal } from '@/modules/internal-crm/components/clients/CrmExportClientsModal';
 import { CrmImportClientsModal } from '@/modules/internal-crm/components/clients/CrmImportClientsModal';
@@ -392,6 +396,7 @@ export function InternalCrmPipelineView() {
   const [newDealOpen, setNewDealOpen] = useState(false);
   const [editDealOpen, setEditDealOpen] = useState(false);
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
+  const [callFlowOpen, setCallFlowOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [selectedCard, setSelectedCard] = useState<InternalCrmPipelineBoardCard | null>(null);
@@ -420,7 +425,7 @@ export function InternalCrmPipelineView() {
     source_channel: sourceChannel,
   });
 
-  const upsertDealMutation = useInternalCrmMutation<{ ok: true; deal: { id: string } }>({
+  const upsertDealMutation = useInternalCrmMutation<{ ok: true; deal: InternalCrmDealSummary }>({
     invalidate: [
       ['internal-crm', 'deals'],
       ['internal-crm', 'clients'],
@@ -507,6 +512,16 @@ export function InternalCrmPipelineView() {
     ],
   });
 
+  const callOutcomeMutation = useInternalCrmMutation<{ ok: true; deal?: InternalCrmDealSummary | null }>({
+    invalidate: [
+      ['internal-crm', 'appointments'],
+      ['internal-crm', 'deals'],
+      ['internal-crm', 'clients'],
+      ['internal-crm', 'tasks'],
+      ['internal-crm', 'automation-runs'],
+    ],
+  });
+
   const upsertClientMutation = useInternalCrmMutation({
     invalidate: [['internal-crm', 'clients'], ['internal-crm', 'deals']],
   });
@@ -543,7 +558,7 @@ export function InternalCrmPipelineView() {
 
     queryClient.setQueriesData(
       { queryKey: ['internal-crm', 'clients'], exact: false },
-      (previous: { ok: true; clients: Array<Record<string, unknown>> } | undefined) => {
+      (previous: { ok: true; clients: InternalCrmClientSummary[] } | undefined) => {
         if (!previous?.clients) return previous;
         return {
           ...previous,
@@ -783,12 +798,12 @@ export function InternalCrmPipelineView() {
     const normalizedStageCode = normalizeInternalCrmStageCode(targetStageCode);
     if (card.stageCode === normalizedStageCode) return;
 
-    if (!options?.skipSchedulingModal && normalizedStageCode === 'chamada_agendada') {
+    if (!options?.skipSchedulingModal && normalizedStageCode === 'reuniao_marcada') {
       openAppointmentModalForCard(card, 'meeting');
       return;
     }
 
-    if (!options?.skipTerminalModal && normalizedStageCode === 'fechou') {
+    if (!options?.skipTerminalModal && normalizedStageCode === 'venda_finalizada') {
       openMarkWonModal(card);
       return;
     }
@@ -850,7 +865,7 @@ export function InternalCrmPipelineView() {
       return;
     }
 
-    if (targetStageCode === 'fechou') {
+    if (targetStageCode === 'venda_finalizada') {
       openMarkWonModal(cardToMove);
       setDraggedCard(null);
       return;
@@ -938,7 +953,7 @@ export function InternalCrmPipelineView() {
       }
 
       const normalizedStageCode = normalizeInternalCrmStageCode(data.stage_code);
-      if (normalizedStageCode === 'chamada_agendada' && (!data.appointment.date || !data.appointment.time)) {
+      if (normalizedStageCode === 'reuniao_marcada' && (!data.appointment.date || !data.appointment.time)) {
         toast({ title: 'Informe data e horario da reuniao', variant: 'destructive' });
         return;
       }
@@ -988,7 +1003,7 @@ export function InternalCrmPipelineView() {
         throw new Error('Nao foi possivel criar o deal.');
       }
 
-      if (normalizedStageCode === 'chamada_agendada') {
+      if (normalizedStageCode === 'reuniao_marcada') {
         try {
           await appointmentMutation.mutateAsync({
             action: 'upsert_appointment',
@@ -999,6 +1014,7 @@ export function InternalCrmPipelineView() {
               ownerUserId,
               appointment: data.appointment,
             }),
+            move_pipeline_on_save: true,
           });
         } catch (error) {
           try {
@@ -1016,7 +1032,7 @@ export function InternalCrmPipelineView() {
 
       setNewDealOpen(false);
       toast({
-        title: normalizedStageCode === 'chamada_agendada' ? 'Deal e reuniao criados' : 'Deal criado',
+        title: normalizedStageCode === 'reuniao_marcada' ? 'Deal e reuniao criados' : 'Deal criado',
       });
     } catch (error) {
       toast({
@@ -1039,7 +1055,7 @@ export function InternalCrmPipelineView() {
 
     const normalizedTargetStage = normalizeInternalCrmStageCode(input.stageCode);
     if (normalizedTargetStage !== card.stageCode) {
-      if (['chamada_agendada', 'fechou', 'nao_fechou'].includes(normalizedTargetStage)) {
+      if (['reuniao_marcada', 'venda_finalizada', 'nao_fechou'].includes(normalizedTargetStage)) {
         setDetailPanelOpen(false);
       }
       await handleMoveToStage(card, normalizedTargetStage);
@@ -1111,8 +1127,8 @@ export function InternalCrmPipelineView() {
     await moveDealMutation.mutateAsync({
       action: 'move_deal_stage',
       deal_id: selectedDeal.id,
-      stage_code: 'fechou',
-      notes: 'Marcado como fechou contrato na pipeline.',
+      stage_code: 'venda_finalizada',
+      notes: 'Pagamento confirmado e venda finalizada na pipeline.',
       closed_product_code: wonProductCode,
       one_time_total_cents: oneTimeTotalCents,
       event_currency: 'BRL',
@@ -1120,7 +1136,13 @@ export function InternalCrmPipelineView() {
     setWonModalOpen(false);
     setWonProductCode('');
     setWonValueReais('');
-    toast({ title: 'Contrato fechado!', description: 'O lead foi movido para Fechou Contrato.' });
+    toast({ title: 'Venda finalizada!', description: 'O lead foi movido para Venda Finalizada.' });
+  };
+
+  const handleContractClosed = async (card: InternalCrmPipelineBoardCard) => {
+    await handleMoveToStage(card, 'contrato_fechado', {
+      successMessage: 'Contrato registrado como fechado. Aguarde a confirmacao de pagamento.',
+    });
   };
 
   const confirmLostDeal = async () => {
@@ -1166,8 +1188,43 @@ export function InternalCrmPipelineView() {
       return;
     }
 
-    window.location.href = `tel:${phone}`;
+    setSelectedCard(card);
+    setCallFlowOpen(true);
   }, [toast]);
+
+  const handleSaveCallOutcome = async (payload: InternalCrmCallOutcomePayload) => {
+    const openMeetingAfterSave = Boolean(payload.open_meeting_after_save);
+    const card = activeSelectedCard;
+    const result = await callOutcomeMutation.mutateAsync({
+      action: 'record_call_outcome',
+      ...payload,
+    });
+    const updatedDeal = result.deal || null;
+
+    setCallFlowOpen(false);
+
+    if (updatedDeal?.id) {
+      queryClient.setQueriesData(
+        { queryKey: ['internal-crm', 'deals'], exact: false },
+        (previous: { ok: true; deals: InternalCrmDealSummary[] } | undefined) => {
+          if (!previous?.deals) return previous;
+          return {
+            ...previous,
+            deals: patchDealSummaryInList(previous.deals, updatedDeal) || previous.deals,
+          };
+        },
+      );
+    }
+
+    toast({
+      title: payload.outcome === 'answered' ? 'Chamada qualificada' : 'Chamada registrada',
+      description: payload.outcome === 'no_answer' ? 'A proxima chamada foi agendada pela cadencia.' : undefined,
+    });
+
+    if (openMeetingAfterSave && card) {
+      openAppointmentModalForCard(card, 'meeting');
+    }
+  };
 
   const handleSaveAppointment = async (payload: Record<string, unknown>) => {
     const result = await appointmentMutation.mutateAsync({
@@ -1193,7 +1250,12 @@ export function InternalCrmPipelineView() {
         },
       );
 
-      const nextStage = deriveDealStageFromAppointmentStatus(savedAppointment.status);
+      const type = String(savedAppointment.appointment_type || payload.appointment_type || 'meeting');
+      const nextStage = deriveDealStageFromAppointmentStatus(
+        savedAppointment.status,
+        type,
+        { movePipelineOnSave: Boolean(payload.move_pipeline_on_save) },
+      );
       if (savedAppointment.deal_id && nextStage) {
         queryClient.setQueriesData(
           { queryKey: ['internal-crm', 'deals'], exact: false },
@@ -1227,7 +1289,7 @@ export function InternalCrmPipelineView() {
       }
     }
     const type = String(savedAppointment?.appointment_type || payload.appointment_type || 'meeting');
-    const title = type === 'call' ? 'Ligacao agendada' : type === 'visit' ? 'Visita agendada' : 'Reuniao agendada';
+    const title = type === 'call' ? 'Chamada agendada' : 'Reuniao agendada';
     toast({ title });
   };
 
@@ -1242,26 +1304,24 @@ export function InternalCrmPipelineView() {
     e.stopPropagation();
     switch (card.stageCode) {
       case 'novo_lead':
-        handleOpenConversation(card);
+        handleCall(card);
         break;
-      case 'respondeu':
+      case 'tentando_contato':
+        handleCall(card);
+        break;
+      case 'mql':
         openAppointmentModalForCard(card, 'meeting');
         break;
-      case 'chamada_agendada':
+      case 'reuniao_marcada':
         openAppointmentModalForCard(card, 'meeting');
         break;
-      case 'chamada_realizada':
-        setSelectedCard(card);
-        setCheckoutUrl(String(card.deal.checkout_url || ''));
-        setCheckoutModalOpen(true);
+      case 'reuniao_realizada':
+        await handleContractClosed(card);
         break;
-      case 'nao_compareceu':
-        openAppointmentModalForCard(card, 'meeting');
-        break;
-      case 'negociacao':
+      case 'contrato_fechado':
         openMarkWonModal(card);
         break;
-      case 'fechou':
+      case 'venda_finalizada':
         handleOpenClient(card);
         break;
       case 'nao_fechou':
@@ -1547,6 +1607,10 @@ export function InternalCrmPipelineView() {
                                   <Phone className="w-4 h-4 text-blue-500" />
                                   <span>Ligar Agora</span>
                                 </DropdownMenuItem>
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openAppointmentModalForCard(card, 'call'); }} className="gap-2 cursor-pointer">
+                                  <Calendar className="w-4 h-4 text-blue-500" />
+                                  <span>Agendar Chamada</span>
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openAppointmentModalForCard(card, 'meeting'); }} className="gap-2 cursor-pointer">
                                   <Calendar className="w-4 h-4 text-purple-500" />
                                   <span>Agendar Reuniao</span>
@@ -1586,9 +1650,13 @@ export function InternalCrmPipelineView() {
                                   </DropdownMenuSubContent>
                                 </DropdownMenuSub>
                                 <div className="h-px bg-muted my-1" />
-                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openMarkWonModal(card); }} className="gap-2 cursor-pointer text-emerald-600 focus:text-emerald-600">
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); void handleContractClosed(card); }} className="gap-2 cursor-pointer text-emerald-600 focus:text-emerald-600">
                                   <CheckCircle2 className="w-4 h-4" />
                                   <span>Fechou Contrato</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openMarkWonModal(card); }} className="gap-2 cursor-pointer text-emerald-700 focus:text-emerald-700">
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  <span>Venda Finalizada</span>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openMarkLostModal(card); }} className="gap-2 cursor-pointer text-rose-600 focus:text-rose-600">
                                   <CircleX className="w-4 h-4" />
@@ -1827,6 +1895,14 @@ export function InternalCrmPipelineView() {
         defaults={appointmentDefaults}
         isSubmitting={appointmentMutation.isPending}
         onSave={handleSaveAppointment}
+      />
+
+      <InternalCrmCallFlowModal
+        open={callFlowOpen}
+        onOpenChange={setCallFlowOpen}
+        card={activeSelectedCard}
+        isSubmitting={callOutcomeMutation.isPending}
+        onSubmit={handleSaveCallOutcome}
       />
 
       <CrmImportClientsModal

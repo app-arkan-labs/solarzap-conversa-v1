@@ -308,7 +308,11 @@ export function InternalCrmCalendarView() {
   }
 
   function patchCalendarCachesFromAppointment(appointment: InternalCrmAppointment) {
-    const nextStage = deriveDealStageFromAppointmentStatus(appointment.status);
+    const nextStage = deriveDealStageFromAppointmentStatus(
+      appointment.status,
+      appointment.appointment_type,
+      { movePipelineOnSave: appointment.appointment_type === 'meeting' },
+    );
 
     queryClient.setQueriesData(
       { queryKey: ['internal-crm', 'appointments'], exact: false },
@@ -415,7 +419,12 @@ export function InternalCrmCalendarView() {
         return;
       }
 
-      const appointmentStage = deriveDealStageFromAppointmentStatus(String(payload.status || 'scheduled'));
+      const appointmentType = String(payload.appointment_type || 'meeting');
+      const appointmentStage = deriveDealStageFromAppointmentStatus(
+        String(payload.status || 'scheduled'),
+        appointmentType,
+        { movePipelineOnSave: appointmentType === 'meeting' },
+      );
       const resolvedDealId = await ensureOpenDealForClient({
         clientId,
         preferredDealId: String(payload.deal_id || ''),
@@ -494,6 +503,7 @@ export function InternalCrmCalendarView() {
         end_at: feedbackAppointment.end_at,
         location: feedbackAppointment.location,
         notes: payload.notes || feedbackAppointment.notes,
+        move_pipeline_on_save: feedbackAppointment.appointment_type === 'meeting',
       }) as { ok: true; appointment: InternalCrmAppointment };
       patchCalendarCachesFromAppointment(result.appointment);
       toast({ title: 'Feedback registrado' });
