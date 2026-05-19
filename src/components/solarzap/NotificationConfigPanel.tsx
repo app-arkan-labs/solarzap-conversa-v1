@@ -194,7 +194,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Settings2 className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold text-foreground">ConfiguraÃ§Ãµes</h2>
+          <h2 className="font-semibold text-foreground">Configurações</h2>
         </div>
         <Button
           variant="ghost"
@@ -238,7 +238,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     />
                   </div>
                   <div>
-                    <p className="font-medium text-sm">NotificaÃ§Ãµes</p>
+                    <p className="font-medium text-sm">Notificações</p>
                     <p className="text-xs text-muted-foreground">
                       Liga/desliga todos os canais
                     </p>
@@ -283,7 +283,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     <div>
                       <p className="text-sm font-medium">WhatsApp</p>
                       <p className="text-xs text-muted-foreground">
-                        NotificaÃ§Ãµes operacionais
+                        Notificações operacionais
                       </p>
                     </div>
                   </div>
@@ -309,7 +309,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                   {settings?.enabled_whatsapp && (
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1.5 block">
-                        DestinatÃ¡rios WhatsApp (equipe interna)
+                        Destinatários WhatsApp (equipe interna)
                       </Label>
                       <div className="flex items-center gap-2">
                         <Input
@@ -372,8 +372,8 @@ export function NotificationConfigPanel({ onClose }: Props) {
                         (virgula, ; ou quebra de linha).
                       </p>
                       <p className="text-[10px] text-muted-foreground/70 mt-1">
-                        Envio somente para os nÃºmeros listados acima (sem
-                        destinatÃ¡rio padrÃ£o oculto).
+                        Envio somente para os números listados acima (sem
+                        destinatário padrão oculto).
                       </p>
                     </div>
                   )}
@@ -402,7 +402,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     <div>
                       <p className="text-sm font-medium">E-mail</p>
                       <p className="text-xs text-muted-foreground">
-                        NotificaÃ§Ãµes por e-mail
+                        Notificações por e-mail
                       </p>
                     </div>
                   </div>
@@ -428,7 +428,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     {/* Recipients */}
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1.5 block">
-                        DestinatÃ¡rios de e-mail
+                        Destinatários de e-mail
                       </Label>
                       <div className="flex items-center gap-2">
                         <Input
@@ -523,7 +523,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     </div>
                     <div>
                       <p className="text-sm font-medium">
-                        Lembretes AutomÃ¡ticos
+                        Lembretes Automáticos
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Alertas de acompanhamento
@@ -546,7 +546,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                 Eventos Monitorados
               </p>
               <p className="text-[11px] text-muted-foreground/70 px-1 -mt-1">
-                Escolha quais eventos geram notificaÃ§Ãµes
+                Escolha quais eventos geram notificações
               </p>
 
               <div className="rounded-xl border bg-background/50 divide-y divide-border overflow-hidden">
@@ -585,7 +585,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                   />
                 </div>
 
-                {/* MudanÃ§a de Etapa */}
+                {/* Mudança de Etapa */}
                 <div className="flex items-center justify-between p-3">
                   <div className="flex items-center gap-3">
                     <div
@@ -606,7 +606,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                       />
                     </div>
                     <div>
-                      <p className="text-sm font-medium">MudanÃ§a de Etapa</p>
+                      <p className="text-sm font-medium">Mudança de Etapa</p>
                       <p className="text-[10px] text-muted-foreground">
                         Lead mudou no pipeline
                       </p>
@@ -678,7 +678,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     <div>
                       <p className="text-sm font-medium">Visita Realizada</p>
                       <p className="text-[10px] text-muted-foreground">
-                        Visita concluÃ­da
+                        Visita concluída
                       </p>
                     </div>
                   </div>
@@ -748,7 +748,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     <div>
                       <p className="text-sm font-medium">Chamada Realizada</p>
                       <p className="text-[10px] text-muted-foreground">
-                        Chamada concluÃ­da
+                        Chamada concluída
                       </p>
                     </div>
                   </div>
@@ -783,7 +783,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     <div>
                       <p className="text-sm font-medium">Financiamento</p>
                       <p className="text-[10px] text-muted-foreground">
-                        AtualizaÃ§Ã£o de financiamento
+                        Atualização de financiamento
                       </p>
                     </div>
                   </div>
@@ -820,7 +820,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     <div>
                       <p className="text-sm font-medium">Parcela Vencida</p>
                       <p className="text-[10px] text-muted-foreground">
-                        ConfirmaÃ§Ã£o de pagamento
+                        Confirmação de pagamento
                       </p>
                     </div>
                   </div>
@@ -836,13 +836,13 @@ export function NotificationConfigPanel({ onClose }: Props) {
               </div>
             </section>
 
-            {/* â•â•â• RESUMOS PERIÃ“DICOS â•â•â• */}
+            {/* ═══ RESUMOS PERIÓDICOS ═══ */}
             <section className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
-                Resumos PeriÃ³dicos
+                Resumos Periódicos
               </p>
 
-              {/* DiÃ¡rio */}
+              {/* Diário */}
               <div className="rounded-xl border bg-background/50 overflow-hidden">
                 <div className="flex items-center justify-between p-3">
                   <div className="flex items-center gap-3">
@@ -864,9 +864,9 @@ export function NotificationConfigPanel({ onClose }: Props) {
                       />
                     </div>
                     <div>
-                      <p className="text-sm font-medium">Resumo DiÃ¡rio</p>
+                      <p className="text-sm font-medium">Resumo Diário</p>
                       <p className="text-xs text-muted-foreground">
-                        RelatÃ³rio de atividades do dia
+                        Relatório de atividades do dia
                       </p>
                     </div>
                   </div>
@@ -881,7 +881,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                   <div className="px-3 pb-3 pt-0 flex items-center gap-2">
                     <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
                     <Label className="text-xs text-muted-foreground whitespace-nowrap">
-                      HorÃ¡rio:
+                      Horário:
                     </Label>
                     <Input
                       type="time"
@@ -937,7 +937,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                   <div className="px-3 pb-3 pt-0 flex items-center gap-2">
                     <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
                     <Label className="text-xs text-muted-foreground whitespace-nowrap">
-                      HorÃ¡rio:
+                      Horário:
                     </Label>
                     <Input
                       type="time"
@@ -955,10 +955,10 @@ export function NotificationConfigPanel({ onClose }: Props) {
               </div>
             </section>
 
-            {/* â•â•â• FUSO HORÃRIO â•â•â• */}
+            {/* ═══ FUSO HORÁRIO ═══ */}
             <section className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
-                Fuso HorÃ¡rio
+                Fuso Horário
               </p>
               <div className="rounded-xl border bg-background/50 p-3">
                 <div className="flex items-center gap-3 mb-2">

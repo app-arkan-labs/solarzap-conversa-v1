@@ -728,17 +728,17 @@ export function useUserWhatsAppInstances() {
     async (input: UpdateInstanceAssistantProfileInput): Promise<UpdateInstanceAssistantProfileResult> => {
       try {
         if (!orgId) {
-          toast.error('OrganizaÃ§Ã£o nÃ£o vinculada ao usuÃ¡rio');
+          toast.error('Organização não vinculada ao usuário');
           return { ok: false };
         }
         if (!isOrgManager && !user?.id) {
-          toast.error('VocÃª precisa estar logado');
+          toast.error('Você precisa estar logado');
           return { ok: false };
         }
 
         const targetInstance = instances.find((inst) => inst.id === input.instanceId);
         if (!targetInstance) {
-          toast.error('InstÃ¢ncia nÃ£o encontrada');
+          toast.error('Instância não encontrada');
           return { ok: false };
         }
 
@@ -788,7 +788,7 @@ export function useUserWhatsAppInstances() {
 
         if (error) {
           if (isInstanceSchemaMismatch(error)) {
-            toast.error('Campos de personalizaÃ§Ã£o por instÃ¢ncia ainda nÃ£o estÃ£o disponÃ­veis no banco.');
+            toast.error('Campos de personalização por instância ainda não estão disponíveis no banco.');
             return { ok: false, schemaMissing: true };
           }
           throw error;
@@ -797,7 +797,7 @@ export function useUserWhatsAppInstances() {
         const updatedRow = Array.isArray(data) && data.length > 0 ? data[0] : null;
         if (!updatedRow) {
           if (hasPromptField) {
-            toast.error('Conflito de ediÃ§Ã£o detectado. Recarregue para obter a versÃ£o mais recente.');
+            toast.error('Conflito de edição detectado. Recarregue para obter a versão mais recente.');
             return { ok: false, conflict: true };
           }
           return { ok: false };
@@ -808,7 +808,7 @@ export function useUserWhatsAppInstances() {
         return { ok: true, instance: normalizedUpdated };
       } catch (error) {
         console.error('Error updating assistant profile by instance:', error);
-        toast.error('Erro ao salvar personalizaÃ§Ã£o da instÃ¢ncia');
+        toast.error('Erro ao salvar personalização da instância');
         return { ok: false };
       } finally {
         setActionLoading(null);
