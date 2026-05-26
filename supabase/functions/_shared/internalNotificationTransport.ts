@@ -21,6 +21,7 @@ export type InternalNotificationTransport = {
 }
 
 type InternalNotificationTransportSettingsRow = {
+  internal_notification_whatsapp_instance_id?: unknown
   default_whatsapp_instance_id?: unknown
 }
 
@@ -54,6 +55,11 @@ function asString(value: unknown): string | null {
   return normalized || null
 }
 
+function isMissingColumnError(error: { message?: string } | null): boolean {
+  const message = String(error?.message || '')
+  return /column/i.test(message) && /internal_notification_whatsapp_instance_id/i.test(message)
+}
+
 export function buildInternalNotificationTransport(params: {
   settings?: InternalNotificationTransportSettingsRow | null
   instance?: InternalNotificationTransportInstanceRow | null
@@ -62,7 +68,14 @@ export function buildInternalNotificationTransport(params: {
   const settings = params.settings || null
   const instance = params.instance || null
   const transportQueryErrorMessage = asString(params.transportQueryErrorMessage)
-  const desiredInstanceId = asString(settings?.default_whatsapp_instance_id)
+  const dedicatedInstanceId = asString(settings?.internal_notification_whatsapp_instance_id)
+  const fallbackInstanceId = asString(settings?.default_whatsapp_instance_id)
+  const desiredInstanceId = dedicatedInstanceId || fallbackInstanceId
+  const desiredInstanceSource = dedicatedInstanceId
+    ? 'internal_notification_whatsapp_instance_id'
+    : fallbackInstanceId
+      ? 'default_whatsapp_instance_id'
+      : null
   const resolvedInstanceId = asString(instance?.id)
   const resolvedInstanceName = asString(instance?.instance_name)
   const resolvedDisplayName = asString(instance?.display_name)
@@ -92,7 +105,7 @@ export function buildInternalNotificationTransport(params: {
       whatsappStatus: null,
       whatsappReady: false,
       whatsappErrorCode: 'admin_notification_instance_missing',
-      whatsappErrorMessage: 'default_whatsapp_instance_id_not_configured',
+      whatsappErrorMessage: 'internal_notification_whatsapp_instance_id_not_configured',
     }
   }
 
@@ -106,7 +119,7 @@ export function buildInternalNotificationTransport(params: {
       whatsappStatus: resolvedStatus,
       whatsappReady: false,
       whatsappErrorCode: 'admin_notification_instance_missing',
-      whatsappErrorMessage: 'default_whatsapp_instance_not_found',
+      whatsappErrorMessage: `${desiredInstanceSource || 'internal_notification_whatsapp_instance_id'}_not_found`,
     }
   }
 
@@ -120,7 +133,7 @@ export function buildInternalNotificationTransport(params: {
       whatsappStatus: resolvedStatus,
       whatsappReady: false,
       whatsappErrorCode: 'admin_notification_instance_disconnected',
-      whatsappErrorMessage: `default_whatsapp_instance_status:${resolvedStatus || 'unknown'}`,
+      whatsappErrorMessage: `${desiredInstanceSource || 'internal_notification_whatsapp_instance_id'}_status:${resolvedStatus || 'unknown'}`,
     }
   }
 
@@ -142,11 +155,19 @@ export async function resolveInternalNotificationTransport(
 ): Promise<InternalNotificationTransport> {
   const crm = supabase.schema('internal_crm')
 
-  const settingsResult = await crm
+  let settingsResult = await crm
     .from('automation_settings')
-    .select('default_whatsapp_instance_id')
+    .select('internal_notification_whatsapp_instance_id, default_whatsapp_instance_id')
     .eq('scope_key', INTERNAL_CRM_AUTOMATION_SCOPE_KEY)
     .maybeSingle()
+
+  if (settingsResult.error && isMissingColumnError(settingsResult.error)) {
+    settingsResult = await crm
+      .from('automation_settings')
+      .select('default_whatsapp_instance_id')
+      .eq('scope_key', INTERNAL_CRM_AUTOMATION_SCOPE_KEY)
+      .maybeSingle()
+  }
 
   if (settingsResult.error) {
     return buildInternalNotificationTransport({
@@ -154,7 +175,9 @@ export async function resolveInternalNotificationTransport(
     })
   }
 
-  const desiredInstanceId = asString(settingsResult.data?.default_whatsapp_instance_id)
+  const desiredInstanceId =
+    asString(settingsResult.data?.internal_notification_whatsapp_instance_id) ||
+    asString(settingsResult.data?.default_whatsapp_instance_id)
   if (!desiredInstanceId) {
     return buildInternalNotificationTransport({
       settings: settingsResult.data,

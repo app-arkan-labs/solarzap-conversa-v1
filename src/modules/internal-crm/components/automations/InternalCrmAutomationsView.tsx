@@ -35,6 +35,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { useInternalCrmGuardContext } from '@/components/admin/InternalCrmGuard';
 import { formatDateTime } from '@/modules/internal-crm/components/InternalCrmUi';
 import { useInternalCrmAutomationsModule } from '@/modules/internal-crm/hooks/useInternalCrmAutomations';
 import type {
@@ -48,6 +49,7 @@ type AutomationTab = 'lead' | 'admin';
 type RuleFilter = 'all' | 'active' | 'inactive';
 type RuleDraft = { isActive: boolean; template: string };
 type SettingsDraft = {
+  internalNotificationWhatsappInstanceId: string;
   defaultWhatsappInstanceId: string;
   adminNotificationNumbers: string;
   notificationCooldownMinutes: string;
@@ -239,6 +241,7 @@ function formatDelay(minutes: number): string {
 
 function buildSettingsDraft(settings?: InternalCrmAutomationSettings | null): SettingsDraft {
   return {
+    internalNotificationWhatsappInstanceId: settings?.internal_notification_whatsapp_instance_id || 'none',
     defaultWhatsappInstanceId: settings?.default_whatsapp_instance_id || 'none',
     adminNotificationNumbers: settings?.admin_notification_numbers.join(', ') || '',
     notificationCooldownMinutes: String(settings?.notification_cooldown_minutes || 60),
@@ -247,6 +250,7 @@ function buildSettingsDraft(settings?: InternalCrmAutomationSettings | null): Se
 
 function normalizeSettingsDraft(draft: SettingsDraft): SettingsDraft {
   return {
+    internalNotificationWhatsappInstanceId: draft.internalNotificationWhatsappInstanceId || 'none',
     defaultWhatsappInstanceId: draft.defaultWhatsappInstanceId || 'none',
     adminNotificationNumbers: parseAdminNotificationNumbers(draft.adminNotificationNumbers).join(', '),
     notificationCooldownMinutes: String(clampCooldown(draft.notificationCooldownMinutes)),
@@ -255,6 +259,7 @@ function normalizeSettingsDraft(draft: SettingsDraft): SettingsDraft {
 
 function areSettingsDraftsEqual(a: SettingsDraft, b: SettingsDraft): boolean {
   return (
+    a.internalNotificationWhatsappInstanceId === b.internalNotificationWhatsappInstanceId &&
     a.defaultWhatsappInstanceId === b.defaultWhatsappInstanceId &&
     a.adminNotificationNumbers === b.adminNotificationNumbers &&
     a.notificationCooldownMinutes === b.notificationCooldownMinutes
@@ -517,6 +522,8 @@ function AutomationRuleCard(props: {
 }
 
 export function InternalCrmAutomationsView() {
+  const { identity } = useInternalCrmGuardContext();
+  const canManageInternalNotificationsInstance = identity?.crm_role === 'owner' || identity?.crm_role === 'ops';
   const { toast } = useToast();
   const mod = useInternalCrmAutomationsModule();
 
@@ -594,6 +601,10 @@ export function InternalCrmAutomationsView() {
 
   const connectedInstances = useMemo(() => instances.filter((instance) => instance.status === 'connected'), [instances]);
   const connectedInstancesCount = connectedInstances.length;
+  const selectedInternalNotificationInstance = useMemo(
+    () => instances.find((instance) => instance.id === settingsDraft.internalNotificationWhatsappInstanceId),
+    [instances, settingsDraft.internalNotificationWhatsappInstanceId],
+  );
   const selectedInstance = useMemo(() => instances.find((instance) => instance.id === settingsDraft.defaultWhatsappInstanceId), [instances, settingsDraft.defaultWhatsappInstanceId]);
 
   const pendingRunsCount = health?.pending_runs_count ?? 0;
@@ -665,6 +676,9 @@ export function InternalCrmAutomationsView() {
 
     await mod.upsertAutomationSettingsMutation.mutateAsync({
       action: 'upsert_automation_settings',
+      internal_notification_whatsapp_instance_id: nextDraft.internalNotificationWhatsappInstanceId === 'none'
+        ? null
+        : nextDraft.internalNotificationWhatsappInstanceId,
       default_whatsapp_instance_id: nextDraft.defaultWhatsappInstanceId === 'none' ? null : nextDraft.defaultWhatsappInstanceId,
       admin_notification_numbers: parseAdminNotificationNumbers(nextDraft.adminNotificationNumbers),
       notification_cooldown_minutes: Number(nextDraft.notificationCooldownMinutes),
@@ -1109,7 +1123,7 @@ export function InternalCrmAutomationsView() {
                     <Settings2 className="h-4 w-4 text-primary" />
                     Configuracao de envio
                   </CardTitle>
-                  <CardDescription>Defina a instancia usada nas automacoes para clientes. Os alertas internos saem sempre pela SolarZap.</CardDescription>
+                  <CardDescription>Separe a instancia das automacoes para clientes da instancia dedicada para notificacoes internas.</CardDescription>
                 </div>
                 <Badge
                   className={cn(
@@ -1162,6 +1176,37 @@ export function InternalCrmAutomationsView() {
                     Existem regras internas ligadas, mas nenhum numero admin configurado para recebe-las.
                   </AlertDescription>
                 </Alert>
+              ) : null}
+
+              {canManageInternalNotificationsInstance ? (
+                <div className="space-y-2">
+                  <Label>Instancia dedicada das notificacoes internas</Label>
+                  <Select
+                    value={settingsDraft.internalNotificationWhatsappInstanceId}
+                    onValueChange={(value) => setSettingsDraft((current) => ({ ...current, internalNotificationWhatsappInstanceId: value }))}
+                  >
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="Selecione a instancia" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem instancia dedicada (fallback legado)</SelectItem>
+                      {instances.map((instance) => (
+                        <SelectItem key={instance.id} value={instance.id}>
+                          {instance.display_name} - {formatInstanceStatus(instance)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedInternalNotificationInstance ? (
+                    <p className="text-xs text-muted-foreground">
+                      Status da instancia dedicada das notificacoes internas: {formatInstanceStatus(selectedInternalNotificationInstance)}.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Sem instancia dedicada configurada. O runtime usa fallback legado para compatibilidade.
+                    </p>
+                  )}
+                </div>
               ) : null}
 
               <div className="space-y-2">
@@ -1229,8 +1274,8 @@ export function InternalCrmAutomationsView() {
               </div>
 
               <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
-                Alertas internos do CRM usam a instancia <strong className="text-foreground">SolarZap</strong>.
-                A selecao acima vale apenas para mensagens automaticas enviadas aos clientes.
+                A instancia dedicada de notificacoes internas nao interfere no disparo das automacoes para clientes.
+                Cada fluxo permanece isolado.
               </div>
 
               <Separator />

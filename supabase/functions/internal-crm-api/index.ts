@@ -156,6 +156,13 @@ function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function isMissingInternalNotificationWhatsappInstanceIdColumnError(error: unknown): boolean {
+  const code = asString((error as Record<string, unknown>)?.code) || '';
+  const message = asString((error as Record<string, unknown>)?.message) || '';
+  if (code === 'PGRST204' || code === '42703') return true;
+  return /column/i.test(message) && /internal_notification_whatsapp_instance_id/i.test(message);
+}
+
 function asNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -1800,8 +1807,16 @@ async function getAutomationSettingsRecord(serviceClient: ReturnType<typeof crea
 
   if (error) throw { status: 500, code: 'automation_settings_query_failed', error };
 
-  return data || {
+  if (data) {
+    return {
+      ...data,
+      internal_notification_whatsapp_instance_id: asString((data as Record<string, unknown>).internal_notification_whatsapp_instance_id),
+    };
+  }
+
+  return {
     scope_key: INTERNAL_CRM_AUTOMATION_SCOPE_KEY,
+    internal_notification_whatsapp_instance_id: null,
     default_whatsapp_instance_id: null,
     admin_notification_numbers: [],
     notification_cooldown_minutes: 60,
@@ -5790,8 +5805,11 @@ async function upsertAutomationSettings(
 ) {
   const schema = crmSchema(serviceClient);
   const before = await getAutomationSettingsRecord(serviceClient);
-  const { data, error } = await schema.from('automation_settings').upsert({
+  const upsertPayload = {
     scope_key: INTERNAL_CRM_AUTOMATION_SCOPE_KEY,
+    internal_notification_whatsapp_instance_id: Object.prototype.hasOwnProperty.call(payload, 'internal_notification_whatsapp_instance_id')
+      ? asString(payload.internal_notification_whatsapp_instance_id)
+      : asString(before.internal_notification_whatsapp_instance_id),
     default_whatsapp_instance_id: Object.prototype.hasOwnProperty.call(payload, 'default_whatsapp_instance_id')
       ? asString(payload.default_whatsapp_instance_id)
       : asString(before.default_whatsapp_instance_id),
@@ -5801,18 +5819,37 @@ async function upsertAutomationSettings(
     notification_cooldown_minutes: Object.prototype.hasOwnProperty.call(payload, 'notification_cooldown_minutes')
       ? clamp(asNumber(payload.notification_cooldown_minutes, 60), 1, 1440)
       : clamp(asNumber(before.notification_cooldown_minutes, 60), 1, 1440),
-  }).select('*').single();
+  };
+
+  let { data, error } = await schema.from('automation_settings').upsert(upsertPayload).select('*').single();
+
+  if (error && isMissingInternalNotificationWhatsappInstanceIdColumnError(error)) {
+    const legacyPayload: Record<string, unknown> = { ...upsertPayload };
+    delete legacyPayload.internal_notification_whatsapp_instance_id;
+    const legacyResult = await schema
+      .from('automation_settings')
+      .upsert(legacyPayload)
+      .select('*')
+      .single();
+    data = legacyResult.data;
+    error = legacyResult.error;
+  }
 
   if (error || !data?.scope_key) throw { status: 500, code: 'automation_settings_upsert_failed', error };
 
+  const normalizedData = {
+    ...data,
+    internal_notification_whatsapp_instance_id: asString((data as Record<string, unknown>).internal_notification_whatsapp_instance_id),
+  };
+
   await writeAuditLog(serviceClient, identity, 'upsert_automation_settings', req, {
     target_type: 'automation_settings',
-    target_id: String(data.scope_key),
+    target_id: String(normalizedData.scope_key),
     before,
-    after: data,
+    after: normalizedData,
   });
 
-  return { ok: true, settings: data };
+  return { ok: true, settings: normalizedData };
 }
 
 async function updateDealCommercialState(

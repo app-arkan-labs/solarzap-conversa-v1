@@ -505,6 +505,7 @@ export type InternalCrmAiActionLog = {
 
 export type InternalCrmAutomationSettings = {
   scope_key: string;
+  internal_notification_whatsapp_instance_id: string | null;
   default_whatsapp_instance_id: string | null;
   admin_notification_numbers: string[];
   notification_cooldown_minutes: number;
