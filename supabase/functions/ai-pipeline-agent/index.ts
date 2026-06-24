@@ -1031,12 +1031,23 @@ function extractDeterministicLeadSignals(
         answeredKeys.add('confirmation');
     }
 
+    // Roof type: only when a real roof keyword is present and maps to a known material
+    // (avoids normalizeRoofType's 'outro' fallback marking unrelated text as answered).
+    if (/(telha|telhado|ceramic|fibro|amianto|eternit|metal|zinco|galvan|laje|concreto|colonial)/i.test(normalized)) {
+        const roofType = normalizeRoofType(text);
+        if (roofType && roofType !== 'outro') {
+            fields.roof_type = { value: roofType, confidence: 'high', source: 'user' };
+            answeredKeys.add('roof_type');
+        }
+    }
+
     const collected: Record<string, any> = {};
     if (fields.customer_type) collected.customer_type = fields.customer_type.value;
     if (fields.estimated_value_brl) collected.estimated_value_brl = fields.estimated_value_brl.value;
     if (fields.consumption_kwh_month) collected.consumption_kwh_month = fields.consumption_kwh_month.value;
     if (fields.city) collected.city = fields.city.value;
     if (fields.utility_company) collected.utility_company = fields.utility_company.value;
+    if (fields.roof_type) collected.roof_type = fields.roof_type.value;
     if (Object.keys(collected).length > 0) {
         stageData.collected = collected;
     }
@@ -1078,6 +1089,7 @@ function buildStructuredLeadSnapshot(lead: any, currentStage: string): Record<st
         valor_medio_conta_brl: lead?.valor_estimado || stageSnapshot.collected?.estimated_value_brl || null,
         consumo_kwh_mes: lead?.consumo_kwh || stageSnapshot.collected?.consumption_kwh_month || null,
         concessionaria: meta.utility_company || stageSnapshot.collected?.utility_company || null,
+        tipo_telhado: lead?.roof_type || stageSnapshot.collected?.roof_type || null,
         lead_stage_data: stageSnapshot,
         ultima_pergunta_chave: normalizeQuestionKey(stageSnapshot.last_question_key),
         slots_respondidos: answeredKeys,
