@@ -3845,12 +3845,14 @@ Deno.serve(async (req) => {
             }
         }
 
-        // HISTORY SCOPED TO INSTANCE
+        // HISTORY SCOPED TO LEAD (the person/conversation), NOT the instance.
+        // Recreating a WhatsApp instance mints a new instance_name; scoping history to it
+        // orphaned the prior conversation and made the AI greet/re-qualify from scratch every
+        // time the instance was recreated. lead_id is unique per person → correct continuity key.
         const { data: history } = await supabase
             .from('interacoes')
             .select('*')
             .eq('lead_id', leadId)
-            .eq('instance_name', instanceName) // STRICT FILTER
             .order('id', { ascending: false })
             .limit(30); // Use 30 for context aggregation
 
