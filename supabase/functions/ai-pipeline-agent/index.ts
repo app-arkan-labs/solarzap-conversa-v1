@@ -1456,6 +1456,36 @@ function repairMojibake(text: string): string {
     return repaired;
 }
 
+// Split an assistant reply into WhatsApp-style short messages when the model didn't
+// already separate them with "||". Each question becomes its own message; statements
+// pack up to ~140 chars per message. Returns a single part if there's nothing to split.
+function autoSplitWhatsapp(text: string): string[] {
+    const clean = String(text || '').trim();
+    if (!clean) return [];
+    const sentences = (clean.match(/[^.!?]+[.!?]+|\S[^.!?]*$/g) || []).map((s) => s.trim()).filter(Boolean);
+    if (sentences.length <= 1) return [clean];
+    const parts: string[] = [];
+    let buf = '';
+    for (const s of sentences) {
+        if (s.endsWith('?')) {
+            if (buf) { parts.push(buf); buf = ''; }
+            parts.push(s);
+            continue;
+        }
+        if (!buf) buf = s;
+        else if ((buf.length + 1 + s.length) > 140) { parts.push(buf); buf = s; }
+        else buf = `${buf} ${s}`;
+    }
+    if (buf) parts.push(buf);
+    // Cap at 4 messages; merge any overflow into the last.
+    if (parts.length > 4) {
+        const head = parts.slice(0, 3);
+        head.push(parts.slice(3).join(' '));
+        return head;
+    }
+    return parts.length ? parts : [clean];
+}
+
 // --- HELPER: Check if message looks like a real question ---
 function looksLikeQuestion(text: string): boolean {
     if (!text || text.length < 8) return false;
@@ -5586,10 +5616,13 @@ CORRECAO OBRIGATORIA:
                                 : 'smoke_lead';
             }
 
-            const rawParts = aiRes.content
+            const modelParts = aiRes.content
                 .split('||')
                 .map((p: string) => p.trim())
                 .filter(Boolean);
+            // The model often ignores the "||" instruction and returns one block. Split
+            // deterministically so replies still arrive as short WhatsApp-style messages.
+            const rawParts = modelParts.length > 1 ? modelParts : autoSplitWhatsapp(aiRes.content);
             const singleOutboundContent = rawParts.join('\n\n').trim();
             const burstMode = aggregatedBurstCount > 1;
 
