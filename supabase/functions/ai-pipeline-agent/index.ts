@@ -5059,13 +5059,22 @@ CORRECAO OBRIGATORIA:
                 qualificationGateBlocked = true;
                 stageGateBlockReason = stageGateBlockReason || `qualification_incomplete:${qualificationState.missingKeys[0]}`;
                 appointmentPrecheckBlockedReason = appointmentPrecheckBlockedReason || `qualification_incomplete:${qualificationState.missingKeys[0]}`;
+                // Was the LLM trying to schedule before qualification is complete?
+                const prematureScheduling = !!aiRes.appointment
+                    || ['chamada_agendada', 'visita_agendada'].includes(normalizeStage(aiRes?.target_stage));
                 delete aiRes.appointment;
                 delete aiRes.target_stage;
                 aiRes.action = 'send_message';
-                aiRes.content = buildDeterministicNextQuestionFallback(currentStage, lead, {
-                    preferredMissingKeys: qualificationState.missingKeys,
-                }) || aiRes.content;
-                console.log(`🧭 [${runId}] qualification_gate_blocked: ${qualificationState.missingKeys.join(',')}`);
+                // Keep the LLM's humanized reply (2-4 short messages, question last). The anti-
+                // premature-scheduling guard above stays; we only override the message text with the
+                // canned next-question when the LLM produced nothing OR tried to jump to scheduling.
+                const llmContent = String(aiRes.content || '').trim();
+                if (prematureScheduling || !llmContent) {
+                    aiRes.content = buildDeterministicNextQuestionFallback(currentStage, lead, {
+                        preferredMissingKeys: qualificationState.missingKeys,
+                    }) || aiRes.content;
+                }
+                console.log(`🧭 [${runId}] qualification_gate_blocked: ${qualificationState.missingKeys.join(',')} (premature=${prematureScheduling}, kept_llm=${!prematureScheduling && !!llmContent})`);
             }
         }
 
