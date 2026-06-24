@@ -637,6 +637,30 @@ function buildScheduleRetryContent(
     return `Esse horario nao esta disponivel no momento. Me diga outro periodo (manha, tarde ou noite) para eu te sugerir opcoes livres.`;
 }
 
+// Deterministic closing CTA used when qualification is complete but the model failed to drive
+// to scheduling (it tends to end with a vague "vamos para a proxima etapa"). Offers 2 real slots.
+function buildSchedulingCloseCTA(
+    slotsByType: Record<AppointmentWindowType, string[]>,
+    policy: AutoSchedulePolicy,
+    timeZone: string,
+    now: Date
+): string | null {
+    const order: AppointmentWindowType[] =
+        policy.mode === 'visit_only' ? ['visit']
+            : policy.mode === 'call_only' ? ['call']
+                : ['call', 'visit'];
+    for (const type of order) {
+        const slots = (slotsByType[type] || []).slice(0, 2).map((s) => formatSlotLabel(s, timeZone, now));
+        const label = type === 'call' ? 'uma ligacao rapida' : 'uma visita tecnica';
+        const why = type === 'call'
+            ? 'pra te passar os numeros certos e fechar o dimensionamento'
+            : 'pra confirmar a estrutura e fechar o dimensionamento certo';
+        if (slots.length >= 2) return `Pelo seu perfil, o ideal agora e ${label} ${why}. Consigo ${slots[0]} ou ${slots[1]} — qual fica melhor?`;
+        if (slots.length === 1) return `Pelo seu perfil, o ideal agora e ${label} ${why}. Tenho ${slots[0]} — pode ser?`;
+    }
+    return null;
+}
+
 function isImplicitScheduleConfirmation(text: string): boolean {
     const normalized = String(text || '')
         .toLowerCase()
@@ -4793,6 +4817,14 @@ ${followUpContextBlock}
 PROTOCOLO DA ETAPA:
 ${stagePromptText}
 
+CONTRATO DE EXECUÇÃO (vale para TODA etapa — prioridade sobre estilo, siga à risca):
+1. O PROTOCOLO DA ETAPA acima é a fonte da verdade do que fazer AGORA. Execute os passos dele na ordem; não pule o fechamento da etapa.
+2. TODA resposta termina com UM próximo passo concreto: a próxima pergunta de qualificação OU um CTA de agendamento com horário real. É PROIBIDO terminar sem próximo passo ou com frase vaga ("vamos para a próxima etapa", "te retorno", "posso ajudar com isso", "vou seguir com seu atendimento").
+3. Quando o protocolo mandar fechar/agendar, FECHE de verdade: ofereça 2 horários reais de SLOTS_DISPONIVEIS_REAIS. Nunca apenas descreva que vai agendar — ofereça os horários.
+4. UMA pergunta por mensagem, e a pergunta é sempre a ÚLTIMA mensagem (nenhuma frase depois dela).
+5. Nunca repita uma pergunta já respondida: confira DADOS_JA_CONFIRMADOS e o histórico antes de perguntar.
+6. Em perguntas que o lead pode não saber (ex.: tipo de telhado), ofereça opções e diga que tudo bem não saber ("a gente confirma na visita"). Nunca deixe a conversa sem saída.
+
 DADOS_JA_CONFIRMADOS:
 ${structuredLeadSnapshot ? JSON.stringify(structuredLeadSnapshot, null, 2) : '(sem dados estruturados confirmados)'}
 
@@ -5163,6 +5195,26 @@ CORRECAO OBRIGATORIA:
                     }) || aiRes.content;
                 }
                 console.log(`🧭 [${runId}] qualification_gate_blocked: ${qualificationState.missingKeys.join(',')} (premature=${prematureScheduling}, kept_llm=${!prematureScheduling && !!llmContent})`);
+            } else if (currentStage === 'respondeu' && qualificationState.missingKeys.length === 0 && autoSchedulePolicy.mode !== 'both_off') {
+                // Qualification complete → drive to scheduling deterministically. The model often
+                // ends with a vague "vamos para a proxima etapa" instead of offering real slots.
+                // Only step in when the model dead-ended (didn't end with a question and isn't
+                // already scheduling), so we don't hijack a legitimate follow-up question.
+                const alreadyScheduling = !!aiRes.appointment
+                    || ['chamada_agendada', 'visita_agendada'].includes(normalizeStage(aiRes?.target_stage))
+                    || textContainsCallSchedulingIntent(aiRes?.content || '')
+                    || textContainsVisitSchedulingIntent(aiRes?.content || '');
+                const modelEndsWithQuestion = String(aiRes.content || '').trim().endsWith('?');
+                if (!alreadyScheduling && !modelEndsWithQuestion) {
+                    const cta = buildSchedulingCloseCTA(availableSlotsByType, autoSchedulePolicy, scheduleTimezone, new Date());
+                    if (cta) {
+                        aiRes.action = 'send_message';
+                        delete aiRes.appointment;
+                        delete aiRes.target_stage;
+                        aiRes.content = cta;
+                        console.log(`🎯 [${runId}] qualification_complete: injected deterministic scheduling CTA`);
+                    }
+                }
             }
         }
 
