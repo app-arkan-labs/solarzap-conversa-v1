@@ -1854,8 +1854,8 @@ function normalizeGridType(raw: any): string | null {
 function normalizeCustomerType(raw: any): string | null {
     if (!raw || typeof raw !== 'string') return null;
     const lower = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (lower.includes('resid') || lower.includes('casa')) return 'residencial';
-    if (lower.includes('comerc') || lower.includes('empresa') || lower.includes('loja')) return 'comercial';
+    if (lower.includes('resid') || lower.includes('casa') || lower.includes('minha casa')) return 'residencial';
+    if (lower.includes('comerc') || lower.includes('empresa') || lower.includes('loja') || lower.includes('escritorio') || lower.includes('predio') || lower.includes('galpao') || lower.includes('negocio')) return 'comercial';
     if (lower.includes('agro') || lower.includes('rural') || lower.includes('fazend')) return 'agro';
     if (lower.includes('indust')) return 'industrial';
     return raw.trim().toLowerCase();
