@@ -2856,11 +2856,15 @@ Deno.serve(async (req) => {
         let adoptedFromInteractionId: string | number | null = null;
         let adoptedToInteractionId: string | number | null = null;
         const forceSimulatedTransport = String(Deno.env.get('FORCE_SIMULATED_TRANSPORT') || '').toLowerCase() === 'true';
-        const parsedMaxOutboundPerLeadPerMin = Number.parseInt(Deno.env.get('MAX_OUTBOUND_PER_LEAD_PER_MIN') || '3', 10);
+        // Counts individual outbound messages. Since one reply is now split into up to ~4
+        // short WhatsApp messages, this must allow several split replies per minute (was 3,
+        // which blocked the next inbound after a single multi-part reply). ponytail: bump the
+        // ceiling; switch to per-reply counting only if real spam shows up.
+        const parsedMaxOutboundPerLeadPerMin = Number.parseInt(Deno.env.get('MAX_OUTBOUND_PER_LEAD_PER_MIN') || '12', 10);
         const maxOutboundPerLeadPerMin =
             Number.isFinite(parsedMaxOutboundPerLeadPerMin) && parsedMaxOutboundPerLeadPerMin > 0
                 ? parsedMaxOutboundPerLeadPerMin
-                : 3;
+                : 12;
 
         persistAgentOutcome = async (envelope: Record<string, any>) => {
             if (!supabase || !leadId) return;
@@ -4682,6 +4686,7 @@ PERSONALIZACAO_DA_INSTANCIA:
 IDENTIDADE: ${effectiveAssistantIdentityName}. Consultor de energia solar no Brasil.
 IDENTIDADE_FONTE: ${assistantIdentitySource}
 Ao se apresentar, use explicitamente o nome "${effectiveAssistantIdentityName}". Evite apresentações genéricas como "assistente da empresa".
+Se esta for a PRIMEIRA mensagem sua nesta conversa (o histórico não tem nenhuma mensagem sua antes), COMECE se apresentando pelo nome "${effectiveAssistantIdentityName}" antes de qualquer pergunta. NÃO presuma pedidos anteriores que não estejam no histórico (ex.: não diga "você pediu uma simulação" se isso não aparece no histórico real).
 TIMEZONE_OPERACIONAL: ${scheduleTimezone}
 AGORA_UTC_ISO: ${new Date().toISOString()}
 
@@ -4718,6 +4723,7 @@ ESTILO WHATSAPP (MODO HUMANO OBRIGATÓRIO):
 - Emojis: por padrão ZERO. Se usar, no máximo 1 e NUNCA use 😊.
   Só use emoji se o lead usou antes OU em confirmação (variar: ✅👍👌). Não repetir o mesmo.
 - Perguntas: no máximo 1 pergunta por mensagem. Se precisar de 2, separar em mensagens diferentes.
+- A pergunta deve ser SEMPRE a última mensagem. NUNCA escreva uma frase de afirmação depois da pergunta (ex.: não mande "...certo?" e logo depois "Posso te ajudar com isso.").
 - Off-topic (lead manda algo fora do contexto):
   1) reconhecer em 1 linha (sem "resposta inválida")
   2) fazer uma pergunta humana de clarificação
