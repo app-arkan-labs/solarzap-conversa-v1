@@ -1097,15 +1097,15 @@ type QualificationMissingKey =
     | 'decision_makers_present';
 
 const QUALIFICATION_QUESTION_BY_KEY: Record<QualificationMissingKey, string> = {
-    project_type: 'Pra eu seguir certo: e para casa, empresa, agronegocio ou usina/investimento?',
-    consumption_or_bill: 'Perfeito. Quanto voce paga, em media, na conta de luz ou quantos kWh por mes?',
-    location: 'Agora me confirma so a cidade da instalacao.',
-    utility_company: 'Me confirma tambem qual e a concessionaria de energia ai da sua regiao.',
-    timing: 'Qual o prazo ideal para voce implementar isso: imediato, 30 dias ou mais para frente?',
-    need_reason: 'Qual e o principal objetivo desse projeto agora: economizar, previsibilidade da conta ou valorizacao do imovel?',
-    budget_fit: 'Para eu montar a melhor opcao, hoje voce pretende investir com entrada, parcelar ou financiamento?',
-    decision_makers: 'Quem participa da decisao com voce para aprovar o projeto?',
-    address: 'Para visita tecnica, me confirma o endereco completo da instalacao.',
+    project_type: 'Pra eu seguir certo: é para casa, empresa, agronegócio ou usina/investimento?',
+    consumption_or_bill: 'Perfeito. Quanto você paga, em média, na conta de luz ou quantos kWh por mês?',
+    location: 'Agora me confirma só a cidade da instalação.',
+    utility_company: 'Me confirma também qual é a concessionária de energia aí da sua região.',
+    timing: 'Qual o prazo ideal para você implementar isso: imediato, 30 dias ou mais para frente?',
+    need_reason: 'Qual é o principal objetivo desse projeto agora: economizar, previsibilidade da conta ou valorização do imóvel?',
+    budget_fit: 'Para eu montar a melhor opção, hoje você pretende investir com entrada, parcelar ou financiamento?',
+    decision_makers: 'Quem participa da decisão com você para aprovar o projeto?',
+    address: 'Para visita técnica, me confirma o endereço completo da instalação.',
     decision_makers_present: 'No dia da visita, os decisores conseguem estar presentes no local?',
 };
 
@@ -5591,10 +5591,13 @@ CORRECAO OBRIGATORIA:
                 console.log(`[${runId}] Simulated transport enabled (${transportSimReason || 'unknown'}).`);
             }
 
+            // Checked once per run before the first real send (see send block below).
+            let instanceConnVerified: boolean | null = null;
+
             for (let i = 0; i < parts.length; i++) {
                 const partContent = parts[i];
                 if (!partContent) continue;
-                const outboundText = repairMojibake(partContent);
+                const outboundText = partContent; // Texto já vem correto do OpenAI, não utilizar repairMojibake para não corromper acentos.
 
                 const typingDuration = Math.min(6000, 2000 + (outboundText.length * 50));
                 if (!isSimulatedTransport) {
@@ -5829,13 +5832,52 @@ CORRECAO OBRIGATORIA:
 
                 if (evoUrl && evoKey) {
 
-                    console.log(`📤 Sending Part ${i + 1}/${parts.length} to Evolution: ${instanceName} -> ${numberToSend}`);
+                    // GATE: confirm the instance socket is REALLY open before sending.
+                    // whatsapp_instances.status can be stale (phone dropped without a CONNECTION_UPDATE=close),
+                    // and Evolution sendText returns 2xx even when the socket is closed → message shows as sent
+                    // in the app but never reaches WhatsApp. Verified once per run.
+                    if (instanceConnVerified === null) {
+                        try {
+                            const stResp = await fetch(`${evoUrl}/instance/connectionState/${instanceName}`, {
+                                headers: { 'apikey': evoKey }
+                            });
+                            if (stResp.ok) {
+                                const st = await stResp.json().catch(() => null);
+                                const state = st?.instance?.state ?? st?.state ?? null;
+                                // ponytail: block only on an explicit non-open state; unknown/parse-miss → fail-open
+                                // so an Evolution response-shape change can't black-hole every client's sends.
+                                instanceConnVerified = state == null ? true : state === 'open';
+                                if (instanceConnVerified === false) {
+                                    console.error(`🔌 [${runId}] Instance not open (state=${state}); aborting send to avoid false "sent".`);
+                                }
+                            } else {
+                                instanceConnVerified = true; // ponytail: status check unavailable → fall through, send guard is below.
+                            }
+                        } catch (_) {
+                            instanceConnVerified = true; // ponytail: don't block sends on a flaky status check.
+                        }
+                    }
+
+                    if (instanceConnVerified === false) {
+                        decision = 'instance_not_open';
+                        try {
+                            await supabase.from('ai_action_logs').insert({
+                                lead_id: Number(leadId),
+                                action_type: 'delivery_unconfirmed',
+                                details: JSON.stringify({ runId, reason: 'instance_not_open', instance: instanceName, remote_jid: resolvedRemoteJid, message_preview: outboundText.substring(0, 120) }),
+                                success: false
+                            });
+                        } catch (_) {}
+                        break; // do NOT insert as sent; leave didSendOutbound false
+                    }
+
+                    console.log(`📤 Sending Part ${i + 1}/${parts.length} to Evolution: ${instanceName} -> ${resolvedRemoteJid}`);
 
                     const sendResp = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
                         method: 'POST',
                         headers: { 'apikey': evoKey, 'Content-Type': 'application/json; charset=utf-8' },
                         body: JSON.stringify({
-                            number: numberToSend,
+                            number: resolvedRemoteJid,
                             text: outboundText,
                             textMessage: { text: outboundText }
                         })
@@ -5844,8 +5886,18 @@ CORRECAO OBRIGATORIA:
                     evolutionSendStatus = sendResp.status;
                     console.log(`📨 Evolution Send Status: ${sendResp.status}`);
 
+                    // Evolution returns the WhatsApp message key only when the message is actually queued for delivery.
+                    let waMessageId: string | null = null;
                     if (sendResp.ok) {
-                        // C. LOG OUTBOUND (Strictly for this instance)
+                        const sendBody = await sendResp.json().catch(() => null);
+                        waMessageId = sendBody?.key?.id ?? sendBody?.message?.key?.id ?? null;
+                        if (!waMessageId) {
+                            console.warn(`⚠️ [${runId}] Evolution 2xx without key.id — delivery unconfirmed.`);
+                        }
+                    }
+
+                    if (sendResp.ok) {
+                        // C. LOG OUTBOUND (Strictly for this instance) — store the key for delivery reconciliation.
                         const { data: ins, error: insErr } = await supabase.from('interacoes').insert({
                             lead_id: leadId,
                             user_id: lead.user_id,
@@ -5854,18 +5906,39 @@ CORRECAO OBRIGATORIA:
                             instance_name: instanceName, // STRICT
                             phone_e164: numberToSend,
                             remote_jid: resolvedRemoteJid,
-                            wa_from_me: true
+                            wa_from_me: true,
+                            wa_message_id: waMessageId
                         }).select('id').single();
 
                         if (insErr) console.error('❌ DB Insert Error:', insErr);
                         else {
-                            console.log(`💾 Outbound inserted id: ${ins?.id} (Instance: ${instanceName})`);
+                            console.log(`💾 Outbound inserted id: ${ins?.id} wa=${waMessageId ?? 'null'} (Instance: ${instanceName})`);
                             didSendOutbound = true; // Tarefa 1: mark reply as sent (live)
+                        }
+
+                        if (!waMessageId) {
+                            try {
+                                await supabase.from('ai_action_logs').insert({
+                                    lead_id: Number(leadId),
+                                    action_type: 'delivery_unconfirmed',
+                                    details: JSON.stringify({ runId, reason: 'no_key_id', status: sendResp.status, instance: instanceName, remote_jid: resolvedRemoteJid, message_preview: outboundText.substring(0, 120) }),
+                                    success: false
+                                });
+                            } catch (_) {}
                         }
 
                     } else {
                         const errText = await sendResp.text();
                         console.error(`❌ Send Failed: ${sendResp.status} - ${errText}`);
+                        try {
+                            await supabase.from('ai_action_logs').insert({
+                                lead_id: Number(leadId),
+                                action_type: 'delivery_unconfirmed',
+                                details: JSON.stringify({ runId, reason: 'send_http_error', status: sendResp.status, instance: instanceName, remote_jid: resolvedRemoteJid, message_preview: outboundText.substring(0, 120) }),
+                                success: false
+                            });
+                        } catch (_) {}
+                        break; // stop sending remaining parts
                     }
                 }
 
