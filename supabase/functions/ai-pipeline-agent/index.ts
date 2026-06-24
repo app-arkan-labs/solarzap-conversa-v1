@@ -1162,11 +1162,17 @@ function getRespondeuQualificationState(lead: any): {
     const collected = stageData?.collected && typeof stageData.collected === 'object' ? stageData.collected : {};
 
     const hasProjectType = Boolean(String(lead?.tipo_cliente || stageData?.segment || '').trim());
+    const answeredKeysSnap = Array.isArray((stageData as any)?.answered_keys)
+        ? (stageData as any).answered_keys.map((k: any) => normalizeQuestionKey(k))
+        : [];
     const hasConsumptionOrBill = Boolean(
         Number(lead?.valor_estimado || 0) > 0
         || Number(lead?.consumo_kwh || 0) > 0
         || Number((collected as any)?.estimated_value_brl || 0) > 0
         || Number((collected as any)?.consumption_kwh_month || 0) > 0
+        || answeredKeysSnap.includes('bill_value')
+        || answeredKeysSnap.includes('consumption_kwh')
+        || answeredKeysSnap.includes('consumption_or_bill')
     );
     const hasLocation = Boolean(String(lead?.cidade || (collected as any)?.city || stageData?.address || '').trim());
     const hasUtilityCompany = Boolean(String(meta?.utility_company || (collected as any)?.utility_company || '').trim());
