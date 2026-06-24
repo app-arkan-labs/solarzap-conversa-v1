@@ -1489,6 +1489,13 @@ function autoSplitWhatsapp(text: string): string[] {
         else buf = `${buf} ${s}`;
     }
     if (buf) parts.push(buf);
+    // End on the question: move the last question to the end so any closing statement
+    // ("Posso ajudar com isso!") comes before it instead of after.
+    const qIdx = parts.map((p) => p.endsWith('?')).lastIndexOf(true);
+    if (qIdx >= 0 && qIdx !== parts.length - 1) {
+        const [q] = parts.splice(qIdx, 1);
+        parts.push(q);
+    }
     // Cap at 4 messages; merge any overflow into the last.
     if (parts.length > 4) {
         const head = parts.slice(0, 3);
@@ -3941,8 +3948,34 @@ Deno.serve(async (req) => {
             }
         }
         burstMsgs.reverse(); // chronological order
-        const lastUserTextAggregated = burstMsgs.join('\n');
+        let lastUserTextAggregated = burstMsgs.join('\n');
         aggregatedBurstCount = burstMsgs.length;
+
+        // Safety net: respond to the lead's ACTUAL newest client message. Rapid messages during a
+        // slow split-reply (typing + inter-part delays) have produced runs that aggregated a stale
+        // older message, making the bot answer the wrong text and re-introduce itself. Re-fetch the
+        // newest inbound fresh and override if the aggregated text doesn't already include it.
+        try {
+            const { data: freshNewest } = await supabase
+                .from('interacoes')
+                .select('id,mensagem,attachment_url')
+                .eq('lead_id', leadId)
+                .eq('wa_from_me', false)
+                .eq('tipo', 'mensagem_cliente')
+                .order('id', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            const freshText = normalizeHistoryText((freshNewest as any)?.mensagem, (freshNewest as any)?.attachment_url || null);
+            if (freshText && !lastUserTextAggregated.includes(freshText)) {
+                console.warn(`⚠️ [${runId}] Aggregated text stale; overriding with newest client msg ${(freshNewest as any)?.id}.`);
+                lastUserTextAggregated = freshText;
+                aggregatedBurstCount = 1;
+                const lastTurn = chatHistory[chatHistory.length - 1];
+                if (!lastTurn || lastTurn.role !== 'user' || !String(extractTextFromMessageContent(lastTurn.content) || '').includes(freshText)) {
+                    chatHistory.push({ role: 'user', content: freshText });
+                }
+            }
+        } catch (_) {}
         aggregatedChars = lastUserTextAggregated.length;
         if (aggregatedBurstCount > 1) {
             console.log(`🧩 [${runId}] Burst aggregated: ${aggregatedBurstCount} msgs, ${aggregatedChars} chars.`);
