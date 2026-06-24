@@ -5877,9 +5877,9 @@ CORRECAO OBRIGATORIA:
                         method: 'POST',
                         headers: { 'apikey': evoKey, 'Content-Type': 'application/json; charset=utf-8' },
                         body: JSON.stringify({
-                            number: resolvedRemoteJid,
+                            number: numberToSend,
                             text: outboundText,
-                            textMessage: { text: outboundText }
+                            options: { delay: 1200 }
                         })
                     });
 
