@@ -1,0 +1,101 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e6]:
+      - navigation [ref=e8]:
+        - link "Supabase Logo" [ref=e11] [cursor=pointer]:
+          - /url: https://supabase.com
+          - img "Supabase Logo" [ref=e12]
+        - link "Documentation" [ref=e14] [cursor=pointer]:
+          - /url: https://supabase.com/docs
+          - img [ref=e16]
+          - generic [ref=e19]: Documentation
+      - generic [ref=e20]:
+        - main [ref=e21]:
+          - generic [ref=e22]:
+            - generic [ref=e23]:
+              - heading "Welcome back" [level=1] [ref=e24]
+              - heading "Sign in to your account" [level=2] [ref=e25]
+            - generic [ref=e26]:
+              - button "Continue with GitHub" [ref=e29] [cursor=pointer]:
+                - img [ref=e31]
+                - generic [ref=e34]: Continue with GitHub
+              - link "Continue with SSO" [ref=e37] [cursor=pointer]:
+                - /url: /dashboard/sign-in-sso?returnTo=%2Fproject%2Fucwmcmdwbvrwotuzlmxh%2Fsettings%2Fgeneral
+                - img [ref=e39]
+                - generic [ref=e42]: Continue with SSO
+              - generic [ref=e47]: or
+              - generic [ref=e48]:
+                - generic [ref=e50]:
+                  - generic [ref=e97]: Email
+                  - textbox "Email" [disabled] [ref=e56]:
+                    - /placeholder: you@example.com
+                    - text: app.arkanlabs@gmail.com
+                - generic [ref=e57]:
+                  - generic [ref=e59]:
+                    - generic [ref=e98]: Password
+                    - generic [ref=e65]:
+                      - textbox "Password" [disabled] [ref=e66]:
+                        - /placeholder: ••••••••
+                        - text: AtsWp@3fB&
+                      - button "Show password" [disabled]:
+                        - generic:
+                          - img
+                  - link "Forgot password?" [ref=e72] [cursor=pointer]:
+                    - /url: /dashboard/forgot-password?returnTo=%2Fproject%2Fucwmcmdwbvrwotuzlmxh%2Fsettings%2Fgeneral
+                - generic [ref=e73]:
+                  - generic: Last used
+                  - generic [ref=e74]:
+                    - button "Sign in" [disabled]:
+                      - generic:
+                        - img
+                      - generic: Sign in
+            - generic [ref=e78]:
+              - text: Don’t have an account?
+              - link "Sign up" [ref=e79] [cursor=pointer]:
+                - /url: /dashboard/sign-up?returnTo=%2Fproject%2Fucwmcmdwbvrwotuzlmxh%2Fsettings%2Fgeneral
+          - paragraph [ref=e81]:
+            - text: By continuing, you agree to Supabase’s
+            - link "Terms of Service" [ref=e82] [cursor=pointer]:
+              - /url: https://supabase.com/terms
+            - text: and
+            - link "Privacy Policy" [ref=e83] [cursor=pointer]:
+              - /url: https://supabase.com/privacy
+            - text: ", and to receive periodic emails with updates."
+        - complementary [ref=e84]:
+          - generic [ref=e85]:
+            - generic [ref=e86]: “
+            - blockquote [ref=e87]: "@supabase is insane."
+            - link "codewithbhargav @codewithbhargav" [ref=e88] [cursor=pointer]:
+              - /url: https://twitter.com/codewithbhargav/status/1357647840911126528
+              - img "codewithbhargav" [ref=e89]
+              - generic [ref=e91]: "@codewithbhargav"
+    - region "Notifications alt+T":
+      - list:
+        - status [ref=e99]:
+          - button "Close toast" [ref=e100]:
+            - img [ref=e101]
+          - generic [ref=e120]: Signing in...
+  - alert [ref=e92]
+  - iframe [active] [ref=e123]:
+    - generic [ref=f30e2]:
+      - generic [ref=f30e5]:
+        - generic [ref=f30e8]:
+          - heading "Escolha o que não segue a sequência circular" [level=2] [ref=f30e9]
+          - paragraph
+        - 'img "Desafio de CAPTCHA baseado em imagem. Use as opções \"Acessibilidade: Obter Cookie\" ou \"Acessibilidade: Desafio de Texto\", se disponíveis no menu de desafios." [ref=f30e11]'
+      - generic [ref=f30e12]:
+        - alert [ref=f30e13]:
+          - generic [ref=f30e14]: Por favor, tente novamente. ⚠️
+        - button "Desafio de Pular, página 1 de 2" [ref=f30e21] [cursor=pointer]:
+          - generic: Pular
+      - generic [ref=f30e22]:
+        - button "PT - Portuguese (Brazil), Selecione um idioma" [ref=f30e24] [cursor=pointer]:
+          - generic [ref=f30e25]: PT
+        - button "About hCaptcha & Accessibility Options" [active] [ref=f30e26] [cursor=pointer]:
+          - img [ref=f30e28]
+          - img [ref=f30e33]
+        - button "Atualizar desafio." [ref=f30e37] [cursor=pointer]:
+          - img [ref=f30e39]
+          - img [ref=f30e43]
+        - button "Logotipo do hCaptcha, abre uma nova janela com mais informações" [ref=f30e46] [cursor=pointer]:
+          - img [ref=f30e49]

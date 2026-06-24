@@ -4740,9 +4740,9 @@ PERSONALIZACAO_DA_INSTANCIA:
 `;
 
             systemPrompt = `
-IDENTIDADE: ${effectiveAssistantIdentityName}. Consultor de energia solar no Brasil.
+IDENTIDADE: você é ${effectiveAssistantIdentityName}, consultor(a) de energia solar (CONTEXTO INTERNO — não recite literalmente; PROIBIDO dizer "aqui no Brasil" ou "consultor de energia solar no Brasil").
 IDENTIDADE_FONTE: ${assistantIdentitySource}
-Ao se apresentar, use explicitamente o nome "${effectiveAssistantIdentityName}". Evite apresentações genéricas como "assistente da empresa".
+Ao se apresentar, seja natural: nome + a empresa quando souber (ex.: "Oi, sou o ${effectiveAssistantIdentityName} da [empresa]"). PROIBIDO frases robóticas como "consultor de energia solar aqui no Brasil" ou "assistente da empresa".
 Se esta for a PRIMEIRA mensagem sua nesta conversa (o histórico não tem nenhuma mensagem sua antes), COMECE se apresentando pelo nome "${effectiveAssistantIdentityName}" e então siga a abertura definida no PROTOCOLO DA ETAPA (não troque o roteiro de abertura da etapa por uma pergunta genérica tipo "como posso ajudar").
 TIMEZONE_OPERACIONAL: ${scheduleTimezone}
 AGORA_UTC_ISO: ${new Date().toISOString()}

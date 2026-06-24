@@ -1,0 +1,73 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Documentacao Tecnica Complementar Final</title><style>
+  @page { size: A4; margin: 18mm 15mm 18mm 15mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #172033; line-height: 1.48; font-size: 10.6pt; margin: 0; }
+  .doc { max-width: 100%; }
+  .cover { min-height: 91vh; display: flex; flex-direction: column; justify-content: center; border: 1px solid #d7dde8; padding: 34px; border-radius: 10px; background: linear-gradient(180deg, #fff, #f8fafc); }
+  .cover h1 { font-size: 23pt; line-height: 1.18; margin: 0 0 24px; color: #0f172a; }
+  .cover .subtitle { font-size: 12pt; color: #46546a; margin-bottom: 28px; }
+  .cover .meta { display: grid; grid-template-columns: 170px 1fr; gap: 8px 16px; font-size: 11pt; }
+  .cover .meta b { color: #0f172a; }
+  h1 { font-size: 22pt; margin: 0 0 18px; color: #0f172a; }
+  h2 { font-size: 16pt; margin: 26px 0 10px; color: #12213a; border-bottom: 1px solid #d7dde8; padding-bottom: 5px; }
+  h3 { font-size: 12.5pt; margin: 20px 0 8px; color: #1e365f; }
+  p { margin: 0 0 9px; }
+  ul { margin: 6px 0 12px 22px; padding: 0; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 9.3pt; page-break-inside: avoid; }
+  th { background: #eef3f9; color: #0f172a; text-align: left; font-weight: 700; }
+  th, td { border: 1px solid #cfd8e6; padding: 6px 7px; vertical-align: top; }
+  .note { border-left: 4px solid #f97316; background: #fff7ed; padding: 10px 12px; margin: 12px 0; }
+  .muted { color: #556276; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; background: #eef3f9; border: 1px solid #d7dde8; font-size: 9pt; margin: 2px; }
+  .page-break { break-before: page; page-break-before: always; }
+  figure { margin: 12px 0 18px; break-inside: avoid; page-break-inside: avoid; }
+  figure img { display: block; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; }
+  figcaption { font-size: 9pt; color: #556276; margin-top: 5px; }
+  svg.diagram { width: 100%; height: auto; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; margin: 10px 0 16px; page-break-inside: avoid; }
+  .small { font-size: 9pt; }
+  .signature { margin-top: 70px; text-align: center; }
+  .signature .line { border-top: 1px solid #111827; width: 70%; margin: 0 auto 8px; }
+</style></head><body><main class="doc"><section class="cover">
+    <h1>Documentacao tecnica complementar - SolarZap</h1>
+    <div class="subtitle">Versao final para anexo academico</div>
+    <div class="meta">
+      <b>Aluno</b><span>Rodrigo Sena Fernandes</span>
+      <b>RA</b><span>2211724</span>
+      <b>Curso</b><span>Ciencia de Dados</span>
+      <b>Polo</b><span>Garca</span>
+      <b>Instituicao</b><span>UNIVESP</span>
+      <b>Sistema</b><span>SolarZap</span>
+      <b>Periodo</b><span>10/01/2026 a 15/05/2026</span>
+      <b>Ambiente de producao</b><span>https://app.solarzap.com.br</span>
+      <b>Local e data</b><span>Marilia/SP, 18 de junho de 2026</span>
+    </div>
+  </section>
+  <section class="page-break">
+    <h2>Identificacao</h2>
+    <table><thead><tr><th>Campo</th><th>Informacao</th></tr></thead><tbody><tr><td>Aluno</td><td>Rodrigo Sena Fernandes</td></tr><tr><td>RA</td><td>2211724</td></tr><tr><td>Curso</td><td>Ciencia de Dados</td></tr><tr><td>Polo</td><td>Garca</td></tr><tr><td>Sistema</td><td>SolarZap</td></tr><tr><td>Periodo de desenvolvimento</td><td>10/01/2026 a 15/05/2026</td></tr><tr><td>Ambiente de producao</td><td>https://app.solarzap.com.br</td></tr><tr><td>Local e data</td><td>Marilia/SP, 18 de junho de 2026</td></tr></tbody></table>
+    <h2>Visao geral</h2>
+    <p>O SolarZap e uma plataforma web/CRM voltada a gestao comercial no setor de energia solar. Seu nucleo operacional organiza contatos, leads, conversas, pipeline, calendario, propostas, automacoes e indicadores. O codigo tambem evidencia modulos complementares de integracao, IA, billing, admin, contratos e CRM interno.</p>
+    <h2>Stack tecnica real</h2>
+    <table><thead><tr><th>Area</th><th>Tecnologias</th></tr></thead><tbody><tr><td>Aplicacao web</td><td>React 18, Vite, TypeScript, React Router.</td></tr><tr><td>Interface</td><td>Tailwind CSS, shadcn/Radix UI, lucide-react, Recharts.</td></tr><tr><td>Dados/estado</td><td>TanStack Query, React Context, Supabase JS.</td></tr><tr><td>Backend</td><td>Supabase Auth, PostgreSQL, RLS, Storage, Edge Functions.</td></tr><tr><td>Validacao e documentos</td><td>Zod, React Hook Form, jsPDF, xlsx.</td></tr><tr><td>Testes</td><td>Vitest, Testing Library, Playwright.</td></tr><tr><td>Infra/deploy</td><td>Docker, docker-compose, Caddy.</td></tr></tbody></table>
+    <h2>Estrutura de pastas</h2>
+    <table><thead><tr><th>Caminho</th><th>Responsabilidade</th></tr></thead><tbody><tr><td><code>src/App.tsx</code></td><td>Rotas, providers e lazy loading da aplicacao.</td></tr><tr><td><code>src/pages/</code></td><td>Paginas de login, principal, admin, billing, pricing, onboarding e embed de contratos.</td></tr><tr><td><code>src/components/solarzap/</code></td><td>Componentes do CRM principal.</td></tr><tr><td><code>src/hooks/</code></td><td>Hooks de propostas, integracoes, billing, notificacoes, dashboards e tracking.</td></tr><tr><td><code>src/hooks/domain/</code></td><td>Hooks de dominio para leads, pipeline e chat.</td></tr><tr><td><code>src/contexts/</code></td><td>Autenticacao, automacoes, integracoes e tema.</td></tr><tr><td><code>src/modules/internal-crm/</code></td><td>CRM interno administrativo.</td></tr><tr><td><code>src/modules/contracts/</code></td><td>Modulo de contratos.</td></tr><tr><td><code>supabase/migrations/</code></td><td>Evolucao do banco, RLS, RPCs e crons.</td></tr><tr><td><code>supabase/functions/</code></td><td>Backend serverless e integracoes.</td></tr><tr><td><code>tests/</code></td><td>Testes unitarios, golden e E2E.</td></tr></tbody></table>
+    <h2>Rotas e modulos</h2>
+    <p>As rotas em <code>src/App.tsx</code> incluem login, selecao de organizacao, atualizacao de acesso, paginas legais, pricing, billing, embed de contratos, onboarding, area principal protegida e area administrativa. A navegacao do CRM inclui conversas, pipeline, calendario, contatos, disparos, propostas, dashboard, integracoes, tracking, automacoes, IA/agentes, equipe, plano e conta.</p>
+    <h2>Hooks e servicos</h2>
+    <table><thead><tr><th>Hook/servico</th><th>Funcao tecnica</th></tr></thead><tbody><tr><td><code>useLeads</code></td><td>CRUD, importacao, realtime e escopo de leads.</td></tr><tr><td><code>usePipeline</code></td><td>Movimentacao de funil, propostas e eventos comerciais.</td></tr><tr><td><code>useChat</code></td><td>Mensagens, midias, realtime e envio via provedor.</td></tr><tr><td><code>useIntegrations</code></td><td>Conexao/desconexao e status de Google, Meta e WhatsApp.</td></tr><tr><td><code>useProposalForm</code></td><td>Fluxo de proposta e calculos associados.</td></tr><tr><td><code>useAutomationSettings</code></td><td>Regras de automacao e mensagens padronizadas.</td></tr><tr><td><code>useOrgBilling</code></td><td>Status de plano e limites.</td></tr><tr><td><code>useAdminApi</code></td><td>Operacoes administrativas.</td></tr></tbody></table>
+    <h2>Edge Functions</h2>
+    <p>Foram identificadas funcoes serverless para admin, WhatsApp/Evolution, Google, Meta, tracking, propostas, billing, CRM interno, contratos, notificacoes, relatorios e recursos solares. Essas funcoes evidenciam separacao entre interface web e integracoes que dependem de credenciais ou processamento backend.</p>
+    <h2>Banco de dados e migrations</h2>
+    <p>O diretorio <code>supabase/migrations</code> registra a evolucao do schema. Foram encontradas migrations para organizacoes, RLS, calendario, dashboard, base de conhecimento, IA, propostas, tarefas, notificacoes, disparos, tracking, admin, billing, automacoes, onboarding, CRM interno e contratos.</p>
+    <h2>Seguranca</h2>
+    <ul><li>Autenticacao via Supabase Auth.</li><li>Controle de organizacao e papeis por <code>organization_members</code>.</li><li>Rotas protegidas por <code>ProtectedRoute</code> e area admin por <code>AdminGuard</code>.</li><li>Politicas RLS para isolamento de dados por organizacao.</li><li>Uso de variaveis de ambiente e cofre/plataforma backend para configuracoes sensiveis, sem valores reproduzidos neste documento.</li><li>Cabecalhos e regras de servidor observados no <code>Caddyfile</code>.</li></ul>
+    <h2>Deploy</h2>
+    <p>O repositorio contem <code>Dockerfile</code>, <code>docker-compose.vps.yml</code> e <code>Caddyfile</code>, indicando mecanismo de build e publicacao web. O ambiente de producao verificado e <strong>https://app.solarzap.com.br</strong>.</p>
+    <h2>Evidencias de producao</h2>
+    <ul><li>URL publica verificada: <strong>https://app.solarzap.com.br</strong>.</li><li>Aplicacao publicada em dominio proprio com tela de login SolarZap.</li><li>Acesso autenticado em conta de teste fornecida pelo solicitante.</li><li>Capturas internas redigidas quando continham telefone, valor ou informacao operacional sensivel.</li></ul>
+    <figure><img src="file:///C:/Users/rosen/Downloads/solarzap-conversa-main/docs/tcc-equivalencia-solarzap/FINAL_UNIVESP/evidencia-producao-area-autenticada.png" alt="Area autenticada do SolarZap em producao, conta de teste."><figcaption>Area autenticada do SolarZap em producao, conta de teste.</figcaption></figure>
+    <figure><img src="file:///C:/Users/rosen/Downloads/solarzap-conversa-main/docs/tcc-equivalencia-solarzap/FINAL_UNIVESP/evidencia-producao-calendario.png" alt="Modulo calendario em producao."><figcaption>Modulo calendario em producao.</figcaption></figure>
+    <h2>Limitacoes tecnicas</h2>
+    <ul><li>Integracoes externas dependem de configuracao e autorizacoes especificas.</li><li>Alguns modulos complementares sao evidenciados no codigo, mas nao foram tratados como nucleo principal demonstrado.</li><li>A suite completa de testes nao foi executada nesta etapa final por limite de tempo local.</li><li>Dados internos foram redigidos quando necessario para preservar confidencialidade.</li></ul>
+  </section></main></body></html>

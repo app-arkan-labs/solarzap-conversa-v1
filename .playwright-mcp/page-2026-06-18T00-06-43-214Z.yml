@@ -1,0 +1,84 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e4]:
+    - generic [ref=e135]:
+      - img [ref=e136]
+      - generic [ref=e138]:
+        - paragraph [ref=e139]: Outstanding invoices
+        - generic [ref=e140]:
+          - generic [ref=e141]: ·
+          - generic [ref=e142]:
+            - text: Please
+            - link "pay your invoices" [ref=e143] [cursor=pointer]:
+              - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/billing#invoices
+            - text: to avoid service disruption
+    - banner [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - link "Supabase" [ref=e9] [cursor=pointer]:
+            - /url: /dashboard/org/ftpcvuorgfnhoyamclrb
+            - img "Supabase" [ref=e10]
+          - generic [ref=e144]:
+            - img [ref=e146]
+            - generic [ref=e148]:
+              - link "ARKAN LABS Free" [ref=e149] [cursor=pointer]:
+                - /url: /dashboard/org/ftpcvuorgfnhoyamclrb
+                - img [ref=e150]
+                - generic [ref=e160]: ARKAN LABS
+                - generic [ref=e161]: Free
+              - button [ref=e162] [cursor=pointer]:
+                - img [ref=e164]
+          - generic [ref=e250]:
+            - img [ref=e252]
+            - generic [ref=e254]: New project
+        - generic [ref=e11]:
+          - generic [ref=e13] [cursor=pointer]: Feedback
+          - generic [ref=e14]:
+            - button "Search..." [ref=e15]:
+              - generic [ref=e16]:
+                - img [ref=e17]
+                - paragraph [ref=e20]: Search...
+              - generic [ref=e22]: Ctrl K
+            - button "Help" [ref=e23] [cursor=pointer]:
+              - generic [ref=e24]:
+                - img [ref=e25]
+                - generic [ref=e28]: Help
+            - button "Advisor Center" [ref=e30] [cursor=pointer]:
+              - generic [ref=e31]:
+                - img [ref=e32]
+                - generic [ref=e34]: Advisor Center
+          - button [ref=e35] [cursor=pointer]:
+            - figure [ref=e168]:
+              - img [ref=e169]
+    - generic [ref=e261]:
+      - generic [ref=e263]:
+        - heading "Create a new project" [level=3] [ref=e264]
+        - paragraph [ref=e265]: Your project will have its own dedicated instance and full Postgres database. An API will be set up so you can easily interact with your new database.
+      - generic [ref=e266]:
+        - generic [ref=e269]:
+          - generic [ref=e272]: Organization
+          - generic [ref=e274]:
+            - combobox [ref=e275]:
+              - generic:
+                - generic:
+                  - generic: ARKAN LABS
+                  - generic: Free
+              - img [ref=e276]
+            - combobox [ref=e278]
+        - alert [ref=e280]:
+          - img [ref=e281]
+          - generic [ref=e284]:
+            - heading "The organization has members who have exceeded their free project limits" [level=5] [ref=e285]
+            - generic [ref=e287]:
+              - paragraph [ref=e288]: "The following members have reached their maximum limits for the number of active free plan projects within organizations where they are an administrator or owner:"
+              - list [ref=e289]:
+                - listitem [ref=e290]: "app.arkanlabs@gmail.com (Limit: 2 free projects)"
+              - paragraph [ref=e291]: These members will need to either delete, pause, or upgrade one or more of these projects before you're able to create a free project within this organization.
+              - link "Upgrade to Pro" [ref=e292] [cursor=pointer]:
+                - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/billing?panel=subscriptionPlan&source=freeProjectLimitWarning
+                - generic [ref=e293]: Upgrade to Pro
+      - generic [ref=e297]:
+        - button "Cancel" [ref=e298] [cursor=pointer]:
+          - generic [ref=e299]: Cancel
+        - button "Create new project" [disabled]:
+          - generic: Create new project
+  - alert [ref=e129]: New Project | Supabase

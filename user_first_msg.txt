@@ -1,0 +1,61 @@
+<USER_REQUEST>
+O Claude Code arrumou um bug e só faltou o Deploy + Verificação e um P3. Eu vou te mandar aqui e você vai fazer o que faltou. NÃO COMETA ERROS PELO AMOR DE DEUS, SÓ FINALIZE DE ONDE ELE PAROU, VOU TE MANDAR O HISTÓRICO TODO PARA QUE VOCÊ TENHA CONTEXTO. Execute usando a skill /ponytail no máximo.
+
+Estou com um problema com a IA do meu cliente Franco&Cunha aqui no SolarZap. A IA está enviando a mensagem pelo aplicativo mas não chega no whatsapp. Além disso, ela ainda está mandando mensagem com erro de acentuação, e desconfio que tem algum problema de continuidade, pois eu mandei a mensagem Teste 2x, ela respondeu pelo app nas 2x, mas uma resposta não pareceu ser continuidade da outra. Preciso que verifique minuciosamente o que aconteceu e me descreva em um plano de ação pra resolver isso de maneira definitiva, usando a skill /ponytail no máximo e a skill /caveman no máximo.
+I'll start by activating both skills at max level, then investigate the codebase in parallel.
+
+ponytail skill
+caveman skill
+Both modes active (ultra). Now investigate. Launch 3 Explore agents in parallel — one per symptom.
+
+Agent:Trace WhatsApp send flow
+IN
+Investigate a bug in this SolarZap codebase (WhatsApp CRM/AI SaaS, Supabase + Evolution API likely).
+
+PROBLEM: The AI generates a reply that shows up in the in-app conversation view, but the message is NOT delivered to the customer's WhatsApp. So the message is being persisted/displayed but the actual outbound WhatsApp send (via Evolution API or whatever gateway) fails or is skipped.
+
+Be very thorough. I need to understand the full outbound send pipeline:
+1. Where AI responses are generated and then sent to WhatsApp. Find the function(s) that call the Evolution API (or equivalent) send-message endpoint (e.g. /message/sendText, sendMessage).
+2. How the WhatsApp "instance" is selected/resolved per message. There was a recent commit "feat(crm): isolate internal notifications transport with dedicated whatsapp instance" — find what it changed 
+<truncated 45216 bytes>
+/solarzap/MetaConnectModal.tsx
+src/components/solarzap/MeuPlanoView.tsx
+src/components/solarzap/MobileBottomNav.tsx
+src/components/solarzap/MobileMoreModal.tsx
+src/components/solarzap/MobileRecordingOverlay.tsx
+src/components/solarzap/MoveToProposalModal.tsx
+src/components/solarzap/MultiAssigneeSelector.tsx
+src/components/solarzap/NotificationConfigPanel.tsx
+src/components/solarzap/NotificationSettingsCard.tsx
+src/components/solarzap/NotificationsPanel.tsx
+src/components/solarzap/PageHeader.tsx
+src/components/solarzap/PipelineView.tsx
+src/components/solarzap/ProjectPaidFinanceModal.tsx
+src/components/solarzap/ProposalModal.tsx
+src/components/solarzap/ProposalModalLegacy.tsx
+src/components/solarzap/ProposalReadyModal.tsx
+src/components/solarzap/ProposalsView.tsx
+src/components/solarzap/ReactionPicker.tsx
+src/components/solarzap/ScheduleModal.tsx
+src/components/solarzap/SolarZapLayout.tsx
+src/components/solarzap/SolarZapNav.tsx
+src/components/solarzap/StageBadges.tsx
+src/components/solarzap/TrackingView.tsx
+src/components/solarzap/VisitOutcomeAfterModal.tsx
+src/components/solarzap/VisitScheduleConfirmModal.tsx
+src/components/solarzap/WhatsAppConnectModal.tsx
+src/components/solarzap/WhatsAppInstanceCard.tsx
+src/components/solarzap/WhatsAppInstancesManager.tsx
+src/components/solarzap/calendar/CalendarFilters.tsx
+src/components/solarzap/calendar/EventArchiveModal.tsx
+src/components/solarzap/calendar/EventFeedbackModal.tsx
+src/components/solarzap/finance-wizard/FinanceStepInstallments.tsx
+src/components/solarzap/finance-wizard/FinanceStepPaymentMethod.tsx
+src/components/solarzap/finance-wizard/FinanceStepReview.tsx
+src/components/solarzap/finance-wizard/FinanceStepValues.tsx
+src/components/solarzap/finance-wizard/FinanceWizardProgressBar.tsx
+src/components/solarzap/knowledge-base/BrandingSettingsCard.tsx
+src/components/solarz
+<truncated 151835 bytes>
+
+NOTE: The output was truncated because it was too long. Use a more targeted query or a smaller range to get the information you need.

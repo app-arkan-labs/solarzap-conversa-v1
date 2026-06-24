@@ -1,0 +1,142 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e10]:
+        - img [ref=e11]
+        - generic [ref=e13]:
+          - paragraph [ref=e14]: Outstanding invoices in other organization
+          - generic [ref=e15]:
+            - generic [ref=e16]: ·
+            - generic [ref=e17]:
+              - text: Please
+              - link "pay invoices" [ref=e18] [cursor=pointer]:
+                - /url: /dashboard/org/default/billing#invoices
+              - text: for other organizations to avoid service disruption
+      - banner [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - link "Supabase" [ref=e23] [cursor=pointer]:
+              - /url: /dashboard/org/robphjzpmicggusixqrb
+              - img "Supabase" [ref=e24]
+            - generic [ref=e26]:
+              - img [ref=e28]
+              - generic [ref=e30]:
+                - link "SolarZap" [ref=e31] [cursor=pointer]:
+                  - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh
+                  - img [ref=e32]
+                  - generic "SolarZap" [ref=e35]
+                - button [ref=e36] [cursor=pointer]:
+                  - img [ref=e38]
+              - img [ref=e42]
+            - button "Connect" [disabled] [ref=e46]:
+              - img [ref=e48]
+              - generic [ref=e50]: Connect
+          - generic [ref=e51]:
+            - generic [ref=e53] [cursor=pointer]: Feedback
+            - generic [ref=e54]:
+              - button "Search..." [ref=e55]:
+                - generic [ref=e56]:
+                  - img [ref=e57]
+                  - paragraph [ref=e60]: Search...
+                - generic [ref=e62]: Ctrl K
+              - button "Help" [ref=e63] [cursor=pointer]:
+                - generic [ref=e64]:
+                  - img [ref=e65]
+                  - generic [ref=e68]: Help
+              - button "Advisor Center" [ref=e70] [cursor=pointer]:
+                - generic [ref=e71]:
+                  - img [ref=e72]
+                  - generic [ref=e74]: Advisor Center
+              - button "SQL Editor" [ref=e76] [cursor=pointer]:
+                - generic [ref=e77]:
+                  - img [ref=e78]
+                  - generic [ref=e80]: SQL Editor
+              - button "AI Assistant" [ref=e81] [cursor=pointer]:
+                - generic [ref=e82]:
+                  - img [ref=e85]
+                  - generic [ref=e88]: AI Assistant
+            - button [ref=e89] [cursor=pointer]:
+              - figure [ref=e91]:
+                - img [ref=e92]
+      - generic [ref=e94]:
+        - generic [ref=e98]:
+          - list [ref=e101]:
+            - generic [ref=e102]:
+              - listitem [ref=e103]:
+                - link "Project Overview" [ref=e104] [cursor=pointer]:
+                  - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh
+                  - img [ref=e105]
+                  - generic: Project Overview
+              - listitem [ref=e107]:
+                - button "Table Editor" [disabled]:
+                  - img
+                  - generic: Table Editor
+              - listitem [ref=e108]:
+                - button "SQL Editor" [disabled]:
+                  - img
+                  - generic: SQL Editor
+            - generic [ref=e109]:
+              - listitem [ref=e110]:
+                - button "Database" [disabled]:
+                  - img
+                  - generic: Database
+              - listitem [ref=e111]:
+                - button "Authentication" [disabled]:
+                  - img
+                  - generic: Authentication
+              - listitem [ref=e112]:
+                - button "Storage" [disabled]:
+                  - img
+                  - generic: Storage
+              - listitem [ref=e113]:
+                - link "Edge Functions" [ref=e114] [cursor=pointer]:
+                  - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh/functions
+                  - img [ref=e115]
+                  - generic: Edge Functions
+              - listitem [ref=e120]:
+                - button "Realtime" [disabled]:
+                  - img
+                  - generic: Realtime
+            - generic [ref=e121]:
+              - listitem [ref=e123]:
+                - button "Advisors" [disabled]:
+                  - img
+                  - generic: Advisors
+              - listitem [ref=e124]:
+                - button "Observability" [disabled]:
+                  - img
+                  - generic: Observability
+              - listitem [ref=e125]:
+                - link "Logs" [ref=e126] [cursor=pointer]:
+                  - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh/logs/explorer
+                  - img [ref=e127]
+                  - generic: Logs
+              - listitem [ref=e128]:
+                - button "Integrations" [disabled]:
+                  - img
+                  - generic: Integrations
+            - listitem [ref=e130]:
+              - link "Project Settings" [ref=e131] [cursor=pointer]:
+                - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh/settings/general
+                - img [ref=e132]
+                - generic: Project Settings
+          - button "Sidebar control" [ref=e137] [cursor=pointer]:
+            - img [ref=e139]
+        - main [ref=e149]:
+          - generic [ref=e154]:
+            - img [ref=e155]
+            - heading "The project \"SolarZap\" is currently paused" [level=2] [ref=e159]
+    - generic [ref=e168]:
+      - generic:
+        - img "Background pattern"
+      - generic [ref=e169]:
+        - button "Close banner" [ref=e171] [cursor=pointer]:
+          - img [ref=e173]
+        - generic [ref=e176]:
+          - generic [ref=e177]: Notice
+          - generic [ref=e178]:
+            - paragraph [ref=e179]: We've updated our Terms of Service
+            - paragraph [ref=e180]: Updates define the responsibilities of both you and Supabase in the use of AI.
+          - button "Learn more" [ref=e181] [cursor=pointer]:
+            - generic [ref=e182]: Learn more
+  - alert [ref=e183]: Supabase

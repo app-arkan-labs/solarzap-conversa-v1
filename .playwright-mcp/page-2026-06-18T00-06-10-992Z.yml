@@ -1,0 +1,138 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e135]:
+        - img [ref=e136]
+        - generic [ref=e138]:
+          - paragraph [ref=e139]: Outstanding invoices
+          - generic [ref=e140]:
+            - generic [ref=e141]: ·
+            - generic [ref=e142]:
+              - text: Please
+              - link "pay your invoices" [ref=e143] [cursor=pointer]:
+                - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/billing#invoices
+              - text: to avoid service disruption
+      - banner [ref=e6]:
+        - generic [ref=e7]:
+          - generic [ref=e8]:
+            - link "Supabase" [ref=e9] [cursor=pointer]:
+              - /url: /dashboard/org/ftpcvuorgfnhoyamclrb
+              - img "Supabase" [ref=e10]
+            - generic [ref=e144]:
+              - img [ref=e146]
+              - generic [ref=e148]:
+                - link "ARKAN LABS Free" [ref=e149] [cursor=pointer]:
+                  - /url: /dashboard/org/ftpcvuorgfnhoyamclrb
+                  - img [ref=e150]
+                  - generic [ref=e160]: ARKAN LABS
+                  - generic [ref=e161]: Free
+                - button [ref=e162] [cursor=pointer]:
+                  - img [ref=e164]
+          - generic [ref=e11]:
+            - generic [ref=e13] [cursor=pointer]: Feedback
+            - generic [ref=e14]:
+              - button "Search..." [ref=e15]:
+                - generic [ref=e16]:
+                  - img [ref=e17]
+                  - paragraph [ref=e20]: Search...
+                - generic [ref=e22]: Ctrl K
+              - button "Help" [ref=e23] [cursor=pointer]:
+                - generic [ref=e24]:
+                  - img [ref=e25]
+                  - generic [ref=e28]: Help
+              - button "Advisor Center" [ref=e30] [cursor=pointer]:
+                - generic [ref=e31]:
+                  - img [ref=e32]
+                  - generic [ref=e34]: Advisor Center
+            - button [ref=e35] [cursor=pointer]:
+              - figure [ref=e168]:
+                - img [ref=e169]
+      - generic [ref=e40]:
+        - generic [ref=e44]:
+          - list [ref=e172]:
+            - generic [ref=e173]:
+              - listitem [ref=e174]:
+                - link "Projects" [ref=e175] [cursor=pointer]:
+                  - /url: /dashboard/org/ftpcvuorgfnhoyamclrb
+                  - img [ref=e176]
+                  - generic: Projects
+              - listitem [ref=e186]:
+                - link "Team" [ref=e187] [cursor=pointer]:
+                  - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/team
+                  - img [ref=e188]
+                  - generic: Team
+              - listitem [ref=e193]:
+                - link "Integrations" [ref=e194] [cursor=pointer]:
+                  - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/integrations
+                  - img [ref=e195]
+                  - generic: Integrations
+              - listitem [ref=e198]:
+                - link "Usage" [ref=e199] [cursor=pointer]:
+                  - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/usage
+                  - img [ref=e200]
+                  - generic: Usage
+              - listitem [ref=e203]:
+                - link "Billing" [ref=e204] [cursor=pointer]:
+                  - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/billing
+                  - img [ref=e205]
+                  - generic: Billing
+              - listitem [ref=e208]:
+                - link "Organization Settings" [ref=e209] [cursor=pointer]:
+                  - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/general
+                  - img [ref=e210]
+                  - generic: Organization Settings
+          - button "Sidebar control" [ref=e48] [cursor=pointer]:
+            - img [ref=e50]
+        - main [ref=e57]:
+          - generic [ref=e58]:
+            - heading "Projects" [level=1] [ref=e65]
+            - generic [ref=e69]:
+              - generic [ref=e70]:
+                - generic [ref=e71]:
+                  - group [ref=e72]:
+                    - textbox "Search for a project" [ref=e73]
+                    - group [ref=e74]:
+                      - img [ref=e75]
+                    - group
+                  - generic [ref=e78]:
+                    - generic [ref=e79] [cursor=pointer]:
+                      - generic [ref=e80]: Status
+                      - img [ref=e82]
+                    - button "Sorted by name" [ref=e84] [cursor=pointer]:
+                      - img [ref=e86]
+                      - generic [ref=e88]: Sorted by name
+                - generic [ref=e89]:
+                  - group [ref=e90]:
+                    - radio [checked] [ref=e91]:
+                      - img [ref=e92]
+                    - radio [ref=e94]:
+                      - img [ref=e95]
+                  - link "New project" [ref=e96] [cursor=pointer]:
+                    - /url: /dashboard/new/ftpcvuorgfnhoyamclrb
+                    - img [ref=e98]
+                    - generic [ref=e99]: New project
+              - list [ref=e214]:
+                - listitem [ref=e215]:
+                  - link "SolarZap AWS | sa-east-1" [ref=e216] [cursor=pointer]:
+                    - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh
+                    - generic [ref=e217]:
+                      - generic [ref=e219]:
+                        - generic [ref=e220]:
+                          - heading "SolarZap" [level=5] [ref=e221]
+                          - button [ref=e223]:
+                            - img [ref=e225]
+                        - paragraph [ref=e229]: AWS | sa-east-1
+                      - alert [ref=e231]:
+                        - img [ref=e233]
+                        - generic [ref=e235]:
+                          - paragraph [ref=e236]: Project is paused
+                          - button [ref=e237]:
+                            - img [ref=e238]
+    - region "Notifications alt+T":
+      - list:
+        - status [ref=e240]:
+          - button "Close toast" [ref=e241] [cursor=pointer]:
+            - img [ref=e242]
+          - img [ref=e246]
+          - generic [ref=e249]: You do not have access to this organization
+  - alert [ref=e129]: Projects | ARKAN LABS | Supabase

@@ -1,0 +1,538 @@
+- generic:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                  - generic:
+                    - paragraph: Outstanding invoices in other organization
+                    - generic:
+                      - generic: ·
+                      - generic:
+                        - text: Please
+                        - link:
+                          - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/billing#invoices
+                          - text: pay invoices
+                        - text: for other organizations to avoid service disruption
+        - generic:
+          - banner:
+            - generic:
+              - generic:
+                - link:
+                  - /url: /dashboard/org/okwksiianigmhhvobgjs
+                  - img
+                - generic:
+                  - generic:
+                    - img
+                  - generic:
+                    - link:
+                      - /url: /dashboard/org/okwksiianigmhhvobgjs
+                      - img
+                      - generic: ARKAN
+                      - generic: Free
+                    - button:
+                      - generic:
+                        - img
+                  - generic:
+                    - generic:
+                      - img
+                    - generic:
+                      - link:
+                        - /url: /dashboard/project/bwtsvypacazxjboyhioq
+                        - img
+                        - generic: raio-x
+                      - button:
+                        - generic:
+                          - img
+                    - generic:
+                      - link:
+                        - /url: /dashboard/org/okwksiianigmhhvobgjs/usage
+                        - generic: Exceeding usage limits
+                    - generic:
+                      - img
+                    - generic:
+                      - link:
+                        - /url: /dashboard/project/bwtsvypacazxjboyhioq
+                        - generic: main
+                        - generic: Production
+                      - button:
+                        - generic:
+                          - img
+                - generic:
+                  - button:
+                    - generic:
+                      - img
+                    - generic: Connect
+              - generic:
+                - generic:
+                  - generic: Feedback
+                - generic:
+                  - button:
+                    - generic:
+                      - img
+                      - paragraph: Search...
+                    - generic:
+                      - generic: Ctrl K
+                  - button [ref=e954] [cursor=pointer]:
+                    - generic [ref=e209]:
+                      - img [ref=e210]
+                      - generic [ref=e213]: Help
+                  - button [ref=e955] [cursor=pointer]:
+                    - generic [ref=e216]:
+                      - img [ref=e217]
+                      - generic [ref=e219]: Advisor Center
+                  - button [ref=e956] [cursor=pointer]:
+                    - generic [ref=e222]:
+                      - img [ref=e223]
+                      - generic [ref=e225]: SQL Editor
+                  - button [ref=e957] [cursor=pointer]:
+                    - generic [ref=e227]:
+                      - img [ref=e230]
+                      - generic [ref=e233]: AI Assistant
+                - button [ref=e234] [cursor=pointer]:
+                  - figure [ref=e236]:
+                    - img [ref=e237]
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - list:
+                      - generic:
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq/editor
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq/sql
+                            - img
+                      - generic:
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq/database/schemas
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq/auth/users
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq/storage/files
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq/functions
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq/realtime/inspector
+                            - img
+                      - generic:
+                        - generic:
+                          - listitem:
+                            - link:
+                              - /url: /dashboard/project/bwtsvypacazxjboyhioq/advisors/security
+                              - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq/observability
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq/logs/explorer
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq/integrations
+                            - img
+                      - generic:
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/general
+                            - img
+                - generic:
+                  - generic:
+                    - button:
+                      - generic:
+                        - img
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - heading [level=4]: Settings
+                              - generic:
+                                - generic:
+                                  - menu [disabled]:
+                                    - list:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic:
+                                                - generic:
+                                                  - generic: Configuration
+                                            - generic:
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/general
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: General
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/compute-and-disk
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Compute and Disk
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/infrastructure
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Infrastructure
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/integrations
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Integrations
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/api-keys
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: API Keys
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/jwt
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: JWT Keys
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/log-drains
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Log Drains
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/addons
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Add-ons
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic:
+                                                - generic:
+                                                  - generic: Integrations
+                                            - generic:
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/bwtsvypacazxjboyhioq/integrations/data_api/overview
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Data API
+                                                      - generic:
+                                                        - img
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/bwtsvypacazxjboyhioq/integrations/vault/overview
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Vault
+                                                        - generic: Beta
+                                                      - generic:
+                                                        - img
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic:
+                                                - generic:
+                                                  - generic: Billing
+                                            - generic:
+                                              - link [disabled]:
+                                                - /url: /dashboard/org/okwksiianigmhhvobgjs/billing
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Subscription
+                                                      - generic:
+                                                        - img
+                                              - link [disabled]:
+                                                - /url: /dashboard/org/okwksiianigmhhvobgjs/usage?projectRef=bwtsvypacazxjboyhioq
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Usage
+                                                      - generic:
+                                                        - img
+                      - separator [disabled]:
+                        - generic:
+                          - img
+                      - generic:
+                        - generic:
+                          - main:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - heading [level=1]: Project Settings
+                                    - generic: General configuration, domains, ownership, and lifecycle
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: General settings
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - textbox: raio-x
+                                            - generic:
+                                              - generic:
+                                                - generic: Project name
+                                              - generic: Displayed throughout the dashboard.
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - group:
+                                                - textbox: bwtsvypacazxjboyhioq
+                                                - group:
+                                                  - button:
+                                                    - generic:
+                                                      - img
+                                                    - generic: Copy
+                                            - generic:
+                                              - generic:
+                                                - generic: Project ID
+                                              - generic: Reference used in APIs and URLs.
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - group:
+                                                - textbox: sa-east-1
+                                                - group:
+                                                  - button:
+                                                    - generic:
+                                                      - img
+                                                    - generic: Copy
+                                            - generic:
+                                              - generic:
+                                                - generic: Project region
+                                              - generic: South America (São Paulo)
+                                      - generic:
+                                        - button [disabled]:
+                                          - generic: Save changes
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: Project access
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - paragraph: Organization-wide access
+                                          - paragraph: All 1 organization members can access this project.
+                                        - link:
+                                          - /url: /dashboard/org/okwksiianigmhhvobgjs/team
+                                          - generic: Manage members
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - table:
+                                            - rowgroup:
+                                              - row:
+                                                - columnheader: Member
+                                                - columnheader: Role
+                                            - rowgroup:
+                                              - row:
+                                                - cell:
+                                                  - generic:
+                                                    - paragraph: app.arkanlabs@gmail.com
+                                                    - generic: You
+                                                - cell: Owner
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: Project availability
+                                      - generic: Restart or pause your project when performing maintenance
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - paragraph: Restart project
+                                          - generic:
+                                            - paragraph: Your project will not be available for a few minutes.
+                                        - generic:
+                                          - button [ref=e958] [cursor=pointer]:
+                                            - generic [ref=e880]: Restart project
+                                          - button:
+                                            - generic:
+                                              - img
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - paragraph: Pause project
+                                          - generic:
+                                            - paragraph: Your project will not be accessible while it is paused.
+                                        - button [ref=e959] [cursor=pointer]:
+                                          - img [ref=e893]
+                                          - generic [ref=e895]: Pause project
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: Custom domains
+                                      - generic: Present a branded experience to your users
+                                - generic:
+                                  - alert:
+                                    - img
+                                    - generic:
+                                      - generic:
+                                        - heading [level=5]: Custom domains are a Pro Plan add-on
+                                        - generic:
+                                          - paragraph: Paid Plans come with free vanity subdomains or Custom Domains for an additional $10/month per domain.
+                                      - generic:
+                                        - link:
+                                          - /url: /dashboard/org/okwksiianigmhhvobgjs/billing?panel=subscriptionPlan&source=customDomain
+                                          - generic: Upgrade to Pro
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: Transfer project
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - img
+                                          - generic:
+                                            - paragraph: Transfer project to another organization
+                                            - paragraph: To transfer projects, the owner must be a member of both the source and target organizations.
+                                        - button [expanded] [ref=e960] [cursor=pointer]:
+                                          - generic [ref=e934]: Transfer project
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: Delete project
+                                      - generic: Permanently remove your project and its database
+                                - generic:
+                                  - alert:
+                                    - img
+                                    - heading [level=5]: Deleting this project will also remove your database.
+                                    - generic:
+                                      - paragraph: Make sure you have made a backup if you want to keep your data.
+                                    - button [ref=e961] [cursor=pointer]:
+                                      - generic [ref=e950]: Delete project
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - img
+              - generic:
+                - generic:
+                  - button:
+                    - generic:
+                      - img
+                - generic:
+                  - generic: Notice
+                  - generic:
+                    - paragraph: We've updated our Terms of Service
+                    - paragraph: Updates define the responsibilities of both you and Supabase in the use of AI.
+                  - button:
+                    - generic: Learn more
+    - region "Notifications alt+T":
+      - list:
+        - status [ref=e89]:
+          - button "Close toast" [ref=e90]:
+            - img [ref=e91]
+          - generic [ref=e110]: Signing in...
+  - generic:
+    - alert: General | Settings | raio-x | ARKAN | Supabase
+  - dialog "Transfer project raio-x" [ref=e963]:
+    - heading "Transfer project raio-x" [level=2] [ref=e965]
+    - generic [ref=e967]:
+      - paragraph [ref=e968]: "To transfer projects, the owner must be a member of both the source and target organizations. Consider the following before transferring your project:"
+      - list [ref=e969]:
+        - listitem [ref=e970]:
+          - img [ref=e972]
+          - generic [ref=e977]:
+            - paragraph [ref=e978]: Possible downtime
+            - paragraph [ref=e979]: There might be a short downtime when transferring projects from a paid to a free organization.
+        - listitem [ref=e980]:
+          - img [ref=e982]
+          - generic [ref=e984]:
+            - paragraph [ref=e985]: Permissions
+            - paragraph [ref=e986]: Depending on your role in the target organization, your level of permissions may change after transfer.
+        - listitem [ref=e987]:
+          - img [ref=e989]
+          - generic [ref=e991]:
+            - paragraph [ref=e992]: Features
+            - paragraph [ref=e993]: Moving your project to an organization with a smaller subscription plan may result in the loss of certain features (i.e. image transformations).
+      - link "Documentation" [ref=e994] [cursor=pointer]:
+        - /url: https://supabase.com/docs/guides/platform/project-transfer
+        - img [ref=e996]
+        - generic [ref=e999]: Documentation
+    - generic [ref=e1004]:
+      - generic [ref=e1028]: Select Target Organization
+      - combobox "Select Target Organization" [active] [ref=e1010]:
+        - generic: ARKAN CRM
+        - img [ref=e1011]
+    - alert [ref=e1033]:
+      - img [ref=e1034]
+      - generic [ref=e1037]:
+        - heading "Project cannot be transferred" [level=5] [ref=e1038]
+        - paragraph [ref=e1041]: Project is currently connected to GitHub. Please disconnect the GitHub integration before transferring the project to another organization. To reconnect the project after the transfer, use the standard GitHub integration.
+    - generic [ref=e1013]:
+      - button "Cancel" [ref=e1014] [cursor=pointer]:
+        - generic [ref=e1015]: Cancel
+      - button "Transfer Project" [disabled]:
+        - generic: Transfer Project
+    - button "Close" [ref=e1016]:
+      - img [ref=e1017]
+      - generic [ref=e1020]: Close

@@ -1,0 +1,100 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Requisitos Arquitetura Modelagem Final</title><style>
+  @page { size: A4; margin: 18mm 15mm 18mm 15mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #172033; line-height: 1.48; font-size: 10.6pt; margin: 0; }
+  .doc { max-width: 100%; }
+  .cover { min-height: 91vh; display: flex; flex-direction: column; justify-content: center; border: 1px solid #d7dde8; padding: 34px; border-radius: 10px; background: linear-gradient(180deg, #fff, #f8fafc); }
+  .cover h1 { font-size: 23pt; line-height: 1.18; margin: 0 0 24px; color: #0f172a; }
+  .cover .subtitle { font-size: 12pt; color: #46546a; margin-bottom: 28px; }
+  .cover .meta { display: grid; grid-template-columns: 170px 1fr; gap: 8px 16px; font-size: 11pt; }
+  .cover .meta b { color: #0f172a; }
+  h1 { font-size: 22pt; margin: 0 0 18px; color: #0f172a; }
+  h2 { font-size: 16pt; margin: 26px 0 10px; color: #12213a; border-bottom: 1px solid #d7dde8; padding-bottom: 5px; }
+  h3 { font-size: 12.5pt; margin: 20px 0 8px; color: #1e365f; }
+  p { margin: 0 0 9px; }
+  ul { margin: 6px 0 12px 22px; padding: 0; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 9.3pt; page-break-inside: avoid; }
+  th { background: #eef3f9; color: #0f172a; text-align: left; font-weight: 700; }
+  th, td { border: 1px solid #cfd8e6; padding: 6px 7px; vertical-align: top; }
+  .note { border-left: 4px solid #f97316; background: #fff7ed; padding: 10px 12px; margin: 12px 0; }
+  .muted { color: #556276; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; background: #eef3f9; border: 1px solid #d7dde8; font-size: 9pt; margin: 2px; }
+  .page-break { break-before: page; page-break-before: always; }
+  figure { margin: 12px 0 18px; break-inside: avoid; page-break-inside: avoid; }
+  figure img { display: block; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; }
+  figcaption { font-size: 9pt; color: #556276; margin-top: 5px; }
+  svg.diagram { width: 100%; height: auto; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; margin: 10px 0 16px; page-break-inside: avoid; }
+  .small { font-size: 9pt; }
+  .signature { margin-top: 70px; text-align: center; }
+  .signature .line { border-top: 1px solid #111827; width: 70%; margin: 0 auto 8px; }
+</style></head><body><main class="doc"><section class="cover">
+    <h1>Requisitos, arquitetura e modelagem - SolarZap</h1>
+    <div class="subtitle">Documento consolidado final</div>
+    <div class="meta">
+      <b>Aluno</b><span>Rodrigo Sena Fernandes</span>
+      <b>RA</b><span>2211724</span>
+      <b>Curso</b><span>Ciencia de Dados</span>
+      <b>Polo</b><span>Garca</span>
+      <b>Instituicao</b><span>UNIVESP</span>
+      <b>Sistema</b><span>SolarZap</span>
+      <b>Periodo</b><span>10/01/2026 a 15/05/2026</span>
+      <b>Ambiente de producao</b><span>https://app.solarzap.com.br</span>
+      <b>Local e data</b><span>Marilia/SP, 18 de junho de 2026</span>
+    </div>
+  </section>
+  <section class="page-break">
+    <h2>Requisitos funcionais</h2>
+    <table><thead><tr><th>Codigo</th><th>Requisito</th><th>Classificacao</th></tr></thead><tbody><tr><td>RF01</td><td>Autenticar usuarios e manter sessao.</td><td>Nucleo central demonstrado/evidenciado.</td></tr><tr><td>RF02</td><td>Selecionar organizacao e operar em ambiente multiempresa.</td><td>Nucleo central evidenciado.</td></tr><tr><td>RF03</td><td>Controlar acesso por papel, status, onboarding e plano.</td><td>Nucleo central evidenciado.</td></tr><tr><td>RF04</td><td>Cadastrar, listar, editar, importar e atribuir leads/contatos.</td><td>Nucleo central demonstrado/evidenciado.</td></tr><tr><td>RF05</td><td>Exibir conversas e interacoes associadas a leads.</td><td>Nucleo central demonstrado/evidenciado.</td></tr><tr><td>RF06</td><td>Movimentar leads em pipeline comercial.</td><td>Nucleo central demonstrado/evidenciado.</td></tr><tr><td>RF07</td><td>Registrar tarefas, agenda, chamadas e visitas.</td><td>Nucleo central demonstrado/evidenciado.</td></tr><tr><td>RF08</td><td>Criar propostas comerciais com dados tecnicos e financeiros.</td><td>Nucleo central evidenciado.</td></tr><tr><td>RF09</td><td>Configurar automacoes comerciais por organizacao.</td><td>Nucleo central evidenciado.</td></tr><tr><td>RF10</td><td>Exibir dashboards e indicadores comerciais.</td><td>Nucleo central demonstrado/evidenciado.</td></tr><tr><td>RF11</td><td>Registrar tracking e conversoes.</td><td>Implementado/evidenciado; dependente de configuracao externa.</td></tr><tr><td>RF12</td><td>Conectar integracoes Google, Meta, WhatsApp, pagamento, e-mail e IA.</td><td>Modulo complementar dependente de configuracao externa.</td></tr><tr><td>RF13</td><td>Operar admin, feature flags, billing, contratos e CRM interno.</td><td>Modulo complementar/administrativo evidenciado no codigo.</td></tr></tbody></table>
+    <h2>Requisitos nao funcionais</h2>
+    <table><thead><tr><th>Codigo</th><th>Requisito</th></tr></thead><tbody><tr><td>RNF01</td><td>Aplicacao web responsiva e acessivel por navegador.</td></tr><tr><td>RNF02</td><td>Tipagem estatica com TypeScript.</td></tr><tr><td>RNF03</td><td>Separacao modular por componentes, hooks, contextos e funcoes backend.</td></tr><tr><td>RNF04</td><td>Isolamento de dados por organizacao com RLS.</td></tr><tr><td>RNF05</td><td>Deploy reproduzivel por Docker/Caddy.</td></tr><tr><td>RNF06</td><td>Testabilidade por Vitest e Playwright.</td></tr><tr><td>RNF07</td><td>Configuracoes sensiveis fora da documentacao final.</td></tr><tr><td>RNF08</td><td>Versionamento de schema por migrations.</td></tr></tbody></table>
+    <h2>Atores</h2>
+    <table><thead><tr><th>Ator</th><th>Papel</th></tr></thead><tbody><tr><td>Lead/cliente</td><td>Origem de contato comercial.</td></tr><tr><td>Vendedor/consultor</td><td>Atende leads, move pipeline e gera propostas.</td></tr><tr><td>Administrador da organizacao</td><td>Configura equipe, automacoes, integracoes e plano.</td></tr><tr><td>Administrador do sistema</td><td>Opera modulos administrativos e feature flags.</td></tr><tr><td>Provedores externos</td><td>Fornecem mensageria, marketing, pagamento, e-mail e IA quando configurados.</td></tr><tr><td>Workers/automacoes</td><td>Executam jobs, webhooks e rotinas de backend.</td></tr></tbody></table>
+    <h2>Casos de uso principais</h2>
+    <table><thead><tr><th>Caso de uso</th><th>Fluxo resumido</th><th>Criterio de aceite</th></tr></thead><tbody><tr><td>Autenticar e acessar organizacao</td><td>Usuario entra no sistema, escolhe organizacao e acessa rota permitida.</td><td>Acesso liberado somente para usuario autorizado.</td></tr><tr><td>Gerenciar lead/contato</td><td>Usuario consulta, cria ou edita dados comerciais de lead.</td><td>Registro persiste com escopo correto de organizacao.</td></tr><tr><td>Atender por conversa</td><td>Usuario visualiza historico e envia/recebe interacoes quando integracao esta configurada.</td><td>Interacao fica associada ao lead correto.</td></tr><tr><td>Mover pipeline</td><td>Usuario altera etapa comercial da oportunidade.</td><td>Status da etapa e atualizado e refletido na interface.</td></tr><tr><td>Criar proposta</td><td>Usuario informa dados e gera versao/documento de proposta.</td><td>Proposta possui dados, versao e rastreabilidade.</td></tr><tr><td>Configurar automacao</td><td>Admin ajusta mensagens/regras por organizacao.</td><td>Configuracao e carregada novamente e aplicada.</td></tr><tr><td>Consultar dashboard</td><td>Usuario visualiza indicadores do periodo.</td><td>Indicadores aparecem conforme dados disponiveis.</td></tr><tr><td>Registrar tracking</td><td>Evento e recebido e pode gerar entrega a plataformas externas.</td><td>Evento fica armazenado e entrega tem status rastreavel.</td></tr></tbody></table>
+    <h2>Arquitetura geral</h2>
+    <svg class="diagram" viewBox="0 0 920 470" xmlns="http://www.w3.org/2000/svg">
+    <defs><style>.box{fill:#f8fafc;stroke:#94a3b8;stroke-width:1.4}.core{fill:#fff7ed;stroke:#fb923c}.ext{fill:#eef6ff;stroke:#60a5fa}.txt{font:14px Arial;fill:#172033}.title{font:bold 16px Arial;fill:#0f172a}.line{stroke:#64748b;stroke-width:1.4;marker-end:url(#m)}.small{font:12px Arial;fill:#475569}</style><marker id="m" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#64748b"/></marker></defs>
+    <rect x="30" y="42" width="150" height="58" rx="8" class="box"/><text x="105" y="66" text-anchor="middle" class="title">Usuario</text><text x="105" y="86" text-anchor="middle" class="small">navegador web</text>
+    <rect x="245" y="32" width="190" height="78" rx="8" class="core"/><text x="340" y="62" text-anchor="middle" class="title">SPA React/Vite</text><text x="340" y="84" text-anchor="middle" class="small">rotas, UI, hooks</text>
+    <rect x="520" y="30" width="170" height="80" rx="8" class="box"/><text x="605" y="58" text-anchor="middle" class="title">Supabase</text><text x="605" y="80" text-anchor="middle" class="small">Auth, DB, RLS, Storage</text>
+    <rect x="520" y="155" width="170" height="78" rx="8" class="box"/><text x="605" y="184" text-anchor="middle" class="title">Edge Functions</text><text x="605" y="206" text-anchor="middle" class="small">webhooks e APIs</text>
+    <rect x="735" y="40" width="150" height="52" rx="8" class="ext"/><text x="810" y="70" text-anchor="middle" class="txt">WhatsApp/Evolution</text>
+    <rect x="735" y="112" width="150" height="52" rx="8" class="ext"/><text x="810" y="142" text-anchor="middle" class="txt">Google / Meta</text>
+    <rect x="735" y="184" width="150" height="52" rx="8" class="ext"/><text x="810" y="214" text-anchor="middle" class="txt">Stripe / E-mail</text>
+    <rect x="735" y="256" width="150" height="52" rx="8" class="ext"/><text x="810" y="286" text-anchor="middle" class="txt">IA / dados solares</text>
+    <rect x="250" y="160" width="185" height="65" rx="8" class="core"/><text x="342" y="187" text-anchor="middle" class="title">CRM SolarZap</text><text x="342" y="209" text-anchor="middle" class="small">leads, pipeline, propostas</text>
+    <rect x="250" y="275" width="185" height="65" rx="8" class="box"/><text x="342" y="302" text-anchor="middle" class="title">Deploy</text><text x="342" y="324" text-anchor="middle" class="small">Docker / Caddy / dominio</text>
+    <path d="M180 71 H245" class="line"/><path d="M435 71 H520" class="line"/><path d="M435 193 H520" class="line"/><path d="M605 110 V155" class="line"/><path d="M690 195 H735" class="line"/><path d="M690 195 C710 100 715 68 735 68" class="line"/><path d="M690 195 C710 150 715 139 735 139" class="line"/><path d="M690 195 C710 230 715 211 735 211" class="line"/><path d="M690 195 C710 280 715 283 735 283" class="line"/><path d="M340 110 V160" class="line"/><path d="M340 225 V275" class="line"/>
+  </svg>
+    <h2>Fluxo principal do sistema</h2>
+    <svg class="diagram" viewBox="0 0 920 365" xmlns="http://www.w3.org/2000/svg">
+    <defs><style>.b{fill:#f8fafc;stroke:#94a3b8;stroke-width:1.4}.c{fill:#fff7ed;stroke:#fb923c}.t{font:bold 14px Arial;fill:#0f172a}.s{font:12px Arial;fill:#475569}.l{stroke:#64748b;stroke-width:1.4;marker-end:url(#a)}</style><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><path d="M0,0 L8,3.5 L0,7 Z" fill="#64748b"/></marker></defs>
+    <rect x="40" y="70" width="120" height="70" rx="8" class="b"/><text x="100" y="100" text-anchor="middle" class="t">Entrada do lead</text><text x="100" y="121" text-anchor="middle" class="s"></text><rect x="185" y="70" width="120" height="70" rx="8" class="b"/><text x="245" y="100" text-anchor="middle" class="t">Contato</text><text x="245" y="121" text-anchor="middle" class="s">conversa</text><rect x="330" y="70" width="120" height="70" rx="8" class="c"/><text x="390" y="100" text-anchor="middle" class="t">Pipeline comercial</text><text x="390" y="121" text-anchor="middle" class="s"></text><rect x="475" y="70" width="120" height="70" rx="8" class="b"/><text x="535" y="100" text-anchor="middle" class="t">Tarefas e agenda</text><text x="535" y="121" text-anchor="middle" class="s"></text><rect x="620" y="70" width="120" height="70" rx="8" class="c"/><text x="680" y="100" text-anchor="middle" class="t">Proposta comercial</text><text x="680" y="121" text-anchor="middle" class="s"></text><rect x="765" y="70" width="120" height="70" rx="8" class="b"/><text x="825" y="100" text-anchor="middle" class="t">Acompanhamento</text><text x="825" y="121" text-anchor="middle" class="s"></text>
+    <path d="M160 105 H185" class="l"/><path d="M305 105 H330" class="l"/><path d="M450 105 H475" class="l"/><path d="M595 105 H620" class="l"/><path d="M740 105 H765" class="l"/>
+    <rect x="205" y="230" width="180" height="58" rx="8" class="b"/><text x="295" y="255" text-anchor="middle" class="t">Automacoes</text><text x="295" y="276" text-anchor="middle" class="s">mensagens, regras, jobs</text>
+    <rect x="510" y="230" width="180" height="58" rx="8" class="b"/><text x="600" y="255" text-anchor="middle" class="t">Tracking</text><text x="600" y="276" text-anchor="middle" class="s">origem e conversoes</text>
+    <path d="M390 140 C390 190 320 195 295 230" class="l"/><path d="M620 140 C620 185 610 200 600 230" class="l"/>
+  </svg>
+    <h2>Modelagem de dados simplificada</h2>
+    <svg class="diagram" viewBox="0 0 920 500" xmlns="http://www.w3.org/2000/svg">
+    <defs><style>.e{fill:#ffffff;stroke:#94a3b8;stroke-width:1.3}.m{fill:#eef6ff;stroke:#60a5fa}.p{fill:#fff7ed;stroke:#fb923c}.t{font:bold 13px Arial;fill:#0f172a}.s{font:11px Arial;fill:#475569}.l{stroke:#64748b;stroke-width:1.2}</style></defs>
+    <rect x="35" y="35" width="150" height="60" rx="8" class="p"/><text x="110" y="62" text-anchor="middle" class="t">organizations</text><text x="110" y="80" text-anchor="middle" class="s">tenants / empresas</text>
+    <rect x="250" y="35" width="160" height="60" rx="8" class="e"/><text x="330" y="62" text-anchor="middle" class="t">organization_members</text><text x="330" y="80" text-anchor="middle" class="s">usuarios e papeis</text>
+    <rect x="35" y="145" width="150" height="60" rx="8" class="p"/><text x="110" y="172" text-anchor="middle" class="t">leads</text><text x="110" y="190" text-anchor="middle" class="s">contatos e pipeline</text>
+    <rect x="250" y="145" width="150" height="60" rx="8" class="e"/><text x="325" y="172" text-anchor="middle" class="t">interacoes</text><text x="325" y="190" text-anchor="middle" class="s">mensagens</text>
+    <rect x="455" y="145" width="150" height="60" rx="8" class="e"/><text x="530" y="172" text-anchor="middle" class="t">appointments</text><text x="530" y="190" text-anchor="middle" class="s">agenda</text>
+    <rect x="660" y="145" width="150" height="60" rx="8" class="e"/><text x="735" y="172" text-anchor="middle" class="t">lead_tasks</text><text x="735" y="190" text-anchor="middle" class="s">tarefas</text>
+    <rect x="35" y="260" width="150" height="60" rx="8" class="p"/><text x="110" y="287" text-anchor="middle" class="t">propostas</text><text x="110" y="305" text-anchor="middle" class="s">propostas comerciais</text>
+    <rect x="250" y="260" width="165" height="60" rx="8" class="e"/><text x="333" y="287" text-anchor="middle" class="t">proposal_versions</text><text x="333" y="305" text-anchor="middle" class="s">versoes e snapshot</text>
+    <rect x="465" y="260" width="160" height="60" rx="8" class="e"/><text x="545" y="287" text-anchor="middle" class="t">tracking</text><text x="545" y="305" text-anchor="middle" class="s">origem e conversoes</text>
+    <rect x="675" y="260" width="160" height="60" rx="8" class="e"/><text x="755" y="287" text-anchor="middle" class="t">automation_settings</text><text x="755" y="305" text-anchor="middle" class="s">regras por org</text>
+    <rect x="240" y="385" width="190" height="60" rx="8" class="m"/><text x="335" y="412" text-anchor="middle" class="t">internal_crm.*</text><text x="335" y="430" text-anchor="middle" class="s">modulo complementar</text>
+    <rect x="490" y="385" width="190" height="60" rx="8" class="m"/><text x="585" y="412" text-anchor="middle" class="t">contract_*</text><text x="585" y="430" text-anchor="middle" class="s">contratos</text>
+    <line x1="185" y1="65" x2="250" y2="65" class="l"/><line x1="110" y1="95" x2="110" y2="145" class="l"/><line x1="185" y1="175" x2="250" y2="175" class="l"/><line x1="185" y1="175" x2="455" y2="175" class="l"/><line x1="185" y1="175" x2="660" y2="175" class="l"/><line x1="110" y1="205" x2="110" y2="260" class="l"/><line x1="185" y1="290" x2="250" y2="290" class="l"/><line x1="185" y1="175" x2="545" y2="260" class="l"/><line x1="110" y1="95" x2="755" y2="260" class="l"/>
+  </svg>
+    <h2>Explicacao da modelagem</h2>
+    <p>A modelagem usa organizacoes como unidade principal de isolamento. Usuarios pertencem a organizacoes por meio de membros e papeis. Leads concentram o ciclo comercial e se relacionam com interacoes, compromissos, tarefas, propostas, atribuicoes e conversoes. Propostas possuem versoes e eventos de entrega. Automacoes e configuracoes sao persistidas por organizacao. Modulos complementares possuem schemas/tabelas proprias, como CRM interno e contratos.</p>
+    <h2>Fluxo de dados</h2>
+    <ul><li>Usuario autenticado opera a SPA React.</li><li>Hooks consultam e alteram dados pelo Supabase Client.</li><li>RLS e org_id restringem o acesso ao escopo correto.</li><li>Edge Functions processam integracoes externas e webhooks.</li><li>Jobs agendados executam notificacoes, automacoes e conversoes.</li><li>Dashboards e telas operacionais exibem dados consolidados.</li></ul>
+  </section></main></body></html>

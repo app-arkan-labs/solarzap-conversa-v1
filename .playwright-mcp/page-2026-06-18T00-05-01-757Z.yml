@@ -1,0 +1,215 @@
+- generic:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                  - generic:
+                    - paragraph: Outstanding invoices
+                    - generic:
+                      - generic: ·
+                      - generic:
+                        - text: Please
+                        - link:
+                          - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/billing#invoices
+                          - text: pay your invoices
+                        - text: to avoid service disruption
+        - generic:
+          - banner:
+            - generic:
+              - generic:
+                - link:
+                  - /url: /dashboard/org/ftpcvuorgfnhoyamclrb
+                  - img
+                - generic:
+                  - generic:
+                    - img
+                  - generic:
+                    - link:
+                      - /url: /dashboard/org/ftpcvuorgfnhoyamclrb
+                      - img
+                      - generic: ARKAN LABS
+                      - generic: Free
+                    - button:
+                      - generic:
+                        - img
+                  - generic:
+                    - generic:
+                      - img
+                    - generic:
+                      - link:
+                        - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh
+                        - img
+                        - generic: SolarZap
+                      - button:
+                        - generic:
+                          - img
+                    - generic:
+                      - img
+                    - generic:
+                      - link:
+                        - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh
+                        - generic: main
+                        - generic: Production
+                      - button:
+                        - generic:
+                          - img
+                - button [disabled] [ref=e236]:
+                  - img [ref=e48]
+                  - generic [ref=e50]: Connect
+              - generic:
+                - generic:
+                  - generic: Feedback
+                - generic:
+                  - button:
+                    - generic:
+                      - img
+                      - paragraph: Search...
+                    - generic:
+                      - generic: Ctrl K
+                  - button [ref=e237] [cursor=pointer]:
+                    - generic [ref=e64]:
+                      - img [ref=e65]
+                      - generic [ref=e68]: Help
+                  - button [ref=e238] [cursor=pointer]:
+                    - generic [ref=e71]:
+                      - img [ref=e72]
+                      - generic [ref=e74]: Advisor Center
+                  - button [ref=e239] [cursor=pointer]:
+                    - generic [ref=e77]:
+                      - img [ref=e78]
+                      - generic [ref=e80]: SQL Editor
+                  - button [ref=e240] [cursor=pointer]:
+                    - generic [ref=e82]:
+                      - img [ref=e85]
+                      - generic [ref=e88]: AI Assistant
+                - button [ref=e89] [cursor=pointer]:
+                  - figure [ref=e91]:
+                    - img [ref=e92]
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - list:
+                      - generic:
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                      - generic:
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh/functions
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                      - generic:
+                        - generic:
+                          - listitem:
+                            - button [disabled]:
+                              - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh/logs/explorer
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                      - generic:
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh/settings/general
+                            - img
+                - generic:
+                  - generic:
+                    - button:
+                      - generic:
+                        - img
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - main:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - img
+                                      - generic:
+                                        - generic:
+                                          - heading [level=2]: The project "SolarZap" is currently paused
+                                          - generic:
+                                            - paragraph:
+                                              - text: All data, including backups and storage objects, remains safe. You can resume this project from the dashboard within
+                                              - button:
+                                                - generic: 89 days
+                                              - text: (until 14 Sep 2026). After that, this project will not be resumable, but data will still be available for download.
+                                            - paragraph: To prevent future pauses, consider upgrading to Pro.
+                                    - generic:
+                                      - button [ref=e241] [cursor=pointer]:
+                                        - generic [ref=e233]: Resume project
+                                      - link:
+                                        - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/billing?panel=subscriptionPlan&source=projectPausedStateRestore
+                                        - generic: Upgrade to Pro
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - img
+              - generic:
+                - generic:
+                  - button:
+                    - generic:
+                      - img
+                - generic:
+                  - generic: Notice
+                  - generic:
+                    - paragraph: We've updated our Terms of Service
+                    - paragraph: Updates define the responsibilities of both you and Supabase in the use of AI.
+                  - button:
+                    - generic: Learn more
+  - generic:
+    - alert: Supabase
+  - dialog "Your organization has members who have exceeded their free project limits" [ref=e243]:
+    - heading "Your organization has members who have exceeded their free project limits" [level=2] [ref=e245]
+    - generic [ref=e246]:
+      - paragraph [ref=e247]: "The following members have reached their maximum limits for the number of active free plan projects within organizations where they are an administrator or owner:"
+      - list [ref=e248]:
+        - listitem [ref=e249]: "app.arkanlabs@gmail.com (Limit: 2 free projects)"
+      - paragraph [ref=e250]: These members will need to either delete, pause, or upgrade one or more of these projects before you're able to resume this project.
+    - button "Understood" [active] [ref=e252] [cursor=pointer]:
+      - generic [ref=e253]: Understood
+    - button "Close" [ref=e254]:
+      - img [ref=e255]
+      - generic [ref=e258]: Close

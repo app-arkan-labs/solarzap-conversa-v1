@@ -1,0 +1,469 @@
+- generic:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                  - generic:
+                    - paragraph: Outstanding invoices in other organization
+                    - generic:
+                      - generic: ·
+                      - generic:
+                        - text: Please
+                        - link:
+                          - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/billing#invoices
+                          - text: pay invoices
+                        - text: for other organizations to avoid service disruption
+        - generic:
+          - banner:
+            - generic:
+              - generic:
+                - link:
+                  - /url: /dashboard/org/okwksiianigmhhvobgjs
+                  - img
+                - generic:
+                  - generic:
+                    - img
+                  - generic:
+                    - link:
+                      - /url: /dashboard/org/okwksiianigmhhvobgjs
+                      - img
+                      - generic: ARKAN
+                      - generic: Free
+                    - button:
+                      - generic:
+                        - img
+                  - generic:
+                    - generic:
+                      - img
+                    - generic:
+                      - link:
+                        - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh
+                        - img
+                        - generic: SolarZap
+                      - button:
+                        - generic:
+                          - img
+                    - generic:
+                      - link:
+                        - /url: /dashboard/org/okwksiianigmhhvobgjs/usage
+                        - generic: Exceeding usage limits
+                    - generic:
+                      - img
+                    - generic:
+                      - link:
+                        - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh
+                        - generic: main
+                        - generic: Production
+                      - button:
+                        - generic:
+                          - img
+                - button [disabled] [ref=e697]:
+                  - img [ref=e200]
+                  - generic [ref=e202]: Connect
+              - generic:
+                - generic:
+                  - generic: Feedback
+                - generic:
+                  - button:
+                    - generic:
+                      - img
+                      - paragraph: Search...
+                    - generic:
+                      - generic: Ctrl K
+                  - button [ref=e698] [cursor=pointer]:
+                    - generic [ref=e216]:
+                      - img [ref=e217]
+                      - generic [ref=e220]: Help
+                  - button [ref=e699] [cursor=pointer]:
+                    - generic [ref=e223]:
+                      - img [ref=e224]
+                      - generic [ref=e226]: Advisor Center
+                  - button [ref=e700] [cursor=pointer]:
+                    - generic [ref=e229]:
+                      - img [ref=e230]
+                      - generic [ref=e232]: SQL Editor
+                  - button [ref=e701] [cursor=pointer]:
+                    - generic [ref=e234]:
+                      - img [ref=e237]
+                      - generic [ref=e240]: AI Assistant
+                - button [ref=e241] [cursor=pointer]:
+                  - figure [ref=e243]:
+                    - img [ref=e244]
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - list:
+                      - generic:
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                      - generic:
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh/functions
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                      - generic:
+                        - generic:
+                          - listitem:
+                            - button [disabled]:
+                              - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh/logs/explorer
+                            - img
+                        - listitem:
+                          - button [disabled]:
+                            - img
+                      - generic:
+                        - listitem:
+                          - link:
+                            - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh/settings/general
+                            - img
+                - generic:
+                  - generic:
+                    - button:
+                      - generic:
+                        - img
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - heading [level=4]: Settings
+                              - generic:
+                                - generic:
+                                  - menu [disabled]:
+                                    - list:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic:
+                                                - generic:
+                                                  - generic: Configuration
+                                            - generic:
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh/settings/general
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: General
+                                              - generic:
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Compute and Disk
+                                              - generic:
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Infrastructure
+                                              - generic:
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Integrations
+                                              - generic:
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: API Keys
+                                              - generic:
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: JWT Keys
+                                              - generic:
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Log Drains
+                                              - link [disabled]:
+                                                - /url: /dashboard/project/ucwmcmdwbvrwotuzlmxh/settings/addons
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Add-ons
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic:
+                                                - generic:
+                                                  - generic: Integrations
+                                            - generic:
+                                              - generic:
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Data API
+                                                      - generic:
+                                                        - img
+                                              - generic:
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Vault
+                                                        - generic: Beta
+                                                      - generic:
+                                                        - img
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - generic:
+                                                - generic:
+                                                  - generic: Billing
+                                            - generic:
+                                              - link [disabled]:
+                                                - /url: /dashboard/org/okwksiianigmhhvobgjs/billing
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Subscription
+                                                      - generic:
+                                                        - img
+                                              - link [disabled]:
+                                                - /url: /dashboard/org/okwksiianigmhhvobgjs/usage?projectRef=ucwmcmdwbvrwotuzlmxh
+                                                - menuitem [disabled]:
+                                                  - generic:
+                                                    - generic:
+                                                      - generic:
+                                                        - generic: Usage
+                                                      - generic:
+                                                        - img
+                      - separator [disabled]:
+                        - generic:
+                          - img
+                      - generic:
+                        - generic:
+                          - main:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - heading [level=1]: Project Settings
+                                    - generic: General configuration, domains, ownership, and lifecycle
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: General settings
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - textbox: SolarZap
+                                            - generic:
+                                              - generic:
+                                                - generic: Project name
+                                              - generic: Displayed throughout the dashboard.
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - group:
+                                                - textbox: ucwmcmdwbvrwotuzlmxh
+                                                - group:
+                                                  - button:
+                                                    - generic:
+                                                      - img
+                                                    - generic: Copy
+                                            - generic:
+                                              - generic:
+                                                - generic: Project ID
+                                              - generic: Reference used in APIs and URLs.
+                                      - generic:
+                                        - generic:
+                                          - generic:
+                                            - generic:
+                                              - group:
+                                                - textbox: sa-east-1
+                                                - group:
+                                                  - button:
+                                                    - generic:
+                                                      - img
+                                                    - generic: Copy
+                                            - generic:
+                                              - generic:
+                                                - generic: Project region
+                                              - generic: South America (São Paulo)
+                                      - generic:
+                                        - button [disabled]:
+                                          - generic: Save changes
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: Project access
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - paragraph: Organization-wide access
+                                          - paragraph: All 1 organization members can access this project.
+                                        - link:
+                                          - /url: /dashboard/org/okwksiianigmhhvobgjs/team
+                                          - generic: Manage members
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - table:
+                                            - rowgroup:
+                                              - row:
+                                                - columnheader: Member
+                                                - columnheader: Role
+                                            - rowgroup:
+                                              - row:
+                                                - cell:
+                                                  - generic:
+                                                    - paragraph: app.arkanlabs@gmail.com
+                                                    - generic: You
+                                                - cell: Owner
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: Project availability
+                                      - generic: Resume your paused project or review recovery options
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - paragraph: Resume project
+                                          - generic:
+                                            - paragraph: Bring your paused project back online.
+                                        - button [ref=e702] [cursor=pointer]:
+                                          - generic [ref=e482]: Resume project
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: Custom domains
+                                      - generic: Present a branded experience to your users
+                                - generic:
+                                  - alert:
+                                    - img
+                                    - generic:
+                                      - generic:
+                                        - heading [level=5]: Custom domains are a Pro Plan add-on
+                                        - generic:
+                                          - paragraph: Paid Plans come with free vanity subdomains or Custom Domains for an additional $10/month per domain.
+                                      - generic:
+                                        - link:
+                                          - /url: /dashboard/org/okwksiianigmhhvobgjs/billing?panel=subscriptionPlan&source=customDomain
+                                          - generic: Upgrade to Pro
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: Transfer project
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - img
+                                          - generic:
+                                            - paragraph: Transfer project to another organization
+                                            - paragraph: To transfer projects, the owner must be a member of both the source and target organizations.
+                                        - button [ref=e703] [cursor=pointer]:
+                                          - generic [ref=e521]: Transfer project
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - heading [level=2]: Delete project
+                                      - generic: Permanently remove your project and its database
+                                - generic:
+                                  - alert:
+                                    - img
+                                    - heading [level=5]: Deleting this project will also remove your database.
+                                    - generic:
+                                      - paragraph: Make sure you have made a backup if you want to keep your data.
+                                    - button [ref=e704] [cursor=pointer]:
+                                      - generic [ref=e537]: Delete project
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - img
+              - generic:
+                - generic:
+                  - button:
+                    - generic:
+                      - img
+                - generic:
+                  - generic: Notice
+                  - generic:
+                    - paragraph: We've updated our Terms of Service
+                    - paragraph: Updates define the responsibilities of both you and Supabase in the use of AI.
+                  - button:
+                    - generic: Learn more
+  - generic:
+    - alert: Supabase
+  - dialog "Resume this project" [ref=e706]:
+    - heading "Resume this project" [level=2] [ref=e708]
+    - paragraph [ref=e711]: Your project’s data will be restored to when it was initially paused.
+    - generic [ref=e713]:
+      - button "Cancel" [active] [ref=e714] [cursor=pointer]:
+        - generic [ref=e715]: Cancel
+      - button "Resume" [ref=e716] [cursor=pointer]:
+        - generic [ref=e717]: Resume
+    - button "Close" [ref=e718]:
+      - img [ref=e719]
+      - generic [ref=e722]: Close

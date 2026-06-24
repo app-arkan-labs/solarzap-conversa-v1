@@ -1,0 +1,7 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e44]:
+    - img [ref=e45]
+    - paragraph [ref=e47]: Carregando organização...

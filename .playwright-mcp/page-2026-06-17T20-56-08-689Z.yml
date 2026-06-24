@@ -1,0 +1,288 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e10]:
+        - img [ref=e11]
+        - generic [ref=e13]:
+          - paragraph [ref=e14]: Outstanding invoices in other organization
+          - generic [ref=e15]:
+            - generic [ref=e16]: ·
+            - generic [ref=e17]:
+              - text: Please
+              - link "pay invoices" [ref=e18] [cursor=pointer]:
+                - /url: /dashboard/org/ftpcvuorgfnhoyamclrb/billing#invoices
+              - text: for other organizations to avoid service disruption
+      - banner [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - link "Supabase" [ref=e23] [cursor=pointer]:
+              - /url: /dashboard/org/okwksiianigmhhvobgjs
+              - img "Supabase" [ref=e24]
+            - generic [ref=e25]:
+              - img [ref=e27]
+              - generic [ref=e29]:
+                - link "ARKAN Free" [ref=e30] [cursor=pointer]:
+                  - /url: /dashboard/org/okwksiianigmhhvobgjs
+                  - img [ref=e31]
+                  - generic [ref=e41]: ARKAN
+                  - generic [ref=e42]: Free
+                - button [ref=e43] [cursor=pointer]:
+                  - img [ref=e45]
+              - generic [ref=e48]:
+                - img [ref=e50]
+                - generic [ref=e52]:
+                  - link "raio-x" [ref=e53] [cursor=pointer]:
+                    - /url: /dashboard/project/bwtsvypacazxjboyhioq
+                    - img [ref=e54]
+                    - generic "raio-x" [ref=e57]
+                  - button [ref=e58] [cursor=pointer]:
+                    - img [ref=e60]
+                - img [ref=e64]
+            - button "Connect" [ref=e68] [cursor=pointer]:
+              - img [ref=e70]
+              - generic [ref=e72]: Connect
+          - generic [ref=e73]:
+            - generic [ref=e75] [cursor=pointer]: Feedback
+            - generic [ref=e76]:
+              - button "Search..." [ref=e77]:
+                - generic [ref=e78]:
+                  - img [ref=e79]
+                  - paragraph [ref=e82]: Search...
+                - generic [ref=e84]: Ctrl K
+              - button "Help" [ref=e85] [cursor=pointer]:
+                - generic [ref=e86]:
+                  - img [ref=e87]
+                  - generic [ref=e90]: Help
+              - button "Advisor Center" [ref=e92] [cursor=pointer]:
+                - generic [ref=e93]:
+                  - img [ref=e94]
+                  - generic [ref=e96]: Advisor Center
+              - button "SQL Editor" [ref=e98] [cursor=pointer]:
+                - generic [ref=e99]:
+                  - img [ref=e100]
+                  - generic [ref=e102]: SQL Editor
+              - button "AI Assistant" [ref=e103] [cursor=pointer]:
+                - generic [ref=e104]:
+                  - img [ref=e107]
+                  - generic [ref=e110]: AI Assistant
+            - button [ref=e111] [cursor=pointer]:
+              - figure [ref=e113]:
+                - img [ref=e114]
+      - generic [ref=e116]:
+        - generic [ref=e120]:
+          - list [ref=e123]:
+            - generic [ref=e124]:
+              - listitem [ref=e125]:
+                - link "Project Overview" [ref=e126] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq
+                  - img [ref=e127]
+                  - generic: Project Overview
+              - listitem [ref=e129]:
+                - link "Table Editor" [ref=e130] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq/editor
+                  - img [ref=e131]
+                  - generic: Table Editor
+              - listitem [ref=e133]:
+                - link "SQL Editor" [ref=e134] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq/sql
+                  - img [ref=e135]
+                  - generic: SQL Editor
+            - generic [ref=e137]:
+              - listitem [ref=e138]:
+                - link "Database" [ref=e139] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq/database/schemas
+                  - img [ref=e140]
+                  - generic: Database
+              - listitem [ref=e144]:
+                - link "Authentication" [ref=e145] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq/auth/users
+                  - img [ref=e146]
+                  - generic: Authentication
+              - listitem [ref=e148]:
+                - link "Storage" [ref=e149] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq/storage/files
+                  - img [ref=e150]
+                  - generic: Storage
+              - listitem [ref=e152]:
+                - link "Edge Functions" [ref=e153] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq/functions
+                  - img [ref=e154]
+                  - generic: Edge Functions
+              - listitem [ref=e159]:
+                - link "Realtime" [ref=e160] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq/realtime/inspector
+                  - img [ref=e161]
+                  - generic: Realtime
+            - generic [ref=e163]:
+              - listitem [ref=e165]:
+                - link "Advisors" [ref=e166] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq/advisors/security
+                  - img [ref=e167]
+                  - generic: Advisors
+              - listitem [ref=e169]:
+                - link "Observability" [ref=e170] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq/observability
+                  - img [ref=e171]
+                  - generic: Observability
+              - listitem [ref=e179]:
+                - link "Logs" [ref=e180] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq/logs/explorer
+                  - img [ref=e181]
+                  - generic: Logs
+              - listitem [ref=e182]:
+                - link "Integrations" [ref=e183] [cursor=pointer]:
+                  - /url: /dashboard/project/bwtsvypacazxjboyhioq/integrations
+                  - img [ref=e184]
+                  - generic: Integrations
+            - listitem [ref=e188]:
+              - link "Project Settings" [ref=e189] [cursor=pointer]:
+                - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/general
+                - img [ref=e190]
+                - generic: Project Settings
+          - button "Sidebar control" [ref=e195] [cursor=pointer]:
+            - img [ref=e197]
+        - generic [ref=e204]:
+          - generic [ref=e208]:
+            - heading "Settings" [level=4] [ref=e210]
+            - menu "Sidebar" [disabled] [ref=e213]:
+              - list [ref=e214]:
+                - generic [ref=e217]:
+                  - generic [ref=e221]: Configuration
+                  - generic [ref=e222]:
+                    - link "General" [disabled] [ref=e223] [cursor=pointer]:
+                      - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/general
+                      - menuitem "General" [disabled] [ref=e224]:
+                        - generic [ref=e228]: General
+                    - link "Compute and Disk" [disabled] [ref=e229] [cursor=pointer]:
+                      - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/compute-and-disk
+                      - menuitem "Compute and Disk" [disabled] [ref=e230]:
+                        - generic [ref=e234]: Compute and Disk
+                    - link "Infrastructure" [disabled] [ref=e235] [cursor=pointer]:
+                      - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/infrastructure
+                      - menuitem "Infrastructure" [disabled] [ref=e236]:
+                        - generic [ref=e240]: Infrastructure
+                    - link "Integrations" [disabled] [ref=e241] [cursor=pointer]:
+                      - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/integrations
+                      - menuitem "Integrations" [disabled] [ref=e242]:
+                        - generic [ref=e246]: Integrations
+                    - link "API Keys" [disabled] [ref=e247] [cursor=pointer]:
+                      - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/api-keys
+                      - menuitem "API Keys" [disabled] [ref=e248]:
+                        - generic [ref=e252]: API Keys
+                    - link "JWT Keys" [disabled] [ref=e253] [cursor=pointer]:
+                      - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/jwt
+                      - menuitem "JWT Keys" [disabled] [ref=e254]:
+                        - generic [ref=e258]: JWT Keys
+                    - link "Log Drains" [disabled] [ref=e259] [cursor=pointer]:
+                      - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/log-drains
+                      - menuitem "Log Drains" [disabled] [ref=e260]:
+                        - generic [ref=e264]: Log Drains
+                    - link "Add-ons" [disabled] [ref=e265] [cursor=pointer]:
+                      - /url: /dashboard/project/bwtsvypacazxjboyhioq/settings/addons
+                      - menuitem "Add-ons" [disabled] [ref=e266]:
+                        - generic [ref=e270]: Add-ons
+                - generic [ref=e274]:
+                  - generic [ref=e278]: Integrations
+                  - generic [ref=e279]:
+                    - link "Data API" [disabled] [ref=e280] [cursor=pointer]:
+                      - /url: /dashboard/project/bwtsvypacazxjboyhioq/integrations/data_api/overview
+                      - menuitem "Data API" [disabled] [ref=e281]:
+                        - generic [ref=e283]:
+                          - generic "Data API" [ref=e284]:
+                            - generic [ref=e285]: Data API
+                          - img [ref=e287]
+                    - link "Vault Beta" [disabled] [ref=e290] [cursor=pointer]:
+                      - /url: /dashboard/project/bwtsvypacazxjboyhioq/integrations/vault/overview
+                      - menuitem "Vault Beta" [disabled] [ref=e291]:
+                        - generic [ref=e293]:
+                          - generic "Vault" [ref=e294]:
+                            - generic [ref=e295]: Vault
+                            - generic [ref=e296]: Beta
+                          - img [ref=e298]
+                - generic [ref=e304]:
+                  - generic [ref=e308]: Billing
+                  - generic [ref=e309]:
+                    - link "Subscription" [disabled] [ref=e310] [cursor=pointer]:
+                      - /url: /dashboard/org/okwksiianigmhhvobgjs/billing
+                      - menuitem "Subscription" [disabled] [ref=e311]:
+                        - generic [ref=e313]:
+                          - generic "Subscription" [ref=e314]:
+                            - generic [ref=e315]: Subscription
+                          - img [ref=e317]
+                    - link "Usage" [disabled] [ref=e320] [cursor=pointer]:
+                      - /url: /dashboard/org/okwksiianigmhhvobgjs/usage?projectRef=bwtsvypacazxjboyhioq
+                      - menuitem "Usage" [disabled] [ref=e321]:
+                        - generic [ref=e323]:
+                          - generic "Usage" [ref=e324]:
+                            - generic [ref=e325]: Usage
+                          - img [ref=e327]
+          - separator [disabled] [ref=e330]:
+            - img [ref=e332]
+          - main [ref=e341]:
+            - generic [ref=e345]:
+              - heading "Integrations" [level=1] [ref=e346]
+              - generic [ref=e347]: Connect external services to your project
+            - generic [ref=e348]:
+              - generic [ref=e349]:
+                - generic [ref=e352]:
+                  - img [ref=e355]
+                  - generic [ref=e357]:
+                    - heading "GitHub Integration" [level=2] [ref=e358]
+                    - generic [ref=e359]: Connect any of your GitHub repositories to a project. Supabase applies database changes when you merge into your production branch. If branching is enabled, each pull request gets its own preview database.
+                - generic [ref=e365]:
+                  - generic [ref=e366]:
+                    - button "Loading GitHub repositories..." [disabled]:
+                      - generic:
+                        - img
+                      - generic: Loading GitHub repositories...
+                  - generic [ref=e367]:
+                    - generic [ref=e369]: GitHub Repository
+                    - generic [ref=e370]: Select the repository to connect to your project
+              - generic [ref=e371]:
+                - generic [ref=e374]:
+                  - img [ref=e377]
+                  - generic [ref=e379]:
+                    - heading "Vercel Integration" [level=2] [ref=e380]
+                    - generic [ref=e381]: Connect your Vercel teams to your Supabase organization. Supabase keeps environment variables up to date in each assigned project. You can also link multiple Vercel projects to the same Supabase project.
+                - link "Install Vercel Integration" [ref=e386] [cursor=pointer]:
+                  - /url: https://vercel.com/integrations/supabase
+                  - img [ref=e388]
+                  - generic [ref=e392]: Install Vercel Integration
+              - generic [ref=e393]:
+                - generic [ref=e396]:
+                  - img [ref=e399]
+                  - generic [ref=e403]:
+                    - heading "AWS PrivateLink" [level=2] [ref=e404]
+                    - generic [ref=e405]: Connect to your Supabase project from your AWS VPC using AWS PrivateLink. Create a private connection between your AWS VPC and your Supabase project without traffic traversing the public internet.
+                - generic [ref=e407]:
+                  - alert [ref=e408]:
+                    - img [ref=e409]
+                    - generic [ref=e411]:
+                      - generic [ref=e412]:
+                        - heading "Only available on Team or Enterprise Plan and above" [level=5] [ref=e413]
+                        - paragraph [ref=e415]: Connect your AWS VPC privately to your Supabase project using AWS PrivateLink.
+                      - link "Upgrade to Team" [ref=e417] [cursor=pointer]:
+                        - /url: /dashboard/org/okwksiianigmhhvobgjs/billing?panel=subscriptionPlan&source=aws-privatelink-integration
+                        - generic [ref=e418]: Upgrade to Team
+                  - generic:
+                    - generic:
+                      - heading "AWS Accounts" [level=3]
+                      - button "Add account":
+                        - generic: Add account
+                    - generic:
+                      - generic:
+                        - paragraph: No accounts connected
+    - generic [ref=e422]:
+      - generic:
+        - img "Background pattern"
+      - generic [ref=e423]:
+        - button "Close banner" [ref=e425] [cursor=pointer]:
+          - img [ref=e427]
+        - generic [ref=e430]:
+          - generic [ref=e431]: Notice
+          - generic [ref=e432]:
+            - paragraph [ref=e433]: We've updated our Terms of Service
+            - paragraph [ref=e434]: Updates define the responsibilities of both you and Supabase in the use of AI.
+          - button "Learn more" [ref=e435] [cursor=pointer]:
+            - generic [ref=e436]: Learn more
+  - alert [ref=e437]: Integrations | Settings | Supabase
