@@ -1512,29 +1512,21 @@ function repairMojibake(text: string): string {
 function autoSplitWhatsapp(text: string): string[] {
     const clean = String(text || '').trim();
     if (!clean) return [];
+    // Short replies stay as ONE message. Splitting them detaches qualifiers (ex.: "pode ser
+    // aproximado") and, with the inter-part delays, lets the lead answer before the question
+    // lands — fazendo a pergunta chegar "trocada". Só dividir respostas realmente longas.
+    if (clean.length <= 200) return [clean];
     const sentences = (clean.match(/[^.!?]+[.!?]+|\S[^.!?]*$/g) || []).map((s) => s.trim()).filter(Boolean);
     if (sentences.length <= 1) return [clean];
+    // Group by length, preservando a ordem do modelo (sem reordenar — reordenar embaralhava o sentido).
     const parts: string[] = [];
     let buf = '';
     for (const s of sentences) {
-        if (s.endsWith('?')) {
-            if (buf) { parts.push(buf); buf = ''; }
-            parts.push(s);
-            continue;
-        }
         if (!buf) buf = s;
-        else if ((buf.length + 1 + s.length) > 140) { parts.push(buf); buf = s; }
+        else if ((buf.length + 1 + s.length) > 180) { parts.push(buf); buf = s; }
         else buf = `${buf} ${s}`;
     }
     if (buf) parts.push(buf);
-    // End on the question: move the last question to the end so any closing statement
-    // ("Posso ajudar com isso!") comes before it instead of after.
-    const qIdx = parts.map((p) => p.endsWith('?')).lastIndexOf(true);
-    if (qIdx >= 0 && qIdx !== parts.length - 1) {
-        const [q] = parts.splice(qIdx, 1);
-        parts.push(q);
-    }
-    // Cap at 4 messages; merge any overflow into the last.
     if (parts.length > 4) {
         const head = parts.slice(0, 3);
         head.push(parts.slice(3).join(' '));
@@ -4835,7 +4827,7 @@ ${stagePromptText}
 CONTRATO DE EXECUÇÃO (vale para TODA etapa — prioridade sobre estilo, siga à risca):
 1. O PROTOCOLO DA ETAPA acima é a fonte da verdade do que fazer AGORA. Execute os passos dele na ordem; não pule o fechamento da etapa.
 2. TODA resposta termina com UM próximo passo concreto: a próxima pergunta de qualificação OU um CTA de agendamento com horário real. É PROIBIDO terminar sem próximo passo ou com frase vaga ("vamos para a próxima etapa", "te retorno", "posso ajudar com isso", "vou seguir com seu atendimento").
-3. Quando o protocolo mandar fechar/agendar, FECHE de verdade: ofereça 2 horários reais de SLOTS_DISPONIVEIS_REAIS. Nunca apenas descreva que vai agendar — ofereça os horários.
+3. Quando o protocolo mandar fechar/agendar, FECHE de verdade: ofereça 2 horários reais de SLOTS_DISPONIVEIS_REAIS. Nunca apenas descreva que vai agendar — ofereça os horários. EXCEÇÃO: se o lead recusou os horários ("não pode/não consigo"), NÃO repita os mesmos nem mude de formato sozinho — pergunte qual dia e horário ficam bons pra ele.
 4. UMA pergunta por mensagem, e a pergunta é sempre a ÚLTIMA mensagem (nenhuma frase depois dela).
 5. Nunca repita uma pergunta já respondida: confira DADOS_JA_CONFIRMADOS e o histórico antes de perguntar.
 6. Em perguntas que o lead pode não saber (ex.: tipo de telhado), ofereça opções e diga que tudo bem não saber ("a gente confirma na visita"). Nunca deixe a conversa sem saída.
