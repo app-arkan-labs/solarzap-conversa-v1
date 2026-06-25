@@ -1161,10 +1161,12 @@ function getRespondeuQualificationState(lead: any): {
     const meta = parseLeadMeta(lead?.observacoes || '');
     const collected = stageData?.collected && typeof stageData.collected === 'object' ? stageData.collected : {};
 
-    const hasProjectType = Boolean(String(lead?.tipo_cliente || stageData?.segment || '').trim());
     const answeredKeysSnap = Array.isArray((stageData as any)?.answered_keys)
         ? (stageData as any).answered_keys.map((k: any) => normalizeQuestionKey(k))
         : [];
+
+    const hasProjectType = Boolean(String(lead?.tipo_cliente || stageData?.segment || '').trim())
+        || answeredKeysSnap.includes('project_type');
     const hasConsumptionOrBill = Boolean(
         Number(lead?.valor_estimado || 0) > 0
         || Number(lead?.consumo_kwh || 0) > 0
@@ -1174,14 +1176,20 @@ function getRespondeuQualificationState(lead: any): {
         || answeredKeysSnap.includes('consumption_kwh')
         || answeredKeysSnap.includes('consumption_or_bill')
     );
-    const hasLocation = Boolean(String(lead?.cidade || (collected as any)?.city || stageData?.address || '').trim());
-    const hasUtilityCompany = Boolean(String(meta?.utility_company || (collected as any)?.utility_company || '').trim());
-    const hasTiming = Boolean(String(stageData?.timing || '').trim());
-    const hasNeedReason = Boolean(String(stageData?.need_reason || '').trim());
-    const hasBudgetFit = Boolean(String(stageData?.budget_fit || '').trim());
-    const hasDecisionMakers = Array.isArray(stageData?.decision_makers)
+    const hasLocation = Boolean(String(lead?.cidade || (collected as any)?.city || stageData?.address || '').trim())
+        || answeredKeysSnap.includes('location');
+    const hasUtilityCompany = Boolean(String(meta?.utility_company || (collected as any)?.utility_company || '').trim())
+        || answeredKeysSnap.includes('utility_company');
+    const hasTiming = Boolean(String(stageData?.timing || '').trim())
+        || answeredKeysSnap.includes('timing');
+    const hasNeedReason = Boolean(String(stageData?.need_reason || '').trim())
+        || answeredKeysSnap.includes('need_reason');
+    const hasBudgetFit = Boolean(String(stageData?.budget_fit || '').trim())
+        || answeredKeysSnap.includes('budget_fit');
+    const hasDecisionMakers = (Array.isArray(stageData?.decision_makers)
         ? stageData.decision_makers.length > 0
-        : Boolean(String(stageData?.decision_makers || '').trim());
+        : Boolean(String(stageData?.decision_makers || '').trim()))
+        || answeredKeysSnap.includes('decision_makers');
     const derivedBantComplete = hasTiming && hasNeedReason && hasBudgetFit && hasDecisionMakers;
     const hasBantComplete = stageData?.bant_complete === true || derivedBantComplete;
     const hasAddressForVisit = Boolean(String(stageData?.address || '').trim());
@@ -4829,6 +4837,7 @@ CONTRATO DE EXECUÇÃO (vale para TODA etapa — prioridade sobre estilo, siga �
 4. UMA pergunta por mensagem, e a pergunta é sempre a ÚLTIMA mensagem (nenhuma frase depois dela).
 5. Nunca repita uma pergunta já respondida: confira DADOS_JA_CONFIRMADOS e o histórico antes de perguntar.
 6. Em perguntas que o lead pode não saber (ex.: tipo de telhado), ofereça opções e diga que tudo bem não saber ("a gente confirma na visita"). Nunca deixe a conversa sem saída.
+7. TOM (acima de tudo): cumpra as regras acima soando como PESSOA REAL — caloroso, leve e natural, variando as palavras. As regras definem O QUE fazer, NÃO engessam COMO falar. Nunca soe como roteiro, checklist ou robô; nunca repita frases prontas iguais.
 
 DADOS_JA_CONFIRMADOS:
 ${structuredLeadSnapshot ? JSON.stringify(structuredLeadSnapshot, null, 2) : '(sem dados estruturados confirmados)'}
@@ -4992,10 +5001,16 @@ Se houver transferência de responsável/instância, inclua "handoff" com target
         if (aiRes.content) {
             let text = aiRes.content;
 
-            // 1. Strip Banned Emoji (😊)
-            if (text.includes('😊')) {
-                text = text.replace(/😊/g, '');
-                console.warn(`🎨 [${runId}] Humanizer: Stripped '😊' emoji.`);
+            // 1. Strip ALL emojis deterministically (the prompt ban isn't 100% and emojis read
+            // robotic/off-brand here). Covers pictographics, flags, variation selectors and ZWJ.
+            {
+                const stripped = text
+                    .replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}]/gu, '')
+                    .replace(/[ \t]{2,}/g, ' ');
+                if (stripped !== text) {
+                    text = stripped.trim();
+                    console.warn(`🎨 [${runId}] Humanizer: stripped emojis.`);
+                }
             }
 
             // 2. Auto-Split Long Messages (> 220 chars) if no "||" present
@@ -5180,7 +5195,10 @@ CORRECAO OBRIGATORIA:
                 }
             }
 
-            if (currentStage === 'respondeu' && qualificationState.missingKeys.length > 0) {
+            const isSchedulingOrAppointment = !!aiRes.appointment?.start_at 
+                || ['chamada_agendada', 'visita_agendada'].includes(normalizeStage(aiRes?.target_stage));
+
+            if (currentStage === 'respondeu' && qualificationState.missingKeys.length > 0 && !isSchedulingOrAppointment) {
                 qualificationGateBlocked = true;
                 stageGateBlockReason = stageGateBlockReason || `qualification_incomplete:${qualificationState.missingKeys[0]}`;
                 appointmentPrecheckBlockedReason = appointmentPrecheckBlockedReason || `qualification_incomplete:${qualificationState.missingKeys[0]}`;
@@ -6138,7 +6156,8 @@ CORRECAO OBRIGATORIA:
             // --- V9 GATING LOGIC ---
             let gateCheck = true;
             if (target === 'chamada_agendada' || target === 'visita_agendada') {
-                if (currentStage === 'respondeu' && qualificationState.missingKeys.length > 0) {
+                const skipGateForActiveAppointment = appointmentWritten || appointmentSkippedReason === 'skipped_duplicate' || !!aiRes.appointment?.start_at;
+                if (currentStage === 'respondeu' && qualificationState.missingKeys.length > 0 && !skipGateForActiveAppointment) {
                     gateCheck = false;
                     qualificationGateBlocked = true;
                     stageGateBlockReason = `qualification_incomplete:${qualificationState.missingKeys[0]}`;
@@ -6147,6 +6166,7 @@ CORRECAO OBRIGATORIA:
                     target === 'visita_agendada'
                     && currentStage === 'respondeu'
                     && qualificationState.visitMissingKeys.length > 0
+                    && !skipGateForActiveAppointment
                 ) {
                     gateCheck = false;
                     stageGateBlockReason = `visit_requirements_incomplete:${qualificationState.visitMissingKeys[0]}`;
