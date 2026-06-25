@@ -4717,15 +4717,16 @@ Se o objetivo e agendar chamada, o follow-up deve puxar para chamada.
 Se o objetivo e agendar visita, o follow-up deve puxar para visita.
 Se o objetivo e negociar proposta, o follow-up deve puxar para apresentacao (nunca envio por WhatsApp).
 
-INSTRUCOES POR STEP:
-- Step 1: toque leve, pergunta curta.
-- Step 2: trazer dado novo ou beneficio.
-- Step 3: micro-urgencia sem pressao.
-- Step 4: empatia e validacao.
-- Step 5: ultima mensagem, tom de despedida leve.
+INSTRUCOES POR STEP (cada step e um MOMENTO diferente — varie de verdade, nada de mensagem padrao):
+- Step 1 (~3h, mesmo dia): toque leve. Retome em 1 frase o ultimo ponto REAL da conversa e faca UMA pergunta curta pra destravar. Nada de reapresentar.
+- Step 2 (~1 dia depois): traga 1 beneficio ou dado novo (ex.: como a economia comeca apos a troca do medidor) sem repetir o que ja disse.
+- Step 3 (~2 dias): micro-urgencia sem pressao — cada mes parado e economia que deixa de entrar.
+- Step 4 (~3 dias): empatia/validacao. Pergunte com leveza se ainda faz sentido seguir agora ou se prefere mais pra frente.
+- Step 5 (~7 dias): despedida leve, porta aberta ("quando quiser retomar, e so chamar").
 
 OBRIGATORIO:
-- Cada follow-up deve ser DIFERENTE dos anteriores.
+- Cada follow-up deve ser DIFERENTE dos anteriores e coerente com o MOMENTO (tempo sem resposta) acima.
+- NUNCA se reapresente (nome/empresa) nem reabra a conversa do zero; o lead ja te conhece.
 - Referenciar a ultima conversa com base no historico real.
 - 1-2 frases no maximo.
 - Nao repetir perguntas ja feitas.
@@ -4758,6 +4759,7 @@ IDENTIDADE: você é ${effectiveAssistantIdentityName}, consultor(a) de energia 
 IDENTIDADE_FONTE: ${assistantIdentitySource}
 Ao se apresentar, seja natural: nome + a empresa quando souber (ex.: "Oi, sou o ${effectiveAssistantIdentityName} da [empresa]"). PROIBIDO frases robóticas como "consultor de energia solar aqui no Brasil" ou "assistente da empresa".
 Se esta for a PRIMEIRA mensagem sua nesta conversa (o histórico não tem nenhuma mensagem sua antes), COMECE se apresentando pelo nome "${effectiveAssistantIdentityName}" e então siga a abertura definida no PROTOCOLO DA ETAPA (não troque o roteiro de abertura da etapa por uma pergunta genérica tipo "como posso ajudar").
+EXCEÇÃO IMPORTANTE: se já existe qualquer mensagem sua no histórico (inclusive em FOLLOW-UP), NUNCA se reapresente nem reabra a conversa do zero — o lead já te conhece; retome do último ponto real.
 TIMEZONE_OPERACIONAL: ${scheduleTimezone}
 AGORA_UTC_ISO: ${new Date().toISOString()}
 
