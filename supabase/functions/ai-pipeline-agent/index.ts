@@ -1322,42 +1322,40 @@ function buildCompanyFactualReply(
     if (locationQuestion) {
         if (address || city || state) {
             const cityState = [city, state].filter(Boolean).join('/');
-            const addressPart = address ? ` Endereco: ${address}.` : '';
-            factualReply = `A ${companyName} fica em ${cityState || 'localizacao cadastrada'}.${
-                addressPart
-            }`;
-            if (!address && serviceArea) factualReply += ` Area de atendimento: ${serviceArea}.`;
+            const addressSuffix = address ? ` — nosso escritorio fica na ${address}` : '';
+            const areaSuffix = (!address && serviceArea) ? ` Atendemos ${serviceArea}.` : '';
+            factualReply = `Somos de ${cityState || 'localizacao cadastrada'}${addressSuffix}.${areaSuffix}`;
         } else if (serviceArea) {
-            factualReply = `A ${companyName} atende ${serviceArea}. Se quiser, eu confirmo o endereco exato da base para voce.`;
+            factualReply = `Atendemos ${serviceArea}. Se precisar do endereco exato do escritorio, me fala que eu confirmo pra voce.`;
         } else {
-            factualReply = `Ainda nao tenho o endereco completo da ${companyName} cadastrado aqui. Posso confirmar com o time e te retornar por aqui.`;
+            factualReply = `Ainda nao tenho o endereco completo cadastrado aqui. Mas posso confirmar com o time e te retorno rapidinho.`;
         }
     } else if (hoursQuestion) {
         if (businessHours) {
-            factualReply = `Nosso horario comercial e: ${businessHours}.`;
+            factualReply = `Funcionamos de ${businessHours}.`;
         } else {
-            factualReply = 'Ainda nao tenho o horario comercial detalhado cadastrado aqui. Posso confirmar e te retorno por aqui.';
+            factualReply = 'Nao tenho o horario detalhado aqui agora, mas posso confirmar e te retorno rapidinho.';
         }
     } else if (contactQuestion) {
         const contactParts = [];
-        if (publicWhatsApp) contactParts.push(`WhatsApp: ${publicWhatsApp}`);
-        if (publicPhone) contactParts.push(`Telefone: ${publicPhone}`);
+        if (publicWhatsApp) contactParts.push(`nosso WhatsApp e ${publicWhatsApp}`);
+        if (publicPhone) contactParts.push(`telefone ${publicPhone}`);
         if (contactParts.length > 0) {
-            factualReply = `${contactParts.join(' | ')}.`;
+            factualReply = `Claro! ${contactParts.join(' e ')}.`;
         } else {
-            factualReply = 'Ainda nao tenho um numero publico cadastrado aqui. Posso confirmar o melhor canal e te retornar.';
+            factualReply = 'Ainda nao tenho um numero publico cadastrado aqui. Posso confirmar o melhor canal e te retorno.';
         }
     } else if (visitCostQuestion) {
         if (typeof companyProfile?.technical_visit_is_free === 'boolean') {
             if (companyProfile.technical_visit_is_free) {
-                factualReply = 'A visita tecnica e gratuita.';
+                factualReply = 'A visita tecnica e gratuita sim.';
             } else {
-                factualReply = 'A visita tecnica pode ter custo conforme a politica comercial.';
+                factualReply = 'A visita tecnica pode ter custo, depende da politica comercial.';
             }
             const feeNotes = String(companyProfile?.technical_visit_fee_notes || '').trim();
             if (feeNotes) factualReply += ` ${feeNotes}`;
         } else {
-            factualReply = 'Nao tenho a politica de custo da visita cadastrada aqui com precisao. Posso confirmar com o time e te retorno agora.';
+            factualReply = 'Nao tenho essa info com precisao aqui agora. Posso confirmar com o time e te retorno rapidinho.';
         }
     } else if (financingQuestion) {
         const financing = companyProfile?.supports_financing;
@@ -1365,12 +1363,12 @@ function buildCompanyFactualReply(
         const policySummary = String(companyProfile?.payment_policy_summary || '').trim();
 
         const parts: string[] = [];
-        if (typeof financing === 'boolean') parts.push(financing ? 'Temos opcao de financiamento.' : 'No momento nao trabalhamos com financiamento.');
-        if (typeof card === 'boolean') parts.push(card ? 'Tambem temos parcelamento no cartao.' : 'Parcelamento no cartao nao esta disponivel.');
+        if (typeof financing === 'boolean') parts.push(financing ? 'Temos financiamento sim.' : 'No momento nao trabalhamos com financiamento.');
+        if (typeof card === 'boolean') parts.push(card ? 'Aceitamos parcelamento no cartao tambem.' : 'Parcelamento no cartao nao esta disponivel no momento.');
         if (policySummary) parts.push(policySummary);
 
         if (parts.length > 0) factualReply = parts.join(' ');
-        else factualReply = 'Ainda nao tenho as regras de financiamento/parcelamento detalhadas cadastradas aqui. Posso confirmar e te retorno.';
+        else factualReply = 'Ainda nao tenho as regras de pagamento detalhadas aqui. Posso confirmar e te retorno rapidinho.';
     }
 
     if (!factualReply) return null;
