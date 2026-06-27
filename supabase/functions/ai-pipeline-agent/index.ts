@@ -4967,6 +4967,33 @@ INSTRUCOES:
 `
                 : '';
 
+            // Fetch last agent outbound message for follow-up context (avoid repetition)
+            let lastFollowUpText = '';
+            let lastFollowUpAngle = '';
+            if (isFollowUpTrigger && leadId) {
+                try {
+                    const { data: lastFuMsg } = await supabase
+                        .from('interacoes')
+                        .select('mensagem')
+                        .eq('lead_id', Number(leadId))
+                        .eq('wa_from_me', true)
+                        .in('tipo', ['mensagem_vendedor', 'audio_vendedor'])
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+                    if (lastFuMsg?.mensagem) {
+                        const raw = String(lastFuMsg.mensagem).trim();
+                        lastFollowUpText = raw.substring(0, 300);
+                        // Infer angle from text for anti-repeat hint
+                        if (/(urg[êe]ncia|momento|mes parado|deixa de entrar|antes come[çc]ar)/i.test(raw)) lastFollowUpAngle = 'micro_urgency';
+                        else if (/(benef[íi]cio|economia|reduzir|clareza|entender melhor|explicar)/i.test(raw)) lastFollowUpAngle = 'benefit';
+                        else if (/(entendo|imagino|correria|sem tempo|tranquilo|sem press[aã]o|se (preferir|quiser)|ainda faz sentido)/i.test(raw)) lastFollowUpAngle = 'empathy';
+                        else if (/(porta aberta|sem problema|quando quiser|[úu]ltima|despedida)/i.test(raw)) lastFollowUpAngle = 'soft_goodbye';
+                        else lastFollowUpAngle = 'light_nudge';
+                    }
+                } catch (_) { /* non-blocking */ }
+            }
+
             const followUpStageGoal = FOLLOW_UP_STAGE_GOALS[currentStage] || FOLLOW_UP_STAGE_GOAL_FALLBACK;
             const followUpProhibitions = getFollowUpProhibitions(currentStage);
 
@@ -4977,7 +5004,7 @@ ETAPA_ATUAL_DO_LEAD: ${currentStage || 'desconhecida'}
 OBJETIVO_DA_ETAPA: ${followUpStageGoal}
 O lead nao responde ha ${followUpElapsedText}.
 Este e o follow-up ${followUpStep || '?'} de 5.
-
+${lastFollowUpText ? `ULTIMO_FOLLOWUP_ENVIADO: "${lastFollowUpText}"\nANGULO_USADO_NO_ULTIMO: ${lastFollowUpAngle} — NAO repita este angulo nem o mesmo texto.\n` : ''}
 PROIBICOES DESTA ETAPA (OBRIGATORIO):
 ${followUpProhibitions}
 ${realStageProtocol ? `
