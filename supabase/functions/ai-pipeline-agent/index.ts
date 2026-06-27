@@ -4624,6 +4624,35 @@ Deno.serve(async (req) => {
             kbChars = kbBlock.length;
         }
 
+        // --- COMPANY PROFILE CONTEXT (service area, location, policies) ---
+        let companyProfileBlock = '';
+        if (companyProfileFacts) {
+            const cp = companyProfileFacts;
+            const parts: string[] = [];
+            if (cp.company_name) parts.push(`NOME_DA_EMPRESA: ${cp.company_name}`);
+            const loc = [cp.headquarters_city, cp.headquarters_state].filter(Boolean).join('/');
+            if (loc) parts.push(`SEDE: ${loc}${cp.headquarters_address ? ` (${cp.headquarters_address})` : ''}`);
+            if (cp.service_area_summary) {
+                parts.push(`AREA_DE_ATENDIMENTO_EXCLUSIVA: ${cp.service_area_summary} — voce NAO pode atender regioes fora desta area. Se o lead mencionar local fora, informe e encerre o atendimento.`);
+            }
+            if (cp.business_hours_text) parts.push(`HORARIO_COMERCIAL: ${cp.business_hours_text}`);
+            if (cp.public_phone || cp.public_whatsapp) {
+                const contact = [cp.public_whatsapp ? `WhatsApp: ${cp.public_whatsapp}` : '', cp.public_phone ? `Tel: ${cp.public_phone}` : ''].filter(Boolean).join(' | ');
+                if (contact) parts.push(`CONTATO_PUBLICO: ${contact}`);
+            }
+            if (typeof cp.technical_visit_is_free === 'boolean') {
+                parts.push(`VISITA_TECNICA: ${cp.technical_visit_is_free ? 'gratuita' : 'pode ter custo'}${cp.technical_visit_fee_notes ? ` (${cp.technical_visit_fee_notes})` : ''}`);
+            }
+            if (typeof cp.supports_financing === 'boolean') {
+                parts.push(`OFERECE_FINANCIAMENTO: ${cp.supports_financing ? 'sim' : 'nao'}${cp.payment_policy_summary ? ` (${cp.payment_policy_summary})` : ''}`);
+            } else if (cp.payment_policy_summary) {
+                parts.push(`POLITICA_PAGAMENTO: ${cp.payment_policy_summary}`);
+            }
+            if (parts.length > 0) {
+                companyProfileBlock = `DADOS_DA_EMPRESA (contexto interno — use naturalmente nas respostas, NUNCA recita como lista):\n${parts.join('\n')}`;
+            }
+        }
+
         // --- WEB SEARCH FALLBACK (OpenAI Web Search -> Serper) ---
         let webBlock = '';
         let webNoKeyFallbackResponse: { action: string; content: string; _web_search: string } | null = null;
@@ -5015,6 +5044,7 @@ ${instancePromptContextBlock}
 
 ${SOLAR_BR_PACK}
 
+${companyProfileBlock ? `${companyProfileBlock}\n` : ''}
 ${gate.directive ? `\n🚨 ***SOLAR_SAFETY_GATE ATIVADO*** 🚨\n${gate.directive}\n(Obedeça esta diretiva acima de todas as outras de estilo)\n` : ''}
 
 CONDUÇÃO COMERCIAL (OBRIGATÓRIO — você é VENDEDOR, não atendente passivo):
