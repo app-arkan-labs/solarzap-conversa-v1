@@ -238,12 +238,23 @@ const buildInternalInvokeHeaders = (): Record<string, string> => {
 }
 
 const isLeadRespondedAfter = async (supabase: any, leadId: number, sinceIso: string) => {
+  // ponytail: catch ALL inbound message types — text, audio, image, video, document, sticker, etc.
+  // Previously only checked 'mensagem_cliente', missing audio replies (common disinterest signal).
   const { count, error } = await supabase
     .from('interacoes')
     .select('id', { count: 'exact', head: true })
     .eq('lead_id', leadId)
     .eq('wa_from_me', false)
-    .eq('tipo', 'mensagem_cliente')
+    .in('tipo', [
+      'mensagem_cliente',
+      'audio_cliente',
+      'video_cliente',
+      'imagem_cliente',
+      'documento_cliente',
+      'sticker_cliente',
+      'localizacao_cliente',
+      'contato_cliente',
+    ])
     .gt('created_at', sinceIso)
 
   if (error) {
@@ -875,6 +886,19 @@ const processFollowUpJob = async (supabase: any, job: ScheduledAgentJob, lead: L
       lead.id,
     )
     return { result: 'cancelled', reason: 'org_agent_disabled' }
+  }
+
+  // ponytail: also honor ai_enabled — disinterest gate (1C) sets ai_enabled=false
+  // to fully disable the agent; follow_up alone wasn't enough in the gate.
+  if (lead.ai_enabled === false) {
+    await markJobCancelled(
+      supabase,
+      job.job_id,
+      'ai_disabled',
+      { follow_up_step: 0 },
+      lead.id,
+    )
+    return { result: 'cancelled', reason: 'ai_disabled' }
   }
 
   if (lead.follow_up_enabled === false) {
