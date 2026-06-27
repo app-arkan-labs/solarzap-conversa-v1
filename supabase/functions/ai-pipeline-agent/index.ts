@@ -1793,6 +1793,56 @@ function detectDisinterest(
     };
 }
 
+function assessEngagementLevel(params: {
+    followUpStep: number | null;
+    followUpCount: number;
+    lastInboundAt: string | null;
+    lastOutboundAt: string | null;
+    conversationLength: number;
+    isScheduledTrigger: boolean;
+}): 'cold' | 'lukewarm' | 'warm' | 'engaged' {
+    const { followUpStep, followUpCount, lastInboundAt, lastOutboundAt, conversationLength, isScheduledTrigger } = params;
+
+    // Cold: multiple follow-ups sent, zero or near-zero inbound replies
+    if (followUpCount >= 3 && (followUpStep || 0) >= 3) return 'cold';
+    if (isScheduledTrigger && (followUpStep || 0) >= 4) return 'cold';
+
+    // Lukewarm: lead responded once then went silent, follow-ups stacking
+    if (followUpCount >= 2 && lastInboundAt) {
+        const lastIn = new Date(lastInboundAt).getTime();
+        const hoursSinceLastIn = (Date.now() - lastIn) / (1000 * 60 * 60);
+        if (hoursSinceLastIn > 48) return 'cold';
+        if (hoursSinceLastIn > 24) return 'lukewarm';
+    }
+
+    // Short conversation with follow-ups = lukewarm at best
+    if (conversationLength <= 5 && followUpCount >= 1) return 'lukewarm';
+
+    // Engaged: recent inbound, no follow-ups sent yet
+    if (!isScheduledTrigger && lastInboundAt) {
+        const lastIn = new Date(lastInboundAt).getTime();
+        const minsSinceLastIn = (Date.now() - lastIn) / (1000 * 60);
+        if (minsSinceLastIn < 30) return 'engaged';
+    }
+
+    // Default: warm (normal conversation flow)
+    if (followUpCount === 0) return 'warm';
+    return 'lukewarm';
+}
+
+function getEngagementDirective(level: 'cold' | 'lukewarm' | 'warm' | 'engaged'): string {
+    switch (level) {
+        case 'cold':
+            return 'NIVEL_ENGAJAMENTO_LEAD: FRIO — lead quase nao responde. Priorize deixar a porta aberta. Faça 1 tentativa leve SEM pressionar. Nao insista em CTA forte. Tom de "se fizer sentido, estou aqui".';
+        case 'lukewarm':
+            return 'NIVEL_ENGAJAMENTO_LEAD: MORNO — lead respondeu pouco. Reduza a insistencia. Ofereca 1 caminho curto sem pressionar. Se hesitar, recue com leveza.';
+        case 'warm':
+            return 'NIVEL_ENGAJAMENTO_LEAD: MORNO-QUENTE — tom consultivo normal. Conduza com naturalidade sem pressa.';
+        case 'engaged':
+            return 'NIVEL_ENGAJAMENTO_LEAD: ENGAJADO — lead respondendo ativamente. Aproveite o momento para qualificar e agendar.';
+    }
+}
+
 // ────────────────────────────────────────────────────────
 
 function normalizeHistoryText(message: any, attachmentUrl: string | null): string {
@@ -4994,6 +5044,59 @@ INSTRUCOES:
                 } catch (_) { /* non-blocking */ }
             }
 
+            // Assess lead engagement level (cold/lukewarm/warm/engaged) for tone modulation
+            let engagementLevel: 'cold' | 'lukewarm' | 'warm' | 'engaged' = 'warm';
+            try {
+                const { data: inboundCount } = await supabase
+                    .from('interacoes')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('lead_id', Number(leadId))
+                    .eq('wa_from_me', false)
+                    .gte('created_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString());
+                const { data: lastInbound } = await supabase
+                    .from('interacoes')
+                    .select('created_at')
+                    .eq('lead_id', Number(leadId))
+                    .eq('wa_from_me', false)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                const { data: lastOutbound } = await supabase
+                    .from('interacoes')
+                    .select('created_at')
+                    .eq('lead_id', Number(leadId))
+                    .eq('wa_from_me', true)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                const { count: totalMsgs } = await supabase
+                    .from('interacoes')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('lead_id', Number(leadId));
+
+                // Count follow-ups without response (consecutive outbounds after last inbound)
+                let fuCount = 0;
+                if (lastInbound?.created_at) {
+                    const { count } = await supabase
+                        .from('interacoes')
+                        .select('id', { count: 'exact', head: true })
+                        .eq('lead_id', Number(leadId))
+                        .eq('wa_from_me', true)
+                        .gt('created_at', lastInbound.created_at);
+                    fuCount = Number(count || 0);
+                }
+
+                engagementLevel = assessEngagementLevel({
+                    followUpStep: followUpStep,
+                    followUpCount: fuCount,
+                    lastInboundAt: lastInbound?.created_at || null,
+                    lastOutboundAt: lastOutbound?.created_at || null,
+                    conversationLength: Number(totalMsgs || 0),
+                    isScheduledTrigger: isFollowUpTrigger || isScheduledPostCallTrigger,
+                });
+            } catch (_) { /* non-blocking */ }
+            const engagementDirective = getEngagementDirective(engagementLevel);
+
             const followUpStageGoal = FOLLOW_UP_STAGE_GOALS[currentStage] || FOLLOW_UP_STAGE_GOAL_FALLBACK;
             const followUpProhibitions = getFollowUpProhibitions(currentStage);
 
@@ -5115,6 +5218,7 @@ ${postCallContextBlock}
 
 ${followUpContextBlock}
 
+${engagementDirective ? `${engagementDirective}\n` : ''}
 PROTOCOLO DA ETAPA:
 ${stagePromptText}
 
