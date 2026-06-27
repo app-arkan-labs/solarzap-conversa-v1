@@ -1597,6 +1597,206 @@ function getFollowUpProhibitions(stage: string): string {
     return prohibitions[stage] || '- NAO inventar contexto que nao existe no historico.\n- Referenciar apenas fatos reais da conversa.';
 }
 
+// ────────────────────────────────────────────────────────
+// DETERMINISTIC SAFETY GATES (pre-LLM)
+// ────────────────────────────────────────────────────────
+
+function detectHumanHandoffIntent(
+    text: string,
+    sellerList: Array<{ user_id: string; role: string }>,
+): { triggered: boolean; aiRes: Record<string, any> | null } {
+    const normalized = String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '');
+
+    const patterns = [
+        /quero falar com (o|a) (dono|dona|gerente|responsavel|supervisor|chefe|encarregado|proprietario)/i,
+        /(passa|passar|transfer|encaminhar?|manda|mandar) (pro|para o|pra o|p o|pro |pra |com o|com a) (dono|gerente|responsavel|supervisor|chefe|encarregado)/i,
+        /(dono|gerente|responsavel|supervisor|chefe) (pode|consegue|esta|ta) (me |)(atender|falar|responder|chamar)/i,
+        /me (passa|passe|manda|envia|fala) (o |)(whatsapp|whats|numero|contato|telefone) (do|da|de) (dono|gerente|responsavel)/i,
+        /quem (e|é) (o|a) (dono|dona|responsavel|gerente|proprietario)/i,
+        /(falar|conversar|ser atendido) (diretamente |)(com|com o|com a|com um|com uma) (humano|pessoa|atendente|vendedor)/i,
+        /atendimento humano/i,
+        /quero ser atendido por (uma |um |)(pessoa|humano|vendedor)/i,
+        /sai (do |)robo/i,
+        /(falar|atender|conversar).*(humano|pessoa real|gente)/i,
+        /(quero|prefiro|preciso).*(humano|pessoa real|gente)/i,
+        /(atendente|vendedor|consultor) (humano|real|de verdade)/i,
+    ];
+
+    const matched = patterns.some((p) => p.test(normalized));
+    if (!matched) return { triggered: false, aiRes: null };
+
+    const owner = sellerList.find(
+        (m) => m.role === 'owner' || m.role === 'admin',
+    );
+    const anySeller = sellerList[0];
+
+    if (owner) {
+        return {
+            triggered: true,
+            aiRes: {
+                action: 'send_message',
+                content:
+                    'Entendi! Voce quer falar diretamente com o responsavel. Vou transferir sua conversa agora para que ele(a) entre em contato com voce. Enquanto isso, ja pode me dizer o que precisa que eu adianto por aqui.',
+                handoff: {
+                    target_type: 'seller',
+                    assign_to_user_id: owner.user_id,
+                    reason: 'lead pediu para falar com dono/responsavel',
+                },
+            },
+        };
+    }
+
+    if (anySeller) {
+        return {
+            triggered: true,
+            aiRes: {
+                action: 'send_message',
+                content:
+                    'Claro! Vou encaminhar voce para um atendente da nossa equipe. Ele(a) ja vai entrar em contato com voce por aqui.',
+                handoff: {
+                    target_type: 'seller',
+                    assign_to_user_id: anySeller.user_id,
+                    reason: 'lead pediu para falar com humano/responsavel',
+                },
+            },
+        };
+    }
+
+    // No sellers available — acknowledge and keep AI assisting
+    return {
+        triggered: true,
+        aiRes: {
+            action: 'send_message',
+            content:
+                'Entendo que prefere falar com uma pessoa. Vou avisar a equipe aqui e alguem vai te chamar por aqui assim que possivel. Enquanto isso, pode me dizer o que precisa?',
+        },
+    };
+}
+
+function detectServiceAreaMismatch(
+    text: string,
+    companyProfile: CompanyProfileFacts | null,
+): { triggered: boolean; aiRes: Record<string, any> | null } {
+    if (!companyProfile) return { triggered: false, aiRes: null };
+
+    const serviceArea = String(companyProfile.service_area_summary || '').trim();
+    const hqCity = String(companyProfile.headquarters_city || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const hqState = String(companyProfile.headquarters_state || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+    if (!serviceArea && !hqCity && !hqState) return { triggered: false, aiRes: null };
+
+    const normalized = String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '');
+
+    // Extract region/UF/state the lead mentions
+    const regionPatterns = [
+        /(?:sou de|moro em|estou em|estamos em|atende(?:m|ndem)? (?:em|no|na|aqui em|aqui no|aqui na)|(?:voce|voces) atende(?:m)? (?:em|no|na|aqui em|aqui no|aqui na)|fica em|localizado em|regiao de|estado de)\s+([a-z]{2,20}(?:\s+[a-z]{2,20})?)/i,
+        /(?:atende(?:m|ndem)?|cobre(?:m)?|atua(?:m)?|trabalha(?:m)?|faz(?:em)?|pega(?:m)?)\s+(?:em|no|na|aqui em|aqui no|aqui na|no estado de|no estado da|na regiao de|em)\s+([a-z]{2,30}(?:\s+[a-z]{2,20})?)/i,
+        /(?:moro em|sou de|estou em|minha casa fica em|minha empresa fica em|minha fazenda fica em|meu sitio fica em|a instalacao (?:e|seria|ficaria) em)\s+([a-za-u]{3,30}(?:\s+[a-za-u]{3,20})?)/i,
+        /(?:de|da|do)\s+(ms|mt|mg|rj|sp|es|rs|sc|pr|go|df|ba|se|al|pe|pb|rn|ce|pi|ma|pa|ap|am|rr|ro|ac|to)(?:\s|$)/i,
+    ];
+
+    let leadRegion: string | null = null;
+    for (const pat of regionPatterns) {
+        const m = normalized.match(pat);
+        if (m?.[1]?.trim()) {
+            leadRegion = m[1].trim();
+            break;
+        }
+    }
+    if (!leadRegion) return { triggered: false, aiRes: null };
+
+    const leadRegionLower = leadRegion.toLowerCase();
+
+    // State abbreviation map (PT → normalized)
+    const ufMap: Record<string, string> = {
+        ms: 'mato grosso do sul', mt: 'mato grosso', mg: 'minas gerais',
+        rj: 'rio de janeiro', sp: 'sao paulo',
+        es: 'espirito santo', rs: 'rio grande do sul', sc: 'santa catarina',
+        pr: 'parana', go: 'goias', df: 'distrito federal',
+        ba: 'bahia', se: 'sergipe', al: 'alagoas', pe: 'pernambuco',
+        pb: 'paraiba', rn: 'rio grande do norte', ce: 'ceara',
+        pi: 'piaui', ma: 'maranhao', pa: 'para', ap: 'amapa',
+        am: 'amazonas', rr: 'roraima', ro: 'rondonia', ac: 'acre', to: 'tocantins',
+    };
+
+    const expandedRegion = ufMap[leadRegionLower] || leadRegionLower;
+    const serviceAreaLower = serviceArea.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+    // Check if lead region IS within the service area
+    const isInServiceArea =
+        serviceAreaLower.includes(expandedRegion) ||
+        serviceAreaLower.includes(leadRegionLower) ||
+        hqCity.includes(leadRegionLower) ||
+        hqState.includes(leadRegionLower) ||
+        hqState.includes(expandedRegion) ||
+        // Check if any word from leadRegion matches service area
+        leadRegionLower.split(/\s+/).some((w) => w.length > 2 && serviceAreaLower.includes(w)) ||
+        // Check if hqState matches expanded UF
+        expandedRegion.split(/\s+/).some((w) => w.length > 2 && hqState.includes(w));
+
+    if (isInServiceArea) return { triggered: false, aiRes: null };
+
+    // OUTSIDE service area — block deterministically
+    const areaName = serviceArea || `${hqCity}/${hqState}`;
+    return {
+        triggered: true,
+        aiRes: {
+            action: 'send_message',
+            content:
+                `Entendi! Voce esta em ${leadRegion}. Nos atendemos exclusivamente ${areaName}. Infelizmente nao conseguimos atender sua regiao no momento. Se conhecer alguem na nossa area de cobertura, pode indicar que a gente ajuda com prazer.`,
+            comment: {
+                text: `Lead mencionou regiao fora da area de cobertura: ${leadRegion}. Area atendida: ${areaName}.`,
+                type: 'note',
+            },
+        },
+    };
+}
+
+function detectDisinterest(
+    text: string,
+): { triggered: boolean; aiRes: Record<string, any> | null } {
+    const normalized = String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '');
+
+    const patterns = [
+        /(nao|não) (tenho|quero|quero mais|tenho mais) interesse/i,
+        /(nao|não) (me |)interessa/i,
+        /desisto/i,
+        /desisti(?:r|ndo)?\b/i,
+        /(parem|para|pare) de (mandar|enviar|ficar mandando) mensagem/i,
+        /(tira|remov|exclu|me deix|me esqueç|me esquec).*(?:da lista|do cadastro|do whatsapp|do zap)/i,
+        /(nao|não) (quero|vou querer|vou fazer|vou fechar|vou seguir|vou continuar)/i,
+        /(cancela|remove|exclui|tira) (meu |o |a )(cadastro|contato|numero|whatsapp)/i,
+        /(ja|já) (fiz|fechei|contratei|instalei|coloquei) (com |)(outra|outro)/i,
+        /(obrigad[oa]|valeu|tks|vlw).*(mas|porem|so que|so q).*(nao|não).*(quero|interesse|preciso|vou|posso)/i,
+        /(deix[ae]|para|deixa) (quieto|pra la|p la|baixo)/i,
+        /(nao|não) (estou|to) (mais |)interessad[oa]/i,
+        /perdi (o |)interesse/i,
+    ];
+
+    const triggered = patterns.some((p) => p.test(normalized));
+    if (!triggered) return { triggered: false, aiRes: null };
+
+    return {
+        triggered: true,
+        aiRes: {
+            action: 'send_message',
+            content:
+                'Tudo bem, sem problema! Obrigado por avisar. Se em outro momento fizer sentido reduzir sua conta de luz, e so me chamar por aqui. Estou a disposicao.',
+        },
+    };
+}
+
+// ────────────────────────────────────────────────────────
+
 function normalizeHistoryText(message: any, attachmentUrl: string | null): string {
     let text = String(message || '').trim();
     if (attachmentUrl && text.includes(attachmentUrl)) {
@@ -2883,6 +3083,7 @@ Deno.serve(async (req) => {
         let handoffTargetsCatalogText = '';
         let handoffAvailableSellerCount = 0;
         let handoffAvailableInstanceCount = 0;
+        let handoffSellerList: Array<{ user_id: string; role: string }> = [];
 
         // 1. STRICT INSTANCE CHECK
         leadId = payload?.leadId ?? null;
@@ -4228,6 +4429,15 @@ Deno.serve(async (req) => {
                 console.warn(`⚠️ [${runId}] handoff instances catalog load failed (non-blocking):`, handoffInstancesErr.message);
             }
 
+            handoffSellerList = (handoffMembers || [])
+                .map((row: any) => {
+                    const userId = String(row?.user_id || '').trim();
+                    const roleName = String(row?.role || '').trim().toLowerCase() || 'user';
+                    if (!userId) return null;
+                    return { user_id: userId, role: roleName };
+                })
+                .filter(Boolean) as Array<{ user_id: string; role: string }>;
+
             const sellerCatalog = (handoffMembers || [])
                 .map((row: any) => {
                     const userId = String(row?.user_id || '').trim();
@@ -4583,7 +4793,51 @@ Deno.serve(async (req) => {
         // 7. OPENAI CALL
         let aiRes: Record<string, any> | null = null;
 
-        const deterministicCompanyReply = !isScheduledTrigger
+        // --- DETERMINISTIC SAFETY GATES (pre-LLM, pre-company-reply) ---
+        // Priority: handoff > disinterest > service_area > company_factual
+
+        const humanHandoffGate = !isScheduledTrigger && !aiRes
+            ? detectHumanHandoffIntent(lastUserTextAggregated || lastUserText || '', handoffSellerList)
+            : { triggered: false, aiRes: null };
+        if (humanHandoffGate.triggered && humanHandoffGate.aiRes) {
+            aiRes = humanHandoffGate.aiRes;
+            console.log(`🤝 [${runId}] human_handoff_gate_triggered`);
+        }
+
+        const disinterestGate = !isScheduledTrigger && !aiRes
+            ? detectDisinterest(lastUserTextAggregated || lastUserText || '')
+            : { triggered: false, aiRes: null };
+        if (disinterestGate.triggered && disinterestGate.aiRes) {
+            aiRes = disinterestGate.aiRes;
+            console.log(`🛑 [${runId}] disinterest_gate_triggered`);
+            // Side-effect: disable AI and follow-ups for this lead (non-blocking)
+            try {
+                const leadIdNum = Number(leadId);
+                await supabase
+                    .from('leads')
+                    .update({ ai_enabled: false, follow_up_enabled: false })
+                    .eq('id', leadIdNum);
+                // Cancel any pending agent jobs for this lead
+                await supabase
+                    .from('pipeline_agent_jobs')
+                    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+                    .eq('lead_id', leadIdNum)
+                    .in('status', ['pending', 'queued']);
+                console.log(`🛑 [${runId}] disinterest_gate: lead AI/followup disabled, pending jobs cancelled`);
+            } catch (sideErr: any) {
+                console.warn(`🛑 [${runId}] disinterest_gate side-effect failed (non-blocking):`, sideErr?.message || sideErr);
+            }
+        }
+
+        const serviceAreaGate = !isScheduledTrigger && !aiRes
+            ? detectServiceAreaMismatch(lastUserTextAggregated || lastUserText || '', companyProfileFacts)
+            : { triggered: false, aiRes: null };
+        if (serviceAreaGate.triggered && serviceAreaGate.aiRes) {
+            aiRes = serviceAreaGate.aiRes;
+            console.log(`📍 [${runId}] service_area_gate_triggered`);
+        }
+
+        const deterministicCompanyReply = !isScheduledTrigger && !aiRes
             ? buildCompanyFactualReply(lastUserTextAggregated || lastUserText || '', companyProfileFacts, currentStage, lead)
             : null;
         if (deterministicCompanyReply) {
