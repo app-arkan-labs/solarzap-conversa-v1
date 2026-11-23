@@ -5601,12 +5601,16 @@ CORRECAO OBRIGATORIA:
         );
         const textCallIntent = textContainsCallSchedulingIntent(aiRes?.content || '');
         const textVisitIntent = textContainsVisitSchedulingIntent(aiRes?.content || '');
+        const textOffersVisitTime = currentStage === 'respondeu'
+            && /\bvisita\b/i.test(aiRes?.content || '')
+            && /\b(?:[01]?\d|2[0-3])(?::[0-5]\d|h(?:[0-5]\d)?)\b/i.test(aiRes?.content || '');
         const hasSchedulingIntentPrePolicy =
             hasScheduleTargetStagePrePolicy ||
             hasAppointmentObjectPrePolicy ||
             aiRes?.action === 'create_appointment' ||
             textCallIntent ||
-            textVisitIntent;
+            textVisitIntent ||
+            textOffersVisitTime;
 
         if (hasSchedulingIntentPrePolicy) {
             if (autoSchedulePolicy.mode === 'both_off') {
@@ -5651,15 +5655,14 @@ CORRECAO OBRIGATORIA:
                 }
             }
 
-            const isSchedulingOrAppointment = !!aiRes.appointment?.start_at 
-                || ['chamada_agendada', 'visita_agendada'].includes(normalizeStage(aiRes?.target_stage));
-
-            if (currentStage === 'respondeu' && qualificationState.missingKeys.length > 0 && !isSchedulingOrAppointment) {
+            if (currentStage === 'respondeu' && qualificationState.missingKeys.length > 0) {
                 qualificationGateBlocked = true;
                 stageGateBlockReason = stageGateBlockReason || `qualification_incomplete:${qualificationState.missingKeys[0]}`;
                 appointmentPrecheckBlockedReason = appointmentPrecheckBlockedReason || `qualification_incomplete:${qualificationState.missingKeys[0]}`;
                 // Was the LLM trying to schedule before qualification is complete?
                 const prematureScheduling = !!aiRes.appointment
+                    || aiRes.action === 'create_appointment'
+                    || textOffersVisitTime
                     || ['chamada_agendada', 'visita_agendada'].includes(normalizeStage(aiRes?.target_stage));
                 delete aiRes.appointment;
                 delete aiRes.target_stage;
