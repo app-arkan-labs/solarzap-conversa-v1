@@ -5459,6 +5459,28 @@ Se houver transferência de responsável/instância, inclua "handoff" com target
         if (aiRes.content) {
             let text = aiRes.content;
 
+            const annualSpend = structuredLeadSnapshot?.gasto_conta_1_ano_brl;
+            const decadeSpend = structuredLeadSnapshot?.gasto_conta_10_anos_brl;
+            if (currentStage === 'respondeu' && !isScheduledTrigger && annualSpend && decadeSpend) {
+                const annualMention = /\b(?:por ano|ao ano|em (?:um|1) ano)\b/i;
+                const decadeMention = /\b(?:dez|10) anos\b/i;
+                if (annualMention.test(text) !== decadeMention.test(text)) {
+                    const annualOnly = annualMention.test(text);
+                    const mentionedValue = annualOnly ? annualSpend : decadeSpend;
+                    const sentences = text.split(/(?<=[.!?])(?=\s)|(?=\|\|)/);
+                    const comparison = sentences.findIndex(sentence =>
+                        (annualOnly ? annualMention : decadeMention).test(sentence)
+                        && (sentence.match(/R\$\s*[\d.,]+/gi) || []).some(value => normalizeMoneyBRL(value.toUpperCase()) === mentionedValue)
+                    );
+                    if (comparison >= 0) {
+                        const otherValue = annualOnly ? decadeSpend : annualSpend;
+                        const amount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(otherValue);
+                        sentences[comparison] += ` Mantendo essa média, são ${amount} em ${annualOnly ? 'dez anos' : 'um ano'}.`;
+                        text = sentences.join('');
+                    }
+                }
+            }
+
             // 1. Strip ALL emojis deterministically (the prompt ban isn't 100% and emojis read
             // robotic/off-brand here). Covers pictographics, flags, variation selectors and ZWJ.
             {
