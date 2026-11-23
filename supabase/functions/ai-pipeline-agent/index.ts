@@ -5473,7 +5473,7 @@ Se houver transferência de responsável/instância, inclua "handoff" com target
 
             // 2. Auto-Split Long Messages (> 220 chars) if no "||" present
             if (text.length > 220 && !text.includes('||')) {
-                const sentences = text.match(/[^.!?]+[.!?]+(\s|$)/g);
+                const sentences = text.split(/(?<=[.!?])(?=\s)/);
                 if (sentences && sentences.length > 1) {
                     const blocks: string[] = [];
                     let currentBlock = "";
