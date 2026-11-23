@@ -944,7 +944,9 @@ function mergeQuestionKeys(...sources: any[]): string[] {
 }
 
 function inferQuestionKeyFromText(text: string | null | undefined): string | null {
-    const normalized = String(text || '')
+    const lastPart = String(text || '').split('||').pop()?.trim() || '';
+    const lastQuestion = lastPart.match(/[^.!?\r\n]+\?$/)?.[0] || lastPart;
+    const normalized = lastQuestion
         .trim()
         .toLowerCase()
         .normalize('NFD')
@@ -4560,7 +4562,7 @@ Deno.serve(async (req) => {
         }) : null;
         const replyOptions = {
             model: deepseekApiKey ? 'deepseek-flash' : 'gpt-4o',
-            max_tokens: 900,
+            max_tokens: deepseekApiKey ? 1800 : 900,
             response_format: { type: 'json_object' as const },
             ...(deepseekApiKey ? { thinking: { type: 'disabled' } } : {}),
         };
@@ -5332,6 +5334,7 @@ DIRETRIZ FINAL DE TOM (LEIA IMEDIATAMENTE ANTES DE RESPONDER — MAIS IMPORTANTE
 As regras acima definem O QUE fazer. Esta diretriz define COMO falar. Cumpra TODAS as regras mas soando como PESSOA REAL no WhatsApp. Regras sao o mapa; seu tom e a voz. Varie palavras, ritmo e comprimento das frases. NUNCA recite o script como robo. NUNCA repita a mesma frase pronta duas vezes. NUNCA soe como checklist ou atendente de call center. Seja caloroso, direto e natural — como um vendedor escrevendo de verdade no WhatsApp.
 
 FORMATO DE SAÍDA (JSON ESTRITO, sem markdown, sem explicação fora do JSON):
+Exemplo de JSON válido apenas para mostrar a estrutura: {"action":"send_message","content":"Faz sentido olhar isso no seu caso?"}
 {"action": "send_message"|"move_stage"|"update_lead_fields"|"add_comment"|"create_followup"|"create_appointment"|"none", "content": "Texto humano aqui...", "target_stage": "next_stage_id", "fields": {"campo": {"value": "...", "confidence": "high"|"medium"|"low", "source": "user"|"inferred"|"confirmed"}}, "stage_data": {"campo_ou_namespace": "valor"}, "comment": {"text": "Resumo/nota interna", "type": "summary|note|next_step"}, "task": {"title": "Título do follow-up", "notes": "Detalhes", "due_at": "ISO", "priority": "low|medium|high", "channel": "whatsapp|call|email"}, "appointment": {"type": "call|visit|meeting|installation", "title": "Título curto", "start_at": "ISO", "end_at": "ISO opcional", "location": "Opcional", "notes": "Opcional"}, "handoff": {"target_type": "seller"|"instance", "assign_to_user_id": "uuid", "assign_to_instance_name": "instance_name", "reason": "opcional"}}
 
 Se action for "move_stage", DEVE incluir "target_stage".
@@ -5353,6 +5356,16 @@ Se houver transferência de responsável/instância, inclua "handoff" com target
                     ...replyOptions,
                     messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
                 });
+                if (deepseekApiKey && (!completion.choices[0]?.message?.content?.trim() || completion.choices[0]?.finish_reason === 'length')) {
+                    console.warn(`[${runId}] Retrying empty or truncated DeepSeek JSON.`);
+                    completion = await replyClient.chat.completions.create({
+                        ...replyOptions,
+                        messages: [
+                            { role: "system", content: `${systemPrompt}\nRetorne somente um objeto JSON válido com os campos necessários para este turno.` },
+                            ...chatHistory,
+                        ],
+                    });
+                }
                 replyModelUsed = completion.model || replyOptions.model;
             } catch (replyErr: any) {
                 const failure = { model: replyOptions.model, code: replyErr?.code || null, status: replyErr?.status || null };
