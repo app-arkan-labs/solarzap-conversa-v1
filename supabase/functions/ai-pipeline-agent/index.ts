@@ -5398,6 +5398,13 @@ Se houver transferência de responsável/instância, inclua "handoff" com target
                 console.error('⚠️ JSON Parse Failed. Fallback to raw text.', err);
                 aiRes = { action: 'send_message', content: rawContent };
             }
+            const opening = !isScheduledTrigger && !lastAssistantMessageText
+                && (configStageKey === 'novo_lead' || configStageKey === 'respondeu');
+            if (opening && !structuredLeadSnapshot?.valor_medio_conta_brl
+                && aiRes?.action === 'send_message'
+                && typeof aiRes.content === 'string' && aiRes.content.trim() && !aiRes.content.includes('?')) {
+                aiRes.content = aiRes.content.trim() + ' || Pode me mandar uma foto da conta de luz ou dizer quanto paga em média por mês?';
+            }
         } // End if (!aiRes)
 
         if (typeof aiRes.content === 'string') aiRes.content = aiRes.content.substring(0, 2000);
