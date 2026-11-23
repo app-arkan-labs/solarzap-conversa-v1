@@ -3076,6 +3076,7 @@ Deno.serve(async (req) => {
 
         // Tracking variables for structured logging
         let decision = 'proceed';
+        let replyModelUsed: string | null = null;
         let stageFallbackUsed = false;
         let kbHitsCount = 0;
         let kbChars = 0;
@@ -3222,6 +3223,7 @@ Deno.serve(async (req) => {
                         current_stage: currentStage || null,
                         config_stage_key: configStageKey || null,
                         effective_agent_type: effectiveAgentType || null,
+                        llm_model: replyModelUsed,
                         structured_lead_snapshot: structuredLeadSnapshot,
                         lead_updates: envelope.lead_updates || null,
                         outcome: envelope.outcome,
@@ -4550,7 +4552,18 @@ Deno.serve(async (req) => {
         }
 
         const openAIApiKey = Deno.env.get('OPENAI_API_KEY') || '';
-        const openai = openAIApiKey ? new OpenAI({ apiKey: openAIApiKey }) : null;
+        const deepseekApiKey = Deno.env.get('DEEPSEEK_API_KEY')?.trim() || '';
+        const replyApiKey = deepseekApiKey || openAIApiKey;
+        const replyClient = replyApiKey ? new OpenAI({
+            apiKey: replyApiKey,
+            ...(deepseekApiKey ? { baseURL: 'https://api.deepseek.com' } : {}),
+        }) : null;
+        const replyOptions = {
+            model: deepseekApiKey ? 'deepseek-flash' : 'gpt-4o',
+            max_tokens: 900,
+            response_format: { type: 'json_object' as const },
+            ...(deepseekApiKey ? { thinking: { type: 'disabled' } } : {}),
+        };
 
         // --- CRM COMMENTS CONTEXT ---
         let crmCommentsBlock = '';
@@ -4897,7 +4910,7 @@ Deno.serve(async (req) => {
         // Initialize gate (scoped outside for post-processing)
         let gate: { intent: string | null; missing: string[]; directive: string | null; } = { intent: null, missing: [], directive: null };
 
-        // 7. OPENAI CALL
+        // 7. GENERATE AGENT REPLY
         let aiRes: Record<string, any> | null = null;
 
         // --- DETERMINISTIC SAFETY GATES (pre-LLM, pre-company-reply) ---
@@ -5007,8 +5020,8 @@ Deno.serve(async (req) => {
         let systemPrompt = '';
 
         if (!aiRes) {
-            if (!openai) {
-                return respondNoSend({ skipped: 'missing_openai_api_key' }, 'missing_openai_api_key');
+            if (!replyClient) {
+                return respondNoSend({ skipped: 'missing_llm_api_key' }, 'missing_llm_api_key');
             }
 
             // --- INCREMENT 12: SOLAR GATE EXECUTION ---
@@ -5336,29 +5349,28 @@ Se houver transferência de responsável/instância, inclua "handoff" com target
 
             let completion;
             try {
-                completion = await openai.chat.completions.create({
-                    model: "gpt-4o",
+                completion = await replyClient.chat.completions.create({
+                    ...replyOptions,
                     messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
-                    max_tokens: 900,
-                    response_format: { type: "json_object" }
                 });
-            } catch (openaiErr: any) {
-                console.error(`❌ [${runId}] OpenAI API call failed:`, openaiErr?.message || openaiErr);
+                replyModelUsed = completion.model || replyOptions.model;
+            } catch (replyErr: any) {
+                const failure = { model: replyOptions.model, code: replyErr?.code || null, status: replyErr?.status || null };
+                console.error(`[${runId}] Agent reply failed:`, failure);
                 try {
                     await supabase.from('ai_action_logs').insert({
                         org_id: leadOrgId,
                         lead_id: Number(leadId),
-                        action_type: 'openai_call_failed',
+                        action_type: 'llm_call_failed',
                         details: JSON.stringify({
                             runId,
-                            error: openaiErr?.message || String(openaiErr),
-                            status: openaiErr?.status || null,
+                            ...failure,
                             interactionId: anchorInteractionId || null
                         }),
                         success: false
                     });
                 } catch (_logErr) { /* non-blocking */ }
-                return respondNoSend({ skipped: 'openai_call_failed', runId, error: openaiErr?.message }, 'openai_call_failed');
+                return respondNoSend({ skipped: 'llm_call_failed', runId }, 'llm_call_failed');
             }
 
             // Do not redeclare aiRes!
@@ -5484,7 +5496,7 @@ Se houver transferência de responsável/instância, inclua "handoff" com target
         ) {
             console.warn(`[${runId}] Duplicate question guard triggered for key=${draftedQuestionKey}.`);
 
-            if (openai) {
+            if (replyClient) {
                 try {
                     const duplicateCorrectionPrompt = `${systemPrompt}
 
@@ -5495,11 +5507,9 @@ CORRECAO OBRIGATORIA:
 - Gere a proxima melhor pergunta faltante ou avance para o proximo passo.
 `;
 
-                    const retryCompletion = await openai.chat.completions.create({
-                        model: "gpt-4o",
+                    const retryCompletion = await replyClient.chat.completions.create({
+                        ...replyOptions,
                         messages: [{ role: "system", content: duplicateCorrectionPrompt }, ...chatHistory],
-                        max_tokens: 900,
-                        response_format: { type: "json_object" }
                     });
 
                     const retryRawContent = retryCompletion.choices[0]?.message?.content || '{}';
@@ -6199,7 +6209,7 @@ CORRECAO OBRIGATORIA:
             for (let i = 0; i < parts.length; i++) {
                 const partContent = parts[i];
                 if (!partContent) continue;
-                const outboundText = partContent; // Texto já vem correto do OpenAI, não utilizar repairMojibake para não corromper acentos.
+                const outboundText = partContent; // Preserve accents in the model output.
 
                 const typingDuration = Math.min(6000, 2000 + (outboundText.length * 50));
                 if (!isSimulatedTransport) {

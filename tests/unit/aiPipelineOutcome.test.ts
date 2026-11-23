@@ -10,7 +10,9 @@ describe('aiPipelineOutcome', () => {
   it('classifies transient and retryable reason codes deterministically', () => {
     expect(classifyAgentOutcome('quiet_window_timeout')).toBe('transient_skip')
     expect(classifyAgentOutcome('openai_call_failed')).toBe('retryable_error')
+    expect(classifyAgentOutcome('llm_call_failed')).toBe('retryable_error')
     expect(classifyAgentOutcome('missing_openai_api_key')).toBe('blocked')
+    expect(classifyAgentOutcome('missing_llm_api_key')).toBe('blocked')
     expect(classifyAgentOutcome('already_replied_final')).toBe('terminal_skip')
     expect(classifyAgentOutcome('settings_not_found_for_org')).toBe('blocked')
   })

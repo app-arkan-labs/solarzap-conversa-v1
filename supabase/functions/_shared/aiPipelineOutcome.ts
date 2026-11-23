@@ -52,6 +52,7 @@ const TRANSIENT_REASON_CODES = new Set([
 
 const RETRYABLE_REASON_CODES = new Set([
   'openai_call_failed',
+  'llm_call_failed',
   'settings_query_failed',
   'empty_comment',
   'scheduled_trigger_no_outbound',
@@ -59,6 +60,7 @@ const RETRYABLE_REASON_CODES = new Set([
 
 const BLOCKED_REASON_CODES = new Set([
   'missing_openai_api_key',
+  'missing_llm_api_key',
   'lead_without_org_id',
   'settings_not_found_for_org',
   'missing_required_config',
@@ -85,6 +87,7 @@ const TRANSIENT_DEFAULT_RETRY_SECONDS: Record<string, number> = {
 
 const RETRYABLE_DEFAULT_RETRY_SECONDS: Record<string, number> = {
   openai_call_failed: 180,
+  llm_call_failed: 180,
   settings_query_failed: 120,
   empty_comment: 300,
   scheduled_trigger_no_outbound: 180,
