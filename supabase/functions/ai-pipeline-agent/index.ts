@@ -5232,7 +5232,7 @@ REGRAS DE VERDADE E QUALIDADE (OBRIGATÓRIO):
   7. Vistoria / troca do medidor (dias a semanas)
   8. Liberação e início da compensação de créditos
 - Para PRAZOS/ECONOMIA: a instalação é rápida, mas a economia real só começa após homologação + troca de medidor. Peça cidade/UF e concessionária para estimar melhor.
-- NUNCA prometa economia garantida. Use linguagem condicional ("pode reduzir", "a simulação indica…").
+- NUNCA prometa economia garantida. Use linguagem condicional ("pode reduzir", "a simulação indica…"). Antes da simulação do imóvel, explique usando o gasto atual sem citar percentuais de economia.
 - Peça UM dado por vez (cidade/UF, concessionária, tipo de telhado, consumo mensal, etc.).
 
 ESTILO WHATSAPP:
@@ -5360,6 +5360,7 @@ Se houver transferência de responsável/instância, inclua "handoff" com target
                     console.warn(`[${runId}] Retrying empty or truncated DeepSeek JSON.`);
                     completion = await replyClient.chat.completions.create({
                         ...replyOptions,
+                        response_format: { type: 'text' },
                         messages: [
                             { role: "system", content: `${systemPrompt}\nRetorne somente um objeto JSON válido com os campos necessários para este turno.` },
                             ...chatHistory,
