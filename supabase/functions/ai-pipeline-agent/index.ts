@@ -648,7 +648,7 @@ function buildSchedulingCloseCTA(
     const order: AppointmentWindowType[] =
         policy.mode === 'visit_only' ? ['visit']
             : policy.mode === 'call_only' ? ['call']
-                : ['call', 'visit'];
+                : ['visit', 'call'];
     for (const type of order) {
         const slots = (slotsByType[type] || []).slice(0, 2).map((s) => formatSlotLabel(s, timeZone, now));
         const label = type === 'call' ? 'uma ligacao rapida' : 'uma visita tecnica';
@@ -866,7 +866,9 @@ function detectSolarIntentAndMissing(lastUserText: string, lead: any) {
     // Context Data
     const hasLocation = (lead.city && lead.city.length > 2) || (lead.meta && lead.meta.city);
     const hasUtility = (lead.meta && lead.meta.utility_company);
-    const hasConsumption = (lead.consumo_kwh && lead.consumo_kwh > 0) || (lead.valor_estimado && lead.valor_estimado > 0);
+    const hasConsumption = Number(lead.consumo_kwh) > 0
+        || Number(lead.conta_luz_mensal) > 0
+        || Number(lead.valor_estimado) > 0;
 
     // Missing checks
     const missing = [];
@@ -1020,10 +1022,23 @@ function extractDeterministicLeadSignals(
         }
     }
 
+    const entryStage = currentStage === 'novo_lead' || currentStage === 'respondeu';
     const billMatch = normalized.match(/(?:r\\$\\s*|)(\\d{2,5})(?:\\s*reais?)\\b/i);
-    const billValue = billMatch?.[1] ? normalizeMoneyBRL(billMatch[1]) : normalizeMoneyBRL(text);
+    let billValue = billMatch?.[1] ? normalizeMoneyBRL(billMatch[1]) : normalizeMoneyBRL(text);
+    if (entryStage) {
+        const billMention = /\b(?:conta de (?:luz|energia)|fatura de energia)\b/.test(normalized);
+        const billReply = lastQuestionKey === 'bill_value' && (
+            /^(?:r\$\s*)?[\d.,]+(?:\s*reais?)?[.!]?$/.test(normalized)
+            || /\b(?:pago|pagando|gasto|na faixa de|por volta de|em media|cerca de)\b/.test(normalized)
+        );
+        const amounts = text.replace(/\b\d+(?:[.,]\d+)*\s*kwh\b/gi, '').match(/\d+(?:[.,]\d+)*/g) || [];
+        billValue = (billMention || billReply) && amounts.length === 1 && !text.includes('?')
+            ? normalizeMoneyBRL(amounts[0])
+            : null;
+    }
     if (billValue && billValue > 0) {
-        fields.estimated_value_brl = { value: billValue, confidence: 'high', source: 'user' };
+        const field = entryStage ? 'conta_luz_mensal' : 'estimated_value_brl';
+        fields[field] = { value: billValue, confidence: 'high', source: 'user' };
         answeredKeys.add('bill_value');
     }
 
@@ -1099,18 +1114,27 @@ function getStageNamespaceSnapshot(lead: any, currentStage: string): Record<stri
     return value as Record<string, any>;
 }
 
-function buildStructuredLeadSnapshot(lead: any, currentStage: string): Record<string, any> {
+function buildStructuredLeadSnapshot(lead: any, currentStage: string, confirmedBillThisTurn?: unknown): Record<string, any> {
     const stageSnapshot = getStageNamespaceSnapshot(lead, currentStage);
     const meta = parseLeadMeta(lead?.observacoes || '');
     const answeredKeys = Array.isArray(stageSnapshot.answered_keys)
         ? stageSnapshot.answered_keys.map((item: any) => normalizeQuestionKey(item)).filter(Boolean)
         : [];
+    const entryStage = currentStage === 'novo_lead' || currentStage === 'respondeu';
+    const monthlyBill = normalizeMoneyBRL(confirmedBillThisTurn) ?? normalizeMoneyBRL(lead?.conta_luz_mensal);
+    const monthlyBillCents = Math.round((monthlyBill ?? 0) * 100);
 
     return {
         nome_confirmado: lead?.nome || null,
         tipo_projeto: lead?.tipo_cliente || stageSnapshot.segment || null,
         cidade_ou_endereco: lead?.cidade || stageSnapshot.address || null,
-        valor_medio_conta_brl: lead?.valor_estimado || stageSnapshot.collected?.estimated_value_brl || null,
+        valor_medio_conta_brl: entryStage
+            ? monthlyBill
+            : monthlyBill ?? (lead?.valor_estimado || stageSnapshot.collected?.estimated_value_brl || null),
+        ...(entryStage && monthlyBillCents > 0 ? {
+            gasto_conta_1_ano_brl: monthlyBillCents * 12 / 100,
+            gasto_conta_10_anos_brl: monthlyBillCents * 120 / 100,
+        } : {}),
         consumo_kwh_mes: lead?.consumo_kwh || stageSnapshot.collected?.consumption_kwh_month || null,
         concessionaria: meta.utility_company || stageSnapshot.collected?.utility_company || null,
         tipo_telhado: lead?.roof_type || stageSnapshot.collected?.roof_type || null,
@@ -1168,7 +1192,8 @@ function getRespondeuQualificationState(lead: any): {
     const hasProjectType = Boolean(String(lead?.tipo_cliente || stageData?.segment || '').trim())
         || answeredKeysSnap.includes('project_type');
     const hasConsumptionOrBill = Boolean(
-        Number(lead?.valor_estimado || 0) > 0
+        Number(lead?.conta_luz_mensal || 0) > 0
+        || Number(lead?.valor_estimado || 0) > 0
         || Number(lead?.consumo_kwh || 0) > 0
         || Number((collected as any)?.estimated_value_brl || 0) > 0
         || Number((collected as any)?.consumption_kwh_month || 0) > 0
@@ -2534,6 +2559,7 @@ async function executeLeadStageDataUpdate(
 // Columns that exist directly on leads table
 const LEAD_DIRECT_COLUMNS: Record<string, (v: any) => any> = {
     'consumption_kwh_month': normalizeKwh,    // maps to consumo_kwh
+    'conta_luz_mensal': normalizeMoneyBRL,
     'estimated_value_brl': normalizeMoneyBRL, // maps to valor_estimado
     'customer_type': normalizeCustomerType,   // maps to tipo_cliente
     'city': (v: any) => typeof v === 'string' ? v.trim() : null,
@@ -2549,7 +2575,7 @@ const FIELD_TO_COLUMN: Record<string, string> = {
     'zip': 'cep',
 };
 
-const V6_NUMERIC_FIELDS = new Set(['consumption_kwh_month', 'estimated_value_brl']);
+const V6_NUMERIC_FIELDS = new Set(['consumption_kwh_month', 'estimated_value_brl', 'conta_luz_mensal']);
 
 function isHedged(text: string | null | undefined): boolean {
     if (!text) return false;
@@ -4331,6 +4357,10 @@ Deno.serve(async (req) => {
                 if (deterministicSignals.fields.estimated_value_brl) {
                     lead.valor_estimado = normalizeMoneyBRL(deterministicSignals.fields.estimated_value_brl.value) || lead.valor_estimado;
                 }
+                if (deterministicSignals.fields.conta_luz_mensal
+                    && !deterministicFieldResult.skipped.some(skip => skip.field === 'conta_luz_mensal')) {
+                    lead.conta_luz_mensal = deterministicSignals.fields.conta_luz_mensal.value;
+                }
                 if (deterministicSignals.fields.consumption_kwh_month) {
                     lead.consumo_kwh = normalizeKwh(deterministicSignals.fields.consumption_kwh_month.value) || lead.consumo_kwh;
                 }
@@ -4381,7 +4411,7 @@ Deno.serve(async (req) => {
             };
         }
 
-        structuredLeadSnapshot = buildStructuredLeadSnapshot(lead, currentStage);
+        structuredLeadSnapshot = buildStructuredLeadSnapshot(lead, currentStage, deterministicSignals.fields.conta_luz_mensal?.value);
 
         scheduleTimezone = String(settings?.timezone || 'America/Sao_Paulo').trim() || 'America/Sao_Paulo';
         scheduleWindowConfigNormalized = normalizeAppointmentWindowConfig((settings as any)?.appointment_window_config);
@@ -5207,7 +5237,7 @@ PROIBIÇÕES ABSOLUTAS:
 - Proibido: emoji 😊
 
 REGRA DE AGENDAMENTO:
-- Se o cliente confirma agendamento (diz "sim", "pode", "vamos", "bora", "quero agendar"), ofereça 2 slots reais disponíveis.
+- Quando o lead aceitar agendar, ofereça 2 slots reais disponíveis. Nas etapas de entrada, concordar com a explicação sobre energia indica interesse. A confirmação da visita é a escolha de um horário oferecido.
 - NUNCA sugira horário passado.
 - Use APENAS os horários de SLOTS_DISPONIVEIS_REAIS.
 - Se o horário solicitado estiver indisponível/conflitado, peça nova escolha.
@@ -5224,7 +5254,7 @@ ${stagePromptText}
 
 CONTRATO DE EXECUÇÃO (vale para TODA etapa — prioridade sobre estilo, siga à risca):
 1. O PROTOCOLO DA ETAPA acima é a fonte da verdade do que fazer AGORA. Execute os passos dele na ordem; não pule o fechamento da etapa.
-2. TODA resposta termina com UM próximo passo concreto: a próxima pergunta de qualificação OU um CTA de agendamento com horário real. É PROIBIDO terminar sem próximo passo ou com frase vaga ("vamos para a próxima etapa", "te retorno", "posso ajudar com isso", "vou seguir com seu atendimento").
+2. TODA resposta termina com UM próximo passo concreto: a próxima pergunta de qualificação OU um CTA de agendamento com horário real. Em novo_lead e respondeu, perguntar sobre entendimento ou interesse também é um próximo passo válido enquanto o lead está conhecendo a ideia. É PROIBIDO terminar com frase vaga ("vamos para a próxima etapa", "te retorno", "posso ajudar com isso", "vou seguir com seu atendimento").
 3. Quando o protocolo mandar fechar/agendar, FECHE de verdade: ofereça 2 horários reais de SLOTS_DISPONIVEIS_REAIS. Nunca apenas descreva que vai agendar — ofereça os horários. EXCEÇÃO: se o lead recusou os horários ("não pode/não consigo"), NÃO repita os mesmos nem mude de formato sozinho — pergunte qual dia e horário ficam bons pra ele.
 4. UMA pergunta por mensagem, e a pergunta é sempre a ÚLTIMA mensagem (nenhuma frase depois dela).
 5. Nunca repita uma pergunta já respondida: confira DADOS_JA_CONFIRMADOS e o histórico antes de perguntar.
@@ -5254,7 +5284,7 @@ Sempre que o lead informar dados úteis (conta de luz, consumo, telha, concessio
 Nunca invente dados; se não tiver certeza, pergunte 1 coisa por vez.
 Confidence: "high" se o usuário disse explicitamente, "medium" se inferido claramente, "low" se duvidoso.
 Source: "user" se veio direto do que o cliente escreveu, "inferred" se você deduziu, "confirmed" se o cliente confirmou algo que você perguntou.
-Campos possíveis: consumption_kwh_month, estimated_value_brl, customer_type, city, zip, roof_type, utility_company, grid_connection_type, financing_interest, installation_site_type, average_bill_context.
+Campos possíveis: consumption_kwh_month, estimated_value_brl, conta_luz_mensal, customer_type, city, zip, roof_type, utility_company, grid_connection_type, financing_interest, installation_site_type, average_bill_context. Em novo_lead e respondeu, use conta_luz_mensal para o valor mensal informado pelo lead ou lido na foto da conta.
 
 DADOS ESTRUTURADOS POR ETAPA (OPCIONAL, quando houver alta/medio confianca):
 - Quando a conversa trouxer dados estruturados relevantes da etapa atual, inclua "stage_data" no JSON.

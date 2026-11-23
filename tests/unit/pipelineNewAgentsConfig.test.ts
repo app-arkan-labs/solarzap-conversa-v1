@@ -29,6 +29,17 @@ describe('pipeline new agents config', () => {
     expect(DEFAULT_PROMPTS_BY_STAGE.assistente_geral).toBe(AI_PIPELINE_STAGE_PROMPTS_PDF.assistente_geral);
   });
 
+  it('pede a conta na abertura e valida o interesse antes da qualificação', () => {
+    const opening = DEFAULT_PROMPTS_BY_STAGE.novo_lead;
+    const respondeu = DEFAULT_PROMPTS_BY_STAGE.respondeu;
+    expect(opening).toContain('foto da conta de luz ou o valor médio mensal como primeira pergunta útil');
+    expect(respondeu).toContain('explique em mensagens curtas');
+    expect(respondeu).toContain('gasto em um e dez anos de DADOS_JA_CONFIRMADOS');
+    expect(respondeu).toContain('Pergunte se faz sentido');
+    expect(respondeu.indexOf('Pergunte se faz sentido')).toBeLessThan(respondeu.indexOf('QUALIFICAÇÃO POR SEGMENTO (CONVERSACIONAL)'));
+    expect(respondeu).toContain('priorize o caminho de visita técnica');
+  });
+
   it('keeps follow_up and agente_disparos outside PipelineStage managed list', () => {
     expect(isPdfManagedStage('chamada_realizada')).toBe(true);
     expect(isPdfManagedStage('follow_up')).toBe(true);
