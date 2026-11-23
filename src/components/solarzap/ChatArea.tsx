@@ -6,6 +6,7 @@ import { Conversation, Message, PIPELINE_STAGES, Contact, LeadTask } from '@/typ
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1146,9 +1147,10 @@ export function ChatArea({
           data-testid="chat-open-details"
           className="flex items-center gap-2 min-w-0 flex-1 text-left hover:bg-muted/50 pl-1 py-1.5 rounded-lg transition-colors cursor-pointer"
         >
-          <div className="w-9 h-9 rounded-full bg-muted flex-shrink-0 flex items-center justify-center text-lg">
-            {conversation.contact.avatar || '👤'}
-          </div>
+          <Avatar className="h-9 w-9">
+            <AvatarImage src={conversation.contact.photoUrl || undefined} alt="" />
+            <AvatarFallback className="bg-muted text-lg">{conversation.contact.avatar || '👤'}</AvatarFallback>
+          </Avatar>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="font-medium text-sm text-foreground truncate">

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Contact, PIPELINE_STAGES, PipelineStage, ClientType } from '@/types/solarzap';
 import { formatPhoneForDisplay, normalizePhoneForStorage } from '@/lib/phoneUtils';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useContactPhotos } from '@/hooks/domain/useContactPhotos';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -476,6 +477,7 @@ export function ContactsView({
     triggerFollowUpExhaustedIfNeeded,
   ]);
 
+  useContactPhotos(filteredContacts);
   const visibleContactIds = filteredContacts.map((contact) => contact.id);
   const selectedVisibleCount = visibleContactIds.filter((contactId) => selectedContactIds.has(contactId)).length;
   const allVisibleSelected = visibleContactIds.length > 0 && selectedVisibleCount === visibleContactIds.length;
@@ -715,6 +717,7 @@ export function ContactsView({
                   />
                 )}
                 <Avatar className="h-10 w-10">
+                  <AvatarImage src={contact.photoUrl || undefined} alt="" />
                   <AvatarFallback className="bg-primary/10 text-primary text-lg">
                     {contact.avatar || contact.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                   </AvatarFallback>
@@ -859,6 +862,7 @@ export function ContactsView({
             {/* Contact Header */}
             <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-center">
               <Avatar className="h-20 w-20">
+                <AvatarImage src={selectedContact.photoUrl || undefined} alt="" />
                 <AvatarFallback className="bg-primary/10 text-primary text-2xl">
                   {selectedContact.avatar || selectedContact.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                 </AvatarFallback>

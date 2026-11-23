@@ -77,12 +77,12 @@ export function IntegrationsView() {
     if (!newInstanceName.trim()) return;
 
     const result = await createInstance(newInstanceName);
-    if (result?.blocked) {
+    if (!result || result.blocked) {
       return;
     }
-    if (result?.qrCode) {
+    setNewInstanceName('');
+    if (result.qrCode) {
       setCurrentQR({ instanceName: result.instance?.instance_name || '', qrCode: result.qrCode });
-      setNewInstanceName('');
       return;
     }
 

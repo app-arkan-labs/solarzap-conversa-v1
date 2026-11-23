@@ -12,7 +12,7 @@ vi.mock('@/lib/supabase', () => ({
   },
 }));
 
-import { connectInstance, createInstance, sendMessage, sendSticker } from '@/lib/evolutionApi';
+import { connectInstance, createInstance, getContactPhoto, sendMessage, sendSticker } from '@/lib/evolutionApi';
 
 describe('evolutionApi contract normalization', () => {
   beforeEach(() => {
@@ -68,6 +68,17 @@ describe('evolutionApi contract normalization', () => {
     expect(response.success).toBe(true);
     expect(response.data?.base64).toBe('RAW_QR_BASE64');
     expect(response.data?.code).toBe('RAW_QR_CODE');
+  });
+
+  it('looks up a contact photo through the scoped lead and instance', async () => {
+    const data = { photoUrl: null, refreshedAt: '2026-11-23T20:00:00Z' };
+    invokeMock.mockResolvedValue({ data: { success: true, data }, error: null });
+
+    expect(await getContactPhoto('42', 'instance-test', 'org-test')).toEqual({ success: true, data });
+    expect(JSON.parse(invokeMock.mock.calls[0][1].body)).toEqual({
+      action: 'profile-picture',
+      payload: { leadId: '42', instanceName: 'instance-test', orgId: 'org-test' },
+    });
   });
 
   it('keeps message key.id accessible after envelope normalization', async () => {

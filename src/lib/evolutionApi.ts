@@ -339,6 +339,14 @@ export async function setWebhook(
 }
 
 // Export all functions as a namespace for convenience
+export function getContactPhoto(contactId: string, instanceName: string, orgId: string) {
+  return callEvolutionApi<{ photoUrl: string | null; refreshedAt: string }>('profile-picture', {
+    leadId: contactId,
+    instanceName,
+    orgId,
+  });
+}
+
 export const evolutionApi = {
   createInstance,
   connectInstance,

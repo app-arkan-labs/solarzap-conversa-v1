@@ -119,6 +119,8 @@ export const leadToContact = (lead: any): Contact => {
         company: lead.empresa || undefined,
         phone: lead.telefone || lead.phone_e164 || '',
         email: lead.email || undefined,
+        photoUrl: lead.photo_url ?? null,
+        photoRefreshedAt: lead.photo_refreshed_at ?? null,
         channel: mapChannel(lead.canal),
         pipelineStage: mapPipelineStage(lead.status_pipeline),
 

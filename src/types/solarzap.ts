@@ -38,6 +38,8 @@ export interface Contact {
   phone: string;
   email?: string;
   avatar?: string;
+  photoUrl?: string | null;
+  photoRefreshedAt?: string | null;
   channel: Channel;
   pipelineStage: PipelineStage;
   clientType: ClientType;

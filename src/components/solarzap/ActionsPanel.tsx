@@ -3,6 +3,7 @@ import { formatPhoneForDisplay } from '@/lib/phoneUtils';
 import { Phone, Video, Calendar, FileText, Home, Kanban, User, Zap, MapPin, Mail, X, Save, Loader2, MessageSquare } from 'lucide-react';
 import { Conversation, PIPELINE_STAGES, PipelineStage, CHANNEL_INFO, Channel, ClientType, LeadTask } from '@/types/solarzap';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
@@ -469,9 +470,10 @@ export function ActionsPanel({
         <div className="space-y-3">
           {/* Avatar and Name */}
           <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center text-3xl flex-shrink-0">
-              {contact.avatar || '👤'}
-            </div>
+            <Avatar className="h-14 w-14">
+              <AvatarImage src={contact.photoUrl || undefined} alt="" />
+              <AvatarFallback className="bg-muted text-3xl">{contact.avatar || '👤'}</AvatarFallback>
+            </Avatar>
             <div className="flex-1 space-y-1">
               <Input
                 value={formData.nome || ''}

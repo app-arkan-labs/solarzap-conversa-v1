@@ -113,7 +113,7 @@ export function WhatsAppInstancesManager() {
   // Handle creating new instance
   const handleCreate = async () => {
     const result = await createInstance(newInstanceName || undefined);
-    if (result?.blocked) {
+    if (!result || result.blocked) {
       return;
     }
     if (result?.qrCode && result?.instance) {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseUrl } from '@/lib/supabase';
 import { evolutionApi } from '@/lib/evolutionApi';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -119,6 +119,16 @@ const normalizeInstance = (row: any): UserWhatsAppInstance => ({
   assistant_prompt_override_version: normalizePromptVersion(row?.assistant_prompt_override_version),
   assistant_prompt_updated_at: row?.assistant_prompt_updated_at ? String(row.assistant_prompt_updated_at) : null,
 });
+
+async function configureInstanceWebhook(instanceName: string) {
+  const webhook = await evolutionApi.setWebhook(instanceName, `${supabaseUrl}/functions/v1/whatsapp-webhook`, [
+    'MESSAGES_UPSERT',
+    'MESSAGES_UPDATE',
+    'CONNECTION_UPDATE',
+    'QRCODE_UPDATED',
+  ]);
+  if (!webhook.success) throw new Error('Falha ao configurar o recebimento de mensagens da instância.');
+}
 
 export function useUserWhatsAppInstances() {
   const { user, orgId, role } = useAuth();
@@ -342,27 +352,9 @@ export function useUserWhatsAppInstances() {
         throw new Error(response.error || 'Falha ao criar instância na API');
       }
 
-      // Configure Webhook Immediately
-      const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-connect`;
-      await evolutionApi.setWebhook(instanceName, webhookUrl, [
-        'MESSAGES_UPSERT',
-        'MESSAGES_UPDATE',
-        'CONNECTION_UPDATE',
-        'QRCODE_UPDATED'
-      ], {
-        'X-Arkan-Webhook-Token': 'server-managed'
-      });
-
-
       let qrCode = extractQrCode(response.data);
-      if (!qrCode) {
-        const connectResponse = await evolutionApi.connectInstance(instanceName);
-        if (connectResponse.success && connectResponse.data) {
-          qrCode = extractQrCode(connectResponse.data);
-        }
-      }
 
-      // 4. Save to Supabase with user_id
+      // Register ownership before calling the scoped webhook and connect actions.
       const { data: newInstance, error } = await supabase
         .from('whatsapp_instances')
         .insert({
@@ -381,7 +373,25 @@ export function useUserWhatsAppInstances() {
 
       const normalizedNewInstance = normalizeInstance(newInstance);
       setInstances(prev => [normalizedNewInstance, ...prev]);
-      toast.success('Instância criada! Escaneie o QR Code.');
+
+      await configureInstanceWebhook(instanceName);
+      if (!qrCode) {
+        const connectResponse = await evolutionApi.connectInstance(instanceName);
+        if (!connectResponse.success) throw new Error(connectResponse.error || 'Falha ao obter QR Code');
+        qrCode = extractQrCode(connectResponse.data);
+        if (qrCode) {
+          const { error: qrError } = await supabase
+            .from('whatsapp_instances')
+            .update({ qr_code: qrCode })
+            .eq('id', normalizedNewInstance.id)
+            .eq('org_id', orgId);
+          if (qrError) throw qrError;
+          setInstances(prev => prev.map(instance =>
+            instance.id === normalizedNewInstance.id ? { ...instance, qr_code: qrCode } : instance
+          ));
+        }
+      }
+      if (qrCode) toast.success('Instância criada! Escaneie o QR Code.');
       return { qrCode: qrCode || undefined, instance: normalizedNewInstance };
     } catch (error) {
       console.error('Error creating instance:', error);
@@ -405,6 +415,7 @@ export function useUserWhatsAppInstances() {
       }
 
       setActionLoading(instanceName);
+      await configureInstanceWebhook(instanceName);
       // evolutionApi.connectInstance gets the QR code
       const response = await evolutionApi.connectInstance(instanceName);
 

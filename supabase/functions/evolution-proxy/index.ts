@@ -80,6 +80,7 @@ function normalizeAction(raw: unknown): string {
     'connect-instance': 'instance-connect',
     connectinstance: 'instance-connect',
     'instance-connect': 'instance-connect',
+    'profile-picture': 'profile-picture',
 
     'get-instance-status': 'instance-status',
     getinstancestatus: 'instance-status',
@@ -331,7 +332,7 @@ async function ensureInstanceScoped(
 
   let query = supabaseAdmin
     .from('whatsapp_instances')
-    .select('id, instance_name, org_id, user_id, is_active')
+    .select('id, instance_name, org_id, user_id, is_active, status')
     .eq('org_id', ctx.orgId)
     .eq('instance_name', instanceName)
 
@@ -436,13 +437,15 @@ Deno.serve(async (req) => {
       'instance-delete',
       'instance-logout',
       'send-reaction',
+      'profile-picture',
     ])
 
     const instanceName = typeof payload.instanceName === 'string' ? payload.instanceName.trim() : ''
+    let scopedInstance: Record<string, unknown> | null = null
     if (actionsWithInstance.has(action)) {
       if (!instanceName) throw new Error('Missing required field: instanceName')
       const ensureStartedAt = perfNow()
-      await ensureInstanceScoped(supabaseAdmin, ctx, instanceName)
+      scopedInstance = await ensureInstanceScoped(supabaseAdmin, ctx, instanceName)
       console.log('[EVOLUTION_PROXY_LATENCY] ensure_instance_scoped_ms', {
         traceId,
         action,
@@ -534,6 +537,54 @@ Deno.serve(async (req) => {
 
       case 'instance-status': {
         data = await evolutionRequestTimed(`/instance/connectionState/${instanceName}`, { method: 'GET' })
+        break
+      }
+
+      case 'profile-picture': {
+        const leadId = requireString(payload, 'leadId')
+        if (!/^\d+$/.test(leadId)) throw new Error('Invalid lead ID')
+        const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+        if (!ctx.internal && !anonKey) throw new Error('Missing SUPABASE_ANON_KEY env')
+        const reader = ctx.internal
+          ? supabaseAdmin
+          : createClient(supabaseUrl, anonKey!, {
+            global: { headers: { Authorization: req.headers.get('authorization') || '' } },
+          })
+        const { data: lead, error } = await reader
+          .from('leads')
+          .select('phone_e164, telefone, photo_url, photo_refreshed_at')
+          .eq('id', leadId)
+          .eq('org_id', ctx.orgId)
+          .eq('instance_name', instanceName)
+          .maybeSingle()
+        if (error || !lead) throw new Error('Contact not found in instance scope')
+
+        const cachedAt = Date.parse(lead.photo_refreshed_at || '')
+        if (nowMs() - cachedAt < 24 * 60 * 60 * 1000) {
+          data = { photoUrl: lead.photo_url, refreshedAt: lead.photo_refreshed_at }
+          break
+        }
+
+        if (scopedInstance?.status !== 'connected') throw new Error('WhatsApp instance not connected')
+        const number = normalizePhone(lead.phone_e164 || lead.telefone)
+        if (!number) throw new Error('Invalid number')
+        const photo = await evolutionRequestTimed(`/chat/fetchProfilePictureUrl/${instanceName}`, {
+          method: 'POST',
+          body: JSON.stringify({ number }),
+        }) as { profilePictureUrl?: string | null } | null
+        if (photo && !Object.hasOwn(photo, 'profilePictureUrl')) throw new Error('Invalid profile photo response')
+        const photoUrl = typeof photo?.profilePictureUrl === 'string' && photo.profilePictureUrl.startsWith('https://')
+          ? photo.profilePictureUrl
+          : null
+        const refreshedAt = new Date().toISOString()
+        const { error: saveError } = await supabaseAdmin
+          .from('leads')
+          .update({ photo_url: photoUrl, photo_refreshed_at: refreshedAt })
+          .eq('id', leadId)
+          .eq('org_id', ctx.orgId)
+          .eq('instance_name', instanceName)
+        if (saveError) throw saveError
+        data = { photoUrl, refreshedAt }
         break
       }
 
@@ -648,7 +699,7 @@ Deno.serve(async (req) => {
           webhookHeaders['x-arkan-webhook-secret'] = serverWebhookSecret
         }
 
-        const evolution = await evolutionRequestTimed(`/webhook/set/${instanceName}`, {
+        await evolutionRequestTimed(`/webhook/set/${instanceName}`, {
           method: 'POST',
           body: JSON.stringify({
             webhook: {
@@ -660,10 +711,7 @@ Deno.serve(async (req) => {
           }),
         })
 
-        data = {
-          evolution,
-          webhook,
-        }
+        data = { webhook }
         break
       }
 

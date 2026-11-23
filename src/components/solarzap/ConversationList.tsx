@@ -4,6 +4,8 @@ import { Conversation, CHANNEL_INFO, PIPELINE_STAGES, PipelineStage, Contact, Ch
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useContactPhotos } from '@/hooks/domain/useContactPhotos';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertDialog,
@@ -183,6 +185,7 @@ export function ConversationList({
   const canBulkAssign = Boolean(onBulkAssignLeads);
   const canUseSelectionMode = Boolean(onDeleteLead) || canBulkAssign;
   const displayConversations = conversations;
+  useContactPhotos(displayConversations.map(({ contact }) => contact));
   const visibleLeadIds = useMemo(
     () => displayConversations.map((conversation) => conversation.contact.id),
     [displayConversations],
@@ -912,6 +915,14 @@ export function ConversationList({
                       isSelected ? 'bg-primary/6' : 'hover:bg-muted/20',
                     )}
                   >
+                    {conversation.contact.photoUrl && (
+                      <Avatar className="mr-2 h-8 w-8">
+                        <AvatarImage src={conversation.contact.photoUrl} alt="" />
+                        <AvatarFallback className="bg-muted">
+                          {conversation.contact.name.slice(0, 1).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    )}
                     <div className="min-w-0 flex-1 text-left">
                       <p className="truncate text-sm font-semibold text-foreground">
                         {conversation.contact.name}
@@ -978,13 +989,12 @@ export function ConversationList({
 
                 {/* Avatar */}
                 <div className="relative flex-shrink-0">
-                  <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center" title={isAiActive ? 'IA Ativa' : undefined}>
-                    {isAiActive ? (
-                      <Bot className="w-6 h-6 text-primary" />
-                    ) : (
-                      <span className="text-2xl">{conversation.contact.avatar || '👤'}</span>
-                    )}
-                  </div>
+                  <Avatar className="h-12 w-12" title={isAiActive ? 'IA Ativa' : undefined}>
+                    <AvatarImage src={conversation.contact.photoUrl || undefined} alt="" />
+                    <AvatarFallback className="bg-muted text-2xl">
+                      {isAiActive ? <Bot className="w-6 h-6 text-primary" /> : conversation.contact.avatar || '👤'}
+                    </AvatarFallback>
+                  </Avatar>
                   {conversation.isUrgent && (
                     <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-danger border-2 border-card" />
                   )}
