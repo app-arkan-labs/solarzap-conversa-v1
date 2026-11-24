@@ -345,53 +345,17 @@ async function bootstrapSelf(
     };
   }
 
-  const { data: existingOrg, error: existingOrgError } = await adminClient
-    .from('organizations')
-    .select('id, created_at')
-    .eq('owner_id', user.id)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const fallbackName = user.email
+    ? `Organizacao de ${user.email}`
+    : `Organizacao ${user.id.slice(0, 8)}`;
 
-  if (existingOrgError) {
-    throw existingOrgError;
-  }
+  const { data: orgId, error: createOrgError } = await adminClient.rpc('bootstrap_unlimited_signup_org', {
+    p_owner_id: user.id,
+    p_name: fallbackName,
+  });
 
-  let orgId = existingOrg?.id ?? null;
-  if (!orgId) {
-    const { data: plan, error: planError } = await adminClient
-      .from('_admin_subscription_plans')
-      .select('plan_key, limits')
-      .eq('plan_key', 'unlimited')
-      .eq('is_active', true)
-      .single();
-
-    if (planError || plan?.limits?.max_leads !== -1) {
-      throw planError || new Error('Plano Ilimitado sem limites configurados');
-    }
-
-    const fallbackName = user.email
-      ? `Organizacao de ${user.email}`
-      : `Organizacao ${user.id.slice(0, 8)}`;
-
-    const { data: createdOrg, error: createOrgError } = await adminClient
-      .from('organizations')
-      .insert({
-        name: fallbackName,
-        owner_id: user.id,
-        plan: plan.plan_key,
-        plan_limits: plan.limits,
-        subscription_status: 'active',
-        onboarding_state: 'active',
-      })
-      .select('id')
-      .single();
-
-    if (createOrgError || !createdOrg?.id) {
-      throw createOrgError || new Error('Falha ao criar organizacao');
-    }
-
-    orgId = createdOrg.id;
+  if (createOrgError || !orgId) {
+    throw createOrgError || new Error('Falha ao criar organizacao');
   }
 
   const { error: membershipUpsertError } = await adminClient
@@ -408,15 +372,6 @@ async function bootstrapSelf(
 
   if (membershipUpsertError) {
     throw membershipUpsertError;
-  }
-
-  if (!existingOrg) {
-    await adminClient.from('org_billing_timeline').insert({
-      org_id: orgId,
-      event_type: 'plan_activated',
-      actor: 'org_admin',
-      payload: { source: 'bootstrap_self', plan: 'unlimited' },
-    });
   }
 
   return {

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import {
+  bootstrapSelf,
   listUserOrgs,
   type OrgRole,
   type UserOrganizationOption,
@@ -758,8 +759,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (resolution.status === 'membership_ausente_confirmada') {
-        const apiFallback = await resolveOrganizationsFromApiFallback(source, orgHint);
+        let apiFallback = await resolveOrganizationsFromApiFallback(source, orgHint);
         if (!isCurrent()) return;
+
+        const signupCompany = nextUser.user_metadata?.company_name;
+        const isConfirmedSignup = nextUser.email_confirmed_at && typeof signupCompany === 'string' && signupCompany.trim();
+        if (isConfirmedSignup && !apiFallback && !persistedMembership?.orgId && !storedOrgFallback?.orgId) {
+          try {
+            const { org_id } = await bootstrapSelf();
+            if (!isCurrent()) return;
+            apiFallback = await resolveOrganizationsFromApiFallback(source, org_id);
+            if (!isCurrent()) return;
+            if (!apiFallback?.selectedMembership?.orgId) {
+              markOrgError({ kind: 'missing_after_bootstrap', message: 'Vinculo da organizacao ainda indisponivel.' });
+              return;
+            }
+          } catch (error) {
+            if (isCurrent()) {
+              markOrgError({ kind: 'bootstrap_failed', message: error instanceof Error ? error.message : 'Falha ao criar organizacao.' });
+            }
+            return;
+          }
+        }
+
         if (apiFallback) {
           setOrganizations(apiFallback.orgs);
           if (apiFallback.selectedMembership?.orgId) {
