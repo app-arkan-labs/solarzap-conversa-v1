@@ -5461,9 +5461,20 @@ Se houver transferência de responsável/instância, inclua "handoff" com target
 
             const annualSpend = structuredLeadSnapshot?.gasto_conta_1_ano_brl;
             const decadeSpend = structuredLeadSnapshot?.gasto_conta_10_anos_brl;
-            if (currentStage === 'respondeu' && !isScheduledTrigger && annualSpend && decadeSpend) {
+            if ((currentStage === 'novo_lead' || currentStage === 'respondeu') && !isScheduledTrigger && annualSpend && decadeSpend) {
                 const annualMention = /\b(?:por ano|ao ano|em (?:um|1) ano)\b/i;
                 const decadeMention = /\b(?:dez|10) anos\b/i;
+                const formatBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+                const sentences = text.split(/(?<=[.!?])(?=\s)|(?=\|\|)/);
+                text = sentences.map(sentence => {
+                    if (!/\b(?:conta|fatura|gasto|isso dá)\b/i.test(sentence) || /\b(?:economi\w*|investimento|retorno|financiamento)\b/i.test(sentence)) {
+                        return sentence;
+                    }
+                    return sentence.replace(
+                        /\b(?:(?:mais de|menos de|cerca de|aproximadamente|uns?)\s+)?R\$\s*[\d.,]+(?:\s+mil)?(?=\s+((?:por|ao) ano|em (?:(?:um|1) ano|(?:dez|10) anos))\b)/gi,
+                        (_amount, period: string) => formatBRL.format(decadeMention.test(period) ? decadeSpend : annualSpend),
+                    );
+                }).join('');
                 if (annualMention.test(text) !== decadeMention.test(text)) {
                     const annualOnly = annualMention.test(text);
                     const mentionedValue = annualOnly ? annualSpend : decadeSpend;
@@ -5474,7 +5485,7 @@ Se houver transferência de responsável/instância, inclua "handoff" com target
                     );
                     if (comparison >= 0) {
                         const otherValue = annualOnly ? decadeSpend : annualSpend;
-                        const amount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(otherValue);
+                        const amount = formatBRL.format(otherValue);
                         sentences[comparison] += ` Mantendo essa média, são ${amount} em ${annualOnly ? 'dez anos' : 'um ano'}.`;
                         text = sentences.join('');
                     }
