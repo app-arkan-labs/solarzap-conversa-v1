@@ -120,6 +120,10 @@ const normalizeInstance = (row: any): UserWhatsAppInstance => ({
   assistant_prompt_updated_at: row?.assistant_prompt_updated_at ? String(row.assistant_prompt_updated_at) : null,
 });
 
+function addInstanceOnce(instances: UserWhatsAppInstance[], instance: UserWhatsAppInstance) {
+  return instances.some(existing => existing.id === instance.id) ? instances : [instance, ...instances];
+}
+
 async function configureInstanceWebhook(instanceName: string) {
   const webhook = await evolutionApi.setWebhook(instanceName, `${supabaseUrl}/functions/v1/whatsapp-webhook`, [
     'MESSAGES_UPSERT',
@@ -271,7 +275,7 @@ export function useUserWhatsAppInstances() {
             const newInstance = normalizeInstance(payload.new);
             if (!isOrgManager && newInstance.user_id !== user.id) return;
             if (newInstance.is_active) {
-              setInstances(prev => [newInstance, ...prev]);
+              setInstances(prev => addInstanceOnce(prev, newInstance));
             }
           } else if (payload.eventType === 'UPDATE') {
             const updated = normalizeInstance(payload.new);
@@ -372,7 +376,7 @@ export function useUserWhatsAppInstances() {
       if (error) throw error;
 
       const normalizedNewInstance = normalizeInstance(newInstance);
-      setInstances(prev => [normalizedNewInstance, ...prev]);
+      setInstances(prev => addInstanceOnce(prev, normalizedNewInstance));
 
       await configureInstanceWebhook(instanceName);
       if (!qrCode) {
