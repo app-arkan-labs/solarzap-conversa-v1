@@ -17,6 +17,7 @@ import { getPasswordRecoveryRedirectTarget } from "@/lib/passwordRecoveryRedirec
 import { AdminGuard } from "@/components/admin/AdminGuard";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 import { resolveHostAwareRedirect } from "@/lib/hostDetection";
+import { PROPOSAL_PAGE_PATH } from "@/utils/proposalPage";
 
 const Index = lazyWithRetry(() => import("./pages/Index"), "app:index");
 const Login = lazyWithRetry(() => import("./pages/Login"), "app:login");
@@ -30,6 +31,7 @@ const Pricing = lazyWithRetry(() => import("./pages/Pricing"), "app:pricing");
 const Onboarding = lazyWithRetry(() => import("./pages/Onboarding"), "app:onboarding");
 const Admin = lazyWithRetry(() => import("./pages/Admin"), "app:admin");
 const ContractsEmbed = lazyWithRetry(() => import("./pages/ContractsEmbed"), "app:contracts-embed");
+const PublicProposal = lazyWithRetry(() => import("./pages/PublicProposal"), "app:public-proposal");
 
 let authRecoveryInFlight: Promise<void> | null = null;
 
@@ -132,6 +134,9 @@ const AppRouteFallback = () => (
 
 const App = () => {
   if (typeof window !== 'undefined') {
+    if (window.location.pathname === PROPOSAL_PAGE_PATH) {
+      return <Suspense fallback={<AppRouteFallback />}><PublicProposal /></Suspense>;
+    }
     const recoveryRedirectTarget = getPasswordRecoveryRedirectTarget(window.location);
     if (recoveryRedirectTarget) {
       window.location.replace(recoveryRedirectTarget);

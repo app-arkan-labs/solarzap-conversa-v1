@@ -1,15 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN");
-if (!ALLOWED_ORIGIN) {
-  throw new Error("Missing ALLOWED_ORIGIN env");
-}
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { resolveRequestCors } from "../_shared/cors.ts";
 
 const base64urlToBytes = (value: string): Uint8Array => {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -71,6 +61,7 @@ const verifyToken = async (
 };
 
 Deno.serve(async (req) => {
+  const { corsHeaders, originAllowed } = resolveRequestCors(req, { allowMethods: "GET, POST, OPTIONS" });
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -129,13 +120,35 @@ Deno.serve(async (req) => {
       });
     }
 
-    const bucket = String((versionRow as any)?.premium_payload?.storage?.bucket || "");
-    const path = String((versionRow as any)?.premium_payload?.storage?.path || "");
+    const document = versionRow.premium_payload;
+    const bucket = String(document?.storage?.bucket || "");
+    const path = String(document?.storage?.path || "");
     if (!bucket || !path) {
       return new Response(JSON.stringify({ error: "proposal_storage_missing" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    const isHtml = document?.documentFormat === "html";
+    let html: string | undefined;
+    if (isHtml) {
+      const expectedPrefix = `${versionRow.user_id}/${versionRow.lead_id}/`;
+      if (!originAllowed || req.method !== "POST" || bucket !== "proposals" || !path.startsWith(expectedPrefix)
+        || !/^[\w.-]+\.html$/.test(path.slice(expectedPrefix.length))) {
+        return new Response(JSON.stringify({ error: "proposal_storage_missing" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
+        });
+      }
+      const { data: file, error: fileError } = await admin.storage.from(bucket).download(path);
+      if (fileError || !file) {
+        return new Response(JSON.stringify({ error: "proposal_unavailable" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
+        });
+      }
+      html = await file.text();
     }
 
     // Track opening (best-effort).
@@ -154,6 +167,14 @@ Deno.serve(async (req) => {
       });
     } catch {
       // ignore
+    }
+
+    if (html !== undefined) {
+      const code = String(document?.propNum || "");
+      const name = /^PROP-[A-F0-9]{8}$/.test(code) ? `${code}.html` : "proposta.html";
+      return new Response(JSON.stringify({ html, name }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+      });
     }
 
     const { data: signed, error: signedErr } = await admin.storage

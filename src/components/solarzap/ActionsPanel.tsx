@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { scopeProposalVersionByIdsQuery } from '@/lib/multiOrgLeadScoping';
 import { resolveProposalLinks } from '@/utils/proposalLinks';
+import { isProposalPageUrl } from '@/utils/proposalPage';
 
 type LeadProposalItem = {
   proposal_version_id: string;
@@ -680,10 +681,13 @@ export function ActionsPanel({
                           variant="outline"
                           size="sm"
                           className="h-6 text-[11px] px-2"
-                          disabled={!proposal.pdf_url}
-                          onClick={() => proposal.pdf_url && window.open(proposal.pdf_url, '_blank')}
+                          disabled={!proposal.pdf_url && !isProposalPageUrl(proposal.share_url)}
+                          onClick={() => {
+                            const url = isProposalPageUrl(proposal.share_url) ? proposal.share_url : proposal.pdf_url;
+                            if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                          }}
                         >
-                          Ver PDF
+                          {isProposalPageUrl(proposal.share_url) ? 'Abrir proposta' : 'Ver PDF'}
                         </Button>
                         <Button
                           variant="outline"

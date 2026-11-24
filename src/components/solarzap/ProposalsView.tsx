@@ -35,6 +35,7 @@ import { getThemeById, normalizeThemeHex } from '@/utils/proposalColorThemes';
 import { generateProposalPDF, generateSellerScriptPDF } from '@/utils/generateProposalPDF';
 import { prefetchCoverImage, prefetchCoverImages } from '@/hooks/useProposalCoverImage';
 import { resolveProposalLinks } from '@/utils/proposalLinks';
+import { isProposalPageUrl, publishProposalPage } from '@/utils/proposalPage';
 import { listMembers, type MemberDto } from '@/lib/orgAdminClient';
 import { getMemberDisplayName } from '@/lib/memberDisplayName';
 import { cn } from '@/lib/utils';
@@ -412,6 +413,12 @@ export function ProposalsView() {
   };
 
   const canGenerateFromRow = (row: ProposalRow) => Number(row.valor_projeto || 0) > 0;
+  const canOpenProposal = (row: ProposalRow) => row.premium_payload?.documentFormat === 'html'
+    ? Boolean(isProposalPageUrl(row.share_url) || (orgId && row.proposal_version_id))
+    : Boolean(row.pdf_url || canGenerateFromRow(row));
+  const proposalActionLabel = (row: ProposalRow) => isProposalPageUrl(row.share_url)
+    ? 'Abrir proposta'
+    : row.premium_payload?.documentFormat === 'html' ? 'Gerar link' : 'Baixar proposta';
 
   const resolveBrandingForRow = (payload: Record<string, unknown>) => {
     const branding = (payload.branding && typeof payload.branding === 'object')
@@ -433,8 +440,25 @@ export function ProposalsView() {
   };
 
   const handleDownloadProposal = async (row: ProposalRow) => {
-    if (row.pdf_url) {
-      window.open(row.pdf_url, '_blank');
+    const url = isProposalPageUrl(row.share_url) ? row.share_url : row.pdf_url;
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (row.premium_payload?.documentFormat === 'html') {
+      if (!orgId) return;
+      try {
+        const shareUrl = await publishProposalPage(row.proposal_version_id, orgId);
+        setRows((current) => current.map((item) => item.proposal_version_id === row.proposal_version_id
+          ? { ...item, share_url: shareUrl }
+          : item));
+        setSelectedRow((current) => current?.proposal_version_id === row.proposal_version_id
+          ? { ...current, share_url: shareUrl }
+          : current);
+        toast({ title: 'Link da proposta gerado' });
+      } catch {
+        toast({ title: 'Link indisponível', description: 'Não foi possível emitir o link desta proposta.', variant: 'destructive' });
+      }
       return;
     }
 
@@ -823,14 +847,14 @@ export function ProposalsView() {
                             variant="outline"
                             size="sm"
                             className="h-10"
-                            disabled={!row.pdf_url && !canGenerateFromRow(row)}
+                            disabled={!canOpenProposal(row)}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDownloadProposal(row);
                             }}
                           >
                             <ExternalLink className="w-4 h-4 mr-1" />
-                            Proposta
+                            {proposalActionLabel(row)}
                           </Button>
                           <Button
                             variant="outline"
@@ -902,14 +926,14 @@ export function ProposalsView() {
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled={!row.pdf_url && !canGenerateFromRow(row)}
+                              disabled={!canOpenProposal(row)}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDownloadProposal(row);
                               }}
                             >
                               <ExternalLink className="w-4 h-4 mr-1" />
-                              Baixar Proposta
+                              {proposalActionLabel(row)}
                             </Button>
                             <Button
                               variant="outline"
@@ -1008,11 +1032,11 @@ export function ProposalsView() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!selectedRow.pdf_url && !canGenerateFromRow(selectedRow)}
+                  disabled={!canOpenProposal(selectedRow)}
                   onClick={() => handleDownloadProposal(selectedRow)}
                 >
                   <ExternalLink className="w-4 h-4 mr-1" />
-                  Baixar Proposta
+                  {proposalActionLabel(selectedRow)}
                 </Button>
                 <Button
                   variant="outline"

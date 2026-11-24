@@ -128,12 +128,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    const validityDaysRaw = (versionRow as any)?.premium_payload?.proposal_validity_days;
+    const document = versionRow.premium_payload;
+    const isHtml = document?.documentFormat === "html";
+    const validityDaysRaw = isHtml ? document?.validadeDias : document?.proposal_validity_days;
     const validityDays = Number.isFinite(Number(validityDaysRaw)) && Number(validityDaysRaw) > 0
-      ? Math.min(120, Math.max(7, Math.floor(Number(validityDaysRaw))))
-      : 30;
+      ? Math.floor(Number(validityDaysRaw))
+      : isHtml ? 15 : 30;
+    const linkDays = isHtml ? Math.max(1, validityDays) : Math.min(120, Math.max(7, validityDays));
 
-    const exp = Math.floor(Date.now() / 1000) + validityDays * 24 * 60 * 60;
+    const issuedAt = isHtml ? Date.parse(document?.issuedAt) : Date.now();
+    const exp = Math.floor(issuedAt / 1000) + linkDays * 24 * 60 * 60;
+    if (!Number.isFinite(exp) || exp <= Math.floor(Date.now() / 1000)) {
+      return new Response(JSON.stringify({ error: "proposal_expired" }), {
+        status: 410,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const payload = { pv: proposalVersionId, exp };
 
     const secret =

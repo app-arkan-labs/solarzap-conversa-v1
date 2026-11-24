@@ -31,6 +31,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { scopeProposalByIdsQuery } from '@/lib/multiOrgLeadScoping';
 import { resolveProposalLinks } from '@/utils/proposalLinks';
+import { isProposalPageUrl } from '@/utils/proposalPage';
 import { LeadScopeSelect, type LeadScopeValue } from './LeadScopeSelect';
 import type { MemberDto } from '@/lib/orgAdminClient';
 
@@ -1055,7 +1056,7 @@ export function ContactsView({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <Button
+                        {!isProposalPageUrl(proposal.share_url) && <Button
                           type="button"
                           variant="outline"
                           size="sm"
@@ -1064,7 +1065,7 @@ export function ContactsView({
                           onClick={() => proposal.pdf_url && /^https?:\/\//i.test(proposal.pdf_url) && window.open(proposal.pdf_url, '_blank', 'noopener,noreferrer')}
                         >
                           PDF
-                        </Button>
+                        </Button>}
                         <Button
                           type="button"
                           variant="outline"
@@ -1073,7 +1074,7 @@ export function ContactsView({
                           disabled={!proposal.share_url}
                           onClick={() => proposal.share_url && /^https?:\/\//i.test(proposal.share_url) && window.open(proposal.share_url, '_blank', 'noopener,noreferrer')}
                         >
-                          Compartilhar
+                          {isProposalPageUrl(proposal.share_url) ? 'Abrir proposta' : 'Compartilhar'}
                         </Button>
                       </div>
                     </div>

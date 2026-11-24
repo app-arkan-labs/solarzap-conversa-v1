@@ -16,6 +16,8 @@ import { supabase } from '@/lib/supabase';
 import type { FinancingCondition, PaymentConditionOptionId } from '@/types/proposalFinancing';
 import type { ProposalColorTheme } from '@/utils/proposalColorThemes';
 import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancial';
+import { downloadProposalHTML, publishProposalPage } from '@/utils/proposalPage';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ProposalReadyModalProps {
   isOpen: boolean;
@@ -55,6 +57,7 @@ interface ProposalReadyModalProps {
     proposalVersionId?: string | null;
     propostaId?: number | null;
     shareUrl?: string | null;
+    htmlFile?: File;
     colorTheme?: ProposalColorTheme;
     logoDataUrl?: string | null;
   } | null;
@@ -70,8 +73,25 @@ export function ProposalReadyModal({
   sellerScriptData,
 }: ProposalReadyModalProps) {
   const { getMessage } = useAutomationSettings();
+  const { orgId } = useAuth();
   const [isDownloading, setIsDownloading] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [retriedLink, setRetriedLink] = useState<{ versionId: string; url: string } | null>(null);
+  const [retryingLink, setRetryingLink] = useState(false);
+  const versionId = sellerScriptData?.proposalVersionId;
+  const shareUrl = sellerScriptData?.shareUrl || (retriedLink?.versionId === versionId ? retriedLink?.url : null);
+
+  const handleRetryShareLink = async () => {
+    if (!versionId || !orgId) return;
+    setRetryingLink(true);
+    try {
+      setRetriedLink({ versionId, url: await publishProposalPage(versionId, orgId) });
+    } catch (error) {
+      console.warn('Proposal page link could not be published', error);
+    } finally {
+      setRetryingLink(false);
+    }
+  };
 
   // Generate the prefilled message using the configured template
   const prefilledMessage = useMemo(() => {
@@ -151,7 +171,7 @@ export function ProposalReadyModal({
   };
 
   const handleCopyShareLink = async () => {
-    const url = sellerScriptData?.shareUrl;
+    const url = shareUrl;
     if (!url) return;
     try {
       await navigator.clipboard.writeText(url);
@@ -212,12 +232,31 @@ export function ProposalReadyModal({
             </div>
           )}
 
-          {sellerScriptData?.shareUrl && (
+          {sellerScriptData?.htmlFile && (
+            <div className="flex flex-wrap gap-2">
+              {shareUrl && <Button asChild variant="outline" size="sm">
+                <a href={shareUrl} target="_blank" rel="noopener noreferrer">Abrir proposta</a>
+              </Button>}
+              <Button variant="outline" size="sm" className="gap-1.5"
+                onClick={() => downloadProposalHTML(sellerScriptData.htmlFile!)}>
+                <Download className="h-4 w-4" /> Baixar HTML
+              </Button>
+              {!shareUrl && <div className="flex w-full flex-wrap items-center gap-2 text-sm" role="status">
+                <span>Link indisponível. O HTML está pronto.</span>
+                {versionId && orgId && <Button variant="outline" size="sm"
+                  onClick={handleRetryShareLink} disabled={retryingLink}>
+                  {retryingLink ? 'Gerando link…' : 'Gerar link novamente'}
+                </Button>}
+              </div>}
+            </div>
+          )}
+
+          {shareUrl && (
             <div className="flex items-center gap-3 p-4 bg-indigo-50 dark:bg-indigo-950/50 rounded-lg border border-indigo-200 dark:border-indigo-800">
               <Link2 className="w-5 h-5 text-indigo-600 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground">Link de Compartilhamento</p>
-                <p className="text-xs text-muted-foreground truncate">{sellerScriptData.shareUrl}</p>
+                <p className="text-xs text-muted-foreground truncate">{shareUrl}</p>
               </div>
               <Button
                 size="sm"

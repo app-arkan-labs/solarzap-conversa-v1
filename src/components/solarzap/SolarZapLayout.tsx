@@ -29,6 +29,7 @@ import { addMinutes, format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { publishProposalPage } from '@/utils/proposalPage';
 import { Appointment, CHANNEL_INFO, Contact, PIPELINE_STAGES, PipelineStage, ChannelFilter, ActiveTab, Conversation, LeadTask } from '@/types/solarzap';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppointments } from '@/hooks/useAppointments';
@@ -1800,13 +1801,25 @@ export function SolarZapLayout() {
       contextEngine: data.contextEngine,
     });
 
-    // Store seller script data for ProposalReadyModal
+    let shareUrl: string | null = null;
+    if (data.htmlFile && saveResult?.proposalVersionId && orgId) {
+      try {
+        shareUrl = await publishProposalPage(saveResult.proposalVersionId, orgId);
+      } catch (error) {
+        console.warn('Proposal page link could not be published', error);
+      }
+    }
+
+    // Store seller script and client document for ProposalReadyModal
     const premiumContentFromPayload = data.premiumPayload && typeof data.premiumPayload === 'object'
       ? data.premiumPayload
       : null;
     if (selectedContact) {
       setLastProposalSellerData({
         contact: selectedContact,
+        htmlFile: data.htmlFile,
+        shareUrl,
+        propNum: premiumContentFromPayload?.propNum,
         consumoMensal: data.consumoMensal,
         potenciaSistema: data.potenciaSistema,
         quantidadePaineis: data.quantidadePaineis,
@@ -1853,7 +1866,6 @@ export function SolarZapLayout() {
         financialInputs: (data as any).financialInputs,
         financialOutputs: (data as any).financialOutputs,
         financialModelVersion: (data as any).financialModelVersion,
-        propNum: (data as any).propNum,
         proposalVersionId: (saveResult as any)?.proposalVersionId || null,
         propostaId: (saveResult as any)?.proposal?.id || null,
         // Sprint 3: pass theme/logo for seller script branding

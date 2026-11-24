@@ -96,7 +96,7 @@ export function StepPayment({ form }: StepPaymentProps) {
         <div className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2">
           <div>
             <Label className="text-sm">Exibir simulação de financiamento na proposta</Label>
-            <p className="text-xs text-muted-foreground">Financiamento pode existir sem tabela de parcelas no PDF.</p>
+            <p className="text-xs text-muted-foreground">Financiamento pode existir sem tabela de parcelas na proposta.</p>
           </div>
           <Checkbox
             checked={Boolean(form.formData.showFinancingSimulation)}
@@ -268,7 +268,7 @@ export function StepPayment({ form }: StepPaymentProps) {
 
       {hasFinancingSelected && !form.formData.showFinancingSimulation && (
         <p className="text-xs text-muted-foreground">
-          Financiamento marcado apenas como forma de pagamento, sem simulação detalhada no PDF.
+          Financiamento marcado apenas como forma de pagamento, sem simulação detalhada na proposta.
         </p>
       )}
     </div>

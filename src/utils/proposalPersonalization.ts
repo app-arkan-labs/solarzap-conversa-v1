@@ -26,6 +26,8 @@ export interface ProposalCommentContext {
 }
 
 export interface CompanyProfileContext {
+  company_name?: string | null;
+  public_whatsapp?: string | null;
   elevator_pitch?: string | null;
   differentials?: string | null;
   installation_process?: string | null;

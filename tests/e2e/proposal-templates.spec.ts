@@ -16,7 +16,7 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const rand = (n = 8) => Math.random().toString(16).slice(2, 2 + n);
 
-test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) geram PDF sem erro', async ({ page }) => {
+test('Pipeline: templates por segmento geram versões da proposta', async ({ page }) => {
   test.setTimeout(360_000);
 
   const email = `e2e.templates.${Date.now()}.${rand(6)}@example.com`;
@@ -266,7 +266,7 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
 
         // Steps 3, 4, 5 -> review (state-driven to avoid flaky transitions).
         for (let guard = 0; guard < 6; guard += 1) {
-          const generateButton = getProposalDialog().getByTestId('proposal-generate-pdf');
+          const generateButton = getProposalDialog().getByTestId('proposal-generate');
           if (await generateButton.isVisible().catch(() => false)) break;
 
           const nextButton = getProposalDialog().getByRole('button', { name: /Proximo/i }).last();
@@ -279,7 +279,7 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
       }
 
       const targetSegments = [...c.segments];
-      await expect(getProposalDialog().getByTestId('proposal-generate-pdf')).toBeVisible({ timeout: 30_000 });
+      await expect(getProposalDialog().getByTestId('proposal-generate')).toBeVisible({ timeout: 30_000 });
 
       const { count: beforeCount, error: beforeErr } = await admin
         .from('proposal_versions')
@@ -291,7 +291,7 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
         throw new Error(`Failed to read proposal_versions before generate: ${beforeErr.message}`);
       }
 
-      await getProposalDialog().getByTestId('proposal-generate-pdf').click({ force: true });
+      await getProposalDialog().getByTestId('proposal-generate').click({ force: true });
 
       const startedAt = Date.now();
       let afterCount = beforeCount ?? 0;

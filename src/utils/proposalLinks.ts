@@ -121,7 +121,9 @@ export function resolveProposalLinks(input: ProposalLinkResolutionInput): Resolv
   const directShare = asNonEmptyString(input.shareUrl);
 
   return {
-    pdfUrl: directPdf ? normalizePdfUrl(directPdf) : resolvePdfFromPayload(payload, input.supabaseUrl || null),
+    pdfUrl: directPdf ? normalizePdfUrl(directPdf) : payload?.documentFormat === 'html'
+      ? null
+      : resolvePdfFromPayload(payload, input.supabaseUrl || null),
     shareUrl: directShare || resolveShareFromPayload(payload),
   };
 }

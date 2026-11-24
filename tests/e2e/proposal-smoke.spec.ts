@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -34,7 +35,7 @@ async function waitFor<T>(
   throw new Error(`waitFor timeout after ${timeoutMs}ms (last=${JSON.stringify(last)})`);
 }
 
-test('Pipeline: gerar proposta baixa PDF e cria registros premium (versions/events/sections)', async ({ page }) => {
+test('Pipeline: gera link p?blico e uma proposta HTML que abre offline', async ({ page, browser }) => {
   const email = `e2e.proposal.${Date.now()}.${rand(6)}@example.com`;
   const password = `S!moke_${Date.now()}_${rand(10)}`;
   const orgId = randomUUID();
@@ -42,6 +43,7 @@ test('Pipeline: gerar proposta baixa PDF e cria registros premium (versions/even
   let userId: string | null = null;
   let leadId: number | null = null;
   let propostaId: number | null = null;
+  let storedArtifact: { bucket: string; path: string } | null = null;
 
   const leadName = `E2E_LEAD_${Date.now()}_${rand(4)}`;
 
@@ -159,20 +161,18 @@ test('Pipeline: gerar proposta baixa PDF e cria registros premium (versions/even
       await expect(nextButton).toBeEnabled({ timeout: 30_000 });
       await nextButton.click();
     }
-    await expect(wizardDialog.getByTestId('proposal-generate-pdf')).toBeVisible({ timeout: 30_000 });
+    await expect(wizardDialog.getByTestId('proposal-generate')).toBeVisible({ timeout: 30_000 });
 
-    const clientDownloadPromise = page.waitForEvent('download', { timeout: 30_000 }).catch(() => null);
-    await wizardDialog.getByTestId('proposal-generate-pdf').click();
+    const clientDownloadPromise = page.waitForEvent('download', { timeout: 45_000 });
+    await wizardDialog.getByTestId('proposal-generate').click();
 
     const outDir = path.join(process.cwd(), 'test-results');
     fs.mkdirSync(outDir, { recursive: true });
 
     const clientDownload = await clientDownloadPromise;
-    if (clientDownload) {
-      const clientFilename = clientDownload.suggestedFilename().toLowerCase();
-      expect(clientFilename).toContain('proposta');
-      await clientDownload.saveAs(path.join(outDir, 'client.pdf'));
-    }
+    expect(clientDownload.suggestedFilename()).toMatch(/^PROP-[A-F0-9]{8}\.html$/);
+    const htmlPath = path.join(outDir, clientDownload.suggestedFilename());
+    await clientDownload.saveAs(htmlPath);
 
     await expect(page.getByText('Proposta Pronta!')).toBeVisible({ timeout: 30_000 });
     await expect
@@ -241,9 +241,11 @@ test('Pipeline: gerar proposta baixa PDF e cria registros premium (versions/even
         typeof storage?.bucket === 'string' &&
         storage.bucket.length > 0 &&
         typeof storage?.path === 'string' &&
-        storage.path.length > 0 &&
+        storage.path.endsWith('.html') &&
+        payload.documentFormat === 'html' &&
         typeof share?.url === 'string' &&
-        share.url.includes('/functions/v1/proposal-share?token=');
+        share.url.includes('/proposta/abrir#token=');
+      if (typeof storage?.bucket === 'string' && typeof storage?.path === 'string') storedArtifact = storage;
 
       return ok ? (data as any) : null;
     }, { timeoutMs: 45_000, intervalMs: 1_000 });
@@ -274,7 +276,7 @@ test('Pipeline: gerar proposta baixa PDF e cria registros premium (versions/even
     const kinds = downloadEvents
       .map((e: any) => (e?.metadata as any)?.kind)
       .filter((k: any) => typeof k === 'string');
-    expect(kinds).toContain('client_proposal');
+    expect(kinds).toContain('client_proposal_html');
     expect(kinds).toContain('seller_script');
 
     const sections = await waitFor(async () => {
@@ -289,10 +291,29 @@ test('Pipeline: gerar proposta baixa PDF e cria registros premium (versions/even
     expect(sections.length).toBeGreaterThan(0);
 
     const shareUrl = String((versionWithStorage as any)?.premium_payload?.share?.url || '');
-    expect(shareUrl).toContain('/functions/v1/proposal-share?token=');
+    expect(shareUrl).toContain('/proposta/abrir#token=');
 
-    const shareResp = await fetch(shareUrl, { redirect: 'manual' as any });
-    expect([301, 302, 303, 307, 308]).toContain(shareResp.status);
+    const anonymous = await browser.newContext();
+    try {
+      const visitor = await anonymous.newPage();
+      await visitor.goto(shareUrl);
+      const proposal = visitor.frameLocator('iframe');
+      await expect(proposal.locator('.proposal-details strong').first()).toHaveText(leadName);
+      const secondDownload = visitor.waitForEvent('download');
+      await visitor.getByRole('button', { name: 'Baixar HTML' }).click();
+      const publicPath = await (await secondDownload).path();
+      expect(fs.readFileSync(publicPath!, 'utf8')).toBe(fs.readFileSync(htmlPath, 'utf8'));
+
+      await anonymous.setOffline(true);
+      await visitor.goto(pathToFileURL(htmlPath).href);
+      await visitor.locator('#year-range').fill('3');
+      await expect(visitor.locator('#year-label')).toHaveText('3');
+      expect(await visitor.locator('img').evaluateAll((images: HTMLImageElement[]) =>
+        images.every((image) => image.complete && image.naturalWidth > 0),
+      )).toBe(true);
+    } finally {
+      await anonymous.close();
+    }
 
     const opened = await waitFor(async () => {
       const { data, error } = await admin
@@ -308,6 +329,7 @@ test('Pipeline: gerar proposta baixa PDF e cria registros premium (versions/even
     expect(opened.event_type).toBe('opened');
   } finally {
     // Cleanup (best-effort)
+    if (storedArtifact) await admin.storage.from(storedArtifact.bucket).remove([storedArtifact.path]);
     if (propostaId) {
       await admin.from('propostas').delete().eq('id', propostaId);
     }

@@ -160,12 +160,12 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
                 type="submit"
                 disabled={form.isLoading}
                 className="brand-gradient-button flex-1 gap-2 text-white"
-                data-testid="proposal-generate-pdf"
+                data-testid="proposal-generate"
               >
                 {form.isLoading ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Gerando...</>
                 ) : (
-                  <><Download className="h-4 w-4" /> Gerar e baixar PDF</>
+                  <><Download className="h-4 w-4" /> Gerar link e baixar HTML</>
                 )}
               </Button>
             )}

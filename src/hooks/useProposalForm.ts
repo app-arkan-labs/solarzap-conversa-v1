@@ -1,17 +1,15 @@
 import React, { useState, useCallback } from 'react';
 import { Contact, ClientType } from '@/types/solarzap';
-import { generateProposalPDF } from '@/utils/generateProposalPDF';
+import { generateProposalHTML } from '@/utils/generateProposalHTML';
+import { downloadProposalHTML } from '@/utils/proposalPage';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { useLeads } from '@/hooks/domain/useLeads';
 import { useProposalTheme } from '@/hooks/useProposalTheme';
 import { useProposalLogo } from '@/hooks/useProposalLogo';
-import { scopeProposalVersionByIdQuery } from '@/lib/multiOrgLeadScoping';
 import {
-  prefetchCoverImage,
   prefetchCoverImages,
-  getCoverImageDataUrl,
   getCoverImageDataUrls,
 } from '@/hooks/useProposalCoverImage';
 import { supabase } from '@/lib/supabase';
@@ -53,7 +51,6 @@ import type { FinancialInputs, FinancialOutputs } from '@/types/proposalFinancia
 import { FINANCIAL_MODEL_VERSION } from '@/types/proposalFinancial';
 import { calculateProposalFinancials, resolveTariffByPriority } from '@/utils/proposalFinancialModel';
 import { useSolarResource, isStrictPvgisSource } from '@/hooks/useSolarResource';
-import * as pdfShared from '@/utils/pdf/shared';
 import {
   buildLimitBlockerForKey,
   isProposalComposerBillingError,
@@ -69,46 +66,6 @@ const normalizeUf = energyDistributors.normalizeUf;
 const getEnergyDistributorOptionsByUfSafe =
   energyDistributors.getEnergyDistributorOptionsByUf ??
   ((_uf?: string | null): string[] => []);
-const fallbackSanitizeFileToken = (value: string): string => {
-  const normalized = String(value || '').trim().replace(/\s+/g, '_');
-  return normalized.replace(/[^a-zA-Z0-9_.-]/g, '');
-};
-const fallbackBuildProposalFileName = (
-  customerName: string,
-  proposalNumber: string,
-  isUsina: boolean,
-): string => {
-  const customerToken = fallbackSanitizeFileToken(customerName) || 'cliente';
-  const proposalToken = fallbackSanitizeFileToken(proposalNumber) || 'PROP-00000000';
-  return `Proposta_${isUsina ? 'Usina' : 'Energia'}_Solar_${customerToken}_${proposalToken}.pdf`;
-};
-const fallbackNormalizePdfFileName = (value: string, fallback = 'Proposta_Energia_Solar.pdf'): string => {
-  const normalized = String(value || '').trim().replace(/[<>:"/\\|?*]/g, '_');
-  const withoutControls = Array.from(normalized, (char) => (char.charCodeAt(0) < 32 ? '_' : char)).join('');
-  const collapsed = withoutControls.replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
-  const base = collapsed || fallback;
-  return /\.pdf$/i.test(base) ? base : `${base}.pdf`;
-};
-const fallbackTriggerBlobDownload = (blob: Blob, rawFileName: string): void => {
-  const fileName = fallbackNormalizePdfFileName(rawFileName);
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = objectUrl;
-  link.download = fileName;
-  link.rel = 'noopener';
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  window.setTimeout(() => {
-    URL.revokeObjectURL(objectUrl);
-    if (link.parentNode) {
-      link.parentNode.removeChild(link);
-    }
-  }, 1000);
-};
-const buildProposalFileNameSafe = pdfShared.buildProposalFileName ?? fallbackBuildProposalFileName;
-const triggerBlobDownloadSafe = pdfShared.triggerBlobDownload ?? fallbackTriggerBlobDownload;
-
 const deriveTariffComponents = (tariffRaw: number | null | undefined) => {
   const tariff = Math.max(0, Number(tariffRaw) || 0);
   return {
@@ -126,6 +83,7 @@ export interface UseProposalFormOptions {
 
 export interface ProposalData {
   contactId: string;
+  htmlFile?: File;
   consumoMensal: number;
   contaLuzMensal?: number;
   potenciaSistema: number;
@@ -359,6 +317,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     estruturaTipo: '',
   });
   const contactRef = React.useRef(contact);
+  const generatingRef = React.useRef(false);
   const formDataRef = React.useRef(formData);
   const rentabilityManuallyEditedRef = React.useRef(rentabilityManuallyEdited);
   const tariffManuallyEditedRef = React.useRef(tariffManuallyEdited);
@@ -384,26 +343,18 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     valorTotalManuallyEditedRef.current = valorTotalManuallyEdited;
   }, [valorTotalManuallyEdited]);
 
-  // Storage upload (best-effort)
-  const uploadPdfToStorage = async (blob: Blob, leadId: string, fileName: string): Promise<{ bucket: string; path: string } | null> => {
-    try {
-      const { data, error } = await supabase.functions.invoke('proposal-storage-intent', {
-        body: { leadId: Number(leadId), fileName, sizeBytes: blob.size, mimeType: 'application/pdf', orgId },
-      });
-      if (error || !data?.uploadUrl) return null;
-      const resp = await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: blob });
-      if (!resp.ok) return null;
-      return { bucket: data.bucket, path: data.path };
-    } catch (err) { console.warn('uploadToScoped failed (non-blocking):', err); return null; }
-  };
-
-  // Share link (best-effort)
-  const generateShareLink = async (versionId: string): Promise<{ url: string; token: string; exp: number } | null> => {
-    try {
-      const { data, error } = await supabase.functions.invoke('proposal-share-link', { body: { proposalVersionId: versionId } });
-      if (error || !data?.url) return null;
-      return { url: data.url, token: data.token, exp: data.exp };
-    } catch (err) { console.warn('generateShareLink failed (non-blocking):', err); return null; }
+  const uploadProposalHTML = async (file: File, leadId: string) => {
+    // Keep active content in private storage as bytes. The public page renders it in a sandbox.
+    const mimeType = 'application/octet-stream';
+    const { data, error } = await supabase.functions.invoke('proposal-storage-intent', {
+      body: { leadId: Number(leadId), fileName: file.name, sizeBytes: file.size, mimeType, orgId },
+    });
+    if (error || !data?.uploadUrl || !data.bucket || !data.path) {
+      throw new Error('N?o foi poss?vel preparar o arquivo da proposta para compartilhamento.');
+    }
+    const response = await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': mimeType }, body: file });
+    if (!response.ok) throw new Error('N?o foi poss?vel armazenar o arquivo da proposta.');
+    return { bucket: data.bucket, path: data.path };
   };
 
   // Track download (best-effort)
@@ -413,7 +364,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       if (!user) return;
       await supabase.from('proposal_delivery_events').insert({
         proposal_version_id: versionId, proposta_id: propostaId, lead_id: leadId,
-        user_id: user.id, channel: 'pdf_download', event_type: 'downloaded', metadata: { kind },
+        user_id: user.id, channel: 'crm', event_type: 'downloaded', metadata: { kind },
       });
     } catch (err) { console.warn('trackDownloadEvent failed (non-blocking):', err); }
   };
@@ -1229,7 +1180,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   // Single generation flow
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!contact) return;
+    if (!contact || generatingRef.current) return;
 
     if (!isStrictPvgisSource(formData.irradianceSource) || !Number.isFinite(Number(formData.latitude)) || !Number.isFinite(Number(formData.longitude))) {
       toast({
@@ -1342,27 +1293,18 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       return;
     }
 
-    const resolvedLogoDataUrl = await ensureLogoDataUrl();
-    // Resolve cover gallery (pre-fetched at step 1, or fetch now)
-    const resolvedCoverImages = getCoverImageDataUrls(formData.tipo_cliente || 'residencial', 3);
-    const hydratedCoverImages = resolvedCoverImages.length >= 3
-      ? resolvedCoverImages
-      : await prefetchCoverImages(formData.tipo_cliente || 'residencial', 3);
-    const resolvedCoverImage = hydratedCoverImages[0]
-      || getCoverImageDataUrl(formData.tipo_cliente || 'residencial')
-      || await prefetchCoverImage(formData.tipo_cliente || 'residencial');
-    if (logoUrl && !resolvedLogoDataUrl) {
-      toast({
-        title: 'Logo indisponível',
-        description: 'Não foi possível carregar a logo da empresa para o PDF. Reenvie a logo e tente novamente.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
+    generatingRef.current = true;
     setIsLoading(true);
 
     try {
+      const resolvedLogoDataUrl = await ensureLogoDataUrl();
+      if (logoUrl && !resolvedLogoDataUrl) {
+        throw new Error('Não foi possível carregar a logo da empresa. Reenvie a logo e tente novamente.');
+      }
+      const segment = formData.tipo_cliente || 'residencial';
+      const cachedCovers = getCoverImageDataUrls(segment, 3);
+      const hydratedCoverImages = cachedCovers.length >= 3 ? cachedCovers : await prefetchCoverImages(segment, 3);
+
       // 1) Determine content: AI result or heuristic
       let contextData: Record<string, unknown> | null = null;
       let premiumContent: PremiumProposalContent;
@@ -1404,9 +1346,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       })
         .catch(err => console.error('Failed to update lead:', err));
 
-      // 3) Generate PDF blob with theme
+      // 3) Render the same document for sharing and offline download
       const propNum = `PROP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-      const contactForPdf: Contact = {
+      const proposalContact: Contact = {
         ...contact,
         address: formData.endereco || contact.address,
         city: formData.cidade || contact.city,
@@ -1415,8 +1357,13 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         latitude: formData.latitude ?? contact.latitude,
         longitude: formData.longitude ?? contact.longitude,
       };
-      const pdfBlob = generateProposalPDF({
-        contact: contactForPdf,
+      const issuedAt = new Date();
+      const profile = contextData?.companyProfile as CompanyProfileContext | undefined;
+      const html = await generateProposalHTML({
+        issuedAt,
+        companyName: profile?.company_name || undefined,
+        commercialWhatsApp: profile?.public_whatsapp || undefined,
+        contact: proposalContact,
         ...formData,
         descontoAvistaPercentual,
         descontoAvistaValor,
@@ -1451,16 +1398,15 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         financingConditions: effectiveFinancingConditions,
         financingPrimaryInstitutionId,
         secondaryColorHex: secondaryColorHex || undefined,
-        validadeDias: formData.validadeDias, returnBlob: true,
+        validadeDias: formData.validadeDias,
         propNum,
         logoDataUrl: resolvedLogoDataUrl || logoDataUrl,
-        coverImageDataUrl: resolvedCoverImage || null,
         coverImageDataUrls: hydratedCoverImages,
-      }) as Blob;
+      });
+      const htmlFile = new File([html], propNum + '.html', { type: 'text/html;charset=utf-8' });
 
       // 4) Upload + payload
-      const fileName = buildProposalFileNameSafe(contact.name, propNum, formData.tipo_cliente === 'usina');
-      const storageResult = await uploadPdfToStorage(pdfBlob, contact.id, fileName);
+      const storageResult = await uploadProposalHTML(htmlFile, contact.id);
       const brandingSnapshot = {
         proposalThemeId: themeId,
         proposalThemeLabel: theme.label,
@@ -1522,7 +1468,9 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
           contractorName: formData.signatureContractorName,
           contractorCnpj: formData.signatureContractorCnpj,
         },
-        ...(storageResult ? { storage: storageResult } : {}),
+        storage: storageResult,
+        documentFormat: 'html',
+        issuedAt: issuedAt.toISOString(),
         taxaFinanciamento: legacyRate,
         validadeDias: formData.validadeDias,
         parcela36x: legacyParcela36,
@@ -1562,6 +1510,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       // 5) Save to pipeline (Sprint 3: pass theme/logo for seller script)
       const saveResult = await onGenerate({
         contactId: contact.id,
+        htmlFile,
         ...formData,
         descontoAvistaPercentual,
         descontoAvistaValor,
@@ -1604,36 +1553,18 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         logoDataUrl: resolvedLogoDataUrl || logoDataUrl,
       });
 
-      // 6) Download to user
-      triggerBlobDownloadSafe(pdfBlob, fileName);
-
-      // 7) Share link + tracking (best-effort, background)
-      const versionId = (saveResult as any)?.proposalVersionId;
-      const propostaId = (saveResult as any)?.proposal?.id;
-      if (versionId && storageResult && orgId) {
-        const share = await generateShareLink(versionId);
-        if (share) {
-          try {
-            const { data: ver } = await scopeProposalVersionByIdQuery(
-              (supabase.from('proposal_versions').select('premium_payload')) as any,
-              { proposalVersionId: String(versionId), orgId },
-            ).maybeSingle();
-            await scopeProposalVersionByIdQuery(
-              (supabase.from('proposal_versions').update({ premium_payload: { ...((ver?.premium_payload as Record<string, unknown>) || {}), share } })) as any,
-              { proposalVersionId: String(versionId), orgId },
-            );
-          } catch (err) { console.warn('share-link update failed (non-blocking):', err); }
-        }
-      }
-      if (versionId && propostaId) await trackDownloadEvent(versionId, propostaId, Number(contact.id), 'client_proposal');
-
-      toast({ title: "Proposta gerada!", description: "PDF baixado. Baixe o Roteiro do Vendedor na próxima tela." });
+      // 6) Download the published document.
+      downloadProposalHTML(htmlFile);
+      const versionId = saveResult && saveResult.proposalVersionId;
+      const propostaId = saveResult && saveResult.proposal?.id;
+      if (versionId && propostaId) await trackDownloadEvent(versionId, propostaId, Number(contact.id), 'client_proposal_html');
       onClose();
     } catch (error: any) {
       console.error('Error generating proposal:', error);
       const msg = error?.message || error?.toString?.() || 'Erro desconhecido';
       toast({ title: "Erro ao gerar proposta", description: msg.slice(0, 200), variant: "destructive" });
     } finally {
+      generatingRef.current = false;
       setIsLoading(false);
     }
   };
