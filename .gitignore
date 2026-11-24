@@ -47,6 +47,9 @@ modified_files*.txt
 fix_imports.cjs
 
 # Codex/Supabase temporary artifacts
+/.codex-runtime/
+/.playwright-mcp/
+/supabase/.temp/
 .supabase-deploy-prompts-temp-*/
 vite.config.ts.timestamp-*.mjs
 implementation_plan.md.resolved
