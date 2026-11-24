@@ -4940,16 +4940,20 @@ Deno.serve(async (req) => {
             // Side-effect: disable AI and follow-ups for this lead (non-blocking)
             try {
                 const leadIdNum = Number(leadId);
-                await supabase
+                const { error: pauseError } = await supabase
                     .from('leads')
                     .update({ ai_enabled: false, follow_up_enabled: false })
-                    .eq('id', leadIdNum);
+                    .eq('id', leadIdNum)
+                    .eq('org_id', leadOrgId);
+                if (pauseError) throw pauseError;
                 // Cancel any pending agent jobs for this lead
-                await supabase
-                    .from('pipeline_agent_jobs')
+                const { error: cancelError } = await supabase
+                    .from('scheduled_agent_jobs')
                     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
                     .eq('lead_id', leadIdNum)
-                    .in('status', ['pending', 'queued']);
+                    .eq('org_id', leadOrgId)
+                    .eq('status', 'pending');
+                if (cancelError) throw cancelError;
                 console.log(`🛑 [${runId}] disinterest_gate: lead AI/followup disabled, pending jobs cancelled`);
             } catch (sideErr: any) {
                 console.warn(`🛑 [${runId}] disinterest_gate side-effect failed (non-blocking):`, sideErr?.message || sideErr);
