@@ -36,7 +36,7 @@ export default function CreateOrgDialog({ initialEmail, onCreated }: CreateOrgDi
   const [email, setEmail] = useState(initialEmail ?? '');
   const [password, setPassword] = useState('');
   const [orgName, setOrgName] = useState('');
-  const [plan, setPlan] = useState('none');
+  const [plan, setPlan] = useState('unlimited');
   const [startTrial, setStartTrial] = useState(false);
   const [checkState, setCheckState] = useState<EmailCheckState>({ kind: 'idle' });
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
@@ -69,7 +69,7 @@ export default function CreateOrgDialog({ initialEmail, onCreated }: CreateOrgDi
       setEmail(initialEmail ?? '');
       setPassword('');
       setOrgName('');
-      setPlan('none');
+      setPlan('unlimited');
       setStartTrial(false);
       setCheckState({ kind: 'idle' });
       setGeneratedPassword(null);
@@ -125,8 +125,8 @@ export default function CreateOrgDialog({ initialEmail, onCreated }: CreateOrgDi
       email: normalizedEmail,
       password: password.trim() || undefined,
       org_name: orgName.trim() || undefined,
-      plan: plan === 'none' ? undefined : plan,
-      start_trial: startTrial,
+      plan,
+      start_trial: plan !== 'unlimited' && startTrial,
     });
   };
 
@@ -203,7 +203,6 @@ export default function CreateOrgDialog({ initialEmail, onCreated }: CreateOrgDi
                 <SelectValue placeholder="Selecionar plano" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Sem plano definido</SelectItem>
                 {availablePlans.map((item) => (
                   <SelectItem key={item.plan_key} value={item.plan_key}>
                     {item.display_name}
@@ -216,7 +215,8 @@ export default function CreateOrgDialog({ initialEmail, onCreated }: CreateOrgDi
           <div className="flex items-center gap-2">
             <Checkbox
               id="admin-create-start-trial"
-              checked={startTrial}
+              checked={plan !== 'unlimited' && startTrial}
+              disabled={plan === 'unlimited'}
               onCheckedChange={(checked) => setStartTrial(checked === true)}
             />
             <Label htmlFor="admin-create-start-trial" className="font-normal">

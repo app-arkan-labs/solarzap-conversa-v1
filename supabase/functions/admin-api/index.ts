@@ -878,8 +878,9 @@ async function handleCreateOrgWithUser(
 
   const passwordInput = toTrimmedString(payload.password);
   const orgNameInput = toTrimmedString(payload.org_name);
-  const requestedPlan = toTrimmedString(payload.plan);
-  const startTrial = payload.start_trial === true;
+  const resolvedPlan = await getPlanLimitsByKey(adminClient, toTrimmedString(payload.plan) || 'unlimited');
+  const isUnlimited = resolvedPlan.plan === 'unlimited';
+  const startTrial = !isUnlimited && payload.start_trial === true;
 
   let user = await findAuthUserByEmail(adminClient, email);
   let tempPassword: string | null = null;
@@ -920,8 +921,10 @@ async function handleCreateOrgWithUser(
     name: orgName,
     owner_id: user.id,
     status: 'active',
-    onboarding_state: 'pending_checkout',
-    subscription_status: startTrial ? 'trialing' : 'pending_checkout',
+    plan: resolvedPlan.plan,
+    plan_limits: resolvedPlan.limits,
+    onboarding_state: isUnlimited ? 'active' : 'pending_checkout',
+    subscription_status: isUnlimited ? 'active' : startTrial ? 'trialing' : 'pending_checkout',
     trial_days: 7,
     trial_started_at: startTrial ? nowIso : null,
     trial_ends_at: startTrial ? trialEndsAtIso : null,
@@ -955,28 +958,6 @@ async function handleCreateOrgWithUser(
     throw { status: 500, code: 'owner_membership_failed' };
   }
 
-  let appliedPlan: string | null = null;
-  if (requestedPlan) {
-    const resolvedPlan = await getPlanLimitsByKey(adminClient, requestedPlan);
-    const planUpdatePayload: Record<string, unknown> = {
-      plan: resolvedPlan.plan,
-      plan_limits: resolvedPlan.limits,
-    };
-    if (resolvedPlan.plan === 'unlimited') {
-      planUpdatePayload.subscription_status = 'active';
-    }
-
-    const { error: planUpdateError } = await adminClient
-      .from('organizations')
-      .update(planUpdatePayload)
-      .eq('id', orgId);
-
-    if (planUpdateError) {
-      throw { status: 500, code: 'apply_plan_failed' };
-    }
-    appliedPlan = resolvedPlan.plan;
-  }
-
   await writeAuditLog(
     adminClient,
     admin,
@@ -990,7 +971,7 @@ async function handleCreateOrgWithUser(
         user_id: user.id,
         user_email: email,
         user_created: userCreated,
-        plan: appliedPlan,
+        plan: resolvedPlan.plan,
         start_trial: startTrial,
       },
       reason: 'Admin create org with user',
@@ -1005,7 +986,7 @@ async function handleCreateOrgWithUser(
     user_email: email,
     user_created: userCreated,
     temp_password: tempPassword,
-    plan: appliedPlan,
+    plan: resolvedPlan.plan,
   };
 }
 

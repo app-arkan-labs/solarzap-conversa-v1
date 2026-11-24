@@ -47,12 +47,6 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function parseBooleanEnv(name: string, fallback = false): boolean {
-  const raw = String(Deno.env.get(name) || '').trim().toLowerCase();
-  if (!raw) return fallback;
-  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
-}
-
 function metadataDisplayName(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== 'object') {
     return null;
@@ -340,8 +334,6 @@ async function bootstrapSelf(
   adminClient: ReturnType<typeof createClient>,
   user: { id: string; email?: string | null },
 ) {
-  const autoStartTrial = parseBooleanEnv('ORG_BOOTSTRAP_AUTO_TRIAL', false);
-
   const existingMembership = await resolvePrimaryMembership(adminClient, user.id);
   if (existingMembership) {
     return {
@@ -367,6 +359,17 @@ async function bootstrapSelf(
 
   let orgId = existingOrg?.id ?? null;
   if (!orgId) {
+    const { data: plan, error: planError } = await adminClient
+      .from('_admin_subscription_plans')
+      .select('plan_key, limits')
+      .eq('plan_key', 'unlimited')
+      .eq('is_active', true)
+      .single();
+
+    if (planError || plan?.limits?.max_leads !== -1) {
+      throw planError || new Error('Plano Ilimitado sem limites configurados');
+    }
+
     const fallbackName = user.email
       ? `Organizacao de ${user.email}`
       : `Organizacao ${user.id.slice(0, 8)}`;
@@ -376,6 +379,10 @@ async function bootstrapSelf(
       .insert({
         name: fallbackName,
         owner_id: user.id,
+        plan: plan.plan_key,
+        plan_limits: plan.limits,
+        subscription_status: 'active',
+        onboarding_state: 'active',
       })
       .select('id')
       .single();
@@ -403,40 +410,14 @@ async function bootstrapSelf(
     throw membershipUpsertError;
   }
 
-  const nowIso = new Date().toISOString();
-  const trialEndsAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  const billingUpdate = autoStartTrial
-    ? {
-      subscription_status: 'trialing',
-      trial_started_at: nowIso,
-      trial_ends_at: trialEndsAtIso,
-      onboarding_state: 'pending_checkout',
-      trial_days: 7,
-    }
-    : {
-      subscription_status: 'pending_checkout',
-      onboarding_state: 'pending_checkout',
-      trial_started_at: null,
-      trial_ends_at: null,
-      trial_days: 7,
-    };
-
-  await adminClient
-    .from('organizations')
-    .update(billingUpdate)
-    .eq('id', orgId);
-
-  await adminClient.from('org_billing_timeline').insert({
-    org_id: orgId,
-    event_type: autoStartTrial ? 'trial_started' : 'checkout_required',
-    actor: 'org_admin',
-    payload: {
-      source: 'bootstrap_self',
-      auto_start_trial: autoStartTrial,
-      ...(autoStartTrial ? { days: 7, trial_ends_at: trialEndsAtIso } : {}),
-    },
-  });
+  if (!existingOrg) {
+    await adminClient.from('org_billing_timeline').insert({
+      org_id: orgId,
+      event_type: 'plan_activated',
+      actor: 'org_admin',
+      payload: { source: 'bootstrap_self', plan: 'unlimited' },
+    });
+  }
 
   return {
     ok: true,
