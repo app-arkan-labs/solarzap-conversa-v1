@@ -1,4 +1,4 @@
-﻿-- Notifications + Visits Outcome + Proposals RPC + Digest audit foundation
+-- Notifications + Visits Outcome + Proposals RPC + Digest audit foundation
 
 CREATE TABLE IF NOT EXISTS public.notification_settings (
   org_id uuid PRIMARY KEY REFERENCES public.organizations(id) ON DELETE CASCADE,

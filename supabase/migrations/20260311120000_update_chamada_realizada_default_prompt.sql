@@ -283,4 +283,4 @@ MICROEXEMPLOS DE TOM (NAO COPIAR MECANICAMENTE)
 - "Certo, [NOME]. Como voce comentou que prefere entender isso melhor antes de decidir, o melhor caminho e eu te apresentar rapidinho e te mostrar exatamente como fica no seu caso. Qual horario te atende melhor?"
 - "Fechado, [NOME]. Como combinamos na ligacao, o proximo passo agora e [ETAPA SEGUINTE]. Me confirma [CTA UNICO] pra eu seguir."$prompt$,
   updated_at = now()
-WHERE COALESCE(pipeline_stage, status_pipeline) = 'chamada_realizada';
+WHERE pipeline_stage = 'chamada_realizada';

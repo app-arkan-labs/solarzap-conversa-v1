@@ -118,8 +118,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     const { data: vaultId, error: vaultError } = await admin
-      .schema('vault')
-      .rpc('create_secret', {
+      .rpc('solarzap_vault_create', {
         new_secret: refreshToken,
         new_name: `google_ads_refresh_token_${stateData.org_id}_${Date.now()}`,
         new_description: 'Google Ads OAuth refresh token',
@@ -158,7 +157,7 @@ Deno.serve(async (req) => {
 
     const previousVaultId = cleanString(existing?.google_refresh_token_vault_id);
     if (previousVaultId && previousVaultId !== String(vaultId)) {
-      await admin.schema('vault').from('secrets').delete().eq('id', previousVaultId).catch(() => null);
+      await Promise.resolve(admin.rpc('solarzap_vault_delete', { secret_id: previousVaultId })).catch(() => null);
     }
 
     return createRedirectResponse('success', 'connected', stateData.redirect_url);

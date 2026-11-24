@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS public.deals (
 -- RLS for Deals
 ALTER TABLE public.deals ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own deals" ON public.deals;
+DROP POLICY IF EXISTS "Users can insert their own deals" ON public.deals;
+DROP POLICY IF EXISTS "Users can update their own deals" ON public.deals;
+DROP POLICY IF EXISTS "Users can delete their own deals" ON public.deals;
+
 CREATE POLICY "Users can view their own deals" 
 ON public.deals FOR SELECT 
 USING (auth.uid() = user_id);
@@ -57,6 +62,8 @@ CREATE TABLE IF NOT EXISTS public.lead_stage_history (
 
 -- RLS for History
 ALTER TABLE public.lead_stage_history ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view their own lead history" ON public.lead_stage_history;
 
 CREATE POLICY "Users can view their own lead history" 
 ON public.lead_stage_history FOR SELECT 

@@ -21,23 +21,28 @@ BEGIN
 END;
 $$;
 
-DO $$
+DO $do$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'cron') THEN
-    PERFORM cron.unschedule('billing-sync-org-access-state-hourly');
-    PERFORM cron.unschedule('billing-pending-checkout-cleanup-hourly');
+    PERFORM cron.unschedule(jobid)
+    FROM cron.job
+    WHERE jobname = 'billing-sync-org-access-state-hourly';
+
+    PERFORM cron.unschedule(jobid)
+    FROM cron.job
+    WHERE jobname = 'billing-pending-checkout-cleanup-hourly';
 
     PERFORM cron.schedule(
       'billing-sync-org-access-state-hourly',
       '0 * * * *',
-      $$SELECT public.sync_org_access_state();$$
+      $cron$SELECT public.sync_org_access_state();$cron$
     );
 
     PERFORM cron.schedule(
       'billing-pending-checkout-cleanup-hourly',
       '10 * * * *',
-      $$SELECT public.pending_checkout_cleanup();$$
+      $cron$SELECT public.pending_checkout_cleanup();$cron$
     );
   END IF;
 END;
-$$;
+$do$;

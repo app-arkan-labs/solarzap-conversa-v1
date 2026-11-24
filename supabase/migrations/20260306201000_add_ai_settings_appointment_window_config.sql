@@ -18,8 +18,10 @@ BEGIN
   WHERE appointment_window_config IS NULL
     OR jsonb_typeof(appointment_window_config) <> 'object';
 
-  ALTER TABLE IF EXISTS public.ai_settings
-    ALTER COLUMN appointment_window_config SET DEFAULT v_default;
+  EXECUTE format(
+    'ALTER TABLE public.ai_settings ALTER COLUMN appointment_window_config SET DEFAULT %L::jsonb',
+    v_default::text
+  );
 
   IF NOT EXISTS (
     SELECT 1

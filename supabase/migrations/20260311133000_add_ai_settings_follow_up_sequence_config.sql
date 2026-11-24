@@ -1,4 +1,4 @@
-﻿DO $$
+DO $$
 DECLARE
   v_default jsonb := jsonb_build_object(
     'steps',
@@ -21,6 +21,8 @@ BEGIN
     OR NOT (follow_up_sequence_config ? 'steps')
     OR jsonb_typeof(follow_up_sequence_config->'steps') <> 'array';
 
-  ALTER TABLE public.ai_settings
-    ALTER COLUMN follow_up_sequence_config SET DEFAULT v_default;
+  EXECUTE format(
+    'ALTER TABLE public.ai_settings ALTER COLUMN follow_up_sequence_config SET DEFAULT %L::jsonb',
+    v_default::text
+  );
 END $$;

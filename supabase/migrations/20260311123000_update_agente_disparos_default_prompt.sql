@@ -293,4 +293,4 @@ MICROEXEMPLOS DE TOM (NAO COPIAR MECANICAMENTE)
 - "Se fizer sentido pra voce avancar, consigo te ligar rapidinho e ja te mostrar o caminho mais adequado. Melhor [OPCAO 1] ou [OPCAO 2]?"
 - "Se a ideia for ja ver isso com mais precisao, faz sentido agendar a visita e validar no local. Te atende melhor [OPCAO 1] ou [OPCAO 2]?"$prompt$,
   updated_at = now()
-WHERE COALESCE(pipeline_stage, status_pipeline) = 'agente_disparos';
+WHERE pipeline_stage = 'agente_disparos';

@@ -1,4 +1,4 @@
-﻿-- P0.3: Knowledge Base multi-tenant hardening
+-- P0.3: Knowledge Base multi-tenant hardening
 -- - org_id mandatory + indexed
 -- - strict org-scoped RLS on KB tables
 -- - storage policies scoped by org prefix
@@ -24,14 +24,13 @@ BEGIN
 
   IF to_regclass('public.kb_items') IS NOT NULL THEN
     UPDATE public.kb_items k
-    SET org_id = om_org.org_id
-    FROM LATERAL (
+    SET org_id = (
       SELECT om.org_id
       FROM public.organization_members om
       WHERE om.user_id = k.created_by
       ORDER BY om.created_at ASC NULLS LAST, om.org_id ASC
       LIMIT 1
-    ) om_org
+    )
     WHERE k.org_id IS NULL
       AND k.created_by IS NOT NULL;
 
@@ -59,14 +58,13 @@ BEGIN
 
   IF to_regclass('public.testimonials') IS NOT NULL THEN
     UPDATE public.testimonials t
-    SET org_id = om_org.org_id
-    FROM LATERAL (
+    SET org_id = (
       SELECT om.org_id
       FROM public.organization_members om
       WHERE om.user_id = t.created_by
       ORDER BY om.created_at ASC NULLS LAST, om.org_id ASC
       LIMIT 1
-    ) om_org
+    )
     WHERE t.org_id IS NULL
       AND t.created_by IS NOT NULL;
 

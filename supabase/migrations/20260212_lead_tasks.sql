@@ -28,6 +28,11 @@ CREATE INDEX IF NOT EXISTS idx_lead_tasks_org_due ON public.lead_tasks(org_id, d
 -- RLS
 ALTER TABLE public.lead_tasks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view tasks they own or belong to" ON public.lead_tasks;
+DROP POLICY IF EXISTS "Users can insert tasks they own" ON public.lead_tasks;
+DROP POLICY IF EXISTS "Users can update their own tasks" ON public.lead_tasks;
+DROP POLICY IF EXISTS "Users can delete their own tasks" ON public.lead_tasks;
+
 CREATE POLICY "Users can view tasks they own or belong to"
 ON public.lead_tasks FOR SELECT
 USING (auth.uid() = user_id);
@@ -48,8 +53,14 @@ USING (auth.uid() = user_id);
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'update_timestamp') THEN
-        CREATE TRIGGER tr_lead_tasks_updated_at
-        BEFORE UPDATE ON public.lead_tasks
-        FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_trigger
+            WHERE tgname = 'tr_lead_tasks_updated_at'
+        ) THEN
+            CREATE TRIGGER tr_lead_tasks_updated_at
+            BEFORE UPDATE ON public.lead_tasks
+            FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+        END IF;
     END IF;
 END$$;

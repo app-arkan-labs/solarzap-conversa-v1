@@ -2,6 +2,9 @@
 --   - get_lead_proposals(p_org_id uuid, p_lead_id bigint)
 --   - list_proposals(p_org_id uuid, p_search text, p_status text, p_stage text, p_owner uuid, p_date_from date, p_date_to date, p_limit int, p_offset int)
 
+DROP FUNCTION IF EXISTS public.get_lead_proposals(uuid, bigint);
+DROP FUNCTION IF EXISTS public.list_proposals(uuid, text, text, text, uuid, date, date, integer, integer);
+
 CREATE OR REPLACE FUNCTION public.get_lead_proposals(
   p_org_id uuid,
   p_lead_id bigint

@@ -129,8 +129,7 @@ async function createVaultSecret(params: {
 
   const secretName = `tracking_${params.platform}_${params.field}_${params.orgId}_${Date.now()}`;
   const { data, error } = await params.admin
-    .schema('vault')
-    .rpc('create_secret', {
+    .rpc('solarzap_vault_create', {
       new_secret: secretValue,
       new_name: secretName,
       new_description: `Tracking ${params.platform} credential (${params.field})`,
@@ -720,7 +719,7 @@ Deno.serve(async (req) => {
           }).catch(() => null);
         }
 
-        await admin.schema('vault').from('secrets').delete().eq('id', currentVaultId).catch(() => null);
+        await Promise.resolve(admin.rpc('solarzap_vault_delete', { secret_id: currentVaultId })).catch(() => null);
       }
 
       return jsonResponse(200, { success: true });

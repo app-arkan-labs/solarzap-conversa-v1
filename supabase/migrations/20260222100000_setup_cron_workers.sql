@@ -1,6 +1,33 @@
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS supabase_vault;
+
+-- Cron jobs run only when the destination and bearer exist in the target project Vault.
+CREATE OR REPLACE FUNCTION public.solarzap_enqueue_worker(
+  p_function text, p_body jsonb, p_token_secret text DEFAULT 'solarzap_worker_bearer'
+) RETURNS bigint
+LANGUAGE sql
+SET search_path = ''
+AS $worker$
+  SELECT net.http_post(
+    url := rtrim(endpoint.decrypted_secret, '/') || '/' || p_function,
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || token.decrypted_secret,
+      'apikey', token.decrypted_secret
+    ),
+    body := p_body
+  )
+  FROM vault.decrypted_secrets AS endpoint
+  CROSS JOIN vault.decrypted_secrets AS token
+  WHERE endpoint.name = 'solarzap_functions_url'
+    AND token.name = p_token_secret
+    AND nullif(endpoint.decrypted_secret, '') IS NOT NULL
+    AND nullif(token.decrypted_secret, '') IS NOT NULL;
+$worker$;
+
+REVOKE ALL ON FUNCTION public.solarzap_enqueue_worker(text, jsonb, text) FROM PUBLIC, anon, authenticated;
 
 -- Schedule ai-digest-worker every 15 minutes
 -- The worker itself checks org timezones and configured digest times
@@ -9,14 +36,7 @@ SELECT cron.schedule(
   '*/15 * * * *',
   $$
   SELECT
-    net.http_post(
-      url := 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/ai-digest-worker',
-      headers := jsonb_build_object(
-        'Content-Type', 'application/json',
-        'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8'
-      ),
-      body := '{"source":"cron"}'::jsonb
-    ) AS request_id;
+    public.solarzap_enqueue_worker('ai-digest-worker', '{"source":"cron"}'::jsonb) AS request_id;
   $$
 );
 
@@ -26,13 +46,6 @@ SELECT cron.schedule(
   '*/2 * * * *',
   $$
   SELECT
-    net.http_post(
-      url := 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/notification-worker',
-      headers := jsonb_build_object(
-        'Content-Type', 'application/json',
-        'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8'
-      ),
-      body := '{"source":"cron"}'::jsonb
-    ) AS request_id;
+    public.solarzap_enqueue_worker('notification-worker', '{"source":"cron"}'::jsonb) AS request_id;
   $$
 );

@@ -15,6 +15,7 @@ create table if not exists public.user_integrations (
 
 -- RLS for user_integrations
 alter table public.user_integrations enable row level security;
+drop policy if exists "Users can view own integrations" on public.user_integrations;
 create policy "Users can view own integrations" 
   on public.user_integrations 
   for select 
@@ -32,9 +33,10 @@ alter table public.provider_configs enable row level security;
 -- No public RLS policies needed if accessed via Service Role in Edge Functions
 
 -- Function to get provider config (used by Edge Functions)
-create or replace function get_provider_config(p_provider text)
+create or replace function public.get_provider_config(p_provider text)
 returns table (client_id text, client_secret text)
 security definer
+set search_path = public
 as $$
 begin
   return query select pc.client_id, pc.client_secret 
@@ -43,15 +45,8 @@ begin
 end;
 $$ language plpgsql;
 
--- INSERT GOOGLE CREDENTIALS
--- WARNING: This contains sensitive secrets. Delete this file or query after running.
-insert into public.provider_configs (provider, client_id, client_secret)
-values (
-  'google',
-  '246386961026-beh1g0r6n3uu2s9jmpo9v59j27gg78jv.apps.googleusercontent.com',
-  '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'
-)
-on conflict (provider) do update
-set 
-  client_id = excluded.client_id,
-  client_secret = excluded.client_secret;
+revoke all on function public.get_provider_config(text) from public, anon, authenticated;
+grant execute on function public.get_provider_config(text) to service_role;
+
+-- Provision fresh OAuth credentials in public.provider_configs for the target project.
+-- The legacy core migration already installs this schema on a new project.

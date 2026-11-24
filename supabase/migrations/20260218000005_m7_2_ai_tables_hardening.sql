@@ -1,4 +1,4 @@
-﻿-- M7.2 mirror migration: AI tables org hardening
+-- M7.2 mirror migration: AI tables org hardening
 -- Date: 2026-02-18
 
 DO $$
@@ -13,6 +13,13 @@ DECLARE
   v_policy_qual text;
   v_constraint_name text;
 BEGIN
+  -- Legacy default rows have no tenant to inherit on a fresh install.
+  IF NOT EXISTS (SELECT 1 FROM auth.users)
+     AND NOT EXISTS (SELECT 1 FROM public.organizations) THEN
+    DELETE FROM public.ai_settings WHERE org_id IS NULL;
+    DELETE FROM public.ai_stage_config WHERE org_id IS NULL;
+  END IF;
+
   -- Guard: ensure target tables/columns exist and have zero NULL org_id before hardening.
   FOREACH v_table IN ARRAY ARRAY['ai_settings','ai_stage_config','ai_summaries'] LOOP
     IF to_regclass(format('public.%I', v_table)) IS NULL THEN

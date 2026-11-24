@@ -40,8 +40,8 @@ describe('pipeline agent jobs contract', () => {
     expect(claimFixSql).toContain('row_number() OVER');
 
     expect(supportPromptSql).toContain("'assistente_geral'::text");
-    expect(supportPromptSql).toContain("COALESCE(c.pipeline_stage, c.status_pipeline) = seed.pipeline_stage");
-    expect(supportPromptSql).toContain("WHERE COALESCE(c.pipeline_stage, c.status_pipeline) = 'assistente_geral'");
+    expect(supportPromptSql).toContain("c.pipeline_stage = seed.pipeline_stage");
+    expect(supportPromptSql).toContain("WHERE c.pipeline_stage = 'assistente_geral'");
     expect(supportPromptSql).not.toContain('prompt_override =');
   });
 

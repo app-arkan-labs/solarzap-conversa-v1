@@ -1,5 +1,9 @@
 # Welcome to your Lovable project
 
+## Banco de dados do SolarZap
+
+O esquema, os dados iniciais do produto e as políticas de acesso são aplicados por `supabase/migrations`. Para reconstruir o ambiente local ou provisionar um projeto vazio, siga o [guia do Supabase](docs/SUPABASE_REBUILD.md).
+
 ## Project info
 
 **URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID

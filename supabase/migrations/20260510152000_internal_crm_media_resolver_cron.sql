@@ -21,23 +21,11 @@ BEGIN
     'internal-crm-resolve-pending-media',
     '* * * * *',
     $job$
-    SELECT net.http_post(
-      url := 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/internal-crm-media-resolver',
-      headers := jsonb_build_object(
-        'Content-Type', 'application/json',
-        'Authorization', 'Bearer ' || decrypted_secret,
-        'apikey', decrypted_secret
-      ),
-      body := jsonb_build_object(
-        'action', 'retryPending',
-        'maxBatch', 8,
-        'minAgeSeconds', 10,
-        'maxAttempts', 5
-      )
-    )
-    FROM vault.decrypted_secrets
-    WHERE name = 'internal_crm_media_resolver_bearer'
-    LIMIT 1;
+    SELECT public.solarzap_enqueue_worker(
+      'internal-crm-media-resolver',
+      jsonb_build_object('action', 'retryPending', 'maxBatch', 8, 'minAgeSeconds', 10, 'maxAttempts', 5),
+      'internal_crm_media_resolver_bearer'
+    );
     $job$
   );
 END;

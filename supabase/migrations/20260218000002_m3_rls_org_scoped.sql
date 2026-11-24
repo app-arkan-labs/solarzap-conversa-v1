@@ -739,6 +739,9 @@ BEGIN
   END IF;
 
   IF v_owner_org IS NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM public.interacoes WHERE org_id IS NULL) THEN
+      RETURN;
+    END IF;
     RAISE EXCEPTION 'm3_fix_interacoes_nulls: no org available in organization_members';
   END IF;
 

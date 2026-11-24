@@ -307,7 +307,7 @@ inserted AS (
     SELECT 1
     FROM public.ai_stage_config c
     WHERE c.org_id = o.id
-      AND COALESCE(c.pipeline_stage, c.status_pipeline) = seed.pipeline_stage
+      AND c.pipeline_stage = seed.pipeline_stage
   )
   ON CONFLICT (org_id, pipeline_stage) DO NOTHING
   RETURNING id
@@ -317,4 +317,4 @@ SET
   default_prompt = seed.default_prompt,
   updated_at = now()
 FROM seed
-WHERE COALESCE(c.pipeline_stage, c.status_pipeline) = 'assistente_geral';
+WHERE c.pipeline_stage = 'assistente_geral';

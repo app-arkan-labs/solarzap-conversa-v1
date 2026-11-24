@@ -29,7 +29,7 @@ CREATE TABLE kb_items (
 CREATE TABLE testimonials (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id UUID NOT NULL,
-    contact_id UUID REFERENCES public.leads(id), -- Nullable link to CRM contact
+    contact_id BIGINT REFERENCES public.leads(id), -- Nullable link to CRM contact
     display_name TEXT, -- Fallback if not linked or for privacy
     
     quote_short TEXT NOT NULL, -- Used as "Description/Proof Justification"

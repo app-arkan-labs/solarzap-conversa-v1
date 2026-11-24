@@ -6,7 +6,7 @@ ALTER TABLE public.lead_tasks
   ADD COLUMN IF NOT EXISTS completed_at timestamptz NULL,
   ADD COLUMN IF NOT EXISTS completed_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS result_summary text NULL,
-  ADD COLUMN IF NOT EXISTS linked_appointment_id bigint NULL REFERENCES public.appointments(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS linked_appointment_id uuid NULL REFERENCES public.appointments(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 DO $$

@@ -1,4 +1,4 @@
-﻿-- Pipeline agents jobs foundation: post-call, follow-up and disparos routing support.
+-- Pipeline agents jobs foundation: post-call, follow-up and disparos routing support.
 
 CREATE TABLE IF NOT EXISTS public.scheduled_agent_jobs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -216,8 +216,11 @@ BEGIN
     LOOP
       PERFORM cron.unschedule(v_job.jobid);
     END LOOP;
-    -- Cron endpoint/JWT are environment-specific and must be configured via:
-    -- scripts/ops/reconfigure_process_agent_jobs_cron.sql
+    PERFORM cron.schedule(
+      'process-agent-jobs-worker',
+      '* * * * *',
+      $job$SELECT public.solarzap_enqueue_worker('process-agent-jobs', '{"source":"cron"}'::jsonb);$job$
+    );
   END IF;
 END;
 $$;

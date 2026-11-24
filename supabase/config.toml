@@ -1,3 +1,21 @@
+project_id = "solarzap-supabase-rebuild"
+
+[api]
+schemas = ["public", "graphql_public", "internal_crm"]
+
+[db]
+major_version = 17
+
+[db.seed]
+enabled = false
+
+[auth]
+site_url = "http://localhost:8080"
+additional_redirect_urls = ["http://localhost:8080/**", "http://127.0.0.1:8080/**", "http://127.0.0.1:8081/**"]
+
+[edge_runtime.secrets]
+ALLOW_LOCALHOST_CORS = "true"
+
 [functions.meta-webhook]
 verify_jwt = false
 

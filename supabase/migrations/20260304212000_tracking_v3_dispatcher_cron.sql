@@ -85,14 +85,7 @@ BEGIN
       '30 seconds',
       $job$
       SELECT
-        net.http_post(
-          url := 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/conversion-dispatcher',
-          headers := jsonb_build_object(
-            'Content-Type', 'application/json',
-            'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8'
-          ),
-          body := '{"source":"cron"}'::jsonb
-        ) AS request_id;
+        public.solarzap_enqueue_worker('conversion-dispatcher', '{"source":"cron"}'::jsonb) AS request_id;
       $job$
     );
   EXCEPTION
@@ -102,14 +95,7 @@ BEGIN
         '* * * * *',
         $job$
         SELECT
-          net.http_post(
-            url := 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/conversion-dispatcher',
-            headers := jsonb_build_object(
-              'Content-Type', 'application/json',
-              'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8'
-            ),
-            body := '{"source":"cron","fallback":"1m"}'::jsonb
-          ) AS request_id;
+          public.solarzap_enqueue_worker('conversion-dispatcher', '{"source":"cron","fallback":"1m"}'::jsonb) AS request_id;
         $job$
       );
   END;

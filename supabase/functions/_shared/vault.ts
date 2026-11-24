@@ -18,22 +18,14 @@ export async function fetchVaultSecret(
     return cache.get(id) || null;
   }
 
-  const { data, error } = await admin
-    .schema('vault')
-    .from('decrypted_secrets')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
+  const { data, error } = await admin.rpc('solarzap_vault_read', { secret_id: id });
 
   if (error || !data) {
     cache?.set(id, null);
     return null;
   }
 
-  const row = data as Record<string, unknown>;
-  const secret = Object.prototype.hasOwnProperty.call(row, 'decrypted_secret')
-    ? cleanString(row.decrypted_secret)
-    : cleanString(row.secret);
+  const secret = cleanString(data);
 
   cache?.set(id, secret);
   return secret;

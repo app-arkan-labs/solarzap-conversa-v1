@@ -327,4 +327,4 @@ MICROEXEMPLOS DE TOM (NAO COPIAR MECANICAMENTE)
 - Step 4: "Imagino que a correria possa ter apertado por ai. Se quiser, me responde so com [RESPOSTA SIMPLES] que eu sigo de forma objetiva."
 - Step 5: "Sem problema, [NOME]. Se agora nao for o melhor momento, fica a porta aberta. Se quiser retomar depois, e so me sinalizar por aqui."$prompt$,
   updated_at = now()
-WHERE COALESCE(pipeline_stage, status_pipeline) = 'follow_up';
+WHERE pipeline_stage = 'follow_up';

@@ -11,11 +11,11 @@ CREATE OR REPLACE FUNCTION public.upsert_lead_next_action_appointment(
   p_location text DEFAULT NULL,
   p_notes text DEFAULT NULL,
   p_user_id uuid DEFAULT NULL,
-  p_appointment_id bigint DEFAULT NULL,
+  p_appointment_id uuid DEFAULT NULL,
   p_task_id uuid DEFAULT NULL
 )
 RETURNS TABLE (
-  appointment_id bigint,
+  appointment_id uuid,
   task_id uuid,
   appointment_user_id uuid,
   appointment_title text,
@@ -35,7 +35,7 @@ DECLARE
   v_actor_id uuid := auth.uid();
   v_responsible_user_id uuid;
   v_resolved_task_id uuid;
-  v_resolved_appointment_id bigint;
+  v_resolved_appointment_id uuid;
   v_safe_type text;
 BEGIN
   IF p_org_id IS NULL THEN
@@ -100,6 +100,7 @@ BEGIN
       updated_at = now()
     WHERE id = p_appointment_id
       AND org_id = p_org_id
+      AND lead_id = p_lead_id
     RETURNING id INTO v_resolved_appointment_id;
 
     IF NOT FOUND THEN
@@ -247,6 +248,9 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.upsert_lead_next_action_appointment(
+  uuid, bigint, text, text, timestamptz, timestamptz, text, text, uuid, uuid, uuid
+) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.upsert_lead_next_action_appointment(
   uuid,
   bigint,
@@ -257,6 +261,6 @@ GRANT EXECUTE ON FUNCTION public.upsert_lead_next_action_appointment(
   text,
   text,
   uuid,
-  bigint,
+  uuid,
   uuid
 ) TO authenticated, service_role;

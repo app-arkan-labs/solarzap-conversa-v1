@@ -73,9 +73,25 @@ CREATE POLICY "Allow full access to ai_settings" ON public.ai_settings FOR ALL U
 CREATE POLICY "Allow full access to ai_stage_config" ON public.ai_stage_config FOR ALL USING (true);
 CREATE POLICY "Allow full access to ai_action_logs" ON public.ai_action_logs FOR ALL USING (true);
 
--- Enable Realtime for these tables so the UI updates instantly
-alter publication supabase_realtime add table ai_settings;
-alter publication supabase_stage_config add table ai_stage_config;
--- Note: 'supabase_stage_config' might not exist, usually it's just 'supabase_realtime'
-alter publication supabase_realtime add table ai_stage_config;
-alter publication supabase_realtime add table ai_action_logs;
+-- Enable Realtime for these tables so the UI updates instantly.
+DO $$
+DECLARE
+    table_name text;
+BEGIN
+    FOREACH table_name IN ARRAY ARRAY['ai_settings', 'ai_stage_config', 'ai_action_logs']
+    LOOP
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_publication_tables
+            WHERE pubname = 'supabase_realtime'
+              AND schemaname = 'public'
+              AND tablename = table_name
+        ) THEN
+            EXECUTE format(
+                'ALTER PUBLICATION supabase_realtime ADD TABLE public.%I',
+                table_name
+            );
+        END IF;
+    END LOOP;
+END
+$$;

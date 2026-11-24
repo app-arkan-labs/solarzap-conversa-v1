@@ -291,6 +291,14 @@ BEGIN
     END IF;
 
     IF v_org IS NULL OR v_owner IS NULL THEN
+        IF NOT EXISTS (SELECT 1 FROM auth.users)
+            AND NOT EXISTS (SELECT 1 FROM public.leads)
+            AND NOT EXISTS (SELECT 1 FROM public.interacoes)
+            AND NOT EXISTS (SELECT 1 FROM public.whatsapp_instances)
+            AND NOT EXISTS (SELECT 1 FROM public.propostas)
+            AND NOT EXISTS (SELECT 1 FROM public.comentarios_leads) THEN
+            RETURN;
+        END IF;
         RAISE EXCEPTION 'No primary owner found in organization_members';
     END IF;
 

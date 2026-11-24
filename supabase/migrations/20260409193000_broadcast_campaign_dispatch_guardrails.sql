@@ -671,11 +671,7 @@ BEGIN
     'invoke-broadcast-worker',
     '* * * * *',
     $job$
-    SELECT net.http_post(
-      url := 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/broadcast-worker',
-      headers := '{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8"}'::jsonb,
-      body := '{"source":"cron","batch_size":200}'::jsonb
-    );
+    SELECT public.solarzap_enqueue_worker('broadcast-worker', '{"source":"cron","batch_size":200}'::jsonb);
     $job$
   );
 
@@ -683,11 +679,7 @@ BEGIN
     'invoke-admin-broadcast-worker',
     '* * * * *',
     $job$
-    SELECT net.http_post(
-      url := 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/admin-broadcast-worker',
-      headers := '{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8"}'::jsonb,
-      body := '{"source":"cron","batch_size":200}'::jsonb
-    );
+    SELECT public.solarzap_enqueue_worker('admin-broadcast-worker', '{"source":"cron","batch_size":200}'::jsonb);
     $job$
   );
 
@@ -695,11 +687,7 @@ BEGIN
     'invoke-internal-crm-broadcast-worker',
     '* * * * *',
     $job$
-    SELECT net.http_post(
-      url := 'https://ucwmcmdwbvrwotuzlmxh.supabase.co/functions/v1/internal-crm-broadcast-worker',
-      headers := '{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODAzOTIxMSwiZXhwIjoyMDgzNjE1MjExfQ.wfo81kDYPZK6wG3aRQyduQbiDX9JAIXxYttkrt4pKo8"}'::jsonb,
-      body := '{"source":"cron","batch_size":200}'::jsonb
-    );
+    SELECT public.solarzap_enqueue_worker('internal-crm-broadcast-worker', '{"source":"cron","batch_size":200}'::jsonb);
     $job$
   );
 END;

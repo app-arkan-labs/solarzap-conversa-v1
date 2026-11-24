@@ -83,6 +83,8 @@ WHERE plan_started_at IS NULL;
 -- ==========================================================
 -- 4) Update the admin orgs summary view to include billing info
 -- ==========================================================
+DROP VIEW IF EXISTS public._admin_orgs_summary;
+
 CREATE OR REPLACE VIEW public._admin_orgs_summary AS
 SELECT
   o.id,

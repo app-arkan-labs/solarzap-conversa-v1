@@ -1,4 +1,4 @@
-﻿-- Safe protocol rollout + Support AI foundation
+-- Safe protocol rollout + Support AI foundation
 -- Date: 2026-02-21
 -- Idempotent migration
 
