@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseKey, supabaseUrl } from '@/lib/supabase';
 import type {
   InternalCrmAppointment,
   InternalCrmAiActionLog,
@@ -72,18 +72,7 @@ const KNOWN_INTERNAL_CRM_ERROR_CODES: InternalCrmApiErrorCode[] = [
 ];
 
 const KNOWN_INTERNAL_CRM_ERROR_CODE_SET = new Set<string>(KNOWN_INTERNAL_CRM_ERROR_CODES);
-const INTERNAL_CRM_FALLBACK_URL = 'https://ucwmcmdwbvrwotuzlmxh.supabase.co';
-const INTERNAL_CRM_FALLBACK_PUBLIC_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMzkyMTEsImV4cCI6MjA4MzYxNTIxMX0.KMk4XqFCm4FkvOZg7LNWaI_4lknMwcdCkYSGjBjDdOg';
-const INTERNAL_CRM_BASE_URL =
-  typeof import.meta.env.VITE_SUPABASE_URL === 'string' && import.meta.env.VITE_SUPABASE_URL.trim().length > 0
-    ? import.meta.env.VITE_SUPABASE_URL.trim()
-    : INTERNAL_CRM_FALLBACK_URL;
-const INTERNAL_CRM_API_PUBLIC_KEY =
-  typeof import.meta.env.VITE_SUPABASE_ANON_KEY === 'string' && import.meta.env.VITE_SUPABASE_ANON_KEY.trim().length > 0
-    ? import.meta.env.VITE_SUPABASE_ANON_KEY.trim()
-    : INTERNAL_CRM_FALLBACK_PUBLIC_KEY;
-const INTERNAL_CRM_API_URL = `${INTERNAL_CRM_BASE_URL}/functions/v1/internal-crm-api`;
+const INTERNAL_CRM_API_URL = `${supabaseUrl}/functions/v1/internal-crm-api`;
 const INTERNAL_CRM_LIVE_REFETCH_MS = 5_000;
 const INTERNAL_CRM_ANALYTICS_REFETCH_MS = 10_000;
 
@@ -316,8 +305,8 @@ async function invokeInternalCrmApiWithToken<TData>(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: INTERNAL_CRM_API_PUBLIC_KEY,
-        Authorization: `Bearer ${INTERNAL_CRM_API_PUBLIC_KEY}`,
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
       },
       body: JSON.stringify({
         ...payload,

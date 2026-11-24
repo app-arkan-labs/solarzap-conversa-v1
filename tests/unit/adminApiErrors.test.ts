@@ -7,6 +7,8 @@ const { getSessionMock, refreshSessionMock, fetchMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/supabase', () => ({
+  supabaseUrl: 'https://solarzap-test.invalid',
+  supabaseKey: 'test-public-key',
   supabase: {
     auth: {
       getSession: getSessionMock,
@@ -62,6 +64,8 @@ describe('useAdminApi error normalization', () => {
     expect(response.user_id).toBe('user-1');
     expect(refreshSessionMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://solarzap-test.invalid/functions/v1/admin-api');
+    expect(fetchMock.mock.calls[0]?.[1]?.headers?.apikey).toBe('test-public-key');
     expect(fetchMock.mock.calls[0]?.[1]?.headers?.Authorization).toBeDefined();
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))._admin_access_token).toBe('token-refreshed');
   });

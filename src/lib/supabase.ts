@@ -1,26 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
-const DEFAULT_SUPABASE_URL = 'https://ucwmcmdwbvrwotuzlmxh.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjd21jbWR3YnZyd290dXpsbXhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMzkyMTEsImV4cCI6MjA4MzYxNTIxMX0.KMk4XqFCm4FkvOZg7LNWaI_4lknMwcdCkYSGjBjDdOg';
+import { DEV_MODE } from '@/config/devMode';
 
-const envSupabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const envSupabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabaseUrl =
-  typeof envSupabaseUrl === 'string' && envSupabaseUrl.trim().length > 0
-    ? envSupabaseUrl
-    : DEFAULT_SUPABASE_URL;
-const supabaseKey =
-  typeof envSupabaseKey === 'string' && envSupabaseKey.trim().length > 0
-    ? envSupabaseKey
-    : DEFAULT_SUPABASE_ANON_KEY;
+const configuredUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
+const configuredKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
 
-if (
-  (typeof envSupabaseUrl !== 'string' || envSupabaseUrl.trim().length === 0) ||
-  (typeof envSupabaseKey !== 'string' || envSupabaseKey.trim().length === 0)
-) {
-  console.warn('[supabase] Missing VITE_SUPABASE_* envs. Using fallback project credentials.');
+if ((!configuredUrl || !configuredKey) && !DEV_MODE) {
+  throw new Error('Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to connect to Supabase.');
 }
+
+export const supabaseUrl = (configuredUrl || 'http://127.0.0.1:54321').replace(/\/+$/, '');
+export const supabaseKey = configuredKey || 'solarzap-dev';
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
