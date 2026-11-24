@@ -606,7 +606,7 @@ async function sendEmailViaResend(
   const resendKey = Deno.env.get('RESEND_API_KEY') || ''
   if (!resendKey) throw new Error('missing_resend_api_key')
 
-  const defaultFrom = Deno.env.get('RESEND_FROM_EMAIL') || 'SolarZap <notificacoes@resend.dev>'
+  const defaultFrom = Deno.env.get('RESEND_FROM_EMAIL') || 'SolarZap <notificações@resend.dev>'
   let fromEmail = defaultFrom
   if (senderName) {
     const emailMatch = defaultFrom.match(/<([^>]+)>/) || [null, defaultFrom.replace(/^[^<]*$/, '$&')]

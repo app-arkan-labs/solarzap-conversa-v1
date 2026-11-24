@@ -21,7 +21,7 @@ export function InternalCrmRecipientSelector(props: InternalCrmRecipientSelector
 
   return (
     <div className="space-y-2">
-      <Label>Destinatarios (nome;telefone;client_id opcional)</Label>
+      <Label>Destinatários (nome;telefone;client_id opcional)</Label>
       <Textarea
         rows={6}
         value={props.value}
@@ -29,7 +29,7 @@ export function InternalCrmRecipientSelector(props: InternalCrmRecipientSelector
         placeholder={['Maria Silva;11999990000', 'Joao Souza;21988887777;uuid-client-opcional'].join('\n')}
       />
       <p className="text-xs text-muted-foreground">
-        {validCount} linha(s) valida(s)
+        {validCount} linha(s) válida(s)
         {invalidCount > 0 ? `, ${invalidCount} com formato incompleto` : ''}.
       </p>
     </div>

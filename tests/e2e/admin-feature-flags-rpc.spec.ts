@@ -14,8 +14,8 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-test('feature flag toggle reflete no RPC get_org_feature_flags em ate 60s', async () => {
-  test.skip(!SUPABASE_ANON_KEY, 'SUPABASE_ANON_KEY/VITE_SUPABASE_ANON_KEY nao configurado');
+test('feature flag toggle reflete no RPC get_org_feature_flags em até 60s', async () => {
+  test.skip(!SUPABASE_ANON_KEY, 'SUPABASE_ANON_KEY/VITE_SUPABASE_ANON_KEY não configurado');
 
   const suffix = Date.now().toString();
   const orgId = randomUUID();

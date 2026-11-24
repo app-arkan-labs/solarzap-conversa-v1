@@ -33,9 +33,9 @@ export function DashboardSalesPage({
         },
         {
           id: "sales-moved",
-          label: "Mudancas de etapa",
+          label: "Mudanças de etapa",
           value: String(data.funnel.moved_in_period),
-          description: "Movimentacoes de etapa no periodo.",
+          description: "Movimentacoes de etapa no período.",
           icon: ArrowRightLeft,
           tone: "cyan",
         },
@@ -43,13 +43,13 @@ export function DashboardSalesPage({
           id: "sales-won",
           label: "Vendas fechadas",
           value: String(data.funnel.won_in_period),
-          description: "Negocios ganhos no periodo.",
+          description: "Negócios ganhos no período.",
           icon: CheckCircle2,
           tone: "emerald",
         },
         {
           id: "sales-stale",
-          label: "Precisam de atencao",
+          label: "Precisam de atenção",
           value: String(data.funnel.stale_total),
           description: "Leads parados alem do tempo ideal.",
           icon: AlertTriangle,
@@ -88,7 +88,7 @@ export function DashboardSalesPage({
             <Clock3 className="h-4 w-4 text-amber-600" />
             Leads para retomar
           </CardTitle>
-          <CardDescription>Negociacoes paradas que merecem contato rapido para nao perder timing.</CardDescription>
+          <CardDescription>Negociações paradas que merecem contato rápido para não perder timing.</CardDescription>
         </CardHeader>
         <CardContent>
           <StaleLeadsTable

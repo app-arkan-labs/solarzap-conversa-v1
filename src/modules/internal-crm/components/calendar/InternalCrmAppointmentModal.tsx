@@ -40,7 +40,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 const APPOINTMENT_TYPE_OPTIONS = [
   { value: 'call', label: 'Chamada' },
-  { value: 'meeting', label: 'Reuniao' },
+  { value: 'meeting', label: 'Reunião' },
 ];
 
 const STATUS_LABELS: Record<string, string> = {
@@ -285,12 +285,12 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
               ) : shouldCreateDealInline ? (
                 <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
                   <p className="text-xs font-medium text-amber-800">
-                    Este cliente nao tem deal aberto. Vamos criar um deal automaticamente ao salvar.
+                    Este cliente não tem deal aberto. Vamos criar um deal automaticamente ao salvar.
                   </p>
                   <Input
                     value={draft.new_deal_title}
                     onChange={(e) => setDraft((c) => ({ ...c, new_deal_title: e.target.value }))}
-                    placeholder="Titulo do novo deal"
+                    placeholder="Título do novo deal"
                   />
                 </div>
               ) : (
@@ -390,8 +390,8 @@ export function InternalCrmAppointmentModal(props: InternalCrmAppointmentModalPr
                 : 'border-emerald-200 bg-emerald-50 text-emerald-900',
             )}>
               {draft.appointment_type === 'call'
-                ? 'Chamada aparece na agenda e nao move a etapa da pipeline.'
-                : 'Reuniao move o lead para Reuniao Marcada; ao marcar como realizada, move para Reuniao Realizada.'}
+                ? 'Chamada aparece na agenda e não move a etapa da pipeline.'
+                : 'Reunião move o lead para Reunião Marcada; ao marcar como realizada, move para Reunião Realizada.'}
             </div>
           </div>
 

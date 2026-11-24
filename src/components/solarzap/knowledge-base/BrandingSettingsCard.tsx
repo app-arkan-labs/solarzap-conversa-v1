@@ -52,7 +52,7 @@ export function BrandingSettingsCard({ canEdit, className }: BrandingSettingsCar
   const handleApplyCustomTheme = () => {
     if (!canEdit || !customThemeHex.trim()) return;
     if (!isValidThemeHex(customThemeHex)) {
-      toast({ title: 'Cor invalida', description: 'Use um codigo HEX valido, ex: #1D4ED8', variant: 'destructive' });
+      toast({ title: 'Cor inválida', description: 'Use um código HEX válido, ex: #1D4ED8', variant: 'destructive' });
       return;
     }
     const customValue = toCustomThemeValue(customThemeHex);
@@ -65,7 +65,7 @@ export function BrandingSettingsCard({ canEdit, className }: BrandingSettingsCar
     if (!canEdit) return;
     const normalized = normalizeThemeHex(customSecondaryHex || '');
     if (!normalized) {
-      toast({ title: 'Cor secundaria invalida', description: 'Use um codigo HEX valido, ex: #1D4ED8', variant: 'destructive' });
+      toast({ title: 'Cor secundária inválida', description: 'Use um código HEX válido, ex: #1D4ED8', variant: 'destructive' });
       return;
     }
     void updateSecondaryColor(normalized);
@@ -87,7 +87,7 @@ export function BrandingSettingsCard({ canEdit, className }: BrandingSettingsCar
     <Card className={cn('border-border/70 shadow-sm', className)}>
       <CardHeader className="pb-4">
         <CardTitle className="text-base">Identidade visual</CardTitle>
-        <CardDescription>Defina logo, cor primaria e cor secundaria para as proximas propostas.</CardDescription>
+        <CardDescription>Defina logo, cor primaria e cor secundária para as próximas propostas.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <input
@@ -193,14 +193,14 @@ export function BrandingSettingsCard({ canEdit, className }: BrandingSettingsCar
           </div>
 
           <div className="flex flex-col gap-2 flex-1">
-            <span className="text-xs font-medium text-muted-foreground">Cor secundaria</span>
+            <span className="text-xs font-medium text-muted-foreground">Cor secundária</span>
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex gap-1.5 px-2 py-1 rounded-full border border-border/50 bg-muted/30">
                 {SECONDARY_PALETTE.map((hex) => (
                   <button
                     key={hex}
                     type="button"
-                    title={`Cor secundaria ${hex}`}
+                    title={`Cor secundária ${hex}`}
                     disabled={!canEdit}
                     onClick={() => {
                       if (!canEdit) return;

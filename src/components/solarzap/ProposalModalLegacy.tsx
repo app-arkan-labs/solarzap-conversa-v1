@@ -1362,10 +1362,10 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
                     <option key={name} value={name} />
                   ))}
                 </datalist>
-                <p className="text-xs text-muted-foreground">Sugestao automatica por UF quando disponivel. Pode editar.</p>
+                <p className="text-xs text-muted-foreground">Sugestão automática por UF quando disponível. Pode editar.</p>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Tipo de Ligacao</Label>
+                <Label className="text-xs">Tipo de Ligação</Label>
                 <Select value={formData.tipoLigacao} onValueChange={(v) => handleChange('tipoLigacao', v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
@@ -1398,7 +1398,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Preco por kWp (R$)</Label>
+                <Label className="text-xs">Preço por kWp (R$)</Label>
                 <Input
                   type="number"
                   step="1"
@@ -1520,7 +1520,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
                 <Input type="number" value={formData.quantidadePaineis || ''} onChange={(e) => handleChange('quantidadePaineis', parseInt(e.target.value) || 0)} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs flex items-center gap-1"><Shield className="w-3 h-3" /> Garantia dos Servicos (anos)</Label>
+                <Label className="text-xs flex items-center gap-1"><Shield className="w-3 h-3" /> Garantia dos Serviços (anos)</Label>
                 <Input type="number" value={formData.garantiaAnos || ''} onChange={(e) => handleChange('garantiaAnos', parseInt(e.target.value) || 0)} />
               </div>
               <div className="space-y-1.5">
@@ -1589,7 +1589,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Degradacao anual dos modulos (%)</Label>
+                <Label className="text-xs">Degradação anual dos módulos (%)</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -1603,11 +1603,11 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
           {/* -- CONDICOES DE PAGAMENTO / FINANCIAMENTO -- */}
           <div className="space-y-3 p-4 border rounded-lg bg-muted/30 overflow-hidden">
             <h3 className="text-sm font-semibold text-primary uppercase tracking-wide flex items-center gap-2">
-              <CreditCard className="w-4 h-4" /> {isUsina ? 'Pagamento e Financiamento' : 'Condicoes Comerciais'}
+              <CreditCard className="w-4 h-4" /> {isUsina ? 'Pagamento e Financiamento' : 'Condições Comerciais'}
             </h3>
 
             <div className="space-y-2">
-              <Label className="text-xs">Condicoes de pagamento</Label>
+              <Label className="text-xs">Condições de pagamento</Label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {PAYMENT_CONDITION_OPTIONS.map((option) => {
                   const checked = formData.paymentConditions.includes(option.id);
@@ -1627,7 +1627,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
             {hasFinancingSelected && (
               <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
                 <div>
-                  <Label className="text-xs">Exibir simulacao de financiamento na proposta</Label>
+                  <Label className="text-xs">Exibir simulação de financiamento na proposta</Label>
                   <p className="text-[11px] text-muted-foreground">
                     Financiamento pode ser uma forma de pagamento sem obrigar tabela de parcelas.
                   </p>
@@ -1642,9 +1642,9 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
             {hasFinancingSelected && formData.showFinancingSimulation && (
               <div className="space-y-3 border-t pt-3">
                 <div className="flex items-center justify-between gap-2">
-                  <Label className="text-xs">Condicoes de financiamento</Label>
+                  <Label className="text-xs">Condições de financiamento</Label>
                   <Button type="button" variant="outline" size="sm" onClick={addFinancingCondition}>
-                    Adicionar instituicao
+                    Adicionar instituição
                   </Button>
                 </div>
 
@@ -1679,7 +1679,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
                               if (checked) setPrimaryFinancingInstitution(condition.id);
                             }}
                           />
-                          <span>{`Instituicao ${index + 1}${isPrimary ? ' (principal)' : ''}`}</span>
+                          <span>{`Instituição ${index + 1}${isPrimary ? ' (principal)' : ''}`}</span>
                         </label>
                         <Button
                           type="button"
@@ -1694,7 +1694,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div className="space-y-1">
-                          <Label className="text-xs">Instituicao financeira</Label>
+                          <Label className="text-xs">Instituição financeira</Label>
                           <Input
                             value={condition.institutionName}
                             onChange={(e) => updateFinancingCondition(condition.id, 'institutionName', e.target.value)}
@@ -1712,7 +1712,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Prazo de carencia</Label>
+                          <Label className="text-xs">Prazo de carência</Label>
                           <div className="grid grid-cols-[1fr_120px] gap-2">
                             <Input
                               type="number"
@@ -1737,7 +1737,7 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
                       </div>
 
                       <div className="space-y-1.5">
-                        <Label className="text-xs">Numero de parcelas para simular</Label>
+                        <Label className="text-xs">Número de parcelas para simular</Label>
                         <div className="flex flex-wrap gap-1.5">
                           {INSTALLMENT_OPTIONS.map((installment) => {
                             const selected = sortedInstallments.includes(installment);
@@ -1781,20 +1781,20 @@ export function ProposalModalLegacy({ isOpen, onClose, contact, onGenerate }: Pr
                 </datalist>
 
                 <p className="text-xs text-muted-foreground">
-                  Carencia e apenas informativa para exibicao comercial. O calculo da parcela usa PMT simples sem capitalizar carencia.
+                  Carência e apenas informativa para exibição comercial. O cálculo da parcela usa PMT simples sem capitalizar carência.
                 </p>
               </div>
             )}
 
             {hasFinancingSelected && !formData.showFinancingSimulation && (
               <p className="text-xs text-muted-foreground">
-                Financiamento marcado apenas como possibilidade de pagamento. Nenhuma simulacao de parcelas sera exibida no PDF.
+                Financiamento marcado apenas como possibilidade de pagamento. Nenhuma simulação de parcelas será exibida no PDF.
               </p>
             )}
 
             {!hasFinancingSelected && (
               <p className="text-xs text-muted-foreground">
-                Marque &quot;Financiamento bancario&quot; para habilitar simulacoes por instituicao.
+                Marque &quot;Financiamento bancário&quot; para habilitar simulacoes por instituição.
               </p>
             )}
           </div>

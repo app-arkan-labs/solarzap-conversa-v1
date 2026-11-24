@@ -145,7 +145,7 @@ export function LeadNextActionDialog({
       }
     } catch (error) {
       toast({
-        title: mode === 'complete' ? 'Erro ao concluir acao' : 'Erro ao salvar acao',
+        title: mode === 'complete' ? 'Erro ao concluir ação' : 'Erro ao salvar ação',
         description: error instanceof Error ? error.message : 'Tente novamente.',
         variant: 'destructive',
       });
@@ -155,15 +155,15 @@ export function LeadNextActionDialog({
   };
 
   const titleByMode: Record<LeadNextActionDialogMode, string> = {
-    create: 'Criar proxima acao',
-    edit: 'Editar proxima acao',
-    complete: 'Concluir acao',
+    create: 'Criar próxima ação',
+    edit: 'Editar próxima ação',
+    complete: 'Concluir ação',
   };
 
   const descriptionByMode: Record<LeadNextActionDialogMode, string> = {
-    create: `Defina o proximo compromisso operacional para ${contact.name}.`,
-    edit: `Ajuste a proxima acao ativa de ${contact.name}.`,
-    complete: `Registre o resultado da acao concluida para ${contact.name}.`,
+    create: `Defina o próximo compromisso operacional para ${contact.name}.`,
+    edit: `Ajuste a próxima ação ativa de ${contact.name}.`,
+    complete: `Registre o resultado da ação concluída para ${contact.name}.`,
   };
 
   return (
@@ -177,8 +177,8 @@ export function LeadNextActionDialog({
         {mode === 'complete' ? (
           <div className="space-y-3 py-1">
             <div className="rounded-lg border border-border bg-muted/30 p-3">
-              <p className="text-xs font-semibold text-muted-foreground">Acao atual</p>
-              <p className="mt-1 text-sm font-medium text-foreground">{action?.title || 'Acao ativa'}</p>
+              <p className="text-xs font-semibold text-muted-foreground">Ação atual</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{action?.title || 'Ação ativa'}</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="lead-next-action-result">Resultado</Label>
@@ -194,7 +194,7 @@ export function LeadNextActionDialog({
         ) : (
           <div className="space-y-3 py-1">
             <div className="space-y-1.5">
-              <Label htmlFor="lead-next-action-title">Acao</Label>
+              <Label htmlFor="lead-next-action-title">Ação</Label>
               <Input
                 id="lead-next-action-title"
                 value={title}
@@ -253,7 +253,7 @@ export function LeadNextActionDialog({
                 id="lead-next-action-notes"
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                placeholder="Contexto curto para a acao"
+                placeholder="Contexto curto para a ação"
                 className="min-h-[96px]"
               />
             </div>
@@ -273,7 +273,7 @@ export function LeadNextActionDialog({
               (mode === 'complete' ? resultSummary.trim().length === 0 : title.trim().length === 0)
             }
           >
-            {mode === 'complete' ? 'Concluir acao' : 'Salvar'}
+            {mode === 'complete' ? 'Concluir ação' : 'Salvar'}
           </Button>
         </DialogFooter>
       </DialogContent>

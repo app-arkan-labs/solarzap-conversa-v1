@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
       userRole = String(membership.role || 'owner');
     } else {
       const providedName = String(payload.org_name || '').trim();
-      const fallbackName = user.email ? `Organizacao ${user.email}` : `Organizacao ${user.id.slice(0, 8)}`;
+      const fallbackName = user.email ? `Organização ${user.email}` : `Organização ${user.id.slice(0, 8)}`;
       const orgName = providedName || fallbackName;
 
       const { data: createdOrg, error: createOrgError } = await serviceClient

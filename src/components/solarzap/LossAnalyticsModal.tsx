@@ -47,7 +47,7 @@ export function LossAnalyticsModal({ open, onOpenChange, ownerUserId = null }: L
               Detalhes das perdas
             </DialogTitle>
             <DialogDescription>
-              Motivos mais frequentes, historico recente e acoes sugeridas para reduzir perdas comerciais.
+              Motivos mais frequentes, histórico recente e ações sugeridas para reduzir perdas comerciais.
             </DialogDescription>
           </DialogHeader>
 
@@ -62,7 +62,7 @@ export function LossAnalyticsModal({ open, onOpenChange, ownerUserId = null }: L
                 setTo(formatDateInput(new Date()));
               }}
             >
-              Ultimos 30 dias
+              Últimos 30 dias
             </Button>
           </div>
         </div>

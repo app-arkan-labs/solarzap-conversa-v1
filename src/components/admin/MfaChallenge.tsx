@@ -159,7 +159,7 @@ export default function MfaChallenge() {
           ) : (
             <>
               <div className="space-y-2">
-                <Label htmlFor="totp-challenge-code">Codigo de 6 digitos</Label>
+                <Label htmlFor="totp-challenge-code">Código de 6 dígitos</Label>
                 <Input
                   id="totp-challenge-code"
                   value={code}

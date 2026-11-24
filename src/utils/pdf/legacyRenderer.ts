@@ -436,7 +436,7 @@ function buildTermsConditionsFromSelection(params: {
       ? 'A receita projetada considera a tarifa vigente e pode variar conforme reajustes tarifários e condições contratuais.'
       : 'A economia projetada considera a tarifa vigente e pode variar conforme reajustes tarifários.',
     `Garantia dos equipamentos e serviços: módulo (${params.moduloGarantia || 25} anos), inversor (${params.inversorGarantia || 25} anos) e serviços (${params.garantiaServicos || 25} anos).`,
-    'A instalação inclui projeto elétrico, instalação mecânica e elétrica, comissionamento e solicitação de vistoria junto À  concessionária.',
+    'A instalação inclui projeto elétrico, instalação mecânica e elétrica, comissionamento e solicitação de vistoria junto à concessionária.',
     'Prazo estimado de instalação: 7 a 15 dias úteis após aprovação do projeto e disponibilidade de materiais.',
     paymentText,
     financingClause,
@@ -500,12 +500,12 @@ function buildChartTheme(P: Palette): ChartTheme {
 //  Accent sanitisation for Helvetica (standard 14 font  no Unicode glyphs) 
 /** Transliterate common Portuguese/Spanish accented chars so Helvetica can render them. */
 function repairMojibake(text: string): string {
-  if (!/[ÃƒÆ’Ãƒâ€šÃƒÂ¢]/.test(text)) return text;
+  if (!/[\u00c3\u00c2\u00e2]/.test(text)) return text;
   try {
     const bytes = Uint8Array.from(text, (char) => char.charCodeAt(0) & 0xff);
     const decoded = new TextDecoder('utf-8').decode(bytes);
-    const badOriginal = (text.match(/[ÃƒÆ’Ãƒâ€šÃƒÂ¢]/g) || []).length;
-    const badDecoded = (decoded.match(/[ÃƒÆ’Ãƒâ€šÃƒÂ¢]/g) || []).length;
+    const badOriginal = (text.match(/[\u00c3\u00c2\u00e2]/g) || []).length;
+    const badDecoded = (decoded.match(/[\u00c3\u00c2\u00e2]/g) || []).length;
     return badDecoded < badOriginal ? decoded : text;
   } catch {
     return text;
@@ -923,7 +923,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
     doc.setFontSize(8); doc.setFont('helvetica', 'normal');
     doc.text(`Validade comercial: ${validadeDias} dias corridos`, M, fY + 7);
-    doc.text(`Pagina ${pageNum} de ${totalPages}`, W - M, fY + 7, { align: 'right' });
+    doc.text(`Página ${pageNum} de ${totalPages}`, W - M, fY + 7, { align: 'right' });
     if (premium?.companyContact?.phone || premium?.companyContact?.email) {
       const ct = [premium.companyContact.phone, premium.companyContact.email].filter(Boolean).join(' | ');
       doc.setFontSize(7);
@@ -962,7 +962,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   };
 
 // ---
-  // PAGE 0  COVER (clean modern layout â€” white bg, brand stripe, partial photo)
+  // PAGE 0  COVER (clean modern layout — white bg, brand stripe, partial photo)
 // ---
   const coverImageSrc = data.coverImageDataUrl || null;
   const coverImageList = Array.isArray(data.coverImageDataUrls)
@@ -1063,7 +1063,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   doc.setLineWidth(0.6);
   doc.line(txL, 66, txL + 35, 66);
 
-  // 8. Title block â€” strong typographic hierarchy
+  // 8. Title block — strong typographic hierarchy
   doc.setTextColor(35, 35, 35);
   doc.setFontSize(30);
   doc.setFont('helvetica', 'bold');
@@ -1107,7 +1107,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     doc.text(data.contact.city, txL, 252);
   }
 
-  // Segment label â€” pure typography, no badge
+  // Segment label — pure typography, no badge
   doc.setTextColor(C.header[0], C.header[1], C.header[2]);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
@@ -1212,21 +1212,21 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     : [
       {
         label: 'SEM ENERGIA SOLAR',
-        value: `${fmtCurrency(contaEstimada)} / mes`,
+        value: `${fmtCurrency(contaEstimada)} / mês`,
         barColor: C.red,
         labelColor: C.red,
         valueColor: C.red,
       },
       {
         label: 'COM ENERGIA SOLAR',
-        value: `${fmtCurrency(contaComSolar)} / mes`,
+        value: `${fmtCurrency(contaComSolar)} / mês`,
         barColor: C.teal,
         labelColor: C.bodyText,
         valueColor: C.header,
       },
       {
         label: 'ECONOMIA MENSAL ESTIMADA',
-        value: `${fmtCurrency(billSavingsMonthly)} / mes`,
+        value: `${fmtCurrency(billSavingsMonthly)} / mês`,
         barColor: C.teal,
         labelColor: C.bodyText,
         valueColor: C.header,
@@ -1295,7 +1295,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   const trustItems = [
     ...(premium?.proofPoints || []),
     `Garantias comerciais: módulo ${data.moduloGarantia || 25} anos, inversor ${data.inversorGarantia || 25} anos e serviços ${data.garantiaAnos} anos.`,
-    'Dimensionamento alinhado ao consumo informado e À s regras vigentes de geração distribuída.',
+    'Dimensionamento alinhado ao consumo informado e às regras vigentes de geração distribuída.',
   ];
   sectionTitle('Por que confiar');
   trustItems.slice(0, 5).forEach((pt) => {
@@ -1335,8 +1335,8 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
         ...(showCashDiscountBreakdown
           ? [
             ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
-            ['Desconto À  Vista', fmtCurrency(descontoAvistaValor)],
-            ['Valor À  Vista Líquido', fmtCurrency(valorAvistaLiquido)],
+            ['Desconto à vista', fmtCurrency(descontoAvistaValor)],
+            ['Valor à vista líquido', fmtCurrency(valorAvistaLiquido)],
             ['Investimento Base (Métricas)', fmtCurrency(investimentoBaseMetricas)],
           ]
           : [['Investimento Total', fmtCurrency(investimentoBaseMetricas)]]),
@@ -1520,8 +1520,8 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
       ...(showCashDiscountBreakdown
         ? [
           ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
-          ['Desconto À  Vista', fmtCurrency(descontoAvistaValor)],
-          ['Valor À  Vista Líquido', fmtCurrency(valorAvistaLiquido)],
+          ['Desconto à vista', fmtCurrency(descontoAvistaValor)],
+          ['Valor à vista líquido', fmtCurrency(valorAvistaLiquido)],
           ['Investimento Base (Métricas)', fmtCurrency(investimentoBaseMetricas)],
         ]
         : [['Investimento Total', fmtCurrency(investimentoBaseMetricas)]]),
@@ -1619,8 +1619,8 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
   {
     checkPageBreak(35);
     const ctaText = premium?.nextStepCta || (isUsina
-      ? `Entre em contato conosco para dar o proximo passo rumo ao retorno com sua usina solar. Estamos prontos para tirar todas as suas duvidas!`
-      : `Entre em contato conosco para dar o proximo passo rumo a economia com energia solar. Estamos prontos para tirar todas as suas duvidas!`);
+      ? `Entre em contato conosco para dar o próximo passo rumo ao retorno com sua usina solar. Estamos prontos para tirar todas as suas dúvidas!`
+      : `Entre em contato conosco para dar o próximo passo rumo a economia com energia solar. Estamos prontos para tirar todas as suas dúvidas!`);
     const cta = doc.splitTextToSize(ctaText, W - 2 * M - 20);
     const ctaBoxH = cta.length * 5.5 + 22;
     doc.setFillColor(C.lightBg[0], C.lightBg[1], C.lightBg[2]);
@@ -1641,7 +1641,7 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
     const contractorCnpj = String(data.signatureContractorCnpj || '').trim();
     const companyName = String(data.signatureCompanyName || 'EMPRESA');
     const companyCnpj = String(data.signatureCompanyCnpj || '').trim();
-    const signatureText = 'Em razão de ambas as partes concordarem com a proposta acima especificada, declaram a aceitação da mesma. Assim sendo dão seguimento À s providências necessárias para a execução do projeto. E por estarem justos e de acordo assinam a presente proposta.';
+    const signatureText = 'Em razão de ambas as partes concordarem com a proposta acima especificada, declaram a aceitação da mesma. Assim sendo dão seguimento às providências necessárias para a execução do projeto. E por estarem justos e de acordo assinam a presente proposta.';
 
     doc.setTextColor(C.bodyText[0], C.bodyText[1], C.bodyText[2]);
     doc.setFontSize(10);
@@ -1675,13 +1675,13 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
     if (y + paymentSummaryEstimate + signatureBlockH + TABLE_GAP > H - 28) {
       doc.addPage();
-      y = drawCompactHeader('Condicoes de Pagamento e Assinatura');
+      y = drawCompactHeader('Condições de Pagamento e Assinatura');
     }
 
-    sectionTitle('Condicoes de Pagamento');
+    sectionTitle('Condições de Pagamento');
     autoTable(doc, {
       startY: y,
-      head: [['Descricao', 'Valor']],
+      head: [['Descrição', 'Valor']],
       body: [
         ['Valor cheio da proposta', fmtCurrency(data.valorTotal)],
         ['Valor a vista', valorAvistaExibicao],
@@ -1705,10 +1705,10 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
 
     if (financingSelected) {
       if (showFinancingSimulation && financingRows.length > 0) {
-        sectionTitle('Condicoes de Financiamento');
+        sectionTitle('Condições de Financiamento');
         autoTable(doc, {
           startY: y,
-          head: [['Instituicao financeira', 'Parcela', 'N. de parcelas', 'Carencia']],
+          head: [['Instituição financeira', 'Parcela', 'N. de parcelas', 'Carência']],
           body: financingRows.map((row) => [
             row.isPrimary ? `${row.institutionName} (principal)` : row.institutionName,
             `A partir de ${fmtCurrency(row.installmentValue)}`,
@@ -1725,10 +1725,10 @@ export function generateProposalPDFLegacy(data: ProposalPDFData, options?: PDFGe
         doc.setTextColor(130, 130, 130);
         doc.setFontSize(7.5);
         doc.setFont('helvetica', 'italic');
-        doc.text('Simulacao comercial sujeita a analise de credito da instituicao financeira.', M, y + 3);
+        doc.text('Simulação comercial sujeita a análise de crédito da instituição financeira.', M, y + 3);
         y += BLOCK_GAP + 3;
       } else {
-        bullet('Financiamento bancario sujeito a analise de credito da instituicao financeira.', C.teal);
+        bullet('Financiamento bancário sujeito a análise de crédito da instituição financeira.', C.teal);
         y += FOOTNOTE_GAP;
       }
     }
@@ -1977,8 +1977,8 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
       ...(showCashDiscountBreakdown
         ? [
           ['Valor Bruto da Proposta', fmtCurrency(data.valorTotal)],
-          ['Desconto À  Vista', fmtCurrency(descontoAvistaValor)],
-          ['Valor À  Vista Líquido', fmtCurrency(valorAvistaLiquido)],
+          ['Desconto à vista', fmtCurrency(descontoAvistaValor)],
+          ['Valor à vista líquido', fmtCurrency(valorAvistaLiquido)],
           ['Investimento Base (Métricas)', fmtCurrency(investimentoBaseMetricas)],
         ]
         : [['Investimento', fmtCurrency(investimentoBaseMetricas)]]),
@@ -2176,7 +2176,7 @@ export function generateSellerScriptPDFLegacy(data: SellerScriptPDFData, options
     'Foto do padrão de entrada / quadro elétrico',
     'Cópia da última conta de energia',
     'Confirmação do decisor e contato principal',
-    'Condição de pagamento preferida (À  vista / financiamento)',
+    'Condição de pagamento preferida (à vista / financiamento)',
     'Prazo desejado para instalação',
     'Objeções não resolvidas (anotar para follow-up)',
   ].forEach((item) => {

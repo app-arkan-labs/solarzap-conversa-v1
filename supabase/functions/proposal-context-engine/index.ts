@@ -53,7 +53,7 @@ const buildRagQueryText = (input: {
   }
 
   const obs = asString(input.leadObs, 1800);
-  if (obs) parts.push(`Observacoes: ${obs}`);
+  if (obs) parts.push(`Observações: ${obs}`);
 
   const lastMsgs = input.interactions
     .slice(Math.max(0, input.interactions.length - 8))
@@ -65,7 +65,7 @@ const buildRagQueryText = (input: {
     .slice(0, 5)
     .map((c) => asString((c as any)?.texto, 260))
     .filter(Boolean);
-  if (lastComments.length > 0) parts.push(`Comentarios: ${lastComments.join(" | ")}`);
+  if (lastComments.length > 0) parts.push(`Comentários: ${lastComments.join(" | ")}`);
 
   return parts.join("\n");
 };

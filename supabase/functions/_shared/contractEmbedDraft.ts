@@ -124,7 +124,7 @@ const normalizeRecurrencePayment = (value: unknown, fallback: string) => {
   if (!text) return fallback;
   if (text.includes('pix')) return 'Pix mensal';
   if (text.includes('boleto')) return 'boleto mensal';
-  if (text.includes('cartao') || text.includes('link')) return 'cartao recorrente';
+  if (text.includes('cartao') || text.includes('link')) return 'cartão recorrente';
   return asString(value, 80) || fallback;
 };
 
@@ -170,18 +170,18 @@ const buildPlanSnapshot = (
       nome: 'Plano Essencial / Downsell',
       quantidadeReunioesImplantacao: 0,
       descricaoObjetiva:
-        'Implantacao mais enxuta, com escopo controlado e sem acompanhamento semanal recorrente.',
+        'Implantação mais enxuta, com escopo controlado e sem acompanhamento semanal recorrente.',
       itensInclusos: [
-        'Disponibilizacao do SolarZap conforme politica operacional do plano',
-        'Ativacao operacional minima',
-        'Treinamento base gravado quando aplicavel',
-        'Escopo controlado de implantacao e continuidade recorrente',
+        'Disponibilização do SolarZap conforme política operacional do plano',
+        'Ativação operacional mínima',
+        'Treinamento base gravado quando aplicável',
+        'Escopo controlado de implantação e continuidade recorrente',
       ],
       itensNaoInclusos: [
         'Acompanhamento semanal',
-        'Suporte continuo via WhatsApp',
+        'Suporte contínuo via WhatsApp',
         'Landing page salvo registro expresso',
-        'Escopo ampliado de implementacao',
+        'Escopo ampliado de implementação',
       ],
       flags: {
         suporteWhatsapp: false,
@@ -195,21 +195,21 @@ const buildPlanSnapshot = (
     },
     plano_b: {
       codigo: 'plano_b',
-      nome: 'Plano Implantacao Guiada',
+      nome: 'Plano Implantação Guiada',
       quantidadeReunioesImplantacao: 1,
       descricaoObjetiva:
-        'Implantacao guiada com 1 reuniao de coleta e alinhamento, 1 mes de SolarZap e trafego pago.',
+        'Implantação guiada com 1 reunião de coleta e alinhamento, 1 mês de SolarZap e tráfego pago.',
       itensInclusos: [
         '1 reuniao de coleta e alinhamento',
-        '1 mes de SolarZap',
-        'Trafego pago',
+        '1 mês de SolarZap',
+        'Tráfego pago',
         'Treinamento base gravado',
         'Continuidade operacional recorrente conforme contrato',
       ],
       itensNaoInclusos: [
-        'Suporte ampliado via WhatsApp salvo previsao expressa',
-        'Landing page salvo condicao especial expressa',
-        'Reuniao extra salvo condicao especial expressa',
+        'Suporte ampliado via WhatsApp salvo previsão expressa',
+        'Landing page salvo condição especial expressa',
+        'Reunião extra salvo condição especial expressa',
       ],
       flags: {
         suporteWhatsapp: false,
@@ -223,19 +223,19 @@ const buildPlanSnapshot = (
     },
     plano_c: {
       codigo: 'plano_c',
-      nome: 'Plano Implementacao Completa',
+      nome: 'Plano Implementação Completa',
       quantidadeReunioesImplantacao: 1,
       descricaoObjetiva:
-        'Implementacao completa com acompanhamento semanal, suporte via WhatsApp na implantacao e continuidade operacional recorrente.',
+        'Implementação completa com acompanhamento semanal, suporte via WhatsApp na implantação e continuidade operacional recorrente.',
       itensInclusos: [
         'Tudo do Plano B',
-        'Acompanhamento semanal durante a implantacao',
-        'Suporte via WhatsApp durante a implantacao',
+        'Acompanhamento semanal durante a implantação',
+        'Suporte via WhatsApp durante a implantação',
         'Maior proximidade operacional na fase inicial',
       ],
       itensNaoInclusos: [
-        'Landing page sem registro em condicao especial',
-        'Reuniao extra sem registro em condicao especial',
+        'Landing page sem registro em condição especial',
+        'Reunião extra sem registro em condição especial',
         'Escopos fora do anexo do plano ou resumo comercial final',
       ],
       flags: {
@@ -302,7 +302,7 @@ export const buildInitialContractValues = (input: BuildDefaultsInput) => {
   const includeReuniaoExtra =
     asBoolean(input.prefill?.incluiReuniaoExtra) ||
     asBoolean(input.prefill?.includeReuniaoExtra) ||
-    specialSearchText.includes('reuniao extra');
+    specialSearchText.includes('reunião extra');
   const includeLandingPage =
     asBoolean(input.prefill?.incluiLandingPage) ||
     asBoolean(input.prefill?.includeLandingPage) ||
@@ -360,9 +360,9 @@ export const buildInitialContractValues = (input: BuildDefaultsInput) => {
         razaoSocial: envString('CONTRACTOR_RAZAO_SOCIAL', 'Arkan Desenvolvimento de Software Ltda.'),
         nomeFantasia: envString('CONTRACTOR_NOME_FANTASIA', 'ARKAN SOLAR'),
         cnpj: envString('CONTRACTOR_CNPJ', '60.838.685/0001-71'),
-        endereco: envString('CONTRACTOR_ENDERECO', 'Marilia/SP'),
+        endereco: envString('CONTRACTOR_ENDERECO', 'Marília/SP'),
         representanteNome: envString('CONTRACTOR_REPRESENTANTE_NOME', 'Representante Legal ARKAN'),
-        representanteCpf: envString('CONTRACTOR_REPRESENTANTE_CPF', 'CPF em configuracao'),
+        representanteCpf: envString('CONTRACTOR_REPRESENTANTE_CPF', 'CPF em configuração'),
       },
       plano: buildPlanSnapshot(defaultPlanCode, {
         valorImplantacao: payment.valorImplantacao,
@@ -385,7 +385,7 @@ export const buildInitialContractValues = (input: BuildDefaultsInput) => {
         multaInadimplenciaPercentual: 2,
         jurosInadimplenciaPercentual: 1,
         renovacaoAutomaticaMensal: true,
-        faseUmDescricao: 'Mes 1 = implantacao inicial',
+        faseUmDescricao: 'Mês 1 = implantação inicial',
         faseDoisDescricao: 'Meses 2 e 3 = continuidade operacional recorrente',
       },
       assinatura: {
@@ -393,7 +393,7 @@ export const buildInitialContractValues = (input: BuildDefaultsInput) => {
         plataformaUrl: envString('CONTRACT_SIGNATURE_PLATFORM_URL', 'https://www.zapsign.com.br/'),
       },
       foro: {
-        cidade: envString('CONTRACT_FORO_CIDADE', 'Marilia'),
+        cidade: envString('CONTRACT_FORO_CIDADE', 'Marília'),
         estado: envString('CONTRACT_FORO_ESTADO', 'SP'),
       },
     },

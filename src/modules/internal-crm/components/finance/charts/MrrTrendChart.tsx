@@ -11,12 +11,12 @@ export function MrrTrendChart(props: MrrTrendChartProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Tendencia de MRR</CardTitle>
+        <CardTitle className="text-base">Tendência de MRR</CardTitle>
       </CardHeader>
       <CardContent className="h-[280px]">
         {props.data.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Sem historico de MRR para exibir.
+            Sem histórico de MRR para exibir.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">

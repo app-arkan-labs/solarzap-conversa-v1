@@ -9,8 +9,8 @@ interface ContractPreviewProps {
 
 export function ContractPreview({
   renderResult,
-  emptyStateTitle = 'Preview ainda nao gerado',
-  emptyStateDescription = 'Confirme a revisao final e gere o preview para visualizar o contrato completo.',
+  emptyStateTitle = 'Preview ainda não gerado',
+  emptyStateDescription = 'Confirme a revisão final e gere o preview para visualizar o contrato completo.',
 }: ContractPreviewProps) {
   if (!renderResult) {
     return (

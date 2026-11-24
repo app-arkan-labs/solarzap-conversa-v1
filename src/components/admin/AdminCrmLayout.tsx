@@ -30,7 +30,7 @@ function getSystemRoleLabel(role: string | undefined): string {
     case 'super_admin':
       return 'Super Admin';
     case 'ops':
-      return 'Operacoes';
+      return 'Operações';
     case 'support':
       return 'Suporte';
     case 'billing':
@@ -197,7 +197,7 @@ export default function AdminCrmLayout() {
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                     Painel Admin
                   </p>
-                  <p className="mt-1 text-sm font-medium text-foreground">Acesso rapido ao sistema principal</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">Acesso rápido ao sistema principal</p>
                 </div>
                 <SystemShortcutMenu />
               </PopoverContent>
@@ -222,12 +222,12 @@ export default function AdminCrmLayout() {
                   type="button"
                   onClick={() => void handleSignOut()}
                   className="group flex h-12 w-12 items-center justify-center rounded-2xl border border-sidebar-border/80 bg-white/92 text-slate-700 shadow-[0_16px_34px_-26px_rgba(15,23,42,0.22)] transition-all duration-300 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-                  aria-label="Encerrar sessao"
+                  aria-label="Encerrar sessão"
                 >
                   <LogOut className="h-5 w-5 stroke-[2.4] text-slate-700 transition-transform duration-300 group-hover:scale-110 group-hover:text-red-600" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right">Encerrar sessao</TooltipContent>
+              <TooltipContent side="right">Encerrar sessão</TooltipContent>
             </Tooltip>
           </div>
         </aside>
@@ -241,7 +241,7 @@ export default function AdminCrmLayout() {
                   size="icon"
                   className="h-10 w-10 rounded-2xl lg:hidden"
                   onClick={() => setIsMobileMenuOpen(true)}
-                  aria-label="Abrir navegacao do CRM"
+                  aria-label="Abrir navegação do CRM"
                 >
                   <Menu className="h-4 w-4" />
                 </Button>
@@ -291,14 +291,14 @@ export default function AdminCrmLayout() {
         <SheetContent side="left" className="w-[92vw] max-w-[360px] border-r border-border/70 px-0">
           <SheetHeader className="border-b border-border/70 px-5 pb-4 pt-6 text-left">
             <SheetTitle className="text-base font-semibold">CRM Interno</SheetTitle>
-            <SheetDescription>Navegacao principal e atalhos do painel admin.</SheetDescription>
+            <SheetDescription>Navegação principal e atalhos do painel admin.</SheetDescription>
           </SheetHeader>
 
           <div className="flex h-full flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto px-4 py-5">
               <div className="mb-5 rounded-[24px] border border-border/70 bg-muted/35 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Area ativa
+                  Área ativa
                 </p>
                 <div className="mt-2 flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
@@ -368,7 +368,7 @@ export default function AdminCrmLayout() {
                 }}
               >
                 <LogOut className="mr-2 h-4 w-4" />
-                Encerrar sessao
+                Encerrar sessão
               </Button>
             </div>
           </div>

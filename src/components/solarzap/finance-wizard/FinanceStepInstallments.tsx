@@ -92,7 +92,7 @@ function InstallmentCard({
           </div>
 
           <div className="space-y-2">
-            <Label>Observacao</Label>
+            <Label>Observação</Label>
             <Input
               value={installment.notes || ''}
               disabled={disabled}
@@ -161,7 +161,7 @@ export function FinanceStepInstallments({
         <CardContent className="space-y-3 pt-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-sm font-semibold">Totalizacao em tempo real</p>
+              <p className="text-sm font-semibold">Totalização em tempo real</p>
               <p className="text-sm text-muted-foreground">
                 Preenchido: {formatCurrency(installmentsTotal)} / {formatCurrency(saleValue)} ({progressPct.toFixed(1)}%)
               </p>

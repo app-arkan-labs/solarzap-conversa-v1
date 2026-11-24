@@ -166,7 +166,7 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
     },
     {
       id: 'schedule',
-      label: 'Reuniao',
+      label: 'Reunião',
       icon: Calendar,
       className: 'bg-violet-500 hover:bg-violet-600 text-white',
       onClick: props.onScheduleMeeting,
@@ -235,9 +235,9 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Acoes rapidas</p>
+                  <p className="text-sm font-semibold text-foreground">Ações rápidas</p>
                   <p className="text-xs text-muted-foreground">
-                    O clique no card agora vira o centro da operacao.
+                    O clique no card agora vira o centro da operação.
                   </p>
                 </div>
                 <Button variant="outline" size="sm" className="gap-2" onClick={props.onOpenComments}>
@@ -269,9 +269,9 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
             <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Edicao rapida</p>
+                  <p className="text-sm font-semibold text-foreground">Edição rápida</p>
                   <p className="text-xs text-muted-foreground">
-                    Ajuste valor, etapa e responsavel sem selecionar produto.
+                    Ajuste valor, etapa e responsável sem selecionar produto.
                   </p>
                 </div>
                 {referenceLabel ? (
@@ -283,7 +283,7 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
 
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="deal-title-inline">Titulo do deal</Label>
+                  <Label htmlFor="deal-title-inline">Título do deal</Label>
                   <Input
                     id="deal-title-inline"
                     value={title}
@@ -313,7 +313,7 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="one_time">Valor unico</SelectItem>
+                      <SelectItem value="one_time">Valor único</SelectItem>
                       <SelectItem value="recurring">Valor mensal</SelectItem>
                     </SelectContent>
                   </Select>
@@ -342,13 +342,13 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
                 />
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="deal-notes-inline">Resumo rapido</Label>
+                  <Label htmlFor="deal-notes-inline">Resumo rápido</Label>
                   <Textarea
                     id="deal-notes-inline"
                     rows={4}
                     value={notes}
                     onChange={(event) => setNotes(event.target.value)}
-                    placeholder="Contexto, objecoes e proximo passo."
+                    placeholder="Contexto, objeções e próximo passo."
                   />
                 </div>
               </div>
@@ -356,8 +356,8 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
               <div className="mt-4 flex flex-col gap-2 border-t border-border/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">
                   {hasQuickChanges
-                    ? 'Salve as alteracoes antes de abrir checkout ou avancar para a proxima acao.'
-                    : 'Se precisar de produto, trial, upsell ou automacao, use "Avancado".'}
+                    ? 'Salve as alterações antes de abrir checkout ou avançar para a próxima ação.'
+                    : 'Se precisar de produto, trial, upsell ou automação, use "Avancado".'}
                 </p>
                 <Button
                   type="button"
@@ -376,7 +376,7 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
                   disabled={props.isSaving || !title.trim() || !hasQuickChanges}
                 >
                   <Save className="h-4 w-4" />
-                  Salvar alteracoes
+                  Salvar alterações
                 </Button>
               </div>
             </section>
@@ -386,25 +386,25 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
                 <p className="text-sm font-semibold text-foreground">Ritmo comercial</p>
                 <div className="mt-3 space-y-2 text-sm">
                   <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted-foreground">Responsavel atual</span>
+                    <span className="text-muted-foreground">Responsável atual</span>
                     <span className="text-right font-medium text-foreground">
-                      {card.owner?.display_name || 'Nao definido'}
+                      {card.owner?.display_name || 'Não definido'}
                     </span>
                   </div>
                   <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted-foreground">Proxima tarefa</span>
+                    <span className="text-muted-foreground">Próxima tarefa</span>
                     <span className="text-right font-medium text-foreground">
                       {card.nextTask?.title || 'Sem tarefa aberta'}
                     </span>
                   </div>
                   <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted-foreground">Proximo compromisso</span>
+                    <span className="text-muted-foreground">Próximo compromisso</span>
                     <span className="text-right font-medium text-foreground">
                       {nextAppointmentLabel || 'Sem agenda'}
                     </span>
                   </div>
                   <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted-foreground">Ultima conversa</span>
+                    <span className="text-muted-foreground">Última conversa</span>
                     <span className="max-w-[60%] text-right text-sm font-medium text-foreground">
                       {card.lastMessagePreview || 'Sem conversa registrada'}
                     </span>
@@ -442,7 +442,7 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
 
             <section className="space-y-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-foreground">Acoes de fechamento</p>
+                <p className="text-sm font-semibold text-foreground">Ações de fechamento</p>
                 <Button
                   type="button"
                   variant="outline"
@@ -466,7 +466,7 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
                   onClick={props.onMarkLost}
                 >
                   <CircleX className="h-4 w-4" />
-                  Nao fechou
+                  Não fechou
                 </Button>
               </div>
             </section>
@@ -477,7 +477,7 @@ export function DealDetailPanel(props: DealDetailPanelProps) {
                 <span>{formatDateTime(deal.created_at)}</span>
               </div>
               <div className="mt-2 flex justify-between gap-3">
-                <span>Ultima atualizacao</span>
+                <span>Última atualização</span>
                 <span>{formatDateTime(deal.updated_at)}</span>
               </div>
               {deal.lost_reason ? (

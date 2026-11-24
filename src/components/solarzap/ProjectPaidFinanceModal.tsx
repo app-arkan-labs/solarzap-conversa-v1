@@ -42,19 +42,19 @@ interface ProjectPaidFinanceModalProps {
 const STEP_COPY: Record<FinanceWizardStep, { title: string; description: string }> = {
   1: {
     title: 'Valores da venda',
-    description: 'Registre o valor fechado, o custo previsto e as observacoes financeiras do projeto.',
+    description: 'Registre o valor fechado, o custo previsto e as observações financeiras do projeto.',
   },
   2: {
     title: 'Modalidades de pagamento',
-    description: 'Escolha as modalidades padrao que vao alimentar a configuracao das parcelas.',
+    description: 'Escolha as modalidades padrão que vao alimentar a configuração das parcelas.',
   },
   3: {
-    title: 'Parcelas e condicoes',
-    description: 'Estruture entrada, vencimentos e totalizacao do recebimento.',
+    title: 'Parcelas e condições',
+    description: 'Estruture entrada, vencimentos e totalização do recebimento.',
   },
   4: {
-    title: 'Revisao final',
-    description: 'Confira o resumo antes de salvar e concluir a mudanca para Projeto Pago.',
+    title: 'Revisão final',
+    description: 'Confira o resumo antes de salvar e concluir a mudança para Projeto Pago.',
   },
 };
 
@@ -114,7 +114,7 @@ const buildFinanceLeadComment = ({
     `Custo: ${formatFinanceCommentCurrency(roundMoney(projectCost))}`,
     `Lucro: ${formatFinanceCommentCurrency(roundMoney(marginValue))} (${roundMoney(marginPct).toFixed(2)}%)`,
     '',
-    'Observacoes financeiras:',
+    'Observações financeiras:',
     trimmedNotes,
   ].join('\n');
 };
@@ -191,7 +191,7 @@ const semanticFinanceError = (message: string): string => {
     return 'A soma das parcelas deve ser exatamente igual ao valor da venda.';
   }
   if (normalized.includes('FINANCE_PLAN_LOCKED_AFTER_PAYMENT')) {
-    return 'O plano nao pode ser reestruturado apos a primeira parcela paga.';
+    return 'O plano não pode ser reestruturado após a primeira parcela paga.';
   }
   if (normalized.includes('FINANCE_PAYMENT_METHOD_REQUIRED')) {
     return 'Cada parcela precisa ter ao menos uma modalidade de pagamento.';
@@ -209,7 +209,7 @@ const semanticFinanceError = (message: string): string => {
     return 'Todas as parcelas precisam ter valor maior que zero.';
   }
 
-  return normalized || 'Nao foi possivel salvar o plano financeiro.';
+  return normalized || 'Não foi possível salvar o plano financeiro.';
 };
 
 const shouldFallbackToDirectFinanceSave = (error: unknown): boolean => {
@@ -330,7 +330,7 @@ export function ProjectPaidFinanceModal({
       try {
         const leadId = Number(contact.id);
         if (!Number.isFinite(leadId)) {
-          throw new Error('Lead invalido para criar plano financeiro.');
+          throw new Error('Lead inválido para criar plano financeiro.');
         }
 
         const { data: plan, error: planError } = await supabase
@@ -681,7 +681,7 @@ export function ProjectPaidFinanceModal({
     }
 
     if (!planId) {
-      throw new Error('Nao foi possivel identificar o plano financeiro salvo.');
+      throw new Error('Não foi possível identificar o plano financeiro salvo.');
     }
 
     const { error: deleteInstallmentsError } = await supabase
@@ -758,8 +758,8 @@ export function ProjectPaidFinanceModal({
     const leadId = Number(contact.id);
     if (!Number.isFinite(leadId)) {
       toast({
-        title: 'Lead invalido',
-        description: 'Nao foi possivel identificar o lead para salvar o plano financeiro.',
+        title: 'Lead inválido',
+        description: 'Não foi possível identificar o lead para salvar o plano financeiro.',
         variant: 'destructive',
       });
       return;
@@ -800,8 +800,8 @@ export function ProjectPaidFinanceModal({
       } catch (commentError) {
         console.error('Failed to persist project paid finance comment', commentError);
         toast({
-          title: 'Plano salvo, mas o comentario falhou',
-          description: 'O plano financeiro foi salvo, mas a observacao nao foi registrada no historico do lead.',
+          title: 'Plano salvo, mas o comentário falhou',
+          description: 'O plano financeiro foi salvo, mas a observação não foi registrada no histórico do lead.',
           variant: 'destructive',
         });
         return;
@@ -836,7 +836,7 @@ export function ProjectPaidFinanceModal({
         <DialogHeader>
           <DialogTitle>Parabens pela venda! Finalize o financeiro</DialogTitle>
           <DialogDescription>
-            Informe valor, custo e condicoes de pagamento para concluir a mudanca para Projeto Pago.
+            Informe valor, custo e condições de pagamento para concluir a mudança para Projeto Pago.
           </DialogDescription>
         </DialogHeader>
 
@@ -870,7 +870,7 @@ export function ProjectPaidFinanceModal({
 
             {hasPaidInstallments ? (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-                Este plano ja possui parcela paga. A estrutura nao pode ser alterada; use confirmacao ou reagendamento
+                Este plano já possui parcela paga. A estrutura não pode ser alterada; use confirmação ou reagendamento
                 de parcelas pendentes.
               </div>
             ) : null}
@@ -950,7 +950,7 @@ export function ProjectPaidFinanceModal({
 
           {currentStep < 4 ? (
             <Button type="button" onClick={goNext} disabled={isSaving || isLoading || !canProceed}>
-              Proximo
+              Próximo
             </Button>
           ) : (
             <Button type="button" onClick={handleSave} disabled={disableSave}>

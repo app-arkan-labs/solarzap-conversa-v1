@@ -54,7 +54,7 @@ describe('calculateSolarSizing', () => {
     expect(withAbate.quantidadePaineis).toBeLessThan(withoutAbate.quantidadePaineis);
   });
 
-  it('usa 30.4375 dias/mes quando VITE_USE_SOLAR_RESOURCE_API esta ativa', () => {
+  it('usa 30.4375 dias/mês quando VITE_USE_SOLAR_RESOURCE_API está ativa', () => {
     const previous = process.env.VITE_USE_SOLAR_RESOURCE_API;
     process.env.VITE_USE_SOLAR_RESOURCE_API = 'true';
 

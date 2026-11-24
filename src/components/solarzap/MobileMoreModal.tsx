@@ -131,7 +131,7 @@ export function MobileMoreModal({
       <DialogContent
         data-testid="mobile-more-modal"
         className="left-0 top-auto z-50 w-full max-w-none translate-x-0 translate-y-0 gap-0 rounded-t-[28px] rounded-b-none border-x-0 border-b-0 p-0 sm:left-0 sm:top-auto sm:max-w-none sm:translate-x-0 sm:translate-y-0 sm:rounded-t-[28px] sm:rounded-b-none [&>button]:hidden"
-        style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom))', maxHeight: 'min(82dvh, calc(100dvh - 4rem - env(safe-area-inset-bottom) - 0.5rem))' }}
+        style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom))', maxHeight: 'min(82dvh, calc(100dvh - 4rem - env(safe-área-inset-bottom) - 0.5rem))' }}
       >
         <div className="rounded-t-[28px] bg-card/97 backdrop-blur-xl">
           <div className="flex justify-center pt-3">
@@ -152,14 +152,14 @@ export function MobileMoreModal({
                   <ArrowLeft className="h-4 w-4" />
                 </button>
                 <div>
-                  <DialogTitle>Configuracoes</DialogTitle>
+                  <DialogTitle>Configurações</DialogTitle>
                   <DialogDescription>Gerencie atalhos, conta e acessos administrativos.</DialogDescription>
                 </div>
               </div>
             ) : (
               <>
                 <DialogTitle>Mais</DialogTitle>
-                <DialogDescription>Acesse as abas secundarias e acoes do workspace.</DialogDescription>
+                <DialogDescription>Acesse as abas secundarias e ações do workspace.</DialogDescription>
               </>
             )}
           </DialogHeader>
@@ -210,8 +210,8 @@ export function MobileMoreModal({
                       onClick={() => setShowSettings(true)}
                       className="w-full rounded-2xl border border-border/60 bg-background/65 px-4 py-3 text-left transition-colors hover:bg-muted/70"
                     >
-                      <p className="text-sm font-semibold text-foreground">Configuracoes</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Conta, IA, integracoes e equipe</p>
+                      <p className="text-sm font-semibold text-foreground">Configurações</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Conta, IA, integrações e equipe</p>
                     </button>
                   </div>
                 ) : null}

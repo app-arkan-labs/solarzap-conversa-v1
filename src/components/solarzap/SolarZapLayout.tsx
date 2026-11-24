@@ -856,7 +856,7 @@ export function SolarZapLayout() {
     const rows = Array.isArray(data) ? (data as UpsertNextActionAppointmentRpcRow[]) : [];
     const row = rows[0];
     if (!row?.appointment_id) {
-      throw new Error('Nao foi possivel confirmar o agendamento salvo.');
+      throw new Error('Não foi possível confirmar o agendamento salvo.');
     }
 
     const appointmentStartAt = row.appointment_start_at || startAt.toISOString();
@@ -2000,7 +2000,7 @@ export function SolarZapLayout() {
             }}
             showSignOut={false}
             title="Trocar empresa"
-            description="Selecione a empresa que deseja abrir. O app sera recarregado ao confirmar."
+            description="Selecione a empresa que deseja abrir. O app será recarregado ao confirmar."
             connectLabel="Abrir empresa"
           />
 
@@ -2060,7 +2060,7 @@ export function SolarZapLayout() {
       <div
         className={cn(
           'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
-          showMobileBottomBar && 'pb-[calc(4rem+env(safe-area-inset-bottom))]',
+          showMobileBottomBar && 'pb-[calc(4rem+env(safe-área-inset-bottom))]',
         )}
       >
         <div className="absolute top-0 left-0 right-0 z-20 px-4 py-2 space-y-2 pointer-events-none">
@@ -2497,7 +2497,7 @@ export function SolarZapLayout() {
             <FeatureSoftWall
               featureName="Tracking Avancado"
               requiredPlan="Scale"
-              description="Faca upgrade para acompanhar conversoes e eventos com mais profundidade."
+              description="Faca upgrade para acompanhar conversões e eventos com mais profundidade."
               onUpgrade={() => openBillingBlocker(trackingFeatureBlocker)}
             />
           ) : (
@@ -2629,8 +2629,8 @@ export function SolarZapLayout() {
                 error,
               });
               toast({
-                title: "Evento excluido sem limpar a proxima acao",
-                description: "O agendamento foi removido, mas a proxima acao nao foi atualizada.",
+                title: "Evento excluido sem limpar a próxima ação",
+                description: "O agendamento foi removido, mas a próxima ação não foi atualizada.",
                 variant: "destructive",
               });
             }
@@ -2670,7 +2670,7 @@ export function SolarZapLayout() {
                 }
 
                 toast({
-                  title: linkedScheduleTask ? "Proxima acao atualizada!" : "Proxima acao agendada!",
+                  title: linkedScheduleTask ? "Próxima ação atualizada!" : "Próxima ação agendada!",
                   description: `${actionContact.name} agora tem uma proxima acao operacional definida.`,
                 });
               } catch (error) {
@@ -2681,8 +2681,8 @@ export function SolarZapLayout() {
                   error,
                 });
                 toast({
-                  title: "Agendamento salvo com pendencia operacional",
-                  description: "O evento foi salvo, mas a proxima acao nao foi sincronizada corretamente.",
+                  title: "Agendamento salvo com pendência operacional",
+                  description: "O evento foi salvo, mas a próxima ação não foi sincronizada corretamente.",
                   variant: "destructive",
                 });
               }
@@ -2705,8 +2705,8 @@ export function SolarZapLayout() {
                   error,
                 });
                 toast({
-                  title: "Evento criado sem vinculo operacional",
-                  description: "O agendamento foi salvo, mas nao foi possivel vincular a proxima acao.",
+                  title: "Evento criado sem vínculo operacional",
+                  description: "O agendamento foi salvo, mas não foi possível vincular a próxima ação.",
                   variant: "destructive",
                 });
               }

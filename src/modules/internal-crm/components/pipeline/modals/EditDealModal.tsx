@@ -41,11 +41,11 @@ const MENTORSHIP_VARIANT_OPTIONS = [
   { value: 'mentoria_1000_1_encontro', label: 'Mentoria R$1000 - 1 encontro' },
   { value: 'mentoria_1500_4_encontros', label: 'Mentoria R$1500 - 4 encontros' },
   { value: 'mentoria_2000_premium', label: 'Mentoria R$2000 - premium' },
-  { value: 'mentoria_3x1000_pos_software', label: 'Mentoria 3x R$1000 pos-software' },
-  { value: 'mentoria_4x1200_pos_trial', label: 'Mentoria 4x R$1200 pos-trial' },
+  { value: 'mentoria_3x1000_pos_software', label: 'Mentoria 3x R$1000 pós-software' },
+  { value: 'mentoria_4x1200_pos_trial', label: 'Mentoria 4x R$1200 pós-trial' },
 ];
 const SOFTWARE_STATUS_OPTIONS = [
-  { value: 'not_offered', label: 'Nao ofertado' },
+  { value: 'not_offered', label: 'Não ofertado' },
   { value: 'offered', label: 'Ofertado' },
   { value: 'accepted', label: 'Aceito' },
   { value: 'declined', label: 'Recusado' },
@@ -55,7 +55,7 @@ const SOFTWARE_STATUS_OPTIONS = [
   { value: 'signed', label: 'Assinado' },
 ];
 const LANDING_PAGE_STATUS_OPTIONS = [
-  { value: 'not_offered', label: 'Nao ofertado' },
+  { value: 'not_offered', label: 'Não ofertado' },
   { value: 'offered', label: 'Ofertado' },
   { value: 'accepted', label: 'Aceito' },
   { value: 'declined', label: 'Recusado' },
@@ -63,14 +63,14 @@ const LANDING_PAGE_STATUS_OPTIONS = [
   { value: 'delivered', label: 'Entregue' },
 ];
 const TRAFFIC_STATUS_OPTIONS = [
-  { value: 'not_offered', label: 'Nao ofertado' },
+  { value: 'not_offered', label: 'Não ofertado' },
   { value: 'offered', label: 'Ofertado' },
   { value: 'accepted', label: 'Aceito' },
   { value: 'declined', label: 'Recusado' },
   { value: 'active', label: 'Ativo' },
 ];
 const TRIAL_STATUS_OPTIONS = [
-  { value: 'not_offered', label: 'Nao ofertado' },
+  { value: 'not_offered', label: 'Não ofertado' },
   { value: 'offered', label: 'Ofertado' },
   { value: 'accepted', label: 'Aceito' },
   { value: 'expired', label: 'Expirado' },
@@ -173,7 +173,7 @@ export function EditDealModal(props: EditDealModalProps) {
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Editar deal interno' : 'Novo deal interno'}</DialogTitle>
           <DialogDescription>
-            Fluxo simplificado: defina valor, etapa e responsavel. Os campos tecnicos ficam recolhidos em "Avancado".
+            Fluxo simplificado: defina valor, etapa e responsável. Os campos técnicos ficam recolhidos em "Avancado".
           </DialogDescription>
         </DialogHeader>
 
@@ -198,7 +198,7 @@ export function EditDealModal(props: EditDealModalProps) {
           </div>
 
           <div className="space-y-2">
-            <Label>Titulo</Label>
+            <Label>Título</Label>
             <Input
               value={props.draft.title}
               onChange={(event) => props.onDraftChange({ ...props.draft, title: event.target.value })}
@@ -266,7 +266,7 @@ export function EditDealModal(props: EditDealModalProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="one_time">Valor unico</SelectItem>
+                <SelectItem value="one_time">Valor único</SelectItem>
                 <SelectItem value="recurring">Valor mensal</SelectItem>
               </SelectContent>
             </Select>
@@ -278,17 +278,17 @@ export function EditDealModal(props: EditDealModalProps) {
               rows={4}
               value={props.draft.notes}
               onChange={(event) => props.onDraftChange({ ...props.draft, notes: event.target.value })}
-              placeholder="Contexto da negociacao, objecoes e proximo passo"
+              placeholder="Contexto da negociação, objeções e próximo passo"
             />
             <p className="text-xs text-muted-foreground">
-              Nao precisa selecionar produto para definir o valor. Use a secao avancada apenas quando houver necessidade real.
+              Não precisa selecionar produto para definir o valor. Use a seção avancada apenas quando houver necessidade real.
             </p>
           </div>
         </div>
 
         <Accordion type="multiple" className="rounded-2xl border border-border/70 px-4">
           <AccordionItem value="comercial">
-            <AccordionTrigger className="text-sm font-semibold">Avancado: referencia comercial</AccordionTrigger>
+            <AccordionTrigger className="text-sm font-semibold">Avancado: referência comercial</AccordionTrigger>
             <AccordionContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -303,10 +303,10 @@ export function EditDealModal(props: EditDealModalProps) {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Nao definida" />
+                      <SelectValue placeholder="Não definida" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NONE_VALUE}>Nao definida</SelectItem>
+                      <SelectItem value={NONE_VALUE}>Não definida</SelectItem>
                       {offerOptions.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
                           {option.label}
@@ -328,10 +328,10 @@ export function EditDealModal(props: EditDealModalProps) {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Nao definido" />
+                      <SelectValue placeholder="Não definido" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NONE_VALUE}>Nao definido</SelectItem>
+                      <SelectItem value={NONE_VALUE}>Não definido</SelectItem>
                       {props.products.map((product) => (
                         <SelectItem key={product.product_code} value={product.product_code}>
                           {product.name}
@@ -366,10 +366,10 @@ export function EditDealModal(props: EditDealModalProps) {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Nao definida" />
+                      <SelectValue placeholder="Não definida" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NONE_VALUE}>Nao definida</SelectItem>
+                      <SelectItem value={NONE_VALUE}>Não definida</SelectItem>
                       {MENTORSHIP_VARIANT_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
                           {option.label}
@@ -383,7 +383,7 @@ export function EditDealModal(props: EditDealModalProps) {
           </AccordionItem>
 
           <AccordionItem value="automacao">
-            <AccordionTrigger className="text-sm font-semibold">Avancado: automacao e esteira</AccordionTrigger>
+            <AccordionTrigger className="text-sm font-semibold">Avancado: automação e esteira</AccordionTrigger>
             <AccordionContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div className="space-y-2">
@@ -425,7 +425,7 @@ export function EditDealModal(props: EditDealModalProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Trafego</Label>
+                  <Label>Tráfego</Label>
                   <Select
                     value={props.draft.traffic_status}
                     onValueChange={(value) => props.onDraftChange({ ...props.draft, traffic_status: value })}
@@ -465,7 +465,7 @@ export function EditDealModal(props: EditDealModalProps) {
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <div className="space-y-2">
-                  <Label>Sessoes concluidas</Label>
+                  <Label>Sessões concluídas</Label>
                   <Input
                     type="number"
                     min={0}
@@ -480,7 +480,7 @@ export function EditDealModal(props: EditDealModalProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Ultima oferta recusada</Label>
+                  <Label>Última oferta recusada</Label>
                   <Select
                     value={props.draft.last_declined_offer_code || NONE_VALUE}
                     onValueChange={(value) =>
@@ -522,11 +522,11 @@ export function EditDealModal(props: EditDealModalProps) {
           </AccordionItem>
 
           <AccordionItem value="agenda">
-            <AccordionTrigger className="text-sm font-semibold">Avancado: agenda e proximas ofertas</AccordionTrigger>
+            <AccordionTrigger className="text-sm font-semibold">Avancado: agenda e próximas ofertas</AccordionTrigger>
             <AccordionContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <div className="space-y-2">
-                  <Label>Proxima oferta</Label>
+                  <Label>Próxima oferta</Label>
                   <Select
                     value={props.draft.next_offer_code || NONE_VALUE}
                     onValueChange={(value) =>
@@ -537,10 +537,10 @@ export function EditDealModal(props: EditDealModalProps) {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Sem proxima oferta" />
+                      <SelectValue placeholder="Sem próxima oferta" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NONE_VALUE}>Sem proxima oferta</SelectItem>
+                      <SelectItem value={NONE_VALUE}>Sem próxima oferta</SelectItem>
                       {offerOptions.map((option) => (
                         <SelectItem key={`next-${option.value}`} value={option.value}>
                           {option.label}
@@ -551,7 +551,7 @@ export function EditDealModal(props: EditDealModalProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Proxima oferta em</Label>
+                  <Label>Próxima oferta em</Label>
                   <Input
                     type="datetime-local"
                     value={toDateTimeLocalValue(props.draft.next_offer_at)}
@@ -576,7 +576,7 @@ export function EditDealModal(props: EditDealModalProps) {
                 </div>
 
                 <div className="space-y-2 md:col-span-2 xl:col-span-2">
-                  <Label>Link da reuniao</Label>
+                  <Label>Link da reunião</Label>
                   <Input
                     value={props.draft.meeting_link}
                     onChange={(event) => props.onDraftChange({ ...props.draft, meeting_link: event.target.value })}
@@ -594,7 +594,7 @@ export function EditDealModal(props: EditDealModalProps) {
           </Button>
           <Button onClick={props.onSave} disabled={props.isSaving}>
             <Save className="mr-1.5 h-4 w-4" />
-            {isEditing ? 'Salvar alteracoes' : 'Salvar deal'}
+            {isEditing ? 'Salvar alterações' : 'Salvar deal'}
           </Button>
         </DialogFooter>
       </DialogContent>

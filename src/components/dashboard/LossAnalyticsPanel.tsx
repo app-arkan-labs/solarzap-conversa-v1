@@ -58,9 +58,9 @@ export function LossAnalyticsPanel({ data, isLoading, error, onViewPipeline }: L
   const metricItems: DashboardMetricItem[] = [
     {
       id: "loss-total",
-      label: "Negocios perdidos",
+      label: "Negócios perdidos",
       value: String(totalLosses),
-      description: "Perdas registradas no periodo selecionado.",
+      description: "Perdas registradas no período selecionado.",
       icon: TrendingDown,
       tone: "rose",
     },
@@ -80,16 +80,16 @@ export function LossAnalyticsPanel({ data, isLoading, error, onViewPipeline }: L
     },
     {
       id: "loss-comparison",
-      label: "Vs periodo anterior",
+      label: "Vs período anterior",
       value: formatPercent(trendValue),
       description:
         trendValue === null
-          ? "Ainda sem base comparavel."
+          ? "Ainda sem base comparável."
           : trendValue > 0
-            ? "As perdas aumentaram neste periodo."
+            ? "As perdas aumentaram neste período."
             : trendValue < 0
-              ? "As perdas cairam neste periodo."
-              : "Mesmo volume do periodo anterior.",
+              ? "As perdas cairam neste período."
+              : "Mesmo volume do período anterior.",
       tone: trendValue !== null && trendValue > 0 ? "rose" : "emerald",
     },
   ];
@@ -103,7 +103,7 @@ export function LossAnalyticsPanel({ data, isLoading, error, onViewPipeline }: L
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle>Detalhes das perdas</CardTitle>
-              <CardDescription>Ranking dos motivos mais frequentes para voce entender onde agir primeiro.</CardDescription>
+              <CardDescription>Ranking dos motivos mais frequentes para você entender onde agir primeiro.</CardDescription>
             </div>
             {onViewPipeline ? (
               <Button variant="outline" size="sm" className="rounded-full" onClick={onViewPipeline}>
@@ -124,9 +124,9 @@ export function LossAnalyticsPanel({ data, isLoading, error, onViewPipeline }: L
               </ResponsiveContainer>
             ) : (
               <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-border/60 bg-muted/20 text-center">
-                <p className="text-sm font-medium text-foreground">Nenhuma perda registrada no periodo</p>
+                <p className="text-sm font-medium text-foreground">Nenhuma perda registrada no período</p>
                 <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                  Assim que as perdas forem registradas, este grafico passa a mostrar onde a equipe mais esta perdendo negocio.
+                  Assim que as perdas forem registradas, este gráfico passa a mostrar onde a equipe mais está perdendo negócio.
                 </p>
               </div>
             )}
@@ -136,7 +136,7 @@ export function LossAnalyticsPanel({ data, isLoading, error, onViewPipeline }: L
         <Card className="border-border/50 bg-background/50 shadow-sm">
           <CardHeader>
             <CardTitle>Onde agir primeiro</CardTitle>
-            <CardDescription>Acoes recomendadas com base nos motivos que mais apareceram.</CardDescription>
+            <CardDescription>Ações recomendadas com base nos motivos que mais apareceram.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {(data?.actionItems || []).length > 0 ? (
@@ -148,7 +148,7 @@ export function LossAnalyticsPanel({ data, isLoading, error, onViewPipeline }: L
               ))
             ) : (
               <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
-                Sem dados suficientes para sugerir acoes neste periodo.
+                Sem dados suficientes para sugerir ações neste período.
               </div>
             )}
           </CardContent>
@@ -159,7 +159,7 @@ export function LossAnalyticsPanel({ data, isLoading, error, onViewPipeline }: L
         <Card className="border-border/50 bg-background/50 shadow-sm">
           <CardHeader>
             <CardTitle>Motivos registrados</CardTitle>
-            <CardDescription>Os motivos com mais impacto no periodo atual.</CardDescription>
+            <CardDescription>Os motivos com mais impacto no período atual.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {(data?.chartData || []).length > 0 ? (
@@ -176,7 +176,7 @@ export function LossAnalyticsPanel({ data, isLoading, error, onViewPipeline }: L
               ))
             ) : (
               <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
-                Nenhum motivo registrado ainda neste periodo.
+                Nenhum motivo registrado ainda neste período.
               </div>
             )}
           </CardContent>
@@ -185,8 +185,8 @@ export function LossAnalyticsPanel({ data, isLoading, error, onViewPipeline }: L
         <Card className="border-border/50 bg-background/50 shadow-sm">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <CardTitle>Historico recente de perdas</CardTitle>
-              <CardDescription>Ultimos negocios perdidos com contexto para revisao rapida.</CardDescription>
+              <CardTitle>Histórico recente de perdas</CardTitle>
+              <CardDescription>Últimos negócios perdidos com contexto para revisão rápida.</CardDescription>
             </div>
             {onViewPipeline ? (
               <Button variant="outline" size="sm" className="rounded-full" onClick={onViewPipeline}>
@@ -221,7 +221,7 @@ export function LossAnalyticsPanel({ data, isLoading, error, onViewPipeline }: L
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
-                Nenhuma perda registrada ainda no periodo selecionado.
+                Nenhuma perda registrada ainda no período selecionado.
               </div>
             )}
           </CardContent>

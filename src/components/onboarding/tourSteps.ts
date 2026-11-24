@@ -52,7 +52,7 @@ export const GLOBAL_TOUR_STEPS: GuidedTourStep[] = [
     tab: 'pipelines',
     title: 'Acesse a Agenda',
     content: 'Você pode acompanhar os compromissos clicando no Calendário.',
-    target: '[data-testid="nav-tab-calendario"]',
+    target: '[data-testid="nav-tab-calendário"]',
     placement: 'right',
   },
   {
@@ -60,7 +60,7 @@ export const GLOBAL_TOUR_STEPS: GuidedTourStep[] = [
     tab: 'calendario',
     title: 'Visão da Agenda',
     content: 'Aqui ficam registrados todos os compromissos, agendamentos e visitas de sua equipe.',
-    target: '[data-tour="tab-calendario-root"]',
+    target: '[data-tour="tab-calendário-root"]',
     placement: 'center',
   },
   {

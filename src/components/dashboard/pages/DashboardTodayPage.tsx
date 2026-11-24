@@ -69,7 +69,7 @@ function TodayBottleneckCard({
           <p className="mt-1 text-sm text-muted-foreground">
             {funnel.stale_total > 0
               ? `${funnel.stale_total} leads estao parados alem do tempo ideal.`
-              : "Nenhum acumulo relevante no momento."}
+              : "Nenhum acúmulo relevante no momento."}
           </p>
         </div>
 
@@ -149,7 +149,7 @@ export function DashboardTodayPage({
           id: "general-revenue",
           label: "Faturado",
           value: formatCurrency(data.kpis.revenue.value),
-          description: "Projetos que entraram em Projeto Pago no periodo.",
+          description: "Projetos que entraram em Projeto Pago no período.",
           icon: Wallet,
           tone: "emerald",
         },
@@ -157,7 +157,7 @@ export function DashboardTodayPage({
           id: "general-received",
           label: "Recebido",
           value: formatCurrency(data.finance.received_in_period),
-          description: "Valores confirmados no caixa no periodo.",
+          description: "Valores confirmados no caixa no período.",
           icon: CheckCircle2,
           tone: "sky",
         },
@@ -165,7 +165,7 @@ export function DashboardTodayPage({
           id: "general-scheduled",
           label: "A receber",
           value: formatCurrency(data.finance.scheduled_in_period),
-          description: "Parcelas previstas dentro do periodo filtrado.",
+          description: "Parcelas previstas dentro do período filtrado.",
           icon: CalendarClock,
           tone: "cyan",
         },
@@ -179,7 +179,7 @@ export function DashboardTodayPage({
         },
         {
           id: "general-overdue-actions",
-          label: "Acoes vencidas",
+          label: "Ações vencidas",
           value: String(queueSummary.overdue),
           description: "Atividades que pedem resposta agora.",
           icon: AlertTriangle,
@@ -189,7 +189,7 @@ export function DashboardTodayPage({
           id: "general-stale-leads",
           label: "Leads parados",
           value: String(data.tables.stale_leads.length),
-          description: "Leads sem avancar e pedindo retorno.",
+          description: "Leads sem avançar e pedindo retorno.",
           icon: Clock3,
           tone: "amber",
         },
@@ -197,7 +197,7 @@ export function DashboardTodayPage({
           id: "general-appointments",
           label: "Compromissos",
           value: String(nextThreeDaysEvents.length),
-          description: "Hoje e proximos 3 dias.",
+          description: "Hoje e próximos 3 dias.",
           icon: CalendarClock,
           tone: "sky",
         },
@@ -247,7 +247,7 @@ export function DashboardTodayPage({
             eventLimit={4}
             listHeightClassName="h-[320px]"
             title="Compromissos"
-            description="Agenda de hoje e dos proximos dias para voce nao deixar visita, ligacao ou retorno escapar."
+            description="Agenda de hoje e dos próximos dias para você não deixar visita, ligação ou retorno escapar."
           />
         </div>
       </div>
@@ -273,7 +273,7 @@ export function DashboardTodayPage({
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle>Leads parados</CardTitle>
-            <CardDescription>Leads que estao esfriando e precisam de retorno antes de perder tracao.</CardDescription>
+            <CardDescription>Leads que estão esfriando e precisam de retorno antes de perder tracao.</CardDescription>
           </div>
           {onViewConversations ? (
             <Button variant="outline" size="sm" className="rounded-full" onClick={onViewConversations}>

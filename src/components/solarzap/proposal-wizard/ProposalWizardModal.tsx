@@ -151,7 +151,7 @@ export function ProposalWizardModal({ isOpen, onClose, contact, onGenerate }: Pr
 
             {currentStep < 6 && (
               <Button type="button" onClick={goNext} disabled={form.isLoading || !canProceed} className="flex-1">
-                Proximo
+                Próximo
               </Button>
             )}
 

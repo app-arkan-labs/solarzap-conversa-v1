@@ -61,7 +61,7 @@ export function KnowledgeBaseView() {
 
       return (data || []).map((item) => ({
         id: String(item.id),
-        title: String(item.title || 'Documento sem titulo'),
+        title: String(item.title || 'Documento sem título'),
         ingestion_status: (item.ingestion_status as KBItemStatus['ingestion_status']) ?? null,
         updated_at: item.updated_at ? String(item.updated_at) : null,
       }));
@@ -249,13 +249,13 @@ export function KnowledgeBaseView() {
       const finalState = await ingestUploadedItem(kbItemId);
       if (finalState === 'ready') {
         toast({
-          title: 'Ingestao concluida',
+          title: 'Ingestao concluída',
           description: 'Documento processado e pronto para uso da IA.',
         });
       } else {
         toast({
           title: 'Reprocessamento iniciado',
-          description: 'A ingestao continua em processamento.',
+          description: 'A ingestão continua em processamento.',
         });
       }
     } catch (error) {
@@ -372,7 +372,7 @@ export function KnowledgeBaseView() {
                   className="shrink-0 gap-2 rounded-lg px-4 py-2.5 data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
                 >
                   <ShieldQuestion className="w-4 h-4" />
-                  {isMobileViewport ? 'FAQ' : 'Objecoes & FAQ'}
+                  {isMobileViewport ? 'FAQ' : 'Objeções & FAQ'}
                 </TabsTrigger>
               </TabsList>
             </div>

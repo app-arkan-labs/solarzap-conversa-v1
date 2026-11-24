@@ -25,7 +25,7 @@ type SidebarItem = {
 
 const systemSidebarItems: SidebarItem[] = [
   { to: '/admin', label: 'Dashboard Sistema', icon: Home },
-  { to: '/admin/orgs', label: 'Organizacoes', icon: Building2 },
+  { to: '/admin/orgs', label: 'Organizações', icon: Building2 },
   { to: '/admin/financeiro', label: 'Financeiro SaaS', icon: DollarSign },
   { to: '/admin/flags', label: 'Feature Flags', icon: Flag },
   { to: '/admin/audit', label: 'Audit Log', icon: ScrollText },
@@ -48,7 +48,7 @@ function getRoleLabel(role: string | undefined): string {
     case 'super_admin':
       return 'Super Admin';
     case 'ops':
-      return 'Operacoes';
+      return 'Operações';
     case 'support':
       return 'Suporte';
     case 'billing':
@@ -130,7 +130,7 @@ export default function AdminLayout() {
                   CRM Interno
                 </p>
                 <p className="mt-2 text-sm font-medium text-sidebar-foreground">
-                  A operacao comercial agora usa um shell proprio, inspirado no SolarZap.
+                  A operação comercial agora usa um shell próprio, inspirado no SolarZap.
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-sidebar-foreground/62">
                   Abra o CRM para navegar pelo rail lateral compacto e pelas abas operacionais.
@@ -146,7 +146,7 @@ export default function AdminLayout() {
             ) : null}
             {crmAccessDenied ? (
               <div className="rounded-xl border border-dashed border-sidebar-border/80 px-3.5 py-3 text-xs text-sidebar-foreground/55">
-                O CRM interno fica oculto para usuarios sem `crm_role`.
+                O CRM interno fica oculto para usuários sem `crm_role`.
               </div>
             ) : null}
             {renderNavSection('Sistema', systemSidebarItems)}
@@ -216,7 +216,7 @@ export default function AdminLayout() {
                   <span className="hidden sm:inline">Sair</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Encerrar sessao admin</TooltipContent>
+              <TooltipContent>Encerrar sessão admin</TooltipContent>
             </Tooltip>
           </header>
 

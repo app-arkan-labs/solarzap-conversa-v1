@@ -23,7 +23,7 @@ export function LeadNextActionInlineBar({
 }: LeadNextActionInlineBarProps) {
   const hasScheduledNextAction = Boolean(nextAction?.dueAt);
   const dueLabel = hasScheduledNextAction ? formatLeadTaskDueLabel(nextAction) : '';
-  const description = hasScheduledNextAction ? String(nextAction?.title || '').trim() : 'nao definida';
+  const description = hasScheduledNextAction ? String(nextAction?.title || '').trim() : 'não definida';
 
   return (
     <div className="flex h-11 items-center gap-2 border-b border-border/60 bg-background/35 px-3">
@@ -35,14 +35,14 @@ export function LeadNextActionInlineBar({
             'inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
             isActionsOpen && 'bg-muted text-foreground shadow-sm',
           )}
-          title={isActionsOpen ? 'Fechar acoes' : 'Abrir acoes'}
+          title={isActionsOpen ? 'Fechar ações' : 'Abrir ações'}
         >
           <FileText className="h-4 w-4" />
         </button>
       ) : null}
       <div className="min-w-0 flex-1 text-xs text-muted-foreground">
         <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          Proxima acao
+          Próxima ação
         </span>
         <span className="text-foreground/90">
           {isLoading

@@ -24,7 +24,7 @@ export function useGuidedTour(
   const enabled = options.enabled ?? true;
   const onBeforeStart = options.onBeforeStart;
   const welcomeTitle = options.welcomeTitle ?? 'Bem-vindo ao SolarZap';
-  const welcomeDescription = options.welcomeDescription ?? 'Vamos te mostrar rapidamente os principais recursos para voce operar com seguranca desde o primeiro dia.';
+  const welcomeDescription = options.welcomeDescription ?? 'Vamos te mostrar rapidamente os principais recursos para você operar com segurança desde o primeiro dia.';
 
   const onboarding = useOnboardingProgress(enabled);
   const [tourState, setTourState] = useState<TourState>('idle');

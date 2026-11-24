@@ -79,16 +79,16 @@ const CARD_HIGHLIGHTS: Record<string, string[]> = {
 
 const SOURCE_LABELS: Record<string, string> = {
   tracking: 'Tracking avancado',
-  integracoes: 'Integracoes',
+  integracoes: 'Integrações',
   calendario: 'Agendamentos',
   ia_agentes: 'IA Agentes',
   broadcasts: 'Disparos',
-  broadcast_credits: 'Creditos de disparo',
-  ai_credits: 'Creditos de IA',
+  broadcast_credits: 'Créditos de disparo',
+  ai_credits: 'Créditos de IA',
   proposal_ai: 'Propostas com IA',
-  whatsapp_instances: 'Instancias de WhatsApp',
+  whatsapp_instances: 'Instâncias de WhatsApp',
   propostas: 'Propostas',
-  automacoes: 'Automacoes',
+  automacoes: 'Automações',
 };
 
 type PlanRow = {
@@ -135,7 +135,7 @@ function buildBillingPath(planKey: string, trialDays = 7, autoCheckout = false) 
 }
 
 function getTrialActionLabel(trialDays: number) {
-  return trialDays > 0 ? `Testar gratis por ${trialDays} dias` : 'Assinar agora';
+  return trialDays > 0 ? `Testar grátis por ${trialDays} dias` : 'Assinar agora';
 }
 
 function getPlanActionLabel(targetPlan: string, currentPlan: string | null, intent: BillingIntent, trialDays: number) {
@@ -221,9 +221,9 @@ export default function Pricing() {
   const heroBadgeLabel = intent === 'reactivate' ? 'Reativacao guiada' : 'Upgrade guiado';
   const heroTitle = intent === 'reactivate'
     ? 'Retome seu plano e desbloqueie o acesso completo'
-    : 'Escolha o plano ideal para destravar a proxima etapa';
+    : 'Escolha o plano ideal para destravar a próxima etapa';
   const heroDescription = intent === 'reactivate'
-    ? `Regularize a assinatura${sourceLabel ? ` para voltar a usar ${sourceLabel}` : ''} sem friccao.`
+    ? `Regularize a assinatura${sourceLabel ? ` para voltar a usar ${sourceLabel}` : ''} sem fricção.`
     : sourceLabel
       ? `Chegue ao recurso de ${sourceLabel} com o plano mais aderente ao seu uso atual.`
       : 'Compare os planos e siga para o upgrade mais aderente ao seu momento.';
@@ -453,7 +453,7 @@ export default function Pricing() {
             <div>
               <h2 className="text-lg font-bold text-foreground">Links diretos do trial de 7 dias</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Cada link abaixo abre a versao correta da `/billing` e inicia o checkout Stripe do plano escolhido.
+                Cada link abaixo abre a versão correta da `/billing` e inicia o checkout Stripe do plano escolhido.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">

@@ -43,7 +43,7 @@ export function renderDigestCommentsForPrompt(
 ): string[] {
   const safeMaxChars = Math.max(32, Math.floor(maxCharsPerComment))
   return comments.map((row) => {
-    const author = normalizeCompactText(row.autor) || 'Comentario interno'
+    const author = normalizeCompactText(row.autor) || 'Comentário interno'
     const text = clampText(normalizeCompactText(row.texto), safeMaxChars) || '[sem texto]'
     return `${author}: ${text}`
   })

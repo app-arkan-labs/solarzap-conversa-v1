@@ -611,7 +611,7 @@ export function ProposalsView() {
 
       toast({
         title: 'Proposta excluida',
-        description: 'A versao selecionada foi removida com sucesso.',
+        description: 'A versão selecionada foi removida com sucesso.',
       });
     } catch (error) {
       console.error('Failed to delete proposal version:', error);
@@ -624,7 +624,7 @@ export function ProposalsView() {
       })();
       toast({
         title: 'Erro ao excluir proposta',
-        description: errorMessage || 'Nao foi possivel excluir a proposta.',
+        description: errorMessage || 'Não foi possível excluir a proposta.',
         variant: 'destructive',
       });
     } finally {
@@ -1054,9 +1054,9 @@ export function ProposalsView() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir versao da proposta?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir versão da proposta?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acao remove a versao selecionada. Se for a ultima versao, a proposta base tambem sera excluida.
+              Esta ação remove a versão selecionada. Se for a última versão, a proposta base também será excluida.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

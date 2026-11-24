@@ -37,7 +37,7 @@ const campaignStatusLabel: Record<BroadcastCampaign['status'], string> = {
   draft: 'Rascunho',
   running: 'Rodando',
   paused: 'Pausada',
-  completed: 'Concluida',
+  completed: 'Concluída',
   canceled: 'Cancelada',
 };
 
@@ -103,7 +103,7 @@ export function BroadcastView() {
 
       toast({ title: successMessage });
     } catch (actionError) {
-      const message = actionError instanceof Error ? actionError.message : 'Erro na acao da campanha';
+      const message = actionError instanceof Error ? actionError.message : 'Erro na ação da campanha';
       toast({ title: 'Falha na campanha', description: message, variant: 'destructive' });
     } finally {
       setActionInFlight(null);
@@ -230,7 +230,7 @@ export function BroadcastView() {
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <CardTitle className="text-base">{campaign.name}</CardTitle>
-                          <p className="mt-1 truncate text-xs text-muted-foreground">Instancia: {campaign.instance_name}</p>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">Instância: {campaign.instance_name}</p>
                         </div>
                         <Badge className={campaignStatusClass[campaign.status]}>{campaignStatusLabel[campaign.status]}</Badge>
                       </div>

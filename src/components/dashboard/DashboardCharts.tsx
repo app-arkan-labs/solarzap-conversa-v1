@@ -35,7 +35,7 @@ export function DashboardCharts({ data, kpis, isLoading, mode = "all" }: ChartPr
     const revenueTitle = revenueBasis === "project_paid" ? "Faturamento e lucro realizado" : "Valor fechado por venda";
     const revenueDescription =
         revenueBasis === "project_paid"
-            ? "Faturamento entra em Projeto Pago. Lucro realizado entra conforme as parcelas sao confirmadas."
+            ? "Faturamento entra em Projeto Pago. Lucro realizado entra conforme as parcelas são confirmadas."
             : "Valores fechados por data da venda, sem misturar lucro realizado.";
 
     const monthlyData = data.monthly.map((item) => ({
@@ -55,8 +55,8 @@ export function DashboardCharts({ data, kpis, isLoading, mode = "all" }: ChartPr
             {mode !== "financial" ? (
             <Card className="border-border/50 bg-background/50 shadow-sm">
                 <CardHeader>
-                    <CardTitle className="text-foreground">Desempenho comercial no periodo</CardTitle>
-                    <CardDescription>Leads, vendas e conversao ao longo do intervalo selecionado.</CardDescription>
+                    <CardTitle className="text-foreground">Desempenho comercial no período</CardTitle>
+                    <CardDescription>Leads, vendas e conversão ao longo do intervalo selecionado.</CardDescription>
                 </CardHeader>
                 <CardContent className="h-[340px]">
                     {hasCommercialData ? (
@@ -75,17 +75,17 @@ export function DashboardCharts({ data, kpis, isLoading, mode = "all" }: ChartPr
                                 />
                                 <Tooltip
                                     formatter={(value: number, name: string) => {
-                                        if (name === "conversion_rate") return [`${Number(value).toFixed(1)}%`, "Conversao"];
+                                        if (name === "conversion_rate") return [`${Number(value).toFixed(1)}%`, "Conversão"];
                                         if (name === "sales") return [Number(value), "Vendas"];
                                         return [Number(value), "Leads"];
                                     }}
-                                    labelFormatter={(label) => `Periodo: ${label}`}
+                                    labelFormatter={(label) => `Período: ${label}`}
                                 />
                                 <Legend
                                     formatter={(value) => {
                                         if (value === "leads") return "Leads";
                                         if (value === "sales") return "Vendas";
-                                        return "Conversao";
+                                        return "Conversão";
                                     }}
                                 />
                                 <Line yAxisId="volume" type="monotone" dataKey="leads" stroke="#0284c7" strokeWidth={3} dot={false} />
@@ -95,9 +95,9 @@ export function DashboardCharts({ data, kpis, isLoading, mode = "all" }: ChartPr
                         </ResponsiveContainer>
                     ) : (
                         <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-background/40 text-center">
-                            <p className="text-sm font-medium text-foreground">Sem movimento comercial no periodo</p>
+                            <p className="text-sm font-medium text-foreground">Sem movimento comercial no período</p>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Ajuste o periodo para visualizar a entrada de leads, vendas e conversao.
+                                Ajuste o período para visualizar a entrada de leads, vendas e conversão.
                             </p>
                         </div>
                     )}
@@ -138,7 +138,7 @@ export function DashboardCharts({ data, kpis, isLoading, mode = "all" }: ChartPr
                                                 : "Valor fechado"
                                             : "Lucro",
                                     ]}
-                                    labelFormatter={(label) => `Periodo: ${label}`}
+                                    labelFormatter={(label) => `Período: ${label}`}
                                 />
                                 <Legend
                                     formatter={(value) =>
@@ -157,9 +157,9 @@ export function DashboardCharts({ data, kpis, isLoading, mode = "all" }: ChartPr
                         </ResponsiveContainer>
                     ) : (
                         <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-background/40 text-center">
-                            <p className="text-sm font-medium text-foreground">Sem dados financeiros no periodo</p>
+                            <p className="text-sm font-medium text-foreground">Sem dados financeiros no período</p>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                O grafico fica ativo assim que houver valores reconhecidos no intervalo.
+                                O gráfico fica ativo assim que houver valores reconhecidos no intervalo.
                             </p>
                         </div>
                     )}

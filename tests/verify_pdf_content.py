@@ -28,8 +28,8 @@ def verify_pdf(file_path):
         mojibake_markers = [
             "Ã",
             "Â",
-            "â€",
-            "�",
+            "\u00e2\u20ac",
+            "\ufffd",
         ]
 
         found_forbidden = []

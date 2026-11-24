@@ -64,11 +64,11 @@ export function InternalCrmAiView() {
         })),
       });
 
-      toast({ title: 'Configuracao salva', description: 'As regras de IA foram atualizadas.' });
+      toast({ title: 'Configuração salva', description: 'As regras de IA foram atualizadas.' });
     } catch {
       toast({
         title: 'Falha ao salvar IA',
-        description: 'Nao foi possivel persistir as configuracoes.',
+        description: 'Não foi possível persistir as configurações.',
         variant: 'destructive',
       });
     }
@@ -90,7 +90,7 @@ export function InternalCrmAiView() {
     } catch {
       toast({
         title: 'Falha ao enfileirar job',
-        description: 'Nao foi possivel criar o job no momento.',
+        description: 'Não foi possível criar o job no momento.',
         variant: 'destructive',
       });
     }
@@ -105,12 +105,12 @@ export function InternalCrmAiView() {
 
       toast({
         title: 'Jobs processados',
-        description: `${result.processed_count} concluido(s), ${result.failed_count} com falha.`,
+        description: `${result.processed_count} concluído(s), ${result.failed_count} com falha.`,
       });
     } catch {
       toast({
         title: 'Falha ao processar fila',
-        description: 'Nao foi possivel executar os jobs de IA agora.',
+        description: 'Não foi possível executar os jobs de IA agora.',
         variant: 'destructive',
       });
     }
@@ -121,12 +121,12 @@ export function InternalCrmAiView() {
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Configuracao global</CardTitle>
+            <CardTitle className="text-base">Configuração global</CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
             {[
               ['IA geral', 'is_enabled'],
-              ['Qualificacao', 'qualification_enabled'],
+              ['Qualificação', 'qualification_enabled'],
               ['Follow-up', 'follow_up_enabled'],
               ['Assistente de disparos', 'broadcast_assistant_enabled'],
               ['Assistente de onboarding', 'onboarding_assistant_enabled'],
@@ -134,7 +134,7 @@ export function InternalCrmAiView() {
               <div key={key} className="flex items-center justify-between gap-3 rounded-xl border border-border/70 p-3">
                 <div>
                   <p className="font-medium">{label}</p>
-                  <p className="text-xs text-muted-foreground">Habilita automacao para este fluxo comercial.</p>
+                  <p className="text-xs text-muted-foreground">Habilita automação para este fluxo comercial.</p>
                 </div>
                 <Switch
                   checked={Boolean(draft[key as keyof typeof draft])}
@@ -161,7 +161,7 @@ export function InternalCrmAiView() {
             </div>
 
             <div className="space-y-2">
-              <Label>Prompt padrao</Label>
+              <Label>Prompt padrão</Label>
               <Textarea
                 rows={6}
                 value={draft.default_prompt}
@@ -172,7 +172,7 @@ export function InternalCrmAiView() {
 
             <Button onClick={() => void handleSaveSettings()} disabled={aiModule.upsertAiSettingsMutation.isPending}>
               <Save className="mr-2 h-4 w-4" />
-              Salvar configuracao
+              Salvar configuração
             </Button>
 
             <Button
@@ -216,7 +216,7 @@ export function InternalCrmAiView() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Ultimas acoes da IA</CardTitle>
+              <CardTitle className="text-base">Últimas ações da IA</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {(aiModule.aiActionLogsQuery.data?.logs || []).length === 0 ? (

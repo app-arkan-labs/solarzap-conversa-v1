@@ -46,7 +46,7 @@ export default function SubscriptionRequiredScreen() {
         </h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
           {isPastDue
-            ? 'Sua ultima cobranca nao foi processada e o periodo de tolerancia ja expirou. Corrija sua forma de pagamento na Stripe para restaurar o acesso completo.'
+            ? 'Sua última cobrança não foi processada e o período de tolerância já expirou. Corrija sua forma de pagamento na Stripe para restaurar o acesso completo.'
             : 'Seu acesso está temporariamente limitado. Escolha um plano ou regularize o pagamento para voltar ao fluxo normal.'}
         </p>
 

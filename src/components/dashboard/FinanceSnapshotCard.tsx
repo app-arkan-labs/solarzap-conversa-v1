@@ -84,7 +84,7 @@ export function FinanceSnapshotCard({
   const description =
     mode === "today"
       ? "Use este bloco para decidir rapidamente o que cobrar ou confirmar agora."
-      : "Use este bloco para cobrar atrasos e acompanhar os proximos recebimentos.";
+      : "Use este bloco para cobrar atrasos e acompanhar os próximos recebimentos.";
   const resolvedListHeightClassName = listHeightClassName || (mode === "today" ? "h-[300px]" : "h-[360px]");
 
   return (
@@ -94,7 +94,7 @@ export function FinanceSnapshotCard({
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Wallet className="h-4 w-4 text-emerald-600" />
-              {mode === "today" ? "Parcelas para acompanhar" : "Cobrancas e proximos recebimentos"}
+              {mode === "today" ? "Parcelas para acompanhar" : "Cobranças e próximos recebimentos"}
             </CardTitle>
             <CardDescription>{description}</CardDescription>
           </div>
@@ -123,14 +123,14 @@ export function FinanceSnapshotCard({
             <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 px-4 py-3">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
                 <CalendarClock className="h-3.5 w-3.5" />
-                Proximos 7 dias
+                Próximos 7 dias
               </div>
               <p className="mt-2 text-xl font-semibold text-foreground">{formatCurrency(data.due_next_7_days_amount)}</p>
               <p className="mt-1 text-xs text-muted-foreground">{data.due_next_7_days_count} parcelas para acompanhar.</p>
             </div>
 
             <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">A receber no periodo</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">A receber no período</p>
               <p className="mt-2 text-xl font-semibold text-foreground">{formatCurrency(data.scheduled_in_period)}</p>
               <p className="mt-1 text-xs text-muted-foreground">Parcelas previstas no intervalo filtrado.</p>
             </div>
@@ -141,15 +141,15 @@ export function FinanceSnapshotCard({
           <p className="text-sm font-semibold text-foreground">{overdueLabel}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {data.overdue_count > 0
-              ? "Priorize a cobranca ou confirmacao destas parcelas antes que o caixa escape do controle."
-              : "Mantenha acompanhamento dos proximos vencimentos para nao deixar o recebimento esfriar."}
+              ? "Priorize a cobrança ou confirmação destas parcelas antes que o caixa escape do controle."
+              : "Mantenha acompanhamento dos próximos vencimentos para não deixar o recebimento esfriar."}
           </p>
         </div>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-foreground">Parcelas que pedem acao</p>
+              <p className="text-sm font-semibold text-foreground">Parcelas que pedem ação</p>
               <p className="text-xs text-muted-foreground">Parcelas vencidas ou vencendo hoje para cobrar e confirmar.</p>
             </div>
             {visibleInstallments.length > 0 ? (

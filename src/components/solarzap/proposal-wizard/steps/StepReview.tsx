@@ -14,11 +14,11 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
     .map((option) => option.label);
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
-    : 'nao resolvida';
+    : 'não resolvida';
 
   return (
     <div className="space-y-4">
-      <h3 className="text-base font-semibold">Revisao final</h3>
+      <h3 className="text-base font-semibold">Revisão final</h3>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="rounded-lg border border-primary/25 bg-primary/8 p-3">
@@ -68,29 +68,29 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
             <p className="font-medium">{form.formData.cidade || '-'}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Endereco</p>
+            <p className="text-xs text-muted-foreground">Endereço</p>
             <p className="font-medium">{form.formData.endereco || '-'}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">
-              {form.isUsina ? 'Geracao estimada' : 'Consumo medio mensal'}
+              {form.isUsina ? 'Geração estimada' : 'Consumo médio mensal'}
             </p>
             <p className="font-medium">
-              {`${form.formData.consumoMensal || 0} kWh/mes`}
+              {`${form.formData.consumoMensal || 0} kWh/mês`}
             </p>
           </div>
           {!form.isUsina && (
             <div>
-              <p className="text-xs text-muted-foreground">Conta media mensal (referencia)</p>
+              <p className="text-xs text-muted-foreground">Conta média mensal (referência)</p>
               <p className="font-medium">
                 {(form.formData.contaLuzMensal || 0) > 0
                   ? form.formatCurrency(form.formData.contaLuzMensal || 0)
-                  : 'Nao informada'}
+                  : 'Não informada'}
               </p>
             </div>
           )}
           <div>
-            <p className="text-xs text-muted-foreground">Potencia e paineis</p>
+            <p className="text-xs text-muted-foreground">Potência e paineis</p>
             <p className="font-medium">
               {Number(form.formData.potenciaSistema || 0).toFixed(2)} kWp | {form.formData.quantidadePaineis || 0} paineis
             </p>
@@ -123,7 +123,7 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
             </p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Request ID irradiancia</p>
+            <p className="text-xs text-muted-foreground">Request ID irradiância</p>
             <p className="font-medium">{form.formData.irradianceRequestId || '-'}</p>
           </div>
         </div>
@@ -131,13 +131,13 @@ export function StepReview({ form, manualConfigOpen, onToggleManualConfig }: Ste
 
       <div className="flex items-center justify-between rounded-lg border bg-muted/20 p-3">
         <div>
-          <p className="text-sm font-medium">Configuracao manual avancada</p>
+          <p className="text-sm font-medium">Configuração manual avancada</p>
           <p className="text-xs text-muted-foreground">
-            Edite kit, tecnico e financeiro sem mudar a logica de geracao.
+            Edite kit, técnico e financeiro sem mudar a lógica de geração.
           </p>
         </div>
         <Button type="button" variant="outline" onClick={onToggleManualConfig}>
-          {manualConfigOpen ? 'Fechar configuracao' : 'Configuracao manual'}
+          {manualConfigOpen ? 'Fechar configuração' : 'Configuração manual'}
         </Button>
       </div>
 

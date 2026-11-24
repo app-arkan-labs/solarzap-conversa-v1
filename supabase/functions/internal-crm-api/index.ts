@@ -301,11 +301,11 @@ const BLUEPRINT_STAGE_LABEL: Record<string, string> = {
   novo_lead: 'Novo Lead',
   tentando_contato: 'Tentando Contato',
   mql: 'MQL',
-  reuniao_marcada: 'Reuniao Marcada',
-  reuniao_realizada: 'Reuniao Realizada',
+  reuniao_marcada: 'Reunião Marcada',
+  reuniao_realizada: 'Reunião Realizada',
   contrato_fechado: 'Contrato Fechado',
   venda_finalizada: 'Venda Finalizada',
-  nao_fechou: 'Nao Fechou',
+  nao_fechou: 'Não Fechou',
 };
 const BLUEPRINT_STAGE_COLOR: Record<string, string> = {
   novo_lead: '#2196F3',
@@ -3270,7 +3270,7 @@ async function appendMessage(
   const resolvedConversationInstanceId = requestedInstanceId || asString(conversation.whatsapp_instance_id);
 
   if (!internalOnlyNote && !resolvedConversationInstanceId) {
-    throw { status: 400, code: 'invalid_payload', message: 'Conversa sem instancia para envio.' };
+    throw { status: 400, code: 'invalid_payload', message: 'Conversa sem instância para envio.' };
   }
 
   if (resolvedConversationInstanceId && resolvedConversationInstanceId !== asString(conversation.whatsapp_instance_id)) {
@@ -3305,10 +3305,10 @@ async function appendMessage(
     ]);
 
     if (!instance?.instance_name || !client?.primary_phone) {
-      throw { status: 400, code: 'invalid_payload', message: 'Conversa sem instancia ou telefone para envio.' };
+      throw { status: 400, code: 'invalid_payload', message: 'Conversa sem instância ou telefone para envio.' };
     }
     if (asString(instance.status) !== 'connected') {
-      throw { status: 409, code: 'instance_not_connected', message: 'A instancia selecionada nao esta conectada.' };
+      throw { status: 409, code: 'instance_not_connected', message: 'A instância selecionada não está conectada.' };
     }
     if (!body && !attachmentUrl) {
       throw { status: 400, code: 'invalid_payload', message: 'Mensagem sem corpo e sem anexo.' };
@@ -4547,7 +4547,7 @@ async function upsertAppointment(
       throw {
         status: 409,
         code: 'slot_unavailable',
-        message: 'Este horario ja possui um compromisso ativo.',
+        message: 'Este horário já possui um compromisso ativo.',
         error,
       };
     }
@@ -6433,7 +6433,7 @@ async function intakeLandingLead(
       client_id: client.id,
       deal_id: deal.id,
       owner_user_id: ownerUserId,
-      title: asString(payload.appointment_title) || (resolvedAppointmentType === 'call' ? `Chamada ARKAN - ${companyName}` : `Reuniao ARKAN - ${companyName}`),
+      title: asString(payload.appointment_title) || (resolvedAppointmentType === 'call' ? `Chamada ARKAN - ${companyName}` : `Reunião ARKAN - ${companyName}`),
       appointment_type: resolvedAppointmentType,
       status: 'scheduled',
       start_at: parsedAppointmentAt.toISOString(),
@@ -6755,7 +6755,7 @@ async function createDealCheckoutLink(
 
   const lineItems = (items || []).filter((item) => Math.max(0, asNumber(item.unit_price_cents, 0)) > 0);
   if (lineItems.length === 0) {
-    throw { status: 400, code: 'invalid_payload', message: 'Deal sem itens validos para gerar checkout.' };
+    throw { status: 400, code: 'invalid_payload', message: 'Deal sem itens válidos para gerar checkout.' };
   }
 
   const customer = await stripe.customers.create({
@@ -7642,7 +7642,7 @@ async function createAutomationTaskFromRule(
     asString(metadata.task_title) ||
     asString(templatePayload.task_title) ||
     asString(rule.name) ||
-    'Acompanhar automacao';
+    'Acompanhar automação';
   const notesSource =
     asString(metadata.task_notes) ||
     asString(templatePayload.task_notes) ||
@@ -7858,7 +7858,7 @@ async function claimDueInternalCrmAutomationRuns(
       status: 500,
       code: 'automation_runs_claim_failed',
       error: dueRunsError,
-      message: asString((dueRunsError as { message?: unknown })?.message) || 'Falha ao listar automacoes vencidas.',
+      message: asString((dueRunsError as { message?: unknown })?.message) || 'Falha ao listar automações vencidas.',
     };
   }
 
@@ -7882,7 +7882,7 @@ async function claimDueInternalCrmAutomationRuns(
       status: 500,
       code: 'automation_runs_claim_failed',
       error: claimedRunsError,
-      message: asString((claimedRunsError as { message?: unknown })?.message) || 'Falha ao reservar automacoes vencidas.',
+      message: asString((claimedRunsError as { message?: unknown })?.message) || 'Falha ao reservar automações vencidas.',
     };
   }
 
@@ -8577,7 +8577,7 @@ async function executeStandardAgentJob(
 
     const taskNotes =
       asString(payload.task_notes) ||
-      `Job ${jobType} processado em ${nowIso()} com automacao interna do CRM.`;
+      `Job ${jobType} processado em ${nowIso()} com automação interna do CRM.`;
 
     await schema.from('tasks').insert({
       client_id: clientId,

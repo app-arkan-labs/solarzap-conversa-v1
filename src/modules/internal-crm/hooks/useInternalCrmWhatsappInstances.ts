@@ -145,7 +145,7 @@ export function useInternalCrmWhatsappInstances() {
         };
       } catch (error) {
         console.error('Failed to create internal CRM instance', error);
-        toast.error('Erro ao criar a instancia interna.');
+        toast.error('Erro ao criar a instância interna.');
         return null;
       } finally {
         setCreating(false);
@@ -188,7 +188,7 @@ export function useInternalCrmWhatsappInstances() {
         return response.status || null;
       } catch (error) {
         console.error('Failed to check internal CRM instance status', error);
-        toast.error('Erro ao consultar o status da instancia.');
+        toast.error('Erro ao consultar o status da instância.');
         return null;
       } finally {
         setActionLoading(null);
@@ -205,11 +205,11 @@ export function useInternalCrmWhatsappInstances() {
           action: 'disconnect_instance',
           instance_id: instanceId,
         });
-        toast.success('Instancia desconectada.');
+        toast.success('Instância desconectada.');
         return true;
       } catch (error) {
         console.error('Failed to disconnect internal CRM instance', error);
-        toast.error('Erro ao desconectar a instancia.');
+        toast.error('Erro ao desconectar a instância.');
         return false;
       } finally {
         setActionLoading(null);
@@ -226,11 +226,11 @@ export function useInternalCrmWhatsappInstances() {
           action: 'delete_instance',
           instance_id: instance.id,
         });
-        toast.success('Instancia excluida.');
+        toast.success('Instância excluida.');
         return true;
       } catch (error) {
         console.error('Failed to delete internal CRM instance', error);
-        toast.error('Erro ao excluir a instancia.');
+        toast.error('Erro ao excluir a instância.');
         return false;
       } finally {
         setActionLoading(null);
@@ -255,7 +255,7 @@ export function useInternalCrmWhatsappInstances() {
         return true;
       } catch (error) {
         console.error('Failed to update internal CRM AI toggle', error);
-        toast.error('Erro ao atualizar a IA da instancia.');
+        toast.error('Erro ao atualizar a IA da instância.');
         return false;
       } finally {
         setActionLoading(null);
@@ -279,7 +279,7 @@ export function useInternalCrmWhatsappInstances() {
         return true;
       } catch (error) {
         console.error('Failed to update internal CRM instance color', error);
-        toast.error('Erro ao atualizar a cor da instancia.');
+        toast.error('Erro ao atualizar a cor da instância.');
         return false;
       } finally {
         setActionLoading(null);

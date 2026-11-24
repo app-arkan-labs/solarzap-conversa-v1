@@ -113,13 +113,13 @@ export function EventFeedbackModal({
 
             if (appointment.lead_id && onCreateNextAction && nextActionTitle.trim()) {
                 if (linkedNextAction && !completeLinkedAction) {
-                    throw new Error('Conclua a proxima acao vinculada antes de criar outra.');
+                    throw new Error('Conclua a próxima ação vinculada antes de criar outra.');
                 }
 
                 await onCreateNextAction({
                     leadId: appointment.lead_id,
                     title: nextActionTitle.trim(),
-                    notes: `Gerada apos feedback do evento "${appointment.title}".`,
+                    notes: `Gerada após feedback do evento "${appointment.title}".`,
                     dueAt: nextActionDueAt ? new Date(nextActionDueAt) : null,
                     priority: 'medium',
                     channel: linkedNextAction?.channel || null,
@@ -180,7 +180,7 @@ export function EventFeedbackModal({
                         <Label htmlFor="event-feedback-outcome">Como foi o evento?</Label>
                         <Textarea
                             id="event-feedback-outcome"
-                            placeholder="Descreva o resultado da reuniao, pontos importantes ou proximos passos..."
+                            placeholder="Descreva o resultado da reunião, pontos importantes ou próximos passos..."
                             value={outcome}
                             onChange={(event) => setOutcome(event.target.value)}
                             className="min-h-[120px]"
@@ -197,7 +197,7 @@ export function EventFeedbackModal({
                                 />
                                 <div className="space-y-1">
                                     <Label htmlFor="complete-linked-next-action" className="text-sm font-medium">
-                                        Concluir proxima acao vinculada
+                                        Concluir próxima ação vinculada
                                     </Label>
                                     <p className="text-xs text-muted-foreground">{linkedNextAction.title}</p>
                                 </div>
@@ -208,14 +208,14 @@ export function EventFeedbackModal({
                     {onCreateNextAction ? (
                         <div className="space-y-3 rounded-lg border border-border bg-background/70 p-4">
                             <div>
-                                <p className="text-sm font-medium text-foreground">Definir proxima acao seguinte</p>
+                                <p className="text-sm font-medium text-foreground">Definir próxima ação seguinte</p>
                                 <p className="text-xs text-muted-foreground">
-                                    Opcional. Se preencher, a nova acao ja sai criada ao salvar o feedback.
+                                    Opcional. Se preencher, a nova ação já sai criada ao salvar o feedback.
                                 </p>
                             </div>
 
                             <div className="space-y-1.5">
-                                <Label htmlFor="event-feedback-next-action-title">Proxima acao</Label>
+                                <Label htmlFor="event-feedback-next-action-title">Próxima ação</Label>
                                 <Input
                                     id="event-feedback-next-action-title"
                                     value={nextActionTitle}

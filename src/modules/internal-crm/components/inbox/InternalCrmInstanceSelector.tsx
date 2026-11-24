@@ -50,7 +50,7 @@ export function InternalCrmInstanceSelector(props: InternalCrmInstanceSelectorPr
     return (
       <Button variant="outline" size="sm" disabled className={cn('h-8 text-xs', props.className)}>
         <Smartphone className="mr-1.5 h-3.5 w-3.5" />
-        Sem conexao
+        Sem conexão
       </Button>
     );
   }

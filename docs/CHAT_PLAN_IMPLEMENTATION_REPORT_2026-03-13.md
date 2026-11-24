@@ -152,4 +152,4 @@ Ainda fora deste fechamento local (exige execucao controlada no ambiente alvo qu
 ## 5) Veredito
 
 O chat entregou implementacao real e validada dos itens centrais de retomada + hardening + lote UX/performance.
-No estado atual do repositório, os gates locais estao verdes e o software esta tecnicamente mais proximo de release seguro, com ganhos concretos de estabilidade do tour e distribuicao de chunks.
+No estado atual do repositÃ³rio, os gates locais estao verdes e o software esta tecnicamente mais proximo de release seguro, com ganhos concretos de estabilidade do tour e distribuicao de chunks.

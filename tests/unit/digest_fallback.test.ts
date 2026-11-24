@@ -18,7 +18,7 @@ describe('digest fallback', () => {
         },
         {
           created_at: '2026-03-01T10:05:00.000Z',
-          mensagem: 'Perfeito, vou preparar a simulacao para voce.',
+          mensagem: 'Perfeito, vou preparar a simulação para você.',
           wa_from_me: true,
         },
         {

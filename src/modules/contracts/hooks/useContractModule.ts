@@ -84,7 +84,7 @@ export const useContractModule = (externalPrefill?: ContractExternalPrefill | nu
 
   const createDraftMutation = useMutation({
     mutationFn: async () => {
-      if (!orgId || !user?.id) throw new Error('Usuario sem organizacao ativa.');
+      if (!orgId || !user?.id) throw new Error('Usuário sem organização ativa.');
       return createContractDraft({
         orgId,
         userId: user.id,
@@ -96,7 +96,7 @@ export const useContractModule = (externalPrefill?: ContractExternalPrefill | nu
       queryClient.invalidateQueries({ queryKey: ['contract-module', 'drafts', orgId] });
       toast({
         title: 'Contrato draft criado',
-        description: 'O novo draft foi aberto no modulo contratual.',
+        description: 'O novo draft foi aberto no módulo contratual.',
       });
     },
     onError: (error: unknown) => {
@@ -110,7 +110,7 @@ export const useContractModule = (externalPrefill?: ContractExternalPrefill | nu
 
   const saveDraftMutation = useMutation({
     mutationFn: async (values: ContractFormalizationFormValues) => {
-      if (!orgId || !user?.id) throw new Error('Usuario sem organizacao ativa.');
+      if (!orgId || !user?.id) throw new Error('Usuário sem organização ativa.');
       return persistContractDraft({
         values,
         orgId,
@@ -124,28 +124,28 @@ export const useContractModule = (externalPrefill?: ContractExternalPrefill | nu
 
   const markReviewReadyMutation = useMutation({
     mutationFn: async (values: ContractFormalizationFormValues) => {
-      if (!orgId || !user?.id) throw new Error('Usuario sem organizacao ativa.');
+      if (!orgId || !user?.id) throw new Error('Usuário sem organização ativa.');
       return persistContractDraft({
         values,
         orgId,
         userId: user.id,
         nextStatus: 'review_ready',
         eventType: 'summary_confirmed',
-        eventMessage: 'Resumo comercial confirmado e revisao final concluida.',
+        eventMessage: 'Resumo comercial confirmado e revisão final concluída.',
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contract-module', 'drafts', orgId] });
       toast({
-        title: 'Revisao concluida',
-        description: 'O contrato esta pronto para gerar preview.',
+        title: 'Revisão concluída',
+        description: 'O contrato está pronto para gerar preview.',
       });
     },
   });
 
   const generatePreviewMutation = useMutation({
     mutationFn: async (values: ContractFormalizationFormValues) => {
-      if (!orgId || !user?.id) throw new Error('Usuario sem organizacao ativa.');
+      if (!orgId || !user?.id) throw new Error('Usuário sem organização ativa.');
 
       let workingValues = values;
       if (workingValues.internalMetadata.contractStatus === 'draft') {
@@ -218,14 +218,14 @@ export const useContractModule = (externalPrefill?: ContractExternalPrefill | nu
       queryClient.invalidateQueries({ queryKey: ['contract-module', 'drafts', orgId] });
       toast({
         title: 'Preview gerado',
-        description: 'O contrato renderizado foi salvo no modulo central.',
+        description: 'O contrato renderizado foi salvo no módulo central.',
       });
     },
   });
 
   const generatePdfMutation = useMutation({
     mutationFn: async (values: ContractFormalizationFormValues) => {
-      if (!orgId || !user?.id) throw new Error('Usuario sem organizacao ativa.');
+      if (!orgId || !user?.id) throw new Error('Usuário sem organização ativa.');
 
       let workingValues = values;
       if (
@@ -305,7 +305,7 @@ export const useContractModule = (externalPrefill?: ContractExternalPrefill | nu
       queryClient.invalidateQueries({ queryKey: ['contract-module', 'drafts', orgId] });
       toast({
         title: 'PDF gerado',
-        description: 'O PDF de contrato foi exportado e persistido no modulo central.',
+        description: 'O PDF de contrato foi exportado e persistido no módulo central.',
       });
     },
   });
@@ -328,7 +328,7 @@ export const useContractModule = (externalPrefill?: ContractExternalPrefill | nu
     refreshDrafts: () =>
       queryClient.invalidateQueries({ queryKey: ['contract-module', 'drafts', orgId] }),
     getDraft: async (contractDraftId: string) => {
-      if (!orgId) throw new Error('Organizacao nao encontrada.');
+      if (!orgId) throw new Error('Organização não encontrada.');
       return getContractDraft(contractDraftId, orgId);
     },
   };

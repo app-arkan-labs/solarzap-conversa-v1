@@ -402,7 +402,7 @@ async function sendEmailViaResend(
     throw new Error('missing_resend_api_key')
   }
 
-  const defaultFrom = Deno.env.get('RESEND_FROM_EMAIL') || 'SolarZap <notificacoes@resend.dev>'
+  const defaultFrom = Deno.env.get('RESEND_FROM_EMAIL') || 'SolarZap <notificações@resend.dev>'
   // If org has a custom sender name, override the display name while keeping the platform domain
   let fromEmail = defaultFrom
   if (senderName) {

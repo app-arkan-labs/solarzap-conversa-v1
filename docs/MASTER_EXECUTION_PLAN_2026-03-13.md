@@ -447,9 +447,9 @@ Arquivo: `scripts/smoke_test_final.ps1`
 **O que fazer:**
 1. Re-salvar o arquivo em UTF-8 com BOM
 2. Corrigir todos os textos com mojibake:
-   - `Ãºltimas` → `últimas`
-   - `execuÃ§Ãµes` → `execuções`
-   - `crÃ­tico` → `crítico`
+   - `últimas`
+   - `execuções`
+   - `crítico`
    - buscar e corrigir todas as ocorrências
 3. Importante: NÃO mudar lógica, apenas encoding e textos
 

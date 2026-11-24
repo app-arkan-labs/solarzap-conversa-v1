@@ -313,7 +313,7 @@ export function useBroadcasts() {
 
   const createCampaign = useCallback(async (input: BroadcastCampaignInput): Promise<BroadcastCampaign> => {
     if (!user || !orgId) {
-      throw new Error('Usuario nao autenticado na organizacao ativa');
+      throw new Error('Usuário não autenticado na organização ativa');
     }
 
     const messages = sanitizeMessages(input.messages);
@@ -345,13 +345,13 @@ export function useBroadcasts() {
       });
 
       if (creditsError) {
-        throw new Error(`Falha ao validar creditos de disparo: ${creditsError.message}`);
+        throw new Error(`Falha ao validar créditos de disparo: ${creditsError.message}`);
       }
 
       const creditsRow = Array.isArray(creditsData) ? creditsData[0] : creditsData;
       if (!creditsRow?.allowed && !isUnlimitedBillingBypass(billing)) {
         openBillingBlocker(buildLimitBlockerForKey('monthly_broadcast_credits', billing, 'broadcasts'));
-        throw new BillingInterruptionError('Bloqueado por billing em creditos de disparo');
+        throw new BillingInterruptionError('Bloqueado por billing em créditos de disparo');
       }
     }
 
@@ -377,8 +377,8 @@ export function useBroadcasts() {
       ai_enabled: input.ai_enabled ?? true,
     };
 
-    if (!campaignPayload.name) throw new Error('Nome da campanha e obrigatorio');
-    if (!campaignPayload.instance_name) throw new Error('Selecione uma instancia de WhatsApp');
+    if (!campaignPayload.name) throw new Error('Nome da campanha e obrigatório');
+    if (!campaignPayload.instance_name) throw new Error('Selecione uma instância de WhatsApp');
 
     const { data, error: createError } = await supabase
       .from('broadcast_campaigns')
@@ -447,7 +447,7 @@ export function useBroadcasts() {
     if (!orgId) return;
 
     const campaign = await fetchCampaignById(campaignId);
-    if (!campaign) throw new Error('Campanha nao encontrada');
+    if (!campaign) throw new Error('Campanha não encontrada');
 
     const messagePool = sanitizeMessages(campaign.messages);
     if (messagePool.length < 1) {
@@ -509,7 +509,7 @@ export function useBroadcasts() {
       .from('broadcast_recipients')
       .update({
         status: 'skipped',
-        error_message: 'Campanha cancelada pelo usuario',
+        error_message: 'Campanha cancelada pelo usuário',
         processing_started_at: null,
         updated_at: new Date().toISOString(),
       })
@@ -521,7 +521,7 @@ export function useBroadcasts() {
         .from('broadcast_recipients')
         .update({
           status: 'skipped',
-          error_message: 'Campanha cancelada pelo usuario',
+          error_message: 'Campanha cancelada pelo usuário',
         })
         .eq('campaign_id', campaignId)
         .in('status', SENDING_RECIPIENT_STATES);

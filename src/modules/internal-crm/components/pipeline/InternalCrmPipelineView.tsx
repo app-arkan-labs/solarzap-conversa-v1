@@ -292,7 +292,7 @@ function buildNewAppointmentPayload(input: {
     client_id: input.clientId,
     deal_id: input.dealId,
     owner_user_id: input.ownerUserId,
-    title: `Reuniao - ${input.companyName}`,
+    title: `Reunião - ${input.companyName}`,
     appointment_type: 'meeting',
     status: 'scheduled',
     start_at: startAt.toISOString(),
@@ -781,7 +781,7 @@ export function InternalCrmPipelineView() {
     setAppointmentDefaults({
       client_id: card.deal.client_id,
       deal_id: card.deal.id,
-      title: isCallType ? `Ligacao - ${card.companyName}` : `Reuniao - ${card.companyName}`,
+      title: isCallType ? `Ligação - ${card.companyName}` : `Reunião - ${card.companyName}`,
       appointment_type: normalizedType,
       status: relevantAppointment?.status || 'scheduled',
       location: relevantAppointment?.location || null,
@@ -917,7 +917,7 @@ export function InternalCrmPipelineView() {
     } catch (error) {
       toast({
         title: 'Erro ao excluir oportunidade',
-        description: error instanceof Error ? error.message : 'Nao foi possivel excluir a oportunidade.',
+        description: error instanceof Error ? error.message : 'Não foi possível excluir a oportunidade.',
         variant: 'destructive',
       });
     }
@@ -938,7 +938,7 @@ export function InternalCrmPipelineView() {
   const handleSaveNewDeal = useCallback(async (data: NewDealData) => {
     try {
       if (!data.title.trim()) {
-        toast({ title: 'Preencha o titulo do deal', variant: 'destructive' });
+        toast({ title: 'Preencha o título do deal', variant: 'destructive' });
         return;
       }
 
@@ -954,7 +954,7 @@ export function InternalCrmPipelineView() {
 
       const normalizedStageCode = normalizeInternalCrmStageCode(data.stage_code);
       if (normalizedStageCode === 'reuniao_marcada' && (!data.appointment.date || !data.appointment.time)) {
-        toast({ title: 'Informe data e horario da reuniao', variant: 'destructive' });
+        toast({ title: 'Informe data e horário da reunião', variant: 'destructive' });
         return;
       }
 
@@ -979,7 +979,7 @@ export function InternalCrmPipelineView() {
 
         const createdClientId = (clientResult as { client?: { id?: string; company_name?: string | null } })?.client?.id || '';
         if (!createdClientId) {
-          throw new Error('Nao foi possivel criar o contato no CRM interno.');
+          throw new Error('Não foi possível criar o contato no CRM interno.');
         }
         resolvedClientId = createdClientId;
         resolvedCompanyName = (clientResult as { client?: { company_name?: string | null } })?.client?.company_name || resolvedCompanyName;
@@ -1000,7 +1000,7 @@ export function InternalCrmPipelineView() {
       const createdDeal = (dealResult as { deal?: InternalCrmDealSummary | null })?.deal;
       const createdDealId = createdDeal?.id || '';
       if (!createdDealId) {
-        throw new Error('Nao foi possivel criar o deal.');
+        throw new Error('Não foi possível criar o deal.');
       }
 
       if (normalizedStageCode === 'reuniao_marcada') {
@@ -1026,18 +1026,18 @@ export function InternalCrmPipelineView() {
             // best effort rollback to avoid leaving inconsistent stage without appointment
           }
 
-          throw new Error('O deal nao foi mantido porque a reuniao nao conseguiu ser criada.');
+          throw new Error('O deal não foi mantido porque a reunião não conseguiu ser criada.');
         }
       }
 
       setNewDealOpen(false);
       toast({
-        title: normalizedStageCode === 'reuniao_marcada' ? 'Deal e reuniao criados' : 'Deal criado',
+        title: normalizedStageCode === 'reuniao_marcada' ? 'Deal e reunião criados' : 'Deal criado',
       });
     } catch (error) {
       toast({
         title: 'Erro ao criar deal',
-        description: error instanceof Error ? error.message : 'Nao foi possivel concluir a criacao do deal.',
+        description: error instanceof Error ? error.message : 'Não foi possível concluir a criação do deal.',
         variant: 'destructive',
       });
     }
@@ -1047,7 +1047,7 @@ export function InternalCrmPipelineView() {
     const card = cardsById.get(input.dealId);
     if (!card) return;
     if (!input.title.trim()) {
-      toast({ title: 'Preencha o titulo do deal', variant: 'destructive' });
+      toast({ title: 'Preencha o título do deal', variant: 'destructive' });
       return;
     }
 
@@ -1066,7 +1066,7 @@ export function InternalCrmPipelineView() {
 
   const handleSaveEditDeal = async () => {
     if (!editingDraft.client_id || !editingDraft.title.trim()) {
-      toast({ title: 'Preencha cliente e titulo', variant: 'destructive' });
+      toast({ title: 'Preencha cliente e título', variant: 'destructive' });
       return;
     }
 
@@ -1141,7 +1141,7 @@ export function InternalCrmPipelineView() {
 
   const handleContractClosed = async (card: InternalCrmPipelineBoardCard) => {
     await handleMoveToStage(card, 'contrato_fechado', {
-      successMessage: 'Contrato registrado como fechado. Aguarde a confirmacao de pagamento.',
+      successMessage: 'Contrato registrado como fechado. Aguarde a confirmação de pagamento.',
     });
   };
 
@@ -1218,7 +1218,7 @@ export function InternalCrmPipelineView() {
 
     toast({
       title: payload.outcome === 'answered' ? 'Chamada qualificada' : 'Chamada registrada',
-      description: payload.outcome === 'no_answer' ? 'A proxima chamada foi agendada pela cadencia.' : undefined,
+      description: payload.outcome === 'no_answer' ? 'A próxima chamada foi agendada pela cadência.' : undefined,
     });
 
     if (openMeetingAfterSave && card) {
@@ -1289,7 +1289,7 @@ export function InternalCrmPipelineView() {
       }
     }
     const type = String(savedAppointment?.appointment_type || payload.appointment_type || 'meeting');
-    const title = type === 'call' ? 'Chamada agendada' : 'Reuniao agendada';
+    const title = type === 'call' ? 'Chamada agendada' : 'Reunião agendada';
     toast({ title });
   };
 
@@ -1338,7 +1338,7 @@ export function InternalCrmPipelineView() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" className="min-w-[124px] justify-between rounded-full">
-          Acoes
+          Ações
           <MoreVertical className="ml-2 h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -1613,7 +1613,7 @@ export function InternalCrmPipelineView() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openAppointmentModalForCard(card, 'meeting'); }} className="gap-2 cursor-pointer">
                                   <Calendar className="w-4 h-4 text-purple-500" />
-                                  <span>Agendar Reuniao</span>
+                                  <span>Agendar Reunião</span>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSelectedCard(card); setCheckoutUrl(String(card.deal.checkout_url || '')); setCheckoutModalOpen(true); }} className="gap-2 cursor-pointer">
                                   <FileText className="w-4 h-4 text-green-500" />
@@ -1660,7 +1660,7 @@ export function InternalCrmPipelineView() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openMarkLostModal(card); }} className="gap-2 cursor-pointer text-rose-600 focus:text-rose-600">
                                   <CircleX className="w-4 h-4" />
-                                  <span>Nao Fechou</span>
+                                  <span>Não Fechou</span>
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -1678,14 +1678,14 @@ export function InternalCrmPipelineView() {
                           ) : null}
                           {card.unreadCount > 0 ? (
                             <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
-                              {card.unreadCount} nao lidas
+                              {card.unreadCount} não lidas
                             </Badge>
                           ) : null}
                         </div>
 
                         <div className="space-y-1 mb-3 text-xs text-muted-foreground">
                           <div className="truncate">
-                            Responsavel: <span className="font-medium text-foreground">{card.owner?.display_name || 'Nao definido'}</span>
+                            Responsável: <span className="font-medium text-foreground">{card.owner?.display_name || 'Não definido'}</span>
                           </div>
                           {card.lastMessagePreview ? (
                             <div className="truncate">Conversa: {card.lastMessagePreview}</div>

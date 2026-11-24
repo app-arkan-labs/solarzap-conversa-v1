@@ -43,7 +43,7 @@ describe('digest text encoding guard', () => {
 
     const payloads = [email.subject, email.html, email.text, digestText]
     for (const payload of payloads) {
-      expect(payload).not.toMatch(/Ã|�/)
+      expect(payload).not.toMatch(/[\u00c3\uFFFD]/)
     }
   })
 })

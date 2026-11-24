@@ -454,11 +454,11 @@ export function buildPremiumProposalContent(input: BuildPremiumProposalInput): P
 
   // ── Equipment Specs (defaults — overridden by AI or user input when available) ──
   const equipmentSpecs: EquipmentSpec[] = [
-    { item: 'Modulos Fotovoltaicos', spec: 'Monocristalino 550W+ Tier 1', qty: input.metrics.quantidadePaineis, warranty: '12 anos produto / 25 anos performance' },
-    { item: 'Inversor', spec: isUsina ? 'Inversor Central / String alta eficiencia' : 'On-Grid alta eficiencia (>97%)', qty: 1, warranty: '10 anos' },
-    { item: 'Estrutura de Fixacao', spec: isUsina ? 'Estrutura de solo (Tracker ou Fixa)' : 'Aluminio anodizado com perfil trilho', qty: `${input.metrics.quantidadePaineis} conjuntos`, warranty: '15 anos contra corrosao' },
+    { item: 'Módulos Fotovoltaicos', spec: 'Monocristalino 550W+ Tier 1', qty: input.metrics.quantidadePaineis, warranty: '12 anos produto / 25 anos performance' },
+    { item: 'Inversor', spec: isUsina ? 'Inversor Central / String alta eficiência' : 'On-Grid alta eficiência (>97%)', qty: 1, warranty: '10 anos' },
+    { item: 'Estrutura de Fixação', spec: isUsina ? 'Estrutura de solo (Tracker ou Fixa)' : 'Alumínio anodizado com perfil trilho', qty: `${input.metrics.quantidadePaineis} conjuntos`, warranty: '15 anos contra corrosao' },
     { item: 'Cabos e Conectores', spec: 'Solar CC 6mm² + MC4', qty: 'Kit completo', warranty: '10 anos' },
-    { item: 'String Box / Protecao', spec: 'DPS + chave seccionadora CC/CA', qty: 1, warranty: '5 anos' },
+    { item: 'String Box / Proteção', spec: 'DPS + chave seccionadora CC/CA', qty: 1, warranty: '5 anos' },
   ];
 
   // ── Before/After Comparison ──

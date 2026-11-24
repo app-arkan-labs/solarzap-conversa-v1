@@ -96,7 +96,7 @@ export function extractInboundMessageContent(msg: any): string | null {
 
   if (msgType === 'audioMessage') {
     const seconds = Number(m.audioMessage?.seconds || 0)
-    return seconds > 0 ? `Audio recebido (${seconds}s)` : 'Audio recebido'
+    return seconds > 0 ? `Áudio recebido (${seconds}s)` : 'Áudio recebido'
   }
 
   if (msgType === 'imageMessage') {
@@ -104,7 +104,7 @@ export function extractInboundMessageContent(msg: any): string | null {
   }
 
   if (msgType === 'videoMessage') {
-    return nonEmptyString(m.videoMessage?.caption) || 'Video recebido'
+    return nonEmptyString(m.videoMessage?.caption) || 'Vídeo recebido'
   }
 
   if (msgType === 'documentMessage') {
@@ -124,18 +124,18 @@ export function extractInboundMessageContent(msg: any): string | null {
   }
 
   if (msgType === 'locationMessage') {
-    return 'Localizacao recebida'
+    return 'Localização recebida'
   }
 
   if (msgType === 'liveLocationMessage') {
-    return 'Localizacao em tempo real'
+    return 'Localização em tempo real'
   }
 
   if (msgType === 'buttonsResponseMessage') {
     return (
       nonEmptyString(m.buttonsResponseMessage?.selectedDisplayText) ||
       nonEmptyString(m.buttonsResponseMessage?.selectedButtonId) ||
-      'Resposta de botao'
+      'Resposta de botão'
     )
   }
 
@@ -143,7 +143,7 @@ export function extractInboundMessageContent(msg: any): string | null {
     return (
       nonEmptyString(m.templateButtonReplyMessage?.selectedDisplayText) ||
       nonEmptyString(m.templateButtonReplyMessage?.selectedId) ||
-      'Resposta de botao'
+      'Resposta de botão'
     )
   }
 

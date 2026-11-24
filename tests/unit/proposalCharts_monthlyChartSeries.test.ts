@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildMonthlyChartSeriesFromAnnual } from '@/utils/proposalCharts';
 
 describe('buildMonthlyChartSeriesFromAnnual', () => {
-  it('gera 12 meses inteiros, nao negativos e soma exata do anual', () => {
+  it('gera 12 meses inteiros, não negativos e soma exata do anual', () => {
     const monthly = buildMonthlyChartSeriesFromAnnual(6753);
 
     expect(monthly).toHaveLength(12);

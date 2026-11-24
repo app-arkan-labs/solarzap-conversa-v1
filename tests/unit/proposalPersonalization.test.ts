@@ -40,7 +40,7 @@ describe('buildPremiumProposalContent', () => {
     expect(result.beforeAfter?.[0]?.after).toBe(formatCurrency(16));
   });
 
-  it('mantem fallback heuristico quando contaLuzMensal nao e informada', () => {
+  it('mantem fallback heuristico quando contaLuzMensal não é informada', () => {
     const result = buildPremiumProposalContent({
       contact: baseContact,
       clientType: 'residencial',

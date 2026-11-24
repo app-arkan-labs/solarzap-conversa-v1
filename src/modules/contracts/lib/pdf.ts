@@ -149,7 +149,7 @@ const stampFooter = (doc: jsPDF, contractNumber: string) => {
     doc.setFontSize(9);
     doc.setTextColor('#64748b');
     doc.text(
-      `${contractNumber} | Pagina ${page} de ${pages}`,
+      `${contractNumber} | Página ${page} de ${pages}`,
       40,
       doc.internal.pageSize.getHeight() - 20,
     );

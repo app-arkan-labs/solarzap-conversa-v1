@@ -149,8 +149,8 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
     event.preventDefault();
     if (!inviteEmail.trim()) {
       toast({
-        title: 'Email obrigatorio',
-        description: 'Informe um email valido para convidar membro.',
+        title: 'Email obrigatório',
+        description: 'Informe um email válido para convidar membro.',
         variant: 'destructive',
       });
       return;
@@ -188,7 +188,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
         toast({
           title: 'Falha no envio de e-mail',
           description:
-            'O membro foi vinculado, mas o e-mail de acesso nao foi entregue. Verifique a configuracao do envio e tente novamente.',
+            'O membro foi vinculado, mas o e-mail de acesso não foi entregue. Verifique a configuração do envio e tente novamente.',
           variant: 'destructive',
         });
         await loadMembers(true);
@@ -300,7 +300,7 @@ export default function AdminMembersPage({ embedded = false }: AdminMembersPageP
           <CardHeader>
             <CardTitle>Acesso restrito</CardTitle>
             <CardDescription>
-              Apenas usuarios owner/admin podem acessar o painel de membros.
+              Apenas usuários owner/admin podem acessar o painel de membros.
             </CardDescription>
           </CardHeader>
           <CardContent>

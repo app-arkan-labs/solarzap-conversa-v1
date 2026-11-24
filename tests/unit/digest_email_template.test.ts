@@ -13,7 +13,7 @@ describe('digestEmail template', () => {
           leadPhone: '5511999999999',
           stage: 'proposta_negociacao',
           summary: 'Lead quer fechar ainda esta semana.',
-          currentSituation: 'Aguardando retorno sobre condicao final.',
+          currentSituation: 'Aguardando retorno sobre condição final.',
           recommendedActions: 'Enviar proposta revisada e confirmar chamada hoje.',
         },
       ],
@@ -27,7 +27,7 @@ describe('digestEmail template', () => {
     expect(rendered.html).toContain('Ações recomendadas:')
 
     expect(rendered.text).toContain('- Resumo: Lead quer fechar ainda esta semana.')
-    expect(rendered.text).toContain('- Situação atual: Aguardando retorno sobre condicao final.')
+    expect(rendered.text).toContain('- Situação atual: Aguardando retorno sobre condição final.')
     expect(rendered.text).toContain('- Ações recomendadas: Enviar proposta revisada e confirmar chamada hoje.')
 
     expect(rendered.html).not.toContain('O que aconteceu:')

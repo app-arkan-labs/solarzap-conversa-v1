@@ -15,7 +15,7 @@ const BUSINESS_GROUP_LABELS = {
   topo: "Entrada",
   meio: "Contato e visita",
   fundo: "Proposta e fechamento",
-  saida: "Concluidos",
+  saida: "Concluídos",
 } as const;
 
 export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOverviewProps) {
@@ -23,7 +23,7 @@ export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOvervi
 
   const bottleneckLabel = data.top_bottleneck_stage
     ? data.by_stage.find((row) => row.stage === data.top_bottleneck_stage)?.label || "Sem gargalo"
-    : "Sem fila critica";
+    : "Sem fila crítica";
 
   const priorityRows = [...data.by_stage]
     .filter((row) => row.group !== "saida" && (row.count > 0 || row.entered_in_period > 0))
@@ -37,7 +37,7 @@ export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOvervi
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <CardTitle>Resumo do funil</CardTitle>
-          <CardDescription>Veja a distribuicao dos leads e as etapas com maior concentracao.</CardDescription>
+          <CardDescription>Veja a distribuição dos leads e as etapas com maior concentração.</CardDescription>
         </div>
         {onViewPipeline ? (
           <Button variant="outline" size="sm" className="rounded-full" onClick={onViewPipeline}>
@@ -52,7 +52,7 @@ export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOvervi
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-foreground">Resumo dos leads</p>
-                <p className="text-xs text-muted-foreground">Distribuicao atual dos leads em andamento e concluidos.</p>
+                <p className="text-xs text-muted-foreground">Distribuição atual dos leads em andamento e concluídos.</p>
               </div>
               <Badge variant="secondary" className="bg-muted/80 text-muted-foreground">
                 {data.active} em andamento
@@ -76,13 +76,13 @@ export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOvervi
           <div className="rounded-xl border border-border/60 bg-background/70 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <AlertTriangle className="h-4 w-4 text-amber-600" />
-              Etapa com mais acumulacao
+              Etapa com mais acumulação
             </div>
             <p className="mt-2 text-lg font-semibold text-foreground">{bottleneckLabel}</p>
             <p className="mt-1 text-sm text-muted-foreground">
               {data.stale_total > 0
                 ? `${data.stale_total} leads estao alem do tempo ideal e pedem retorno rapido.`
-                : "Nenhum acumulo relevante agora. A carteira esta andando sem fila critica."}
+                : "Nenhum acúmulo relevante agora. A carteira está andando sem fila crítica."}
             </p>
           </div>
         </div>
@@ -90,7 +90,7 @@ export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOvervi
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-foreground">Etapas com maior concentracao</p>
+              <p className="text-sm font-semibold text-foreground">Etapas com maior concentração</p>
               <p className="text-xs text-muted-foreground">Mostramos primeiro as etapas com mais atraso e volume parado.</p>
             </div>
             {priorityRows.length > 0 ? <span className="text-xs text-muted-foreground">{priorityRows.length} etapas com leitura ativa</span> : null}
@@ -98,7 +98,7 @@ export function FunnelOverview({ data, isLoading, onViewPipeline }: FunnelOvervi
 
           {visibleRows.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border/60 px-4 py-4 text-sm text-muted-foreground">
-              Sem etapas relevantes para exibir neste periodo.
+              Sem etapas relevantes para exibir neste período.
             </div>
           ) : (
             <div className="space-y-3">

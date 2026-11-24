@@ -26,7 +26,7 @@ export function AssignOwnerSelect(props: AssignOwnerSelectProps) {
 
   return (
     <div className="space-y-2">
-      <Label>{props.label || 'Responsavel'}</Label>
+      <Label>{props.label || 'Responsável'}</Label>
       {hasStructuredMembers ? (
         <Select
           value={selectedValue}
@@ -36,7 +36,7 @@ export function AssignOwnerSelect(props: AssignOwnerSelectProps) {
             <SelectValue placeholder={props.placeholder || 'Selecione o responsável'} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={NO_OWNER_VALUE}>Sem responsavel</SelectItem>
+            <SelectItem value={NO_OWNER_VALUE}>Sem responsável</SelectItem>
             {members.map((member) => (
               <SelectItem key={member.user_id} value={member.user_id}>
                 {member.display_name}

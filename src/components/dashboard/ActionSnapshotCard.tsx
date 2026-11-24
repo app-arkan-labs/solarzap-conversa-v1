@@ -48,7 +48,7 @@ export function ActionSnapshotCard({
           <div className="rounded-xl border border-border/60 bg-background/70 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Leads parados</p>
             <p className="mt-2 text-2xl font-bold text-foreground">{staleLeads?.length || 0}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Alem de 7 dias sem avancar de etapa.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Alem de 7 dias sem avançar de etapa.</p>
           </div>
           <div className="rounded-xl border border-border/60 bg-background/70 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Leads em andamento</p>
@@ -62,22 +62,22 @@ export function ActionSnapshotCard({
             </div>
             <p className="mt-2 text-base font-semibold text-foreground">
               {funnel?.top_bottleneck_stage
-                ? funnel.by_stage.find((row) => row.stage === funnel.top_bottleneck_stage)?.label || "Sem fila critica"
-                : "Sem fila critica"}
+                ? funnel.by_stage.find((row) => row.stage === funnel.top_bottleneck_stage)?.label || "Sem fila crítica"
+                : "Sem fila crítica"}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">Onde ha mais acumulacao ou atraso agora.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Onde ha mais acumulação ou atraso agora.</p>
           </div>
         </div>
 
         <div className="space-y-3">
           <div>
-            <p className="text-sm font-semibold text-foreground">Leads que precisam de atencao</p>
+            <p className="text-sm font-semibold text-foreground">Leads que precisam de atenção</p>
             <p className="text-xs text-muted-foreground">Use este bloco como ponto de partida da sua rotina comercial.</p>
           </div>
 
           {items.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border px-4 py-4 text-sm text-muted-foreground">
-              Nenhum lead critico neste escopo.
+              Nenhum lead crítico neste escopo.
             </div>
           ) : (
             items.map((lead) => {

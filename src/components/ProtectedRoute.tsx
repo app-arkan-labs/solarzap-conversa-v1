@@ -20,21 +20,21 @@ interface ProtectedRouteProps {
 }
 
 const ORG_ERROR_TITLE_BY_KIND = {
-  forbidden_rls: 'Falha de permissao ao carregar organizacao',
-  bootstrap_failed: 'Falha ao recuperar organizacao',
-  missing_after_bootstrap: 'Organizacao nao encontrada apos bootstrap',
-  transient: 'Falha ao carregar organizacao',
+  forbidden_rls: 'Falha de permissão ao carregar organização',
+  bootstrap_failed: 'Falha ao recuperar organização',
+  missing_after_bootstrap: 'Organização não encontrada após bootstrap',
+  transient: 'Falha ao carregar organização',
 } as const;
 
 const ORG_ERROR_DESCRIPTION_BY_KIND = {
   forbidden_rls:
-    'Sua sessao esta ativa, mas a leitura do vinculo da organizacao foi bloqueada por permissao/RLS. Verifique a policy de self-select em organization_members.',
+    'Sua sessão está ativa, mas a leitura do vínculo da organização foi bloqueada por permissão/RLS. Verifique a policy de self-select em organization_members.',
   bootstrap_failed:
-    'Sua sessao esta ativa, mas a funcao org-admin (bootstrap_self) falhou ao recuperar o contexto da organizacao.',
+    'Sua sessão está ativa, mas a função org-admin (bootstrap_self) falhou ao recuperar o contexto da organização.',
   missing_after_bootstrap:
-    'A funcao de bootstrap respondeu, mas o vinculo da organizacao permaneceu ausente na reconciliacao. Verifique organization_members e logs da org-admin.',
+    'A função de bootstrap respondeu, mas o vínculo da organização permaneceu ausente na reconciliacao. Verifique organization_members e logs da org-admin.',
   transient:
-    'Sua sessao esta ativa, mas nao foi possivel carregar o contexto da organizacao. Isso pode acontecer por uma falha temporaria de conexao.',
+    'Sua sessão está ativa, mas não foi possível carregar o contexto da organização. Isso pode acontecer por uma falha temporária de conexão.',
 } as const;
 
 const CHECKOUT_INTENT_KEY = 'checkout_plan_intent';
@@ -94,7 +94,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
     if (missingRequiredRole && !hasShownAccessToastRef.current) {
       toast({
         title: 'Acesso restrito',
-        description: 'Apenas owner/admin podem acessar esta pagina.',
+        description: 'Apenas owner/admin podem acessar esta página.',
         variant: 'destructive',
       });
       hasShownAccessToastRef.current = true;

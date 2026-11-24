@@ -50,34 +50,34 @@ const PLAN_ORDER: BillingTargetPlan[] = ['start', 'pro', 'scale'];
 const TAB_BLOCKER_COPY: Partial<Record<ActiveTab, { title: string; description: string }>> = {
   disparos: {
     title: 'Regularize sua assinatura para continuar com disparos',
-    description: 'Seu acesso a disparos esta bloqueado ate a regularizacao da assinatura.',
+    description: 'Seu acesso a disparos está bloqueado até a regularização da assinatura.',
   },
   propostas: {
     title: 'Regularize sua assinatura para continuar com propostas',
-    description: 'Seu acesso a propostas esta bloqueado ate a regularizacao da assinatura.',
+    description: 'Seu acesso a propostas está bloqueado até a regularização da assinatura.',
   },
   automacoes: {
-    title: 'Regularize sua assinatura para continuar com automacoes',
-    description: 'Seu acesso a automacoes esta bloqueado ate a regularizacao da assinatura.',
+    title: 'Regularize sua assinatura para continuar com automações',
+    description: 'Seu acesso a automações está bloqueado até a regularização da assinatura.',
   },
   tracking: {
-    title: 'Tracking avancado disponivel no plano Scale',
-    description: 'Faca upgrade para acompanhar conversoes e eventos com mais profundidade.',
+    title: 'Tracking avancado disponível no plano Scale',
+    description: 'Faca upgrade para acompanhar conversões e eventos com mais profundidade.',
   },
   calendario: {
-    title: 'Agendamentos disponiveis a partir do plano Start',
-    description: 'Faca upgrade para criar e editar agendamentos no calendario.',
+    title: 'Agendamentos disponíveis a partir do plano Start',
+    description: 'Faca upgrade para criar e editar agendamentos no calendário.',
   },
   ia_agentes: {
-    title: 'IA Agentes disponivel a partir do plano Start',
-    description: 'Faca upgrade para liberar os agentes e automacoes de IA.',
+    title: 'IA Agentes disponível a partir do plano Start',
+    description: 'Faca upgrade para liberar os agentes e automações de IA.',
   },
 };
 
 export class BillingInterruptionError extends Error {
   readonly handled = true;
 
-  constructor(message = 'Acao interrompida por billing') {
+  constructor(message = 'Ação interrompida por billing') {
     super(message);
     this.name = 'BillingInterruptionError';
   }
@@ -174,7 +174,7 @@ export const buildPackRequiredBlocker = (input: {
   source: input.source,
   title: input.title,
   description: input.description,
-  primaryLabel: input.packType === 'ai' ? 'Comprar creditos de IA' : 'Comprar creditos',
+  primaryLabel: input.packType === 'ai' ? 'Comprar créditos de IA' : 'Comprar créditos',
   primaryAction: input.packType === 'ai' ? 'pack_ai' : 'pack_disparo',
   targetPlan: input.targetPlan ?? null,
   billingIntent: 'upgrade',
@@ -236,14 +236,14 @@ export const buildLimitBlockerForKey = (
     case 'monthly_broadcast_credits':
       return buildPackRequiredBlocker({
         source: source || 'broadcast_credits',
-        title: 'Seus creditos de disparo acabaram',
+        title: 'Seus créditos de disparo acabaram',
         description: 'Compre um pack para continuar enviando campanhas agora.',
         packType: 'disparo',
       });
     case 'included_ai_requests_month':
       return buildPackRequiredBlocker({
         source: source || 'ai_credits',
-        title: 'Seus creditos de IA acabaram',
+        title: 'Seus créditos de IA acabaram',
         description: 'Compre um pack de IA para continuar usando este recurso.',
         packType: 'ai',
         targetPlan: 'pro',
@@ -251,8 +251,8 @@ export const buildLimitBlockerForKey = (
     case 'max_whatsapp_instances':
       return buildPlanLimitBlocker({
         source: source || 'whatsapp_instances',
-        title: 'Seu limite de instancias foi atingido',
-        description: 'Faca upgrade para conectar mais numeros de WhatsApp.',
+        title: 'Seu limite de instâncias foi atingido',
+        description: 'Faca upgrade para conectar mais números de WhatsApp.',
         targetPlan: nextPlan,
       });
     case 'max_proposals_month':
@@ -298,7 +298,7 @@ export const buildTabBlocker = (
   if (tab === 'tracking' && features.advanced_tracking_enabled !== true) {
     return buildFeatureLockedBlocker({
       source: tab,
-      title: copy?.title || 'Tracking avancado disponivel no plano Scale',
+      title: copy?.title || 'Tracking avancado disponível no plano Scale',
       description: copy?.description || 'Faca upgrade para liberar o tracking avancado.',
       targetPlan: 'scale',
     });
@@ -307,8 +307,8 @@ export const buildTabBlocker = (
   if (tab === 'calendario' && features.appointments_enabled !== true) {
     return buildFeatureLockedBlocker({
       source: tab,
-      title: copy?.title || 'Agendamentos disponiveis a partir do plano Start',
-      description: copy?.description || 'Faca upgrade para liberar o calendario de agendamentos.',
+      title: copy?.title || 'Agendamentos disponíveis a partir do plano Start',
+      description: copy?.description || 'Faca upgrade para liberar o calendário de agendamentos.',
       targetPlan: 'start',
     });
   }
@@ -316,7 +316,7 @@ export const buildTabBlocker = (
   if (tab === 'ia_agentes' && features.ai_enabled !== true) {
     return buildFeatureLockedBlocker({
       source: tab,
-      title: copy?.title || 'IA Agentes disponivel a partir do plano Start',
+      title: copy?.title || 'IA Agentes disponível a partir do plano Start',
       description: copy?.description || 'Faca upgrade para liberar os agentes de IA.',
       targetPlan: 'start',
     });

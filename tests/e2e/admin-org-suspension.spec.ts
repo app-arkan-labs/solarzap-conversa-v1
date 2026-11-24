@@ -96,7 +96,7 @@ test('suspend org bloqueia CRM e reativacao libera acesso', async ({ page }) => 
 
   await login(page, state.email, state.password);
   await page.goto('/');
-  await expect(page.getByText('Sua organizacao foi suspensa')).toBeVisible();
+  await expect(page.getByText('Sua organização foi suspensa')).toBeVisible();
   await expect(page.getByText('Suspensao de teste E2E')).toBeVisible();
 
   const { error: reactivateError } = await admin
@@ -113,6 +113,6 @@ test('suspend org bloqueia CRM e reativacao libera acesso', async ({ page }) => 
   }
 
   await page.reload();
-  await expect(page.getByText('Sua organizacao foi suspensa')).toHaveCount(0);
+  await expect(page.getByText('Sua organização foi suspensa')).toHaveCount(0);
   await expect(page.getByTestId('nav-settings-trigger')).toBeVisible();
 });

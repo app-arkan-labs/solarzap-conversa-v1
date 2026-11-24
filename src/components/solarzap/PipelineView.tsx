@@ -345,7 +345,7 @@ export function PipelineView({
       setProposalReadyOpen(false);
       toast({
         title: "Falha ao mover lead",
-        description: "A proposta foi preparada, mas a etapa nao foi atualizada.",
+        description: "A proposta foi preparada, mas a etapa não foi atualizada.",
         variant: "destructive",
       });
       return;
@@ -472,7 +472,7 @@ export function PipelineView({
       console.error('Pipeline stage move failed', { contactId: contact.id, targetStage, error });
       toast({
         title: "Falha ao mover lead",
-        description: "Nao foi possivel atualizar a etapa. Tente novamente.",
+        description: "Não foi possível atualizar a etapa. Tente novamente.",
         variant: "destructive",
       });
     }
@@ -619,7 +619,7 @@ export function PipelineView({
       console.error('Failed to execute next action stage transition', { contactId: contact.id, stage, error });
       toast({
         title: "Falha ao mover lead",
-        description: "Nao foi possivel atualizar a etapa. Tente novamente.",
+        description: "Não foi possível atualizar a etapa. Tente novamente.",
         variant: "destructive",
       });
     }
@@ -702,7 +702,7 @@ export function PipelineView({
         });
         toast({
           title: "Falha ao mover lead",
-          description: "Nao foi possivel atualizar a etapa via arrastar e soltar.",
+          description: "Não foi possível atualizar a etapa via arrastar e soltar.",
           variant: "destructive",
         });
       }
@@ -901,7 +901,7 @@ export function PipelineView({
               onClick={() => setLossAnalyticsOpen(true)}
             >
               <TrendingDown className="mr-2 h-4 w-4 text-rose-500" />
-              Analise de Perdas
+              Análise de Perdas
             </Button>
 
             {/* Import/Export Dropdown */}

@@ -28,7 +28,7 @@ export function CalendarSummaryPanel({
   onFilterChange,
   onViewAll,
   title = "Compromissos",
-  description = "O que voce precisa cumprir hoje e nos proximos dias.",
+  description = "O que você precisa cumprir hoje e nos próximos dias.",
   actionLabel = "Ver agenda",
   eventLimit = 4,
   daysAhead,
@@ -37,7 +37,7 @@ export function CalendarSummaryPanel({
 }: CalendarSummaryProps) {
   if (isLoading || !data) return null;
 
-  const periodLabel = filter === "next_7_days" ? "Proximos 7 dias" : "Ultimos 7 dias";
+  const periodLabel = filter === "next_7_days" ? "Próximos 7 dias" : "Últimos 7 dias";
   const pendingCount = data.scheduled + data.confirmed;
   const cutoffDate = typeof daysAhead === "number" ? new Date() : null;
   if (cutoffDate) {
@@ -52,7 +52,7 @@ export function CalendarSummaryPanel({
       return eventDate <= cutoffDate;
     })
     .slice(0, eventLimit);
-  const summaryLabel = daysAhead ? `Hoje e proximos ${daysAhead} dias` : periodLabel;
+  const summaryLabel = daysAhead ? `Hoje e próximos ${daysAhead} dias` : periodLabel;
 
   return (
     <Card className="h-full min-w-0 border-border/50 bg-background/50 shadow-sm">
@@ -80,8 +80,8 @@ export function CalendarSummaryPanel({
                   <SelectValue>{periodLabel}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="next_7_days">Proximos 7 dias</SelectItem>
-                  <SelectItem value="last_7_days">Ultimos 7 dias</SelectItem>
+                  <SelectItem value="next_7_days">Próximos 7 dias</SelectItem>
+                  <SelectItem value="last_7_days">Últimos 7 dias</SelectItem>
                 </SelectContent>
               </Select>
             ) : null}
@@ -102,7 +102,7 @@ export function CalendarSummaryPanel({
           <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Realizados</p>
             <p className="mt-1 text-xl font-semibold text-foreground">{data.done}</p>
-            <p className="text-xs text-muted-foreground">Compromissos concluidos</p>
+            <p className="text-xs text-muted-foreground">Compromissos concluídos</p>
           </div>
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Risco</p>

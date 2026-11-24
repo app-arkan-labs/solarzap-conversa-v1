@@ -73,13 +73,13 @@ export function InternalCrmIntegrationsView() {
       return;
     }
 
-    toast.error('Instancia criada, mas nenhum QR Code foi retornado.');
+    toast.error('Instância criada, mas nenhum QR Code foi retornado.');
   };
 
   const handleRefreshQR = async (instance: InternalCrmManagedWhatsappInstance) => {
     const qrCode = await refreshQrCode(instance.id);
     if (!qrCode) {
-      toast.error('Nao foi possivel obter o QR Code desta instancia.');
+      toast.error('Não foi possível obter o QR Code desta instância.');
       return;
     }
 
@@ -114,7 +114,7 @@ export function InternalCrmIntegrationsView() {
   const handleUpdateColor = async (instance: InternalCrmManagedWhatsappInstance, color: string) => {
     const ok = await updateColor(instance.id, color);
     if (ok) {
-      toast.success('Cor da instancia atualizada.');
+      toast.success('Cor da instância atualizada.');
     }
   };
 
@@ -125,7 +125,7 @@ export function InternalCrmIntegrationsView() {
       <div className="flex min-h-[360px] items-center justify-center rounded-[30px] border border-border/70 bg-card/95 shadow-sm">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Carregando integracoes internas...</p>
+          <p className="text-sm text-muted-foreground">Carregando integrações internas...</p>
         </div>
       </div>
     );
@@ -149,9 +149,9 @@ export function InternalCrmIntegrationsView() {
                   <MessageCircle className="h-6 w-6 text-white" />
                 </div>
                 <div className="min-w-0">
-                  <CardTitle className="text-xl">Conexoes WhatsApp</CardTitle>
+                  <CardTitle className="text-xl">Conexões WhatsApp</CardTitle>
                   <CardDescription className="mt-1">
-                    Instancias dedicadas ao CRM interno, sem compartilhar nada com o CRM principal.
+                    Instâncias dedicadas ao CRM interno, sem compartilhar nada com o CRM principal.
                   </CardDescription>
                 </div>
               </div>
@@ -176,13 +176,13 @@ export function InternalCrmIntegrationsView() {
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                   <Plus className="h-4 w-4 text-primary" />
                 </div>
-                <h3 className="font-semibold text-foreground">Nova Instancia</h3>
+                <h3 className="font-semibold text-foreground">Nova Instância</h3>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Input
                   value={newInstanceName}
                   onChange={(event) => setNewInstanceName(event.target.value)}
-                  placeholder="Nome da instancia (ex: SDR, Closer, Onboarding...)"
+                  placeholder="Nome da instância (ex: SDR, Closer, Onboarding...)"
                   className="h-11 flex-1 border-border/50 bg-background"
                   disabled={creatingInstance}
                   onKeyDown={(event) => {
@@ -219,7 +219,7 @@ export function InternalCrmIntegrationsView() {
                     <h4 className="font-semibold text-foreground">Escaneie o QR Code</h4>
                   </div>
                   <p className="mb-4 text-sm text-muted-foreground">
-                    Abra o WhatsApp no celular e escaneie este codigo para conectar a instancia interna.
+                    Abra o WhatsApp no celular e escaneie este código para conectar a instância interna.
                   </p>
                   <ol className="mb-4 space-y-2 text-sm text-muted-foreground">
                     <li className="flex items-center gap-2">
@@ -228,7 +228,7 @@ export function InternalCrmIntegrationsView() {
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">2</span>
-                      Va em Configuracoes, depois em Aparelhos conectados
+                      Va em Configurações, depois em Aparelhos conectados
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">3</span>
@@ -270,7 +270,7 @@ export function InternalCrmIntegrationsView() {
             <div className="mb-4 flex items-center justify-between gap-3">
               <h3 className="flex items-center gap-2 font-semibold text-foreground">
                 <Smartphone className="h-4 w-4" />
-                Instancias do CRM Interno ({whatsappInstances.length})
+                Instâncias do CRM Interno ({whatsappInstances.length})
               </h3>
             </div>
 
@@ -279,11 +279,11 @@ export function InternalCrmIntegrationsView() {
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
                   <Smartphone className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <h4 className="mb-1 font-medium text-foreground">Nenhuma instancia interna</h4>
+                <h4 className="mb-1 font-medium text-foreground">Nenhuma instância interna</h4>
                 <p className="text-sm text-muted-foreground">
                   {canManageInstances
-                    ? 'Crie a primeira instancia para alimentar inbox, campanhas e operacoes do CRM interno.'
-                    : 'Ainda nao ha instancias internas cadastradas para este CRM.'}
+                    ? 'Crie a primeira instância para alimentar inbox, campanhas e operações do CRM interno.'
+                    : 'Ainda não ha instâncias internas cadastradas para este CRM.'}
                 </p>
               </div>
             ) : (
@@ -323,7 +323,7 @@ export function InternalCrmIntegrationsView() {
                             <Badge className="border-0 bg-primary/10 text-xs text-primary">Online</Badge>
                           ) : null}
                           {instance.status === 'connecting' ? (
-                            <Badge className="border-0 bg-amber-500/10 text-xs text-amber-600">Aguardando conexao</Badge>
+                            <Badge className="border-0 bg-amber-500/10 text-xs text-amber-600">Aguardando conexão</Badge>
                           ) : null}
                           {instance.status === 'error' ? (
                             <Badge className="border-0 bg-destructive/10 text-xs text-destructive">Erro</Badge>
@@ -336,7 +336,7 @@ export function InternalCrmIntegrationsView() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                      <div className="flex items-center gap-2 px-2 py-1" title="Ativar ou desativar IA para esta instancia interna">
+                      <div className="flex items-center gap-2 px-2 py-1" title="Ativar ou desativar IA para esta instância interna">
                         <span className="font-medium text-muted-foreground">IA</span>
                         <Switch
                           checked={Boolean(instance.ai_enabled)}
@@ -434,10 +434,10 @@ export function InternalCrmIntegrationsView() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir instancia</AlertDialogTitle>
+            <AlertDialogTitle>Excluir instância</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir a instancia &quot;{instanceToDelete?.display_name}&quot;?
-              Esta acao desconecta o WhatsApp interno e remove a configuracao permanentemente.
+              Tem certeza que deseja excluir a instância &quot;{instanceToDelete?.display_name}&quot;?
+              Esta ação desconecta o WhatsApp interno e remove a configuração permanentemente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

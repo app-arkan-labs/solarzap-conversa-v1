@@ -74,7 +74,7 @@ const canSeeSwitchOrganization = (context: SolarZapNavContext) => context.hasMul
 export const desktopPrimaryNavItems: SolarZapTabNavItem[] = [
   { type: 'tab', id: 'conversas', icon: MessageCircle, label: 'Conversas' },
   { type: 'tab', id: 'pipelines', icon: Kanban, label: 'Pipelines' },
-  { type: 'tab', id: 'calendario', icon: Calendar, label: 'Calendario' },
+  { type: 'tab', id: 'calendario', icon: Calendar, label: 'Calendário' },
   { type: 'tab', id: 'contatos', icon: Users, label: 'Contatos' },
   { type: 'tab', id: 'disparos', icon: Send, label: 'Disparos' },
   { type: 'tab', id: 'propostas', icon: FileText, label: 'Propostas' },
@@ -84,7 +84,7 @@ export const desktopPrimaryNavItems: SolarZapTabNavItem[] = [
 export const mobilePrimaryNavItems: SolarZapTabNavItem[] = [
   { type: 'tab', id: 'conversas', icon: MessageCircle, label: 'Conversas' },
   { type: 'tab', id: 'pipelines', icon: Kanban, label: 'Pipelines' },
-  { type: 'tab', id: 'calendario', icon: Calendar, label: 'Calendario' },
+  { type: 'tab', id: 'calendario', icon: Calendar, label: 'Calendário' },
 ];
 
 export const mobileMoreMainItems: SolarZapNavItem[] = [
@@ -92,15 +92,15 @@ export const mobileMoreMainItems: SolarZapNavItem[] = [
   { type: 'tab', id: 'disparos', icon: Send, label: 'Disparos' },
   { type: 'tab', id: 'propostas', icon: FileText, label: 'Propostas' },
   { type: 'tab', id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
-  { type: 'action', id: 'notifications', icon: Bell, label: 'Notificacoes' },
+  { type: 'action', id: 'notifications', icon: Bell, label: 'Notificações' },
 ];
 
 export const desktopSettingsMainItems: SolarZapNavItem[] = [
-  { type: 'action', id: 'admin_members', icon: UserCog, label: 'Gestao de Equipe', testId: 'nav-admin-members', isVisible: canSeeAdminMembers },
-  { type: 'tab', id: 'ia_agentes', icon: Bot, label: 'Inteligencia Artificial', testId: 'nav-ia-agentes', title: 'Inteligencia Artificial', isVisible: canSeeIaAgentes },
-  { type: 'tab', id: 'automacoes', icon: Zap, label: 'Automacoes', testId: 'nav-automacoes', title: 'Automacoes', isVisible: canSeeAutomacoes },
-  { type: 'tab', id: 'tracking', icon: Activity, label: 'Tracking e Conversoes', testId: 'nav-tracking', title: 'Tracking e Conversoes', isVisible: canSeeTracking },
-  { type: 'tab', id: 'integracoes', icon: Plug, label: 'Central de Integracoes', testId: 'nav-integracoes', title: 'Central de Integracoes', isVisible: canSeeIntegracoes },
+  { type: 'action', id: 'admin_members', icon: UserCog, label: 'Gestão de Equipe', testId: 'nav-admin-members', isVisible: canSeeAdminMembers },
+  { type: 'tab', id: 'ia_agentes', icon: Bot, label: 'Inteligência Artificial', testId: 'nav-ia-agentes', title: 'Inteligência Artificial', isVisible: canSeeIaAgentes },
+  { type: 'tab', id: 'automacoes', icon: Zap, label: 'Automações', testId: 'nav-automacoes', title: 'Automações', isVisible: canSeeAutomacoes },
+  { type: 'tab', id: 'tracking', icon: Activity, label: 'Tracking e Conversões', testId: 'nav-tracking', title: 'Tracking e Conversões', isVisible: canSeeTracking },
+  { type: 'tab', id: 'integracoes', icon: Plug, label: 'Central de Integrações', testId: 'nav-integracoes', title: 'Central de Integrações', isVisible: canSeeIntegracoes },
   { type: 'tab', id: 'banco_ia', icon: Building2, label: 'Minha Empresa', isVisible: canSeeBancoIa },
 ];
 
@@ -111,14 +111,14 @@ export const desktopSettingsAccountItems: SolarZapNavItem[] = [
 ];
 
 export const mobileSettingsItems: SolarZapNavItem[] = [
-  { type: 'tab', id: 'ia_agentes', icon: Bot, label: 'Inteligencia Artificial', isVisible: canSeeIaAgentes },
-  { type: 'tab', id: 'automacoes', icon: Zap, label: 'Automacoes', isVisible: canSeeAutomacoes },
-  { type: 'tab', id: 'integracoes', icon: Plug, label: 'Central de Integracoes', isVisible: canSeeIntegracoes },
-  { type: 'tab', id: 'tracking', icon: Activity, label: 'Tracking e Conversoes', isVisible: canSeeTracking },
+  { type: 'tab', id: 'ia_agentes', icon: Bot, label: 'Inteligência Artificial', isVisible: canSeeIaAgentes },
+  { type: 'tab', id: 'automacoes', icon: Zap, label: 'Automações', isVisible: canSeeAutomacoes },
+  { type: 'tab', id: 'integracoes', icon: Plug, label: 'Central de Integrações', isVisible: canSeeIntegracoes },
+  { type: 'tab', id: 'tracking', icon: Activity, label: 'Tracking e Conversões', isVisible: canSeeTracking },
   { type: 'tab', id: 'banco_ia', icon: Building2, label: 'Minha Empresa', isVisible: canSeeBancoIa },
   { type: 'tab', id: 'meu_plano', icon: CreditCard, label: 'Meu Plano', isVisible: canSeeMeuPlano },
   { type: 'tab', id: 'minha_conta', icon: User, label: 'Minha Conta', isVisible: canSeeMinhaConta },
-  { type: 'action', id: 'admin_members', icon: UserCog, label: 'Gestao de Equipe', isVisible: canSeeAdminMembers },
+  { type: 'action', id: 'admin_members', icon: UserCog, label: 'Gestão de Equipe', isVisible: canSeeAdminMembers },
   { type: 'action', id: 'switch_organization', icon: ArrowRightLeft, label: 'Trocar Empresa', isVisible: canSeeSwitchOrganization },
 ];
 

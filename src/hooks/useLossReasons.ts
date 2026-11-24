@@ -99,7 +99,7 @@ export async function findLossReasonByKey(orgId: string, key: string): Promise<L
 export async function createLossReason(orgId: string, label: string, existingReasons: LossReasonRecord[] = []): Promise<LossReasonRecord> {
   const trimmedLabel = String(label || '').trim();
   if (!trimmedLabel) {
-    throw new Error('Informe um motivo valido.');
+    throw new Error('Informe um motivo válido.');
   }
 
   const lowerLabel = trimmedLabel.toLowerCase();

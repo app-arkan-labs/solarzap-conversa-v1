@@ -23,9 +23,9 @@ export const DEFAULT_CONTRACTOR_PROFILE: ContractorPartyData = {
   razaoSocial: env('VITE_CONTRACTOR_RAZAO_SOCIAL', 'Arkan Desenvolvimento de Software Ltda.'),
   nomeFantasia: env('VITE_CONTRACTOR_NOME_FANTASIA', 'ARKAN SOLAR'),
   cnpj: env('VITE_CONTRACTOR_CNPJ', '60.838.685/0001-71'),
-  endereco: env('VITE_CONTRACTOR_ENDERECO', 'Marilia/SP'),
+  endereco: env('VITE_CONTRACTOR_ENDERECO', 'Marília/SP'),
   representanteNome: env('VITE_CONTRACTOR_REPRESENTANTE_NOME', 'Representante Legal ARKAN'),
-  representanteCpf: env('VITE_CONTRACTOR_REPRESENTANTE_CPF', 'CPF em configuracao'),
+  representanteCpf: env('VITE_CONTRACTOR_REPRESENTANTE_CPF', 'CPF em configuração'),
 };
 
 export const DEFAULT_SIGNATURE_TERMS: ContractSignatureTerms = {
@@ -34,7 +34,7 @@ export const DEFAULT_SIGNATURE_TERMS: ContractSignatureTerms = {
 };
 
 export const DEFAULT_FORUM_TERMS: ContractForumTerms = {
-  cidade: env('VITE_CONTRACT_FORO_CIDADE', 'Marilia'),
+  cidade: env('VITE_CONTRACT_FORO_CIDADE', 'Marília'),
   estado: env('VITE_CONTRACT_FORO_ESTADO', 'SP'),
 };
 
@@ -45,7 +45,7 @@ export const DEFAULT_RECURRENCE_TERMS: ContractRecurrenceTerms = {
   multaInadimplenciaPercentual: envNumber('VITE_CONTRACT_MULTA_PERCENTUAL', 2),
   jurosInadimplenciaPercentual: envNumber('VITE_CONTRACT_JUROS_PERCENTUAL', 1),
   renovacaoAutomaticaMensal: true,
-  faseUmDescricao: 'Mes 1 = implantacao inicial',
+  faseUmDescricao: 'Mês 1 = implantação inicial',
   faseDoisDescricao: 'Meses 2 e 3 = continuidade operacional recorrente',
 };
 

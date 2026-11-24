@@ -44,7 +44,7 @@ export function InternalCrmAiJobsList(props: InternalCrmAiJobsListProps) {
   async function handleEnqueue() {
     const scheduledDate = new Date(scheduledAt);
     if (Number.isNaN(scheduledDate.getTime())) {
-      setPayloadError('Data/hora de agendamento invalida.');
+      setPayloadError('Data/hora de agendamento inválida.');
       return;
     }
 
@@ -58,7 +58,7 @@ export function InternalCrmAiJobsList(props: InternalCrmAiJobsListProps) {
       parsedPayload = maybePayload;
       setPayloadError(null);
     } catch {
-      setPayloadError('JSON invalido no payload do job.');
+      setPayloadError('JSON inválido no payload do job.');
       return;
     }
 
@@ -80,7 +80,7 @@ export function InternalCrmAiJobsList(props: InternalCrmAiJobsListProps) {
               <SelectValue placeholder="Tipo" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="qualification">Qualificacao</SelectItem>
+              <SelectItem value="qualification">Qualificação</SelectItem>
               <SelectItem value="follow_up">Follow-up</SelectItem>
               <SelectItem value="broadcast_assistant">Assistente de disparos</SelectItem>
               <SelectItem value="onboarding">Onboarding</SelectItem>

@@ -288,7 +288,7 @@ async function listUserOrganizations(
     .map((row) => {
       const companyName = companyNameByOrgId[row.org_id] ?? null;
       const organizationName = organizationNameById[row.org_id] ?? null;
-      const displayName = companyName || organizationName || `Organizacao ${row.org_id.slice(0, 8)}`;
+      const displayName = companyName || organizationName || `Organização ${row.org_id.slice(0, 8)}`;
 
       return {
         org_id: row.org_id,
@@ -346,8 +346,8 @@ async function bootstrapSelf(
   }
 
   const fallbackName = user.email
-    ? `Organizacao de ${user.email}`
-    : `Organizacao ${user.id.slice(0, 8)}`;
+    ? `Organização de ${user.email}`
+    : `Organização ${user.id.slice(0, 8)}`;
 
   const { data: orgId, error: createOrgError } = await adminClient.rpc('bootstrap_unlimited_signup_org', {
     p_owner_id: user.id,
@@ -355,7 +355,7 @@ async function bootstrapSelf(
   });
 
   if (createOrgError || !orgId) {
-    throw createOrgError || new Error('Falha ao criar organizacao');
+    throw createOrgError || new Error('Falha ao criar organização');
   }
 
   const { error: membershipUpsertError } = await adminClient
@@ -466,7 +466,7 @@ async function billingAdminAction(
   return jsonResponse(corsHeaders, 400, {
     ok: false,
     code: 'invalid_operation',
-    error: `operation invalida: ${operation}`,
+    error: `operation inválida: ${operation}`,
   });
 }
 
@@ -556,11 +556,11 @@ async function inviteMember(
   const mode: 'create' | 'invite' = payload.mode === 'create' ? 'create' : 'invite';
 
   if (!isValidEmail(email)) {
-    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_email', error: 'Email invalido para convite.' });
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_email', error: 'Email inválido para convite.' });
   }
 
   if (!isValidRole(role)) {
-    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_role', error: 'Role invalida para convite.' });
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_role', error: 'Role inválida para convite.' });
   }
 
   const { data: orgData, error: orgError } = await adminClient
@@ -672,7 +672,7 @@ async function inviteMember(
     return jsonResponse(corsHeaders, 500, {
       ok: false,
       code: 'invite_user_not_resolved',
-      error: 'Nao foi possivel resolver o usuario convidado.',
+      error: 'Não foi possível resolver o usuário convidado.',
     });
   }
 
@@ -738,7 +738,7 @@ async function inviteMember(
       ok: false,
       code: 'system_email_send_failed',
       error:
-        'Falha ao gerar link para definir/redefinir senha no convite. O membro foi vinculado, mas o e-mail nao foi entregue.',
+        'Falha ao gerar link para definir/redefinir senha no convite. O membro foi vinculado, mas o e-mail não foi entregue.',
       ...(accessLinkErrors.length > 0 ? { details: accessLinkErrors.join('; ') } : {}),
     });
   }
@@ -770,7 +770,7 @@ async function inviteMember(
     return jsonResponse(corsHeaders, 502, {
       ok: false,
       code: 'system_email_send_failed',
-      error: 'Falha ao enviar e-mail de acesso. O membro foi vinculado, mas o e-mail nao foi entregue.',
+      error: 'Falha ao enviar e-mail de acesso. O membro foi vinculado, mas o e-mail não foi entregue.',
       details: message,
     });
   }
@@ -802,11 +802,11 @@ async function updateMember(
   const canViewTeamLeads = payload.can_view_team_leads === true;
 
   if (!userId) {
-    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_user_id', error: 'user_id obrigatorio.' });
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_user_id', error: 'user_id obrigatório.' });
   }
 
   if (!isValidRole(rawRole)) {
-    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_role', error: 'Role invalida para update.' });
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_role', error: 'Role inválida para update.' });
   }
 
   const { data: targetMembership, error: targetMembershipError } = await adminClient
@@ -821,7 +821,7 @@ async function updateMember(
   }
 
   if (!targetMembership) {
-    return jsonResponse(corsHeaders, 404, { ok: false, code: 'member_not_found', error: 'Membro nao encontrado na org.' });
+    return jsonResponse(corsHeaders, 404, { ok: false, code: 'member_not_found', error: 'Membro não encontrado na org.' });
   }
 
   if (targetMembership.role === 'owner' && rawRole !== 'owner') {
@@ -830,7 +830,7 @@ async function updateMember(
       return jsonResponse(corsHeaders, 409, {
         ok: false,
         code: 'last_owner_guard',
-        error: 'Nao e permitido remover o ultimo owner da organizacao.',
+        error: 'Não é permitido remover o último owner da organização.',
       });
     }
   }
@@ -865,7 +865,7 @@ async function removeMember(
 ) {
   const userId = typeof payload.user_id === 'string' ? payload.user_id.trim() : '';
   if (!userId) {
-    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_user_id', error: 'user_id obrigatorio.' });
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_user_id', error: 'user_id obrigatório.' });
   }
 
   const { data: targetMembership, error: targetMembershipError } = await adminClient
@@ -880,7 +880,7 @@ async function removeMember(
   }
 
   if (!targetMembership) {
-    return jsonResponse(corsHeaders, 404, { ok: false, code: 'member_not_found', error: 'Membro nao encontrado na org.' });
+    return jsonResponse(corsHeaders, 404, { ok: false, code: 'member_not_found', error: 'Membro não encontrado na org.' });
   }
 
   if (targetMembership.role === 'owner') {
@@ -889,7 +889,7 @@ async function removeMember(
       return jsonResponse(corsHeaders, 409, {
         ok: false,
         code: 'last_owner_guard',
-        error: 'Nao e permitido remover o ultimo owner da organizacao.',
+        error: 'Não é permitido remover o último owner da organização.',
       });
     }
   }
@@ -916,14 +916,14 @@ Deno.serve(async (req) => {
       return jsonResponse(corsHeaders, 500, {
         ok: false,
         code: 'missing_allowed_origin',
-        error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados.',
+        error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN não configurados.',
       });
     }
     if (!cors.originAllowed) {
       return jsonResponse(corsHeaders, 403, {
         ok: false,
         code: 'origin_not_allowed',
-        error: 'Origin nao permitida para esta funcao.',
+        error: 'Origin não permitida para esta função.',
       });
     }
     return new Response('ok', { headers: corsHeaders });
@@ -933,7 +933,7 @@ Deno.serve(async (req) => {
     return jsonResponse(corsHeaders, 500, {
       ok: false,
       code: 'missing_allowed_origin',
-      error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados.',
+      error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN não configurados.',
     });
   }
 
@@ -941,7 +941,7 @@ Deno.serve(async (req) => {
     return jsonResponse(corsHeaders, 403, {
       ok: false,
       code: 'origin_not_allowed',
-      error: 'Origin nao permitida para esta funcao.',
+      error: 'Origin não permitida para esta função.',
     });
   }
 
@@ -954,7 +954,7 @@ Deno.serve(async (req) => {
       return jsonResponse(corsHeaders, 500, {
         ok: false,
         code: 'missing_env',
-        error: 'SUPABASE_URL/SUPABASE_ANON_KEY/SUPABASE_SERVICE_ROLE_KEY nao configurados.',
+        error: 'SUPABASE_URL/SUPABASE_ANON_KEY/SUPABASE_SERVICE_ROLE_KEY não configurados.',
       });
     }
 
@@ -963,7 +963,7 @@ Deno.serve(async (req) => {
       return jsonResponse(corsHeaders, 401, {
         ok: false,
         code: 'missing_auth',
-        error: 'Authorization header Bearer obrigatorio.',
+        error: 'Authorization header Bearer obrigatório.',
       });
     }
 
@@ -980,7 +980,7 @@ Deno.serve(async (req) => {
       return jsonResponse(corsHeaders, 401, {
         ok: false,
         code: 'unauthorized',
-        error: 'Usuario nao autenticado.',
+        error: 'Usuário não autenticado.',
       });
     }
 
@@ -990,7 +990,7 @@ Deno.serve(async (req) => {
     const action = typeof payload.action === 'string' ? payload.action : '';
 
     if (!action) {
-      return jsonResponse(corsHeaders, 400, { ok: false, code: 'missing_action', error: 'action obrigatoria.' });
+      return jsonResponse(corsHeaders, 400, { ok: false, code: 'missing_action', error: 'action obrigatória.' });
     }
 
     if (action === 'bootstrap_self') {
@@ -1013,14 +1013,14 @@ Deno.serve(async (req) => {
         return jsonResponse(corsHeaders, 403, {
           ok: false,
           code: 'forbidden_org_context',
-          error: 'Usuario nao possui membership na organizacao informada.',
+          error: 'Usuário não possui membership na organização informada.',
         });
       }
 
       return jsonResponse(corsHeaders, 403, {
         ok: false,
         code: 'no_membership',
-        error: 'Usuario nao possui membership na organizacao.',
+        error: 'Usuário não possui membership na organização.',
       });
     }
 
@@ -1038,7 +1038,7 @@ Deno.serve(async (req) => {
       return jsonResponse(corsHeaders, 403, {
         ok: false,
         code: 'forbidden_role',
-        error: 'Apenas owner/admin podem executar esta acao.',
+        error: 'Apenas owner/admin podem executar esta ação.',
       });
     }
 
@@ -1058,7 +1058,7 @@ Deno.serve(async (req) => {
       return await billingAdminAction(adminClient, callerMembership, payload, corsHeaders);
     }
 
-    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_action', error: `action invalida: ${action}` });
+    return jsonResponse(corsHeaders, 400, { ok: false, code: 'invalid_action', error: `action inválida: ${action}` });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro interno desconhecido';
     console.error('org-admin error:', error);

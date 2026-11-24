@@ -551,10 +551,10 @@ export function digestEmail(opts: {
     <p style="margin:0 0 8px;font-size:14px;color:#3f3f46;line-height:1.6;">
       ${digestIntro} do seu CRM.
       <strong>${opts.leads.length} lead${opts.leads.length !== 1 ? 's' : ''}</strong> 
-      ${opts.leads.length !== 1 ? 'tiveram' : 'teve'} atividade no periodo.
+      ${opts.leads.length !== 1 ? 'tiveram' : 'teve'} atividade no período.
     </p>
     <div style="margin-top:16px;">
-      ${leadsHtml || '<p style="text-align:center;color:#a1a1aa;font-size:13px;padding:20px 0;">Nenhum lead com atividade no periodo.</p>'}
+      ${leadsHtml || '<p style="text-align:center;color:#a1a1aa;font-size:13px;padding:20px 0;">Nenhum lead com atividade no período.</p>'}
     </div>`
 
   // plain text fallback

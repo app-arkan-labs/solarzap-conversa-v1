@@ -28,7 +28,7 @@ export const createSolarPrimeMockContract = (
           numero: '123',
           complemento: '',
           bairro: 'Centro',
-          cidade: 'Marilia',
+          cidade: 'Marília',
           estado: 'SP',
           cep: '17500-000',
         },
@@ -49,7 +49,7 @@ export const createSolarPrimeMockContract = (
         ativa: true,
         descricao: 'reuniao extra de coleta completa + landing page incluida',
         observacoesComerciais:
-          'Bonus valido dentro da contratacao, sem cobranca adicional apartada.',
+          'Bônus válido dentro da contratação, sem cobrança adicional apartada.',
         incluiReuniaoExtra: true,
         incluiLandingPage: true,
       },
@@ -72,7 +72,7 @@ export const createSolarPrimeMockContract = (
         plataformaNome: 'ZapSign',
       },
       foro: {
-        cidade: 'Marilia',
+        cidade: 'Marília',
         estado: 'SP',
       },
     },

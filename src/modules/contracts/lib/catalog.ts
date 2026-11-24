@@ -11,18 +11,18 @@ const PLAN_DEFINITIONS: Record<ContractPlanCode, BasePlanDefinition> = {
     nome: 'Plano Essencial / Downsell',
     quantidadeReunioesImplantacao: 0,
     descricaoObjetiva:
-      'Implantacao mais enxuta, com escopo controlado e sem acompanhamento semanal recorrente.',
+      'Implantação mais enxuta, com escopo controlado e sem acompanhamento semanal recorrente.',
     itensInclusos: [
-      'Disponibilizacao do SolarZap conforme politica operacional do plano',
-      'Ativacao operacional minima',
-      'Treinamento base gravado quando aplicavel',
-      'Escopo controlado de implantacao e continuidade recorrente',
+      'Disponibilização do SolarZap conforme política operacional do plano',
+      'Ativação operacional mínima',
+      'Treinamento base gravado quando aplicável',
+      'Escopo controlado de implantação e continuidade recorrente',
     ],
     itensNaoInclusos: [
       'Acompanhamento semanal',
-      'Suporte continuo via WhatsApp',
+      'Suporte contínuo via WhatsApp',
       'Landing page salvo registro expresso',
-      'Escopo ampliado de implementacao',
+      'Escopo ampliado de implementação',
     ],
     flags: {
       suporteWhatsapp: false,
@@ -36,21 +36,21 @@ const PLAN_DEFINITIONS: Record<ContractPlanCode, BasePlanDefinition> = {
   },
   plano_b: {
     codigo: 'plano_b',
-    nome: 'Plano Implantacao Guiada',
+    nome: 'Plano Implantação Guiada',
     quantidadeReunioesImplantacao: 1,
     descricaoObjetiva:
-      'Implantacao guiada com 1 reuniao de coleta e alinhamento, 1 mes de SolarZap e trafego pago.',
+      'Implantação guiada com 1 reunião de coleta e alinhamento, 1 mês de SolarZap e tráfego pago.',
     itensInclusos: [
       '1 reuniao de coleta e alinhamento',
-      '1 mes de SolarZap',
-      'Trafego pago',
+      '1 mês de SolarZap',
+      'Tráfego pago',
       'Treinamento base gravado',
       'Continuidade operacional recorrente conforme contrato',
     ],
     itensNaoInclusos: [
-      'Suporte ampliado via WhatsApp salvo previsao expressa',
-      'Landing page salvo condicao especial expressa',
-      'Reuniao extra salvo condicao especial expressa',
+      'Suporte ampliado via WhatsApp salvo previsão expressa',
+      'Landing page salvo condição especial expressa',
+      'Reunião extra salvo condição especial expressa',
     ],
     flags: {
       suporteWhatsapp: false,
@@ -64,19 +64,19 @@ const PLAN_DEFINITIONS: Record<ContractPlanCode, BasePlanDefinition> = {
   },
   plano_c: {
     codigo: 'plano_c',
-    nome: 'Plano Implementacao Completa',
+    nome: 'Plano Implementação Completa',
     quantidadeReunioesImplantacao: 1,
     descricaoObjetiva:
-      'Implementacao completa com acompanhamento semanal, suporte via WhatsApp na implantacao e continuidade operacional recorrente.',
+      'Implementação completa com acompanhamento semanal, suporte via WhatsApp na implantação e continuidade operacional recorrente.',
     itensInclusos: [
       'Tudo do Plano B',
-      'Acompanhamento semanal durante a implantacao',
-      'Suporte via WhatsApp durante a implantacao',
+      'Acompanhamento semanal durante a implantação',
+      'Suporte via WhatsApp durante a implantação',
       'Maior proximidade operacional na fase inicial',
     ],
     itensNaoInclusos: [
-      'Landing page sem registro em condicao especial',
-      'Reuniao extra sem registro em condicao especial',
+      'Landing page sem registro em condição especial',
+      'Reunião extra sem registro em condição especial',
       'Escopos fora do anexo do plano ou resumo comercial final',
     ],
     flags: {
@@ -93,8 +93,8 @@ const PLAN_DEFINITIONS: Record<ContractPlanCode, BasePlanDefinition> = {
 
 export const CONTRACT_PLAN_OPTIONS = [
   { value: 'plano_a', label: 'Plano Essencial / Downsell' },
-  { value: 'plano_b', label: 'Plano Implantacao Guiada' },
-  { value: 'plano_c', label: 'Plano Implementacao Completa' },
+  { value: 'plano_b', label: 'Plano Implantação Guiada' },
+  { value: 'plano_c', label: 'Plano Implementação Completa' },
 ] as const;
 
 export const getBasePlanDefinition = (planCode: ContractPlanCode) =>

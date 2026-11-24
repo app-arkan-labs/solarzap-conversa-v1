@@ -140,7 +140,7 @@ test.beforeAll(async () => {
     org_id: state.orgId,
     user_id: state.userId,
     instance_name: state.instanceName,
-    display_name: 'Instancia Vendas',
+    display_name: 'Instância Vendas',
     status: 'connected',
     is_active: true,
     ai_enabled: true,
@@ -162,7 +162,7 @@ test.afterAll(async () => {
   }
 });
 
-test('IA por inst�ncia: salva nome e prompt personalizados sem sobrescrever global', async ({ page }) => {
+test('IA por instância: salva nome e prompt personalizados sem sobrescrever global', async ({ page }) => {
   await page.route('**/functions/v1/evolution-proxy**', async (route) => {
     await route.abort();
   });
@@ -173,8 +173,8 @@ test('IA por inst�ncia: salva nome e prompt personalizados sem sobrescrever glob
     await route.abort();
   });
 
-  const assistantName = 'Joao Vendas';
-  const assistantPrompt = 'Voce e Joao da equipe de vendas. Se identificar pos-venda, atribua o contato para Maria da pos-vendas.';
+  const assistantName = 'João Vendas';
+  const assistantPrompt = 'Você é João da equipe de vendas. Se identificar pós-venda, atribua o contato para Maria da pós-vendas.';
 
   await login(page, state.email, state.password);
   await openAiSettings(page);

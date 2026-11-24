@@ -87,7 +87,7 @@ export function AssignMemberSelect({ contactId, currentAssigneeId, className, tr
             if (error) throw error;
 
             toast({
-                title: "Atribuicao atualizada",
+                title: "Atribuição atualizada",
                 description: "O contato foi reatribuido com sucesso.",
             });
             queryClient.invalidateQueries({ queryKey: ["leads", orgId] });

@@ -69,8 +69,8 @@ export type InternalCrmCampaignInput = {
 };
 
 const STEP_LABELS: Record<Step, string> = {
-  1: 'Configuracao',
-  2: 'Destinatarios',
+  1: 'Configuração',
+  2: 'Destinatários',
   3: 'Mensagens',
   4: 'Timer',
   5: 'Preview',
@@ -146,7 +146,7 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
         return false;
       }
       if (!instanceName.trim()) {
-        toast({ title: 'Selecione uma instancia de WhatsApp', variant: 'destructive' });
+        toast({ title: 'Selecione uma instância de WhatsApp', variant: 'destructive' });
         return false;
       }
     }
@@ -154,7 +154,7 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
     if (step === 2) {
       if (activeRecipients.length < 1) {
         toast({
-          title: contactSource === 'crm' ? 'Selecione ao menos 1 lead do CRM' : 'Importe pelo menos 1 contato valido',
+          title: contactSource === 'crm' ? 'Selecione ao menos 1 lead do CRM' : 'Importe pelo menos 1 contato válido',
           variant: 'destructive',
         });
         return false;
@@ -167,7 +167,7 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
     }
 
     if (step === 4 && clampBroadcastTimerSeconds(timerSeconds) < BROADCAST_MIN_TIMER_SECONDS) {
-      toast({ title: 'O timer minimo e 60 segundos', variant: 'destructive' });
+      toast({ title: 'O timer mínimo e 60 segundos', variant: 'destructive' });
       return false;
     }
 
@@ -237,7 +237,7 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
     }
 
     if (activeRecipients.length < 1) {
-      toast({ title: 'Nenhum contato valido para salvar a campanha', variant: 'destructive' });
+      toast({ title: 'Nenhum contato válido para salvar a campanha', variant: 'destructive' });
       return;
     }
 
@@ -300,11 +300,11 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5">
                   <Phone className="w-4 h-4 text-green-500" />
-                  Instancia de disparo
+                  Instância de disparo
                 </Label>
                 <Select value={instanceName} onValueChange={setInstanceName}>
                   <SelectTrigger className="border-green-200 focus:ring-green-500">
-                    <SelectValue placeholder="Selecione uma instancia conectada" />
+                    <SelectValue placeholder="Selecione uma instância conectada" />
                   </SelectTrigger>
                   <SelectContent>
                     {connectedInstances.map((instance) => (
@@ -318,7 +318,7 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
                   </SelectContent>
                 </Select>
                 {connectedInstances.length === 0 && (
-                  <p className="text-xs text-destructive">Nenhuma instancia conectada encontrada.</p>
+                  <p className="text-xs text-destructive">Nenhuma instância conectada encontrada.</p>
                 )}
               </div>
 
@@ -399,7 +399,7 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
                         <FileSpreadsheet className="w-4 h-4" />
                         {uploadedFileName}
                       </p>
-                      <p className="text-xs text-muted-foreground">{uploadedContacts.length} contato(s) validos.</p>
+                      <p className="text-xs text-muted-foreground">{uploadedContacts.length} contato(s) válidos.</p>
                       {invalidRows > 0 && (
                         <p className="text-xs text-amber-600">{invalidRows} linha(s) ignorada(s) por falta de nome/telefone.</p>
                       )}
@@ -446,8 +446,8 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary">{messages.length} variacao(oes)</Badge>
-                  <p className="text-xs text-muted-foreground">Quanto mais variacoes, menor risco de bloqueio.</p>
+                  <Badge variant="secondary">{messages.length} variação(oes)</Badge>
+                  <p className="text-xs text-muted-foreground">Quanto mais variações, menor risco de bloqueio.</p>
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={addMessage}>
                   <Plus className="w-4 h-4 mr-1" />
@@ -465,7 +465,7 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
                       <Textarea
                         value={message}
                         onChange={(event) => updateMessage(index, event.target.value)}
-                        placeholder="Escreva a mensagem que sera enviada para esse contato"
+                        placeholder="Escreva a mensagem que será enviada para esse contato"
                         rows={4}
                       />
                       <div className="flex justify-end">
@@ -483,7 +483,7 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
           {step === 4 && (
             <div className="space-y-6">
               <div className="space-y-3">
-                <Label>Intervalo entre mensagens (minimo 60s, sem limite maximo)</Label>
+                <Label>Intervalo entre mensagens (mínimo 60s, sem limite máximo)</Label>
                 <div className="flex items-center gap-3">
                   <Slider
                     min={BROADCAST_MIN_TIMER_SECONDS}
@@ -521,12 +521,12 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
               <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-2">
                 <p className="font-medium flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-primary" />
-                  Randomizacao anti-bloqueio
+                  Randomização anti-bloqueio
                 </p>
                 <p className="text-muted-foreground">
-                  O sistema aplica variacao automatica de ate +/-30% no intervalo por destinatario, sempre respeitando o minimo operacional de 60 segundos.
+                  O sistema aplica variação automática de até +/-30% no intervalo por destinatário, sempre respeitando o mínimo operacional de 60 segundos.
                 </p>
-                <p className="text-xs text-amber-600">Timer minimo de seguranca: 60s.</p>
+                <p className="text-xs text-amber-600">Timer mínimo de segurança: 60s.</p>
               </div>
             </div>
           )}
@@ -539,11 +539,11 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
                   <p className="font-semibold">{campaignName || '-'}</p>
                 </div>
                 <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Instancia</p>
+                  <p className="text-xs text-muted-foreground">Instância</p>
                   <p className="font-semibold">{instanceName || '-'}</p>
                 </div>
                 <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Contatos validos</p>
+                  <p className="text-xs text-muted-foreground">Contatos válidos</p>
                   <p className="font-semibold">
                     {activeRecipients.length}
                     <span className="text-xs font-normal text-muted-foreground ml-1">
@@ -554,7 +554,7 @@ export function InternalCrmCampaignModal({ isOpen, onClose, instances, onSubmit 
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Intervalo base</p>
                   <p className="font-semibold">
-                    {formatBroadcastInterval(normalizedTimerSeconds)} ({normalizedTimerSeconds}s, variacao de ate +/-30%)
+                    {formatBroadcastInterval(normalizedTimerSeconds)} ({normalizedTimerSeconds}s, variação de até +/-30%)
                   </p>
                 </div>
               </div>

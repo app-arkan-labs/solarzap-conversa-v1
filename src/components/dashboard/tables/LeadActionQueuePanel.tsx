@@ -79,8 +79,8 @@ export function LeadActionQueuePanel({
   const visiblePriorityRows = priorityRows.slice(0, limit);
   const title = teamMode ? "Prioridades do time" : "Prioridades do dia";
   const description = teamMode
-    ? "Acoes vencidas e tarefas de hoje para o time nao deixar negociacao esfriar."
-    : "Acoes vencidas e tarefas de hoje para voce voltar a agir sem perder tempo.";
+    ? "Ações vencidas e tarefas de hoje para o time não deixar negociação esfriar."
+    : "Ações vencidas e tarefas de hoje para você voltar a agir sem perder tempo.";
 
   if (isLoading) {
     return null;
@@ -116,7 +116,7 @@ export function LeadActionQueuePanel({
             {queueSummary.today} hoje
           </Badge>
           <Badge variant="outline" className="rounded-full border-border/70 bg-muted/20">
-            {queueSummary.upcoming} proximas
+            {queueSummary.upcoming} próximas
           </Badge>
           <Badge variant="outline" className="rounded-full border-border/70 bg-muted/20">
             {queueSummary.none} sem proxima etapa
@@ -128,7 +128,7 @@ export function LeadActionQueuePanel({
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-foreground">Acoes para agora</p>
+              <p className="text-sm font-semibold text-foreground">Ações para agora</p>
               <p className="text-xs text-muted-foreground">Leads vencidos e tarefas marcadas para hoje.</p>
             </div>
             {visiblePriorityRows.length > 0 ? (
@@ -138,7 +138,7 @@ export function LeadActionQueuePanel({
 
           {visiblePriorityRows.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border px-4 py-4 text-sm text-muted-foreground">
-              Nenhuma acao vencida ou marcada para hoje neste escopo.
+              Nenhuma ação vencida ou marcada para hoje neste escopo.
             </div>
           ) : (
             <ScrollArea className={listHeightClassName}>
@@ -152,7 +152,7 @@ export function LeadActionQueuePanel({
                           <p className="truncate text-sm font-semibold text-foreground">{row.contact.name}</p>
                           <p className="truncate text-sm text-foreground">{row.nextAction?.title}</p>
                           <p className="truncate text-xs text-muted-foreground">
-                            {stage.title} | Ultima: {getLastActionText(row.lastAction)}
+                            {stage.title} | Última: {getLastActionText(row.lastAction)}
                           </p>
                         </div>
                         <LeadNextActionBadge task={row.nextAction} />
@@ -179,13 +179,13 @@ export function LeadActionQueuePanel({
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Sem proxima etapa
+                Sem próxima etapa
               </p>
               <p className="text-2xl font-semibold text-foreground">{queueSummary.none}</p>
               <p className="text-xs text-muted-foreground">
                 {queueSummary.none > 0
-                  ? "Leads ainda sem um proximo passo definido para continuar a venda."
-                  : "Todos os leads deste escopo ja tem a proxima etapa definida."}
+                  ? "Leads ainda sem um próximo passo definido para continuar a venda."
+                  : "Todos os leads deste escopo já tem a próxima etapa definida."}
               </p>
             </div>
             {queueSummary.none > 0 ? <LeadNextActionBadge task={null} showEmpty /> : null}

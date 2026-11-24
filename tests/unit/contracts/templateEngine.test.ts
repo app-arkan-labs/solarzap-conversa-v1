@@ -13,7 +13,7 @@ describe('contract template engine', () => {
 
     expect(renderResult.markdown).toContain('Solar Prime Energia Ltda');
     expect(renderResult.markdown).toContain('Joao Pedro Martins');
-    expect(renderResult.markdown).toContain('Plano Implementacao Completa');
+    expect(renderResult.markdown).toContain('Plano Implementação Completa');
     expect(renderResult.markdown).toContain('ANEXO III');
     expect(renderResult.markdown).toContain('ANEXO IV');
     expect(renderResult.markdown).not.toContain('{{');

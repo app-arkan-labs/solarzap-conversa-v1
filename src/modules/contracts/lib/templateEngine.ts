@@ -16,12 +16,12 @@ import {
 } from './formatters';
 
 const repairMojibake = (value: string) => {
-  if (!/[ÃÂ]/.test(value)) return value;
+  if (!/[\u00c3\u00c2]/.test(value)) return value;
 
   try {
     const bytes = Uint8Array.from(Array.from(value).map((char) => char.charCodeAt(0)));
     const decoded = new TextDecoder('utf-8').decode(bytes);
-    return decoded.includes('�') ? value : decoded;
+    return decoded.includes('\uFFFD') ? value : decoded;
   } catch {
     return value;
   }
@@ -332,9 +332,9 @@ export const buildContractPlaceholders = (
     tem_condicao_especial: formatBooleanPtBr(special.ativa),
     descricao_condicao_especial: special.ativa
       ? special.descricao
-      : 'Nao se aplica',
+      : 'Não se aplica',
     observacoes_comerciais:
-      special.observacoesComerciais || 'Sem observacoes comerciais adicionais.',
+      special.observacoesComerciais || 'Sem observações comerciais adicionais.',
     plataforma_assinatura_nome: legalData.assinatura.plataformaNome,
     url_plataforma_assinatura: legalData.assinatura.plataformaUrl,
     foro_cidade: legalData.foro.cidade,

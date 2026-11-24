@@ -19,7 +19,7 @@ async function runWebhookMock() {
     const { data: instance } = await supabase.from('whatsapp_instances').select('id, instance_name, org_id, user_id').eq('id', '6179e08a-f995-4409-8348-2a5dc1f38c08').single();
     const { org_id: orgId, user_id: userId, instance_name: instanceName } = instance || {};
 
-    if (!orgId) throw new Error("Org ID da instancia nao achado");
+    if (!orgId) throw new Error("Org ID da instância não achado");
 
     // ATIVAR a AI Setting
     const { data: aiSettings } = await supabase.from('ai_settings').select('id, is_active').eq('org_id', orgId).single();
@@ -86,7 +86,7 @@ async function runWebhookMock() {
 
     console.log("\n=== RESULTADOS ===");
     const { data: interacao } = await supabase.from('interacoes').select('id, lead_id, mensagem').match({ wa_message_id: msgId }).maybeSingle();
-    console.log(`[Gate Ingestão] Interacao cliente: ${!!interacao}`);
+    console.log(`[Gate Ingestão] Interação cliente: ${!!interacao}`);
 
     const { data: agentRuns } = await supabase.from('ai_agent_runs').select('id, status, error_details').eq('lead_id', leadId).order('id', { ascending: false }).limit(2);
     console.log(`[Gate AI Run] ai_agent_runs:`, agentRuns);
@@ -107,7 +107,7 @@ async function runWebhookMock() {
         data: {
             ...payload.data,
             key: { ...payload.data.key, id: `burst_${msgId}_${i}` },
-            message: { conversation: `Mais uma duvida ${i}` }
+            message: { conversation: `Mais uma dúvida ${i}` }
         }
     }));
 

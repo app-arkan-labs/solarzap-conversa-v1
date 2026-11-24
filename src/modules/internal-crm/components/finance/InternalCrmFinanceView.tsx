@@ -18,7 +18,7 @@ export function InternalCrmFinanceView() {
   async function handleRefreshSnapshot() {
     try {
       await finance.refreshSnapshotMutation.mutateAsync({ action: 'refresh_customer_snapshot' });
-      toast({ title: 'Snapshot atualizado', description: 'Sincronizacao de clientes provisionados concluida.' });
+      toast({ title: 'Snapshot atualizado', description: 'Sincronização de clientes provisionados concluída.' });
     } catch {
       toast({ title: 'Falha ao atualizar snapshot', description: 'Tente novamente em instantes.', variant: 'destructive' });
     }

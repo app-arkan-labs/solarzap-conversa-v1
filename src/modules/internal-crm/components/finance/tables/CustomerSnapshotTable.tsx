@@ -21,7 +21,7 @@ export function CustomerSnapshotTable(props: CustomerSnapshotTableProps) {
               <TableHead>Plano</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Leads</TableHead>
-              <TableHead>Instancias</TableHead>
+              <TableHead>Instâncias</TableHead>
               <TableHead>Atualizado</TableHead>
             </TableRow>
           </TableHeader>
@@ -29,7 +29,7 @@ export function CustomerSnapshotTable(props: CustomerSnapshotTableProps) {
             {props.snapshots.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  Snapshot ainda nao sincronizado.
+                  Snapshot ainda não sincronizado.
                 </TableCell>
               </TableRow>
             ) : (

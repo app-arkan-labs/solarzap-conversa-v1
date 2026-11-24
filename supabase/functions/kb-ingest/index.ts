@@ -180,7 +180,7 @@ async function extractTextFromDocx(buf: ArrayBuffer): Promise<string> {
       .replaceAll("&lt;", "<")
       .replaceAll("&gt;", ">")
       .replaceAll("&quot;", "\"")
-      .replaceAll("&apos;", "'")
+      .replaceAll("&após;", "'")
       .replace(/&#(\d+);/g, (_m, code) => String.fromCodePoint(Number(code)))
       .replace(/&#x([0-9a-fA-F]+);/g, (_m, code) => String.fromCodePoint(Number.parseInt(code, 16)));
 
@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     if (cors.missingAllowedOriginConfig) {
       return jsonResponse(
-        { error: "missing_allowed_origin", message: "ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados." },
+        { error: "missing_allowed_origin", message: "ALLOWED_ORIGINS/ALLOWED_ORIGIN não configurados." },
         corsHeaders,
         500,
       );
@@ -250,7 +250,7 @@ Deno.serve(async (req) => {
 
   if (cors.missingAllowedOriginConfig) {
     return jsonResponse(
-      { error: "missing_allowed_origin", message: "ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados." },
+      { error: "missing_allowed_origin", message: "ALLOWED_ORIGINS/ALLOWED_ORIGIN não configurados." },
       corsHeaders,
       500,
     );

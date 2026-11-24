@@ -193,7 +193,7 @@ export default function MfaSetup() {
                 </div>
               ) : null}
               <div className="space-y-2">
-                <Label htmlFor="totp-setup-code">Codigo de 6 digitos</Label>
+                <Label htmlFor="totp-setup-code">Código de 6 dígitos</Label>
                 <Input
                   id="totp-setup-code"
                   value={code}

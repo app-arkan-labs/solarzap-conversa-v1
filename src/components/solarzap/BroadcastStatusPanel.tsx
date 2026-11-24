@@ -112,7 +112,7 @@ export function BroadcastStatusPanel({
       <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{campaign.name}</DialogTitle>
-          <DialogDescription>Acompanhamento em tempo real dos destinatarios da campanha.</DialogDescription>
+          <DialogDescription>Acompanhamento em tempo real dos destinatários da campanha.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -170,7 +170,7 @@ export function BroadcastStatusPanel({
             ))}
 
             {recipients.length === 0 && (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum destinatario encontrado para esta campanha.</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum destinatário encontrado para esta campanha.</p>
             )}
           </div>
         </ScrollArea>

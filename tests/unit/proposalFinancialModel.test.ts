@@ -111,7 +111,7 @@ describe('calculateProposalFinancials', () => {
     expect(result.savingsMonthly).toBeUndefined();
   });
 
-  it('com USE_UNIFIED_GENERATION ativo, geracao anual bate com soma mensal', () => {
+  it('com USE_UNIFIED_GENERATION ativo, geração anual bate com soma mensal', () => {
     const previous = process.env.VITE_USE_UNIFIED_GENERATION;
     process.env.VITE_USE_UNIFIED_GENERATION = 'true';
 
@@ -136,7 +136,7 @@ describe('calculateProposalFinancials', () => {
     }
   });
 
-  it('aplica O&M anual quando VITE_USE_OM_COST_MODEL esta ativa', () => {
+  it('aplica O&M anual quando VITE_USE_OM_COST_MODEL está ativa', () => {
     const previous = process.env.VITE_USE_OM_COST_MODEL;
     process.env.VITE_USE_OM_COST_MODEL = 'true';
 
@@ -173,7 +173,7 @@ describe('calculateProposalFinancials', () => {
     }
   });
 
-  it('aplica degradacao para nao-usina quando VITE_USE_DEGRADATION_ALL_CLIENTS esta ativa', () => {
+  it('aplica degradação para não-usina quando VITE_USE_DEGRADATION_ALL_CLIENTS está ativa', () => {
     const previous = process.env.VITE_USE_DEGRADATION_ALL_CLIENTS;
     process.env.VITE_USE_DEGRADATION_ALL_CLIENTS = 'true';
 
@@ -197,7 +197,7 @@ describe('calculateProposalFinancials', () => {
     }
   });
 
-  it('separa TE/TUSD com compensacao conservadora quando VITE_USE_TUSD_TE_SIMPLIFIED esta ativa', () => {
+  it('separa TE/TUSD com compensação conservadora quando VITE_USE_TUSD_TE_SIMPLIFIED está ativa', () => {
     const previous = process.env.VITE_USE_TUSD_TE_SIMPLIFIED;
     process.env.VITE_USE_TUSD_TE_SIMPLIFIED = 'true';
 
@@ -267,7 +267,7 @@ describe('calculateProposalFinancials', () => {
     expect(result.savingsMonthly).toBeCloseTo(225, 4);
   });
 
-  it('usa contaLuzMensalReferencia para recalibrar comparativo e payback no nao-usina', () => {
+  it('usa contaLuzMensalReferencia para recalibrar comparativo e payback no não-usina', () => {
     const withoutReference = calculateProposalFinancials({
       tipoCliente: 'residencial',
       investimentoTotal: 14850,
@@ -302,7 +302,7 @@ describe('calculateProposalFinancials', () => {
     expect(withReference.paybackMonths).toBeGreaterThan(withoutReference.paybackMonths);
   });
 
-  it('aplica compensacao TUSD parcial de 50%', () => {
+  it('aplica compensação TUSD parcial de 50%', () => {
     const result = calculateProposalFinancials({
       tipoCliente: 'residencial',
       investimentoTotal: 14850,
@@ -323,7 +323,7 @@ describe('calculateProposalFinancials', () => {
     expect(result.savingsMonthly).toBeCloseTo(206.4, 4);
   });
 
-  it('aplica compensacao TUSD integral em regime 100%', () => {
+  it('aplica compensação TUSD integral em regime 100%', () => {
     const result = calculateProposalFinancials({
       tipoCliente: 'residencial',
       investimentoTotal: 14850,
@@ -344,7 +344,7 @@ describe('calculateProposalFinancials', () => {
     expect(result.savingsMonthly).toBeCloseTo(240, 4);
   });
 
-  it('limita savings no modo TUSD simplificado quando conta de referencia e menor que o ganho tecnico', () => {
+  it('limita savings no modo TUSD simplificado quando conta de referência e menor que o ganho técnico', () => {
     const result = calculateProposalFinancials({
       tipoCliente: 'residencial',
       investimentoTotal: 14850,
@@ -370,7 +370,7 @@ describe('calculateProposalFinancials', () => {
     );
   });
 
-  it('ancora comparativo na conta de referencia quando modo TUSD simplificado subestima economia', () => {
+  it('ancora comparativo na conta de referência quando modo TUSD simplificado subestima economia', () => {
     const result = calculateProposalFinancials({
       tipoCliente: 'residencial',
       investimentoTotal: 14850,

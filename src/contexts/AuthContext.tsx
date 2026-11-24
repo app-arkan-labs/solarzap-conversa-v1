@@ -483,7 +483,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error: new Error('membership_query_failed'),
         orgResolutionError: {
           kind: 'transient',
-          message: 'Falha ao resolver membership apos retries.',
+          message: 'Falha ao resolver membership após retries.',
         },
       }
     );
@@ -809,12 +809,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             apiFallback = await resolveOrganizationsFromApiFallback(source, org_id);
             if (!isCurrent()) return;
             if (!apiFallback?.selectedMembership?.orgId) {
-              markOrgError({ kind: 'missing_after_bootstrap', message: 'Vinculo da organizacao ainda indisponivel.' });
+              markOrgError({ kind: 'missing_after_bootstrap', message: 'Vínculo da organização ainda indisponivel.' });
               return;
             }
           } catch (error) {
             if (isCurrent()) {
-              markOrgError({ kind: 'bootstrap_failed', message: error instanceof Error ? error.message : 'Falha ao criar organizacao.' });
+              markOrgError({ kind: 'bootstrap_failed', message: error instanceof Error ? error.message : 'Falha ao criar organização.' });
             }
             return;
           }
@@ -1072,7 +1072,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (Array.isArray(identities) && identities.length === 0) {
         return {
           name: 'AuthError',
-          message: 'Este email ja possui cadastro.',
+          message: 'Este email já possui cadastro.',
           status: 409,
           code: 'user_already_registered',
         } as AuthError;
@@ -1098,7 +1098,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return error;
     } catch (error) {
       console.error('Resend sign up confirmation error:', error);
-      return { message: 'Erro ao reenviar confirmacao de conta', name: 'AuthError', status: 500 } as AuthError;
+      return { message: 'Erro ao reenviar confirmação de conta', name: 'AuthError', status: 500 } as AuthError;
     }
   };
 

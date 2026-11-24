@@ -27,12 +27,12 @@ export function OwnerPerformanceTable({ data, kpis, isLoading }: OwnerPerformanc
       <Table className="min-w-[640px]">
         <TableHeader>
           <TableRow>
-            <TableHead>Responsavel</TableHead>
+            <TableHead>Responsável</TableHead>
             <TableHead className="text-right">Leads</TableHead>
             <TableHead className="text-right">Vendas</TableHead>
-            <TableHead className="text-right">Conversao</TableHead>
+            <TableHead className="text-right">Conversão</TableHead>
             <TableHead className="text-right">{revenueHeader}</TableHead>
-            <TableHead className="text-right">Ticket medio</TableHead>
+            <TableHead className="text-right">Ticket médio</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

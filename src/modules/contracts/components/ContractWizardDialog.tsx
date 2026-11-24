@@ -43,12 +43,12 @@ import {
 } from '../lib/schema';
 
 const WIZARD_STEPS = [
-  { id: 1, label: 'Responsavel', icon: User },
+  { id: 1, label: 'Responsável', icon: User },
   { id: 2, label: 'Empresa', icon: Building2 },
   { id: 3, label: 'Plano', icon: FileText },
   { id: 4, label: 'Pagamento', icon: CreditCard },
-  { id: 5, label: 'Condicao especial', icon: Sparkles },
-  { id: 6, label: 'Revisao', icon: CheckCircle2 },
+  { id: 5, label: 'Condição especial', icon: Sparkles },
+  { id: 6, label: 'Revisão', icon: CheckCircle2 },
   { id: 7, label: 'Preview', icon: Eye },
   { id: 8, label: 'PDF', icon: Download },
 ] as const;
@@ -146,7 +146,7 @@ const validateWizardStep = (
     ) {
       return {
         success: false,
-        error: { issues: [{ message: 'Descreva a condicao especial ativa.' }] },
+        error: { issues: [{ message: 'Descreva a condição especial ativa.' }] },
       };
     }
     return validation;
@@ -159,10 +159,10 @@ const planCards = CONTRACT_PLAN_OPTIONS.map((plan) => ({
   ...plan,
   description:
     plan.value === 'plano_a'
-      ? 'Implantacao enxuta com escopo controlado.'
+      ? 'Implantação enxuta com escopo controlado.'
       : plan.value === 'plano_b'
-        ? 'Implantacao guiada com 1 reuniao, SolarZap no mes 1 e trafego pago.'
-        : 'Plano completo com acompanhamento semanal, suporte via WhatsApp e condicoes especiais.',
+        ? 'Implantação guiada com 1 reunião, SolarZap no mês 1 e tráfego pago.'
+        : 'Plano completo com acompanhamento semanal, suporte via WhatsApp e condições especiais.',
 }));
 
 export function ContractWizardDialog({
@@ -181,8 +181,8 @@ export function ContractWizardDialog({
   isGeneratingPdf = false,
   isGeneratingWord = false,
   finalExportKind = 'pdf',
-  title = 'Formalizacao contratual SolarZap',
-  subtitle = 'Wizard central do contrato unico, com vigencia inicial de 3 meses, recorrencia no mesmo instrumento e anexos dinamicos por plano.',
+  title = 'Formalização contratual SolarZap',
+  subtitle = 'Wizard central do contrato único, com vigência inicial de 3 meses, recorrência no mesmo instrumento e anexos dinâmicos por plano.',
   showMockSeedButton = true,
   showSaveDraftButton = true,
   lockedFieldKeys = [],
@@ -230,7 +230,7 @@ export function ContractWizardDialog({
     const validation = validateWizardStep(values, currentStep);
     if (!validation.success) {
       const issue = validation.error.issues[0];
-      setValidationMessage(issue?.message || 'Revise os campos obrigatorios.');
+      setValidationMessage(issue?.message || 'Revise os campos obrigatórios.');
       return;
     }
 
@@ -316,7 +316,7 @@ export function ContractWizardDialog({
         <Input
           value={values.legalData.responsavel.nome}
           disabled={isLocked('responsavelNome')}
-          onChange={(event) => updateField('legalData.responsavel.nome', event.target.value)}
+          onChange={(event) => updateField('legalData.responsável.nome', event.target.value)}
         />,
       )}
       {renderFieldGroup(
@@ -324,7 +324,7 @@ export function ContractWizardDialog({
         <Input
           value={values.legalData.responsavel.nacionalidade}
           onChange={(event) =>
-            updateField('legalData.responsavel.nacionalidade', event.target.value)
+            updateField('legalData.responsável.nacionalidade', event.target.value)
           }
         />,
       )}
@@ -333,7 +333,7 @@ export function ContractWizardDialog({
         <Input
           value={values.legalData.responsavel.estadoCivil}
           onChange={(event) =>
-            updateField('legalData.responsavel.estadoCivil', event.target.value)
+            updateField('legalData.responsável.estadoCivil', event.target.value)
           }
         />,
       )}
@@ -341,28 +341,28 @@ export function ContractWizardDialog({
         'Profissao',
         <Input
           value={values.legalData.responsavel.profissao}
-          onChange={(event) => updateField('legalData.responsavel.profissao', event.target.value)}
+          onChange={(event) => updateField('legalData.responsável.profissao', event.target.value)}
         />,
       )}
       {renderFieldGroup(
         'CPF',
         <Input
           value={values.legalData.responsavel.cpf}
-          onChange={(event) => updateField('legalData.responsavel.cpf', event.target.value)}
+          onChange={(event) => updateField('legalData.responsável.cpf', event.target.value)}
         />,
       )}
       {renderFieldGroup(
         'RG',
         <Input
           value={values.legalData.responsavel.rg}
-          onChange={(event) => updateField('legalData.responsavel.rg', event.target.value)}
+          onChange={(event) => updateField('legalData.responsável.rg', event.target.value)}
         />,
       )}
       {renderFieldGroup(
         'Cargo',
         <Input
           value={values.legalData.responsavel.cargo}
-          onChange={(event) => updateField('legalData.responsavel.cargo', event.target.value)}
+          onChange={(event) => updateField('legalData.responsável.cargo', event.target.value)}
         />,
       )}
       {renderFieldGroup(
@@ -371,7 +371,7 @@ export function ContractWizardDialog({
           type="email"
           value={values.legalData.responsavel.email}
           disabled={isLocked('responsavelEmail')}
-          onChange={(event) => updateField('legalData.responsavel.email', event.target.value)}
+          onChange={(event) => updateField('legalData.responsável.email', event.target.value)}
         />,
       )}
       <div className="md:col-span-2">
@@ -381,7 +381,7 @@ export function ContractWizardDialog({
             value={values.legalData.responsavel.telefone}
             disabled={isLocked('responsavelTelefone')}
             onChange={(event) =>
-              updateField('legalData.responsavel.telefone', event.target.value)
+              updateField('legalData.responsável.telefone', event.target.value)
             }
           />,
         )}
@@ -392,7 +392,7 @@ export function ContractWizardDialog({
   const renderStepTwo = () => (
     <div className="grid gap-4 md:grid-cols-2">
       {renderFieldGroup(
-        'Razao social',
+        'Razão social',
         <Input
           value={values.legalData.contratante.razaoSocial}
           disabled={isLocked('empresaRazaoSocial')}
@@ -424,16 +424,16 @@ export function ContractWizardDialog({
         <Input
           value={values.legalData.contratante.endereco.logradouro}
           onChange={(event) =>
-            updateField('legalData.contratante.endereco.logradouro', event.target.value)
+            updateField('legalData.contratante.endereço.logradouro', event.target.value)
           }
         />,
       )}
       {renderFieldGroup(
-        'Numero',
+        'Número',
         <Input
           value={values.legalData.contratante.endereco.numero}
           onChange={(event) =>
-            updateField('legalData.contratante.endereco.numero', event.target.value)
+            updateField('legalData.contratante.endereço.número', event.target.value)
           }
         />,
       )}
@@ -442,7 +442,7 @@ export function ContractWizardDialog({
         <Input
           value={values.legalData.contratante.endereco.complemento}
           onChange={(event) =>
-            updateField('legalData.contratante.endereco.complemento', event.target.value)
+            updateField('legalData.contratante.endereço.complemento', event.target.value)
           }
         />,
       )}
@@ -451,7 +451,7 @@ export function ContractWizardDialog({
         <Input
           value={values.legalData.contratante.endereco.bairro}
           onChange={(event) =>
-            updateField('legalData.contratante.endereco.bairro', event.target.value)
+            updateField('legalData.contratante.endereço.bairro', event.target.value)
           }
         />,
       )}
@@ -460,7 +460,7 @@ export function ContractWizardDialog({
         <Input
           value={values.legalData.contratante.endereco.cidade}
           onChange={(event) =>
-            updateField('legalData.contratante.endereco.cidade', event.target.value)
+            updateField('legalData.contratante.endereço.cidade', event.target.value)
           }
         />,
       )}
@@ -471,7 +471,7 @@ export function ContractWizardDialog({
           value={values.legalData.contratante.endereco.estado}
           onChange={(event) =>
             updateField(
-              'legalData.contratante.endereco.estado',
+              'legalData.contratante.endereço.estado',
               event.target.value.toUpperCase(),
             )
           }
@@ -482,7 +482,7 @@ export function ContractWizardDialog({
         <Input
           value={values.legalData.contratante.endereco.cep}
           onChange={(event) =>
-            updateField('legalData.contratante.endereco.cep', event.target.value)
+            updateField('legalData.contratante.endereço.cep', event.target.value)
           }
         />,
       )}
@@ -541,7 +541,7 @@ export function ContractWizardDialog({
 
       <div className="grid gap-4 md:grid-cols-2">
         {renderFieldGroup(
-          'Valor da implantacao',
+          'Valor da implantação',
           <Input
             type="number"
             min={0}
@@ -555,7 +555,7 @@ export function ContractWizardDialog({
           />,
         )}
         {renderFieldGroup(
-          'Valor da recorrencia',
+          'Valor da recorrência',
           <Input
             type="number"
             min={0}
@@ -569,7 +569,7 @@ export function ContractWizardDialog({
           />,
         )}
         {renderFieldGroup(
-          'Quantidade de reunioes na implantacao',
+          'Quantidade de reuniões na implantação',
           <Input
             type="number"
             min={0}
@@ -590,9 +590,9 @@ export function ContractWizardDialog({
           ['Suporte WhatsApp', values.legalData.plano.flags.suporteWhatsapp],
           ['Acompanhamento semanal', values.legalData.plano.flags.acompanhamentoSemanal],
           ['Treinamento gravado', values.legalData.plano.flags.treinamentoGravado],
-          ['SolarZap mes 1', values.legalData.plano.flags.solarZapMesUm],
-          ['Trafego pago', values.legalData.plano.flags.trafegoPago],
-          ['Reuniao extra', values.legalData.plano.flags.reuniaoExtra],
+          ['SolarZap mês 1', values.legalData.plano.flags.solarZapMesUm],
+          ['Tráfego pago', values.legalData.plano.flags.trafegoPago],
+          ['Reunião extra', values.legalData.plano.flags.reuniaoExtra],
           ['Landing page', values.legalData.plano.flags.landingPage],
         ].map(([label, active]) => (
           <Card key={String(label)}>
@@ -621,7 +621,7 @@ export function ContractWizardDialog({
         />,
       )}
       {renderFieldGroup(
-        'Data de inicio',
+        'Data de início',
         <Input
           type="date"
           value={values.legalData.pagamento.dataInicio}
@@ -656,7 +656,7 @@ export function ContractWizardDialog({
         />,
       )}
       {renderFieldGroup(
-        'Pagamento da implantacao',
+        'Pagamento da implantação',
         <Select
           value={values.legalData.pagamento.formaPagamentoImplantacao}
           onValueChange={(nextValue) =>
@@ -669,13 +669,13 @@ export function ContractWizardDialog({
           <SelectContent>
             <SelectItem value="Pix">Pix</SelectItem>
             <SelectItem value="boleto">Boleto</SelectItem>
-            <SelectItem value="cartao">Cartao</SelectItem>
-            <SelectItem value="transferencia">Transferencia</SelectItem>
+            <SelectItem value="cartao">Cartão</SelectItem>
+            <SelectItem value="transferencia">Transferência</SelectItem>
           </SelectContent>
         </Select>,
       )}
       {renderFieldGroup(
-        'Pagamento da recorrencia',
+        'Pagamento da recorrência',
         <Select
           value={values.legalData.pagamento.formaPagamentoRecorrencia}
           onValueChange={(nextValue) =>
@@ -688,19 +688,19 @@ export function ContractWizardDialog({
           <SelectContent>
             <SelectItem value="boleto mensal">boleto mensal</SelectItem>
             <SelectItem value="Pix mensal">Pix mensal</SelectItem>
-            <SelectItem value="cartao recorrente">cartao recorrente</SelectItem>
+            <SelectItem value="cartão recorrente">cartão recorrente</SelectItem>
           </SelectContent>
         </Select>,
       )}
       {renderFieldGroup(
-        'Vigencia inicial (meses)',
+        'Vigência inicial (meses)',
         <Input
           type="number"
           min={3}
           value={values.legalData.recorrencia.vigenciaInicialMeses}
           onChange={(event) =>
             updateField(
-              'legalData.recorrencia.vigenciaInicialMeses',
+              'legalData.recorrência.vigenciaInicialMeses',
               Number(event.target.value || 3),
             )
           }
@@ -714,7 +714,7 @@ export function ContractWizardDialog({
           value={values.legalData.recorrencia.prazoCancelamentoDias}
           onChange={(event) =>
             updateField(
-              'legalData.recorrencia.prazoCancelamentoDias',
+              'legalData.recorrência.prazoCancelamentoDias',
               Number(event.target.value || 30),
             )
           }
@@ -727,9 +727,9 @@ export function ContractWizardDialog({
     <div className="space-y-6">
       <div className="flex items-center justify-between rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
         <div>
-          <p className="text-sm font-semibold text-slate-900">Ativar condicao especial</p>
+          <p className="text-sm font-semibold text-slate-900">Ativar condição especial</p>
           <p className="text-sm text-slate-600">
-            O anexo especial sera incluido e o resumo comercial refletira o bonus.
+            O anexo especial será incluido e o resumo comercial refletira o bônus.
           </p>
         </div>
         <Switch
@@ -740,13 +740,13 @@ export function ContractWizardDialog({
       </div>
 
       {renderFieldGroup(
-        'Descricao da condicao especial',
+        'Descrição da condição especial',
         <Textarea
           rows={4}
           value={values.legalData.condicaoEspecial.descricao}
           disabled={isLocked('condicaoEspecialDescricao')}
           onChange={(event) =>
-            updateField('legalData.condicaoEspecial.descricao', event.target.value)
+            updateField('legalData.condicaoEspecial.descrição', event.target.value)
           }
         />,
       )}
@@ -754,7 +754,7 @@ export function ContractWizardDialog({
       <div className="grid gap-3 md:grid-cols-2">
         <div className="flex items-center justify-between rounded-[20px] border border-slate-200 px-4 py-3">
           <div>
-            <p className="text-sm font-semibold text-slate-900">Reuniao extra</p>
+            <p className="text-sm font-semibold text-slate-900">Reunião extra</p>
             <p className="text-sm text-slate-500">Reflete no anexo e no resumo comercial.</p>
           </div>
           <Switch
@@ -767,7 +767,7 @@ export function ContractWizardDialog({
         <div className="flex items-center justify-between rounded-[20px] border border-slate-200 px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-slate-900">Landing page incluida</p>
-            <p className="text-sm text-slate-500">Mantem o contrato unico e adiciona o bonus.</p>
+            <p className="text-sm text-slate-500">Mantem o contrato único e adiciona o bônus.</p>
           </div>
           <Switch
             checked={values.legalData.condicaoEspecial.incluiLandingPage}
@@ -779,7 +779,7 @@ export function ContractWizardDialog({
       </div>
 
       {renderFieldGroup(
-        'Observacoes comerciais',
+        'Observações comerciais',
         <Textarea
           rows={4}
           value={values.legalData.condicaoEspecial.observacoesComerciais}
@@ -798,8 +798,8 @@ export function ContractWizardDialog({
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
-          ['Contratante', values.legalData.contratante.razaoSocial || 'Nao preenchido'],
-          ['Responsavel', values.legalData.responsavel.nome || 'Nao preenchido'],
+          ['Contratante', values.legalData.contratante.razaoSocial || 'Não preenchido'],
+          ['Responsável', values.legalData.responsavel.nome || 'Não preenchido'],
           ['Plano', values.legalData.plano.nome],
           ['Foro', `${values.legalData.foro.cidade}/${values.legalData.foro.estado}`],
         ].map(([label, value]) => (
@@ -818,7 +818,7 @@ export function ContractWizardDialog({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Implantacao
+              Implantação
             </p>
             <p className="mt-1 text-base font-semibold text-slate-900">
               {formatCurrencyPtBr(values.legalData.pagamento.valorImplantacao)}
@@ -826,7 +826,7 @@ export function ContractWizardDialog({
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Recorrencia mensal
+              Recorrência mensal
             </p>
             <p className="mt-1 text-base font-semibold text-slate-900">
               {formatCurrencyPtBr(values.legalData.pagamento.valorRecorrente)}
@@ -834,7 +834,7 @@ export function ContractWizardDialog({
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Inicio / 1o vencimento
+              Início / 1o vencimento
             </p>
             <p className="mt-1 text-base font-semibold text-slate-900">
               {formatDatePtBr(values.legalData.pagamento.dataInicio)} /{' '}
@@ -852,20 +852,20 @@ export function ContractWizardDialog({
           Plano <strong>{derivedPreview?.commercialSummary.planoNome}</strong> com
           implantacao inicial de{' '}
           <strong>{formatCurrencyPtBr(values.legalData.pagamento.valorImplantacao)}</strong>{' '}
-          no mes 1, recorrencia mensal de{' '}
+          no mês 1, recorrência mensal de{' '}
           <strong>{formatCurrencyPtBr(values.legalData.pagamento.valorRecorrente)}</strong>{' '}
-          a partir do ciclo contratual, vigencia inicial de{' '}
+          a partir do ciclo contratual, vigência inicial de{' '}
           <strong>{values.legalData.recorrencia.vigenciaInicialMeses} meses</strong>,
-          renovacao automatica mensal, vencimento todo dia{' '}
+          renovação automática mensal, vencimento todo dia{' '}
           <strong>{values.legalData.pagamento.diaVencimentoMensal}</strong> e
           foro em <strong>{values.legalData.foro.cidade}/{values.legalData.foro.estado}</strong>.
         </p>
         <p className="text-sm leading-7 text-slate-700">
-          Condicao especial:{' '}
+          Condição especial:{' '}
           <strong>
             {values.legalData.condicaoEspecial.ativa
               ? values.legalData.condicaoEspecial.descricao
-              : 'nao aplicavel'}
+              : 'não aplicável'}
           </strong>
           .
         </p>
@@ -876,8 +876,8 @@ export function ContractWizardDialog({
   const renderStepSeven = () => (
     <ContractPreview
       renderResult={previewResult || derivedPreview}
-      emptyStateTitle="Preview contratual pronto para geracao"
-      emptyStateDescription="Use o botao abaixo para salvar o preview final, injetar anexos e persistir o HTML renderizado."
+      emptyStateTitle="Preview contratual pronto para geração"
+      emptyStateDescription="Use o botão abaixo para salvar o preview final, injetar anexos e persistir o HTML renderizado."
     />
   );
 
@@ -890,7 +890,7 @@ export function ContractWizardDialog({
       />
       <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
         <p>
-          Contrato numero <strong>{values.internalMetadata.contractNumber}</strong> pronto
+          Contrato número <strong>{values.internalMetadata.contractNumber}</strong> pronto
           para exportacao em {finalExportLabel}, com anexo do plano{' '}
           <strong>{values.legalData.plano.codigo}</strong>
           {values.legalData.condicaoEspecial.ativa ? ' e anexo de condicao especial ativo.' : '.'}
@@ -1026,7 +1026,7 @@ export function ContractWizardDialog({
               <div className="flex flex-wrap items-center gap-2">
                 {currentStep < 6 ? (
                   <Button type="button" onClick={goNext} disabled={isBusy}>
-                    Proximo
+                    Próximo
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </Button>
                 ) : null}
@@ -1037,7 +1037,7 @@ export function ContractWizardDialog({
                     ) : (
                       <CheckCircle2 className="mr-2 h-4 w-4" />
                     )}
-                    Confirmar revisao
+                    Confirmar revisão
                   </Button>
                 ) : null}
                 {currentStep === 7 ? (

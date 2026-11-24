@@ -239,46 +239,46 @@ Ajustes adicionais de microcopy:
 
 ## 9. Plano de implementacao em etapas
 
-### Etapa 1 — Base de navegacao
+### Etapa 1 â€” Base de navegacao
 - Refatorar `dashboardViews.ts` para o novo contrato.
 - Trocar o dropdown de visualizacao por uma navegacao em abas/botoes.
 - Definir `Hoje` como pagina padrao.
 
-### Etapa 2 — Container principal
+### Etapa 2 â€” Container principal
 - Reescrever `DashboardView.tsx` para separar a composicao por pagina.
 - Extrair a montagem de cada pagina para funcoes/componentes menores.
 - Preservar filtros de periodo, responsavel e exportacao.
 
-### Etapa 3 — Tela Hoje
+### Etapa 3 â€” Tela Hoje
 - Reaproveitar `LeadActionQueuePanel` como base de `Prioridades do dia`.
 - Reaproveitar `CalendarSummaryPanel` como `Compromissos`.
 - Criar uma leitura compacta de gargalo do momento.
 - Criar um bloco financeiro curto para parcelas vencidas e proximas.
 - Garantir ausencia total de grafico.
 
-### Etapa 4 — Tela Vendas
+### Etapa 4 â€” Tela Vendas
 - Refatorar `FunnelOverview` para leitura direta de destravamento.
 - Reorganizar metricas para: leads em andamento, mudancas de etapa, vendas fechadas, precisam de atencao.
 - Manter no maximo um grafico comercial.
 - Posicionar `StaleLeadsTable` como bloco acionavel principal.
 
-### Etapa 5 — Tela Financeiro
+### Etapa 5 â€” Tela Financeiro
 - Reorganizar `FinanceSnapshotCard` e os KPIs financeiros.
 - Mostrar claramente: faturado, recebido, lucro realizado, a receber, vencido, proximos 7 dias.
 - Deixar apenas um grafico financeiro, se a leitura agregar.
 
-### Etapa 6 — Tela Perdas
+### Etapa 6 â€” Tela Perdas
 - Transformar a analise hoje existente no modal em pagina.
 - Reaproveitar `useLossAnalytics`.
 - Criar estrutura com resumo, ranking, historico e acoes recomendadas.
 - Retirar o modal do fluxo principal do dashboard.
 
-### Etapa 7 — Higiene de linguagem e consistencia
+### Etapa 7 â€” Higiene de linguagem e consistencia
 - Aplicar o dicionario final em todos os componentes reutilizados.
 - Revisar CTA de cada bloco.
 - Remover labels tecnicos e repetitivos.
 
-### Etapa 8 — Validacao
+### Etapa 8 â€” Validacao
 - Typecheck
 - Build
 - Lint dos arquivos alterados

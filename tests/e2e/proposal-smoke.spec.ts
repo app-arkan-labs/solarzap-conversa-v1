@@ -148,7 +148,7 @@ test('Pipeline: gerar proposta baixa PDF e cria registros premium (versions/even
     await wizardDialog.getByRole('button', { name: /Proximo/i }).last().click();
 
     // Step 2 requires location fields
-    await wizardDialog.getByPlaceholder('Cidade').fill('Sao Paulo');
+    await wizardDialog.getByPlaceholder('Cidade').fill('São Paulo');
     await wizardDialog.locator('button[role="combobox"]').first().click();
     await page.getByRole('option', { name: /SP -/i }).click();
     await wizardDialog.getByRole('button', { name: /Proximo/i }).last().click();

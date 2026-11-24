@@ -104,7 +104,7 @@ test.beforeAll(async () => {
     email: `ia.auto.assign.call.${suffix}@example.test`,
     password: `IAAutoAssignCall!${suffix}Aa1`,
     email_confirm: true,
-    user_metadata: { full_name: 'Vendedor Ligacao' },
+    user_metadata: { full_name: 'Vendedor Ligação' },
   });
   if (sellerCallResp.error || !sellerCallResp.data.user?.id) {
     throw new Error(`Failed to create call seller user: ${sellerCallResp.error?.message || 'unknown'}`);
@@ -192,7 +192,7 @@ test.afterAll(async () => {
   if (state.sellerVisitUserId) await admin.auth.admin.deleteUser(state.sellerVisitUserId);
 });
 
-test('Politica auto-agendamento persiste Atribuir para ligacao e visita', async ({ page }) => {
+test('Política auto-agendamento persiste Atribuir para ligação e visita', async ({ page }) => {
   await login(page, state.ownerEmail, state.ownerPassword);
   await openAiSettings(page);
 

@@ -21,7 +21,7 @@ describe('notification recipient editor', () => {
     expect(result.parsedCount).toBe(3);
   });
 
-  it('adiciona emails validos e separa invalidos', () => {
+  it('adiciona e-mails válidos e separa inválidos', () => {
     const result = mergeRecipientInput(
       ['ops@cliente.com'],
       'OPS@cliente.com\ncomercial@cliente.com;invalido@',

@@ -66,7 +66,7 @@ describe('digest comment selection', () => {
     )
 
     expect(lines).toHaveLength(1)
-    expect(lines[0].startsWith('Comentario interno: ')).toBe(true)
+    expect(lines[0].startsWith('Comentário interno: ')).toBe(true)
     expect(lines[0].length).toBeLessThanOrEqual(80)
   })
 

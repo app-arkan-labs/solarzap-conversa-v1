@@ -122,7 +122,7 @@ test('M13 org selection: requires selection on login and allows switching organi
   await expect(page.getByTestId('org-select-page')).toBeVisible();
 
   await expect(page.getByText(state.orgACompanyName)).toBeVisible();
-  const orgBFallbackLabel = `Organizacao ${state.orgBId.slice(0, 8)}`;
+  const orgBFallbackLabel = `Organização ${state.orgBId.slice(0, 8)}`;
   const hasOrganizationNameFallback = await page
     .getByText(state.orgBOrganizationName)
     .first()

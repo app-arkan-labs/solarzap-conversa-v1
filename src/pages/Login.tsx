@@ -89,7 +89,7 @@ const Login = () => {
     const normalizedMessage = String(message || '').toLowerCase();
 
     if (normalizedCode === 'over_email_send_rate_limit' || normalizedMessage.includes('only request this after')) {
-      return 'Ja enviamos a confirmacao. O sistema vai tentar novo envio automaticamente em instantes.';
+      return 'Já enviamos a confirmação. O sistema vai tentar novo envio automaticamente em instantes.';
     }
 
     if (
@@ -97,7 +97,7 @@ const Login = () => {
       normalizedMessage.includes('user already registered') ||
       normalizedMessage.includes('ja possui cadastro')
     ) {
-      return 'Este email ja possui cadastro confirmado. Faça login ou use recuperacao de senha.';
+      return 'Este email já possui cadastro confirmado. Faça login ou use recuperação de senha.';
     }
 
     return message;
@@ -157,7 +157,7 @@ const Login = () => {
       const error = await resendSignUpConfirmation(targetEmail);
       if (!error) {
         toast({
-          title: 'Confirmacao reenviada automaticamente',
+          title: 'Confirmação reenviada automaticamente',
           description: `Enviamos novamente para ${targetEmail}. Confira a caixa de entrada e spam.`,
         });
         return;
@@ -205,12 +205,12 @@ const Login = () => {
             }
             toast({
               title: 'Confirme seu email para entrar',
-              description: `Reenviamos a confirmacao para ${normalizedEmail}. Verifique caixa de entrada, spam e lixeira.`,
+              description: `Reenviamos a confirmação para ${normalizedEmail}. Verifique caixa de entrada, spam e lixeira.`,
             });
           } else {
             const resendCode = (resendError as { code?: string }).code;
             toast({
-              title: 'Conta sem confirmacao',
+              title: 'Conta sem confirmação',
               description: getFriendlyAuthMessage(resendCode, resendError.message),
               variant: 'destructive',
             });
@@ -290,7 +290,7 @@ const Login = () => {
         }
         toast({
           title: 'Conta criada!',
-          description: `Enviamos o email de confirmacao para ${normalizedEmail}.`,
+          description: `Enviamos o email de confirmação para ${normalizedEmail}.`,
         });
       } else {
         const code = (error as { code?: string }).code;
@@ -299,8 +299,8 @@ const Login = () => {
           const delayMs = parseRateLimitDelayMs(error.message) ?? SIGNUP_AUTO_RESEND_DEFAULT_DELAY_MS;
           scheduleAutomaticResend(normalizedEmail, delayMs + 2000, 1);
           toast({
-            title: 'Confirmacao pendente',
-            description: `Ja enviamos uma solicitacao. Vamos reenviar automaticamente para ${normalizedEmail} em instantes.`,
+            title: 'Confirmação pendente',
+            description: `Já enviamos uma solicitacao. Vamos reenviar automaticamente para ${normalizedEmail} em instantes.`,
           });
           return;
         }
@@ -308,8 +308,8 @@ const Login = () => {
         if (isAlreadyRegisteredError(code, error.message)) {
           setView('login');
           toast({
-            title: 'Email ja cadastrado',
-            description: 'Essa conta ja existe. Entre com sua senha ou use recuperacao de senha.',
+            title: 'Email já cadastrado',
+            description: 'Essa conta já existe. Entre com sua senha ou use recuperação de senha.',
           });
           return;
         }

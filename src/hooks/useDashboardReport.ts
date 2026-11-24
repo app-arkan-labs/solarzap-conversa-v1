@@ -351,7 +351,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
             }
             if (orgId) openDealsQ = openDealsQ.eq('org_id', orgId);
 
-            // Stale leads â€” exclude terminal stages
+            // Stale leads — exclude terminal stages
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
             let staleLeadsQ = supabase
@@ -824,7 +824,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
             }));
 
             const ownerStatsMap = new Map<string, { leads: number; won: number; revenue: number; profit: number }>();
-            const ownerLabelFromId = (id: string) => (id === user.id ? "Voce" : `Usuario ${id.slice(0, 8)}`);
+            const ownerLabelFromId = (id: string) => (id === user.id ? "Você" : `Usuário ${id.slice(0, 8)}`);
             const ensureOwner = (ownerId: string) => {
                 if (!ownerStatsMap.has(ownerId)) {
                     ownerStatsMap.set(ownerId, { leads: 0, won: 0, revenue: 0, profit: 0 });
@@ -884,7 +884,7 @@ export const useDashboardReport = (params: DashboardFilters) => {
                     .sort((a, b) => b.revenue - a.revenue)
                 : [{
                     owner_id: ownerUserId ?? undefined,
-                    name: ownerUserId ? ownerLabelFromId(ownerUserId) : "Geral (Organizacao)",
+                    name: ownerUserId ? ownerLabelFromId(ownerUserId) : "Geral (Organização)",
                     leads: leadsCount,
                     won: conversionBaseCount,
                     revenue,

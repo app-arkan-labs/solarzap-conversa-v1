@@ -41,7 +41,7 @@ export default function BillingBanner({ billing }: { billing: OrgBillingInfo | n
           <span>
             <span className="font-medium">Pagamento pendente.</span>{' '}
             {graceDays && graceDays > 0
-              ? `Corrija sua forma de pagamento em ate ${graceDays} dia${graceDays > 1 ? 's' : ''} para evitar bloqueio total.`
+              ? `Corrija sua forma de pagamento em até ${graceDays} dia${graceDays > 1 ? 's' : ''} para evitar bloqueio total.`
               : 'Corrija sua forma de pagamento para restaurar o acesso total.'}
           </span>
         </span>

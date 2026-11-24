@@ -159,7 +159,7 @@ export function NotificationsPanel({
                     handleOpenReschedule(notification);
                   }}
                 >
-                  Nao paga
+                  Não paga
                 </Button>
               </div>
             ) : null}

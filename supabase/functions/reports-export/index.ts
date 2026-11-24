@@ -45,7 +45,7 @@ serve(async (req) => {
         .lte("created_at", end)
         .eq("user_id", user.id);
 
-      csvContent = "ID,Nome,Telefone,Etapa,Origem,Data Criacao,Tags\n";
+      csvContent = "ID,Nome,Telefone,Etapa,Origem,Data Criação,Tags\n";
       data?.forEach((row: any) => {
         csvContent += `"${row.id}","${row.nome}","${row.telefone}","${row.status_pipeline}","${row.source}","${row.created_at}","${row.tags}"\n`;
       });
@@ -142,7 +142,7 @@ serve(async (req) => {
         .lte("start_at", end)
         .eq("user_id", user.id);
 
-      csvContent = "ID,Titulo,Lead,Tipo,Status,Inicio,Fim\n";
+      csvContent = "ID,Título,Lead,Tipo,Status,Início,Fim\n";
       data?.forEach((row: any) => {
         csvContent += `"${row.id}","${row.title}","${row.leads?.nome || ""}","${row.type}","${row.status}","${row.start_at}","${row.end_at}"\n`;
       });

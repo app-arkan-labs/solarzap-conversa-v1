@@ -164,7 +164,7 @@ export function MarkAsLostModal({
             Registrar perda do lead
           </DialogTitle>
           <DialogDescription>
-            Registre o motivo da perda para alimentar o historico comercial e o dashboard de mitigacao.
+            Registre o motivo da perda para alimentar o histórico comercial e o dashboard de mitigacao.
           </DialogDescription>
         </DialogHeader>
 
@@ -176,7 +176,7 @@ export function MarkAsLostModal({
                 <p className="text-xs text-muted-foreground">{lead?.company || 'Sem empresa informada'}</p>
               </div>
               <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700">
-                {lead?.pipelineStage === 'perdido' ? 'Ja perdido' : 'Mover para perdido'}
+                {lead?.pipelineStage === 'perdido' ? 'Já perdido' : 'Mover para perdido'}
               </Badge>
             </div>
           </div>
@@ -189,7 +189,7 @@ export function MarkAsLostModal({
                 className="text-xs font-medium text-primary hover:underline"
                 onClick={() => setIsReasonEditorOpen((current) => !current)}
               >
-                {isReasonEditorOpen ? 'Fechar edicao' : 'Adicionar motivo'}
+                {isReasonEditorOpen ? 'Fechar edição' : 'Adicionar motivo'}
               </button>
             </div>
             <Select value={selectedReasonId} onValueChange={setSelectedReasonId} disabled={isLoading || isSubmitting}>
@@ -234,14 +234,14 @@ export function MarkAsLostModal({
               id="loss-detail"
               value={reasonDetail}
               onChange={(event) => setReasonDetail(event.target.value)}
-              placeholder="Detalhe o que aconteceu, qual objecao venceu ou qual acao futura pode recuperar esse lead."
+              placeholder="Detalhe o que aconteceu, qual objeção venceu ou qual ação futura pode recuperar esse lead."
               className="min-h-[120px]"
               disabled={isSubmitting}
             />
             <p className="text-xs text-muted-foreground">
               {selectedReason?.key === 'outro'
-                ? 'Para o motivo Outro, o detalhe e obrigatorio.'
-                : 'Use este campo para enriquecer a analise e orientar mitigacoes futuras.'}
+                ? 'Para o motivo Outro, o detalhe e obrigatório.'
+                : 'Use este campo para enriquecer a análise e orientar mitigações futuras.'}
             </p>
           </div>
 

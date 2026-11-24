@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
     const previousStatus = asString(draftRow.contract_status, 120) || 'draft';
     let nextStatus = previousStatus;
     let eventType = 'contract_draft_saved';
-    let eventMessage = 'Contrato draft salvo via sessao embed.';
+    let eventMessage = 'Contrato draft salvo via sessão embed.';
 
     if (action === 'review_ready') {
       nextStatus = 'review_ready';

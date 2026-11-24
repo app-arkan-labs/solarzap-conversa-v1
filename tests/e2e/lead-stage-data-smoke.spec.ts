@@ -124,7 +124,7 @@ test('lead stage data smoke: seed stage_data, render badges and details section'
     financiamento: {
       financing_status: 'in_review',
       missing_docs: ['comprovante_renda'],
-      bank_notes: 'Analise em andamento',
+      bank_notes: 'Análise em andamento',
       updated_at: new Date().toISOString(),
     },
   };

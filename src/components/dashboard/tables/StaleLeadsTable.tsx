@@ -36,8 +36,8 @@ export function StaleLeadsTable({
               <TableHead>Lead</TableHead>
               <TableHead>Etapa atual</TableHead>
               <TableHead className="text-right">Tempo parado</TableHead>
-              <TableHead>Ultima interacao</TableHead>
-              <TableHead className="text-right">Acao</TableHead>
+              <TableHead>Última interação</TableHead>
+              <TableHead className="text-right">Ação</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -60,7 +60,7 @@ export function StaleLeadsTable({
                         addSuffix: true,
                         locale: ptBR,
                       })
-                    : "Sem interacao recente"}
+                    : "Sem interação recente"}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button

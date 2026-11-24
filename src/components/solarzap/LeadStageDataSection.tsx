@@ -14,18 +14,18 @@ type StageSectionConfig = {
 const SECTION_CONFIGS: StageSectionConfig[] = [
   {
     key: 'respondeu',
-    title: 'Qualificacao (Respondeu)',
+    title: 'Qualificação (Respondeu)',
     subtitle: 'BANT e contexto inicial',
     fields: [
       { key: 'segment', label: 'Segmento' },
       { key: 'timing', label: 'Timing' },
       { key: 'budget_fit', label: 'Fit de Orcamento' },
       { key: 'need_reason', label: 'Motivo da Necessidade' },
-      { key: 'decision_makers', label: 'Tomadores de Decisao' },
+      { key: 'decision_makers', label: 'Tomadores de Decisão' },
       { key: 'decision_makers_present', label: 'Tomadores Presentes' },
       { key: 'visit_datetime', label: 'Data/Hora da Visita' },
-      { key: 'address', label: 'Endereco' },
-      { key: 'reference_point', label: 'Ponto de Referencia' },
+      { key: 'address', label: 'Endereço' },
+      { key: 'reference_point', label: 'Ponto de Referência' },
       { key: 'bant_complete', label: 'BANT Completo' },
     ],
   },
@@ -47,15 +47,15 @@ const SECTION_CONFIGS: StageSectionConfig[] = [
   },
   {
     key: 'negociacao',
-    title: 'Negociacao',
-    subtitle: 'Condicao, objecao e status',
+    title: 'Negociação',
+    subtitle: 'Condição, objeção e status',
     fields: [
       { key: 'payment_track', label: 'Trilho de Pagamento' },
-      { key: 'payment_method', label: 'Metodo de Pagamento' },
-      { key: 'main_objection', label: 'Objecao Principal' },
-      { key: 'chosen_condition', label: 'Condicao Escolhida' },
-      { key: 'explicit_approval', label: 'Aprovacao Explicita' },
-      { key: 'negotiation_status', label: 'Status da Negociacao' },
+      { key: 'payment_method', label: 'Método de Pagamento' },
+      { key: 'main_objection', label: 'Objeção Principal' },
+      { key: 'chosen_condition', label: 'Condição Escolhida' },
+      { key: 'explicit_approval', label: 'Aprovação Explicita' },
+      { key: 'negotiation_status', label: 'Status da Negociação' },
     ],
   },
   {
@@ -65,8 +65,8 @@ const SECTION_CONFIGS: StageSectionConfig[] = [
     fields: [
       { key: 'financing_status', label: 'Status do Financiamento' },
       { key: 'missing_docs', label: 'Documentos Faltantes' },
-      { key: 'last_update_at', label: 'Ultima Atualizacao' },
-      { key: 'next_followup_at', label: 'Proximo Follow-up' },
+      { key: 'last_update_at', label: 'Última Atualização' },
+      { key: 'next_followup_at', label: 'Próximo Follow-up' },
       { key: 'fear_reason', label: 'Medo / Travamento' },
       { key: 'profile_type', label: 'Perfil' },
       { key: 'approved_at', label: 'Aprovado Em' },
@@ -96,7 +96,7 @@ function formatStageValue(fieldKey: string, value: unknown): string {
   }
 
   if (typeof value === 'boolean') {
-    return value ? 'Sim' : 'Nao';
+    return value ? 'Sim' : 'Não';
   }
 
   if (typeof value === 'number') return String(value);

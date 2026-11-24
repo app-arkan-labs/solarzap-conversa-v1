@@ -38,7 +38,7 @@ describe('calcMonthlyGeneration', () => {
     expect(annual).toBe(4272);
   });
 
-  it('usa fallback sazonal regional por UF quando fatores externos nao estao disponiveis', () => {
+  it('usa fallback sazonal regional por UF quando fatores externos não estão disponíveis', () => {
     const monthlySouth = calcMonthlyGeneration(3.3, 350, { uf: 'RS' });
     const monthlyNorth = calcMonthlyGeneration(3.3, 350, { uf: 'PA' });
 

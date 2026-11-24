@@ -873,7 +873,7 @@ export function useLeads() {
             const { data, error } = await supabase.from('leads').update(updatePayload).eq('id', Number(leadId)).eq('org_id', orgId).select('id');
             if (error) throw error;
             if (!data?.length) {
-                throw new Error('Nenhum lead atualizado. Verifique permissoes.');
+                throw new Error('Nenhum lead atualizado. Verifique permissões.');
             }
             return { leadId, enabled };
         },
@@ -921,7 +921,7 @@ export function useLeads() {
 
             if (error) throw error;
             if (!data?.length) {
-                throw new Error('Nenhum lead atualizado. Verifique permissoes.');
+                throw new Error('Nenhum lead atualizado. Verifique permissões.');
             }
 
             if (!enabled) {

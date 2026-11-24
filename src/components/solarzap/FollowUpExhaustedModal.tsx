@@ -99,7 +99,7 @@ export function FollowUpExhaustedModal({
             </div>
 
             <div className="space-y-2">
-              <Label>Detalhes (opcional, obrigatorio para "Outro")</Label>
+              <Label>Detalhes (opcional, obrigatório para "Outro")</Label>
               <Textarea
                 value={reasonDetail}
                 onChange={(event) => setReasonDetail(event.target.value)}

@@ -12,28 +12,28 @@ export const LEAD_NEXT_ACTION_SUGGESTIONS: Record<PipelineStage, string> = {
   proposta_pronta: 'Apresentar proposta',
   visita_agendada: 'Realizar visita',
   visita_realizada: 'Negociar proposta',
-  proposta_negociacao: 'Fechar negocio',
-  financiamento: 'Avancar financiamento',
+  proposta_negociacao: 'Fechar negócio',
+  financiamento: 'Avançar financiamento',
   aprovou_projeto: 'Assinar contrato',
   contrato_assinado: 'Aguardar pagamento',
-  projeto_pago: 'Agendar instalacao',
-  aguardando_instalacao: 'Acompanhar instalacao',
-  projeto_instalado: 'Coletar avaliacao',
-  coletar_avaliacao: 'Pedir indicacao',
-  contato_futuro: 'Retomar no periodo combinado',
-  perdido: 'Sem proxima acao',
+  projeto_pago: 'Agendar instalação',
+  aguardando_instalacao: 'Acompanhar instalação',
+  projeto_instalado: 'Coletar avaliação',
+  coletar_avaliacao: 'Pedir indicação',
+  contato_futuro: 'Retomar no período combinado',
+  perdido: 'Sem próxima ação',
 };
 
 export const LEAD_TASK_CHANNEL_LABELS: Record<Exclude<LeadTask['channel'], null>, string> = {
   whatsapp: 'WhatsApp',
-  call: 'Ligacao',
+  call: 'Ligação',
   email: 'E-mail',
   other: 'Outro',
 };
 
 export const LEAD_TASK_PRIORITY_LABELS: Record<LeadTask['priority'], string> = {
   low: 'Baixa',
-  medium: 'Media',
+  medium: 'Média',
   high: 'Alta',
 };
 
@@ -82,7 +82,7 @@ export const formatLeadTaskDueLabel = (
   now = new Date(),
 ): string => {
   const dueState = getLeadTaskDueState(task, now);
-  if (dueState === 'none') return 'Sem acao';
+  if (dueState === 'none') return 'Sem ação';
   if (!task?.dueAt) return 'Sem prazo';
 
   const dueAt = new Date(task.dueAt);
@@ -114,11 +114,11 @@ export const formatLeadTaskTimestamp = (value: string | null | undefined): strin
 };
 
 export const getLastActionText = (task: LeadTask | null | undefined): string => {
-  if (!task) return 'Nenhuma acao concluida';
+  if (!task) return 'Nenhuma ação concluída';
   const result = String(task.resultSummary || '').trim();
   if (result.length > 0) return result;
   const title = String(task.title || '').trim();
-  return title.length > 0 ? title : 'Acao concluida';
+  return title.length > 0 ? title : 'Ação concluída';
 };
 
 export const buildLeadActionMaps = (tasks: LeadTask[], now = new Date()) => {

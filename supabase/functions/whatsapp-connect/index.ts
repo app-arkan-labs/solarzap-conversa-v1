@@ -190,7 +190,7 @@ Deno.serve(async (req) => {
                     JSON.stringify({
                         ok: false,
                         code: 'billing_limit_reached',
-                        error: 'Limite do plano atingido para novas instancias de WhatsApp',
+                        error: 'Limite do plano atingido para novas instâncias de WhatsApp',
                         billing: instanceLimit,
                     }),
                     {

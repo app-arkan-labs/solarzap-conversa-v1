@@ -45,10 +45,10 @@ type InternalCrmCallFlowModalProps = {
 };
 
 const OUTCOME_LABELS: Record<InternalCrmCallOutcomePayload['outcome'], string> = {
-  no_answer: 'Nao atendeu',
+  no_answer: 'Não atendeu',
   answered: 'Atendeu',
-  reschedule: 'Pediu outro horario',
-  invalid_number: 'Numero invalido',
+  reschedule: 'Pediu outro horário',
+  invalid_number: 'Número inválido',
   no_interest: 'Sem interesse',
 };
 
@@ -287,7 +287,7 @@ export function InternalCrmCallFlowModal({
             <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
               <label className="flex items-start gap-2 text-sm text-amber-950">
                 <Checkbox checked={moveToTrying} onCheckedChange={(checked) => setMoveToTrying(checked === true)} />
-                <span>Mover para Tentando Contato e seguir a cadencia.</span>
+                <span>Mover para Tentando Contato e seguir a cadência.</span>
               </label>
             </div>
           ) : null}
@@ -303,19 +303,19 @@ export function InternalCrmCallFlowModal({
             <div className="space-y-4 rounded-lg border border-border/70 p-4">
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <Check className="h-4 w-4 text-emerald-600" />
-                Qualificacao MQL
+                Qualificação MQL
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Investe em trafego pago?</Label>
+                  <Label>Investe em tráfego pago?</Label>
                   <Select value={paidTrafficStatus} onValueChange={setPaidTrafficStatus}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="yes">Sim</SelectItem>
-                      <SelectItem value="no">Nao</SelectItem>
-                      <SelectItem value="past">Ja investiu antes</SelectItem>
-                      <SelectItem value="unknown">Nao sabe informar</SelectItem>
+                      <SelectItem value="no">Não</SelectItem>
+                      <SelectItem value="past">Já investiu antes</SelectItem>
+                      <SelectItem value="unknown">Não sabe informar</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -324,37 +324,37 @@ export function InternalCrmCallFlowModal({
                   <Select value={monthlyAdSpendRange} onValueChange={setMonthlyAdSpendRange}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Nao investe</SelectItem>
-                      <SelectItem value="up_1000">Ate R$ 1.000</SelectItem>
+                      <SelectItem value="none">Não investe</SelectItem>
+                      <SelectItem value="up_1000">Até R$ 1.000</SelectItem>
                       <SelectItem value="1000_3000">R$ 1.000 a R$ 3.000</SelectItem>
                       <SelectItem value="3000_5000">R$ 3.000 a R$ 5.000</SelectItem>
                       <SelectItem value="over_5000">Acima de R$ 5.000</SelectItem>
-                      <SelectItem value="unknown">Nao sabe informar</SelectItem>
+                      <SelectItem value="unknown">Não sabe informar</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Faturamento medio</Label>
+                  <Label>Faturamento médio</Label>
                   <Select value={revenueRange} onValueChange={setRevenueRange}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="up_30000">Ate R$ 30 mil</SelectItem>
+                      <SelectItem value="up_30000">Até R$ 30 mil</SelectItem>
                       <SelectItem value="30000_50000">R$ 30 mil a R$ 50 mil</SelectItem>
                       <SelectItem value="50000_100000">R$ 50 mil a R$ 100 mil</SelectItem>
                       <SelectItem value="100000_300000">R$ 100 mil a R$ 300 mil</SelectItem>
                       <SelectItem value="over_300000">Acima de R$ 300 mil</SelectItem>
-                      <SelectItem value="unknown">Nao sabe informar</SelectItem>
+                      <SelectItem value="unknown">Não sabe informar</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Possui socio?</Label>
+                  <Label>Possui sócio?</Label>
                   <Select value={hasPartner} onValueChange={setHasPartner}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="yes">Sim</SelectItem>
-                      <SelectItem value="no">Nao</SelectItem>
-                      <SelectItem value="unknown">Nao sabe informar</SelectItem>
+                      <SelectItem value="no">Não</SelectItem>
+                      <SelectItem value="unknown">Não sabe informar</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -362,8 +362,8 @@ export function InternalCrmCallFlowModal({
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Quem participa da reuniao?</Label>
-                  <Input value={decisionMakers} onChange={(event) => setDecisionMakers(event.target.value)} placeholder="Socio, comercial, decisor..." />
+                  <Label>Quem participa da reunião?</Label>
+                  <Input value={decisionMakers} onChange={(event) => setDecisionMakers(event.target.value)} placeholder="Sócio, comercial, decisor..." />
                 </div>
                 <div className="space-y-2">
                   <Label>Quando quer resolver?</Label>
@@ -371,9 +371,9 @@ export function InternalCrmCallFlowModal({
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="now">Agora</SelectItem>
-                      <SelectItem value="30_days">Proximos 30 dias</SelectItem>
+                      <SelectItem value="30_days">Próximos 30 dias</SelectItem>
                       <SelectItem value="later">Depois</SelectItem>
-                      <SelectItem value="no_urgency">Sem urgencia</SelectItem>
+                      <SelectItem value="no_urgency">Sem urgência</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -408,14 +408,14 @@ export function InternalCrmCallFlowModal({
                 </label>
                 <label className="flex items-start gap-2 rounded-lg border border-border/70 p-3 text-sm">
                   <Checkbox checked={openMeetingAfterSave} onCheckedChange={(checked) => setOpenMeetingAfterSave(checked === true)} />
-                  <span>Agendar reuniao em seguida</span>
+                  <span>Agendar reunião em seguida</span>
                 </label>
               </div>
             </div>
           ) : null}
 
           <div className="space-y-2">
-            <Label>Observacoes</Label>
+            <Label>Observações</Label>
             <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} />
           </div>
         </div>

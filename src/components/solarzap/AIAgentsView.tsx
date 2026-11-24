@@ -181,16 +181,16 @@ const validateFollowUpWindowConfig = (config: FollowUpWindowConfig): string | nu
     const startMin = parseTimeToMinutes(config.start);
     const endMin = parseTimeToMinutes(config.end);
     if (startMin === null || endMin === null || endMin <= startMin) {
-        return 'Horario final deve ser maior que o inicial';
+        return 'Horário final deve ser maior que o inicial';
     }
     if (!Array.isArray(config.days) || config.days.length === 0) {
         return 'Selecione ao menos 1 dia util para follow-up';
     }
     if (config.preferred_time) {
         const preferredMin = parseTimeToMinutes(config.preferred_time);
-        if (preferredMin === null) return 'Horario preferencial invalido';
+        if (preferredMin === null) return 'Horário preferencial inválido';
         if (preferredMin < startMin || preferredMin >= endMin) {
-            return 'Horario preferencial precisa estar dentro da janela';
+            return 'Horário preferencial precisa estar dentro da janela';
         }
     }
     return null;
@@ -971,12 +971,12 @@ export function AIAgentsView() {
         .map((step) => `E${step.step}: ${formatMinutesCompact(step.delay_minutes)}`)
         .join(' -> ');
     const autoScheduleModeLabel = autoScheduleDraft.auto_schedule_call_enabled && autoScheduleDraft.auto_schedule_visit_enabled
-        ? 'Ambos ativos: IA escolhe entre ligacao e visita.'
+        ? 'Ambos ativos: IA escolhe entre ligação e visita.'
         : autoScheduleDraft.auto_schedule_call_enabled
-            ? 'Somente ligacao ativa: IA segue por ligacao.'
+            ? 'Somente ligação ativa: IA segue por ligação.'
             : autoScheduleDraft.auto_schedule_visit_enabled
                 ? 'Somente visita ativa: IA segue por visita.'
-                : 'Ambos desativados: IA nao agenda automaticamente e informa retorno.';
+                : 'Ambos desativados: IA não agenda automaticamente e informa retorno.';
     const promptWarnings = [
         promptLength > 0 && promptLength < 50 ? `Prompt curto (${promptLength} < 50 caracteres)` : null,
         promptLength > 15000 ? `Prompt longo (${promptLength} > 15000 caracteres)` : null,
@@ -1231,7 +1231,7 @@ export function AIAgentsView() {
 
                     <Card className={AI_SECTION_CARD_CLASS} data-testid="auto-schedule-controls-card">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm">Politica de Agendamento Automatico</CardTitle>
+                            <CardTitle className="text-sm">Política de Agendamento Automático</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4 pt-1">
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -1239,10 +1239,10 @@ export function AIAgentsView() {
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <Label className="text-xs font-semibold text-muted-foreground">
-                                                Agendamento de Ligacoes
+                                                Agendamento de Ligações
                                             </Label>
                                             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                                                Ativa/desativa convite automatico para chamada.
+                                                Ativa/desativa convite automático para chamada.
                                             </p>
                                         </div>
                                         <Switch
@@ -1253,7 +1253,7 @@ export function AIAgentsView() {
                                         />
                                     </div>
                                     <div className="mt-3 space-y-1">
-                                        <Label className="text-[11px] text-muted-foreground">Dias minimos para ligacao</Label>
+                                        <Label className="text-[11px] text-muted-foreground">Dias mínimos para ligação</Label>
                                         <Input
                                             type="number"
                                             min={AUTO_SCHEDULE_MIN_DAYS_MIN}
@@ -1302,7 +1302,7 @@ export function AIAgentsView() {
                                                 Agendamento de Visitas
                                             </Label>
                                             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                                                Ativa/desativa convite automatico para visita tecnica.
+                                                Ativa/desativa convite automático para visita técnica.
                                             </p>
                                         </div>
                                         <Switch
@@ -1313,7 +1313,7 @@ export function AIAgentsView() {
                                         />
                                     </div>
                                     <div className="mt-3 space-y-1">
-                                        <Label className="text-[11px] text-muted-foreground">Dias minimos para visita</Label>
+                                        <Label className="text-[11px] text-muted-foreground">Dias mínimos para visita</Label>
                                         <Input
                                             type="number"
                                             min={AUTO_SCHEDULE_MIN_DAYS_MIN}
@@ -1376,7 +1376,7 @@ export function AIAgentsView() {
                                 </Select>
                                 <p className="mt-2 text-[11px] text-muted-foreground">{autoScheduleModeLabel}</p>
                                 <p className="mt-1 text-[11px] text-muted-foreground">
-                                    Regra fixa em runtime: apos 18:00 no timezone acima, a IA nao convida para ligacao.
+                                    Regra fixa em runtime: após 18:00 no timezone acima, a IA não convida para ligação.
                                 </p>
                             </div>
 
@@ -1393,7 +1393,7 @@ export function AIAgentsView() {
                                         data-testid="auto-schedule-controls-save"
                                     >
                                         <Save className="mr-2 h-4 w-4" />
-                                        Salvar Politica
+                                        Salvar Política
                                     </Button>
                                 </div>
                             )}
@@ -1693,7 +1693,7 @@ export function AIAgentsView() {
                                             <div className="mt-4 space-y-3 border-t border-border pt-4">
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                                     <div>
-                                                        <p className="text-xs font-semibold text-foreground/84">Controlador de Cadencia</p>
+                                                        <p className="text-xs font-semibold text-foreground/84">Controlador de Cadência</p>
                                                         <p className="text-[11px] text-muted-foreground">
                                                             {followUpCadencePreview || 'Nenhuma etapa ativa'}
                                                         </p>
@@ -1718,7 +1718,7 @@ export function AIAgentsView() {
 
                                                     <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                                                         <div className="space-y-1">
-                                                            <Label className="text-[11px] text-muted-foreground">Inicio</Label>
+                                                            <Label className="text-[11px] text-muted-foreground">Início</Label>
                                                             <Input
                                                                 type="time"
                                                                 value={followUpWindowDraft.start}
@@ -1736,7 +1736,7 @@ export function AIAgentsView() {
                                                             />
                                                         </div>
                                                         <div className="space-y-1">
-                                                            <Label className="text-[11px] text-muted-foreground">Horario preferencial (opcional)</Label>
+                                                            <Label className="text-[11px] text-muted-foreground">Horário preferencial (opcional)</Label>
                                                             <Input
                                                                 type="time"
                                                                 value={followUpWindowDraft.preferred_time || ''}
@@ -1804,7 +1804,7 @@ export function AIAgentsView() {
                                                                 </div>
 
                                                                 <div className="text-[11px] text-muted-foreground md:pr-2">
-                                                                    {item.enabled ? 'Disparo automatico ativo' : 'Etapa pausada'}
+                                                                    {item.enabled ? 'Disparo automático ativo' : 'Etapa pausada'}
                                                                 </div>
 
                                                                 <Input
@@ -1851,7 +1851,7 @@ export function AIAgentsView() {
 
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                                     <p className="text-[11px] text-muted-foreground">
-                                                        Padrao do sistema: E1 3h {'->'} E2 1d {'->'} E3 2d {'->'} E4 3d {'->'} E5 7d.
+                                                        Padrão do sistema: E1 3h {'->'} E2 1d {'->'} E3 2d {'->'} E4 3d {'->'} E5 7d.
                                                     </p>
                                                     <div className="flex items-center gap-2">
                                                         <Button
@@ -1869,7 +1869,7 @@ export function AIAgentsView() {
                                                             onClick={handleFollowUpCadenceSave}
                                                             disabled={!canEdit || !followUpCadenceDirty || hasFollowUpCadenceErrors}
                                                         >
-                                                            Salvar Cadencia
+                                                            Salvar Cadência
                                                         </Button>
                                                     </div>
                                                 </div>

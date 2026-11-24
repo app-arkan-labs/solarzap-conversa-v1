@@ -170,11 +170,11 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
 
     for (const c of cases) {
       if (!(await dismissReadyModalIfPresent())) {
-        test.skip(true, 'Modal "Proposta Pronta" nao fechou de forma confiavel neste ambiente.');
+        test.skip(true, 'Modal "Proposta Pronta" não fechou de forma confiável neste ambiente.');
       }
       await page.waitForTimeout(300);
       if (!(await dismissReadyModalIfPresent())) {
-        test.skip(true, 'Modal "Proposta Pronta" nao fechou de forma confiavel neste ambiente.');
+        test.skip(true, 'Modal "Proposta Pronta" não fechou de forma confiável neste ambiente.');
       }
       await page.keyboard.press('Escape').catch(() => {});
 
@@ -218,7 +218,7 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
         }
       }
       if (!proposalOpened) {
-        throw new Error(`Falha ao abrir acao de proposta para lead ${String(leadId)}.`);
+        throw new Error(`Falha ao abrir ação de proposta para lead ${String(leadId)}.`);
       }
 
       if (!proposalDialog) {
@@ -250,11 +250,11 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
           }
         }
         if (!projectTypeSelected) {
-          throw new Error(`Nao foi possivel selecionar tipo de projeto ${c.optionLabel}.`);
+          throw new Error(`Não foi possível selecionar tipo de projeto ${c.optionLabel}.`);
         }
 
         // Step 2 requires city + UF.
-        await getProposalDialog().getByPlaceholder('Cidade').fill('Sao Paulo');
+        await getProposalDialog().getByPlaceholder('Cidade').fill('São Paulo');
         await dismissReadyModalIfPresent();
         await getProposalDialog().locator('button[role="combobox"]').first().click({ force: true });
         await page.getByRole('option', { name: /SP -/i }).click();
@@ -319,7 +319,7 @@ test('Pipeline: templates por segmento (residencial/empresarial/agro/usina) gera
       }
 
       if (!(await dismissReadyModalIfPresent())) {
-        test.skip(true, 'Modal "Proposta Pronta" nao fechou de forma confiavel neste ambiente.');
+        test.skip(true, 'Modal "Proposta Pronta" não fechou de forma confiável neste ambiente.');
       }
 
       await search.fill('');

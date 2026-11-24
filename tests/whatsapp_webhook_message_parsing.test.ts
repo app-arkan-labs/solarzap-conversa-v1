@@ -32,7 +32,7 @@ test('ignora mensagens de sistema que antes viravam placeholder', () => {
   assert.equal(extractInboundMessageContent(msg), null)
 })
 
-test('desempacota wrappers (ephemeral/viewOnce/deviceSent) e preserva conteudo real', () => {
+test('desempacota wrappers (ephemeral/viewOnce/deviceSent) e preserva conteúdo real', () => {
   const ephemeral = {
     message: {
       ephemeralMessage: {
@@ -75,7 +75,7 @@ test('desempacota wrappers (ephemeral/viewOnce/deviceSent) e preserva conteudo r
   assert.equal(extractInboundMessageContent(deviceSent), 'Mensagem enviada por outro dispositivo')
 })
 
-test('bloqueia JID @lid sem numero explicito e aceita quando numero existe', () => {
+test('bloqueia JID @lid sem número explicito e aceita quando número existe', () => {
   const msgSemNumero = {
     key: { remoteJid: '243765264568524@lid', fromMe: false, id: 'lid_1' },
     message: {
@@ -103,7 +103,7 @@ test('bloqueia JID @lid sem numero explicito e aceita quando numero existe', () 
   )
 })
 
-test('resolve telefone explicito a partir de remoteJidAlt e nao usa sender da instancia', () => {
+test('resolve telefone explicito a partir de remoteJidAlt e não usa sender da instância', () => {
   const payload = {
     sender: '5514991436026@s.whatsapp.net', // numero da instancia (nao do contato)
     data: {
@@ -124,7 +124,7 @@ test('resolve telefone explicito a partir de remoteJidAlt e nao usa sender da in
   )
 })
 
-test('nao considera participant @lid como telefone explicito valido', () => {
+test('não considera participant @lid como telefone explicito válido', () => {
   const payload = {
     data: {
       key: { remoteJid: '243765264568524@lid' },

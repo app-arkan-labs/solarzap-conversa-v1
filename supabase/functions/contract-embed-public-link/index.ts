@@ -206,7 +206,7 @@ Deno.serve(async (req) => {
       userId: sellerUserId,
       previousStatus: null,
       nextStatus: 'draft',
-      message: 'Contrato draft criado via emissao publica de sessao embed.',
+      message: 'Contrato draft criado via emissão pública de sessão embed.',
     });
 
     const internalMetadata = {
@@ -282,7 +282,7 @@ Deno.serve(async (req) => {
       previous_status: null,
       next_status: 'draft',
       payload: {
-        message: 'Contrato criado via emissao publica de sessao embed.',
+        message: 'Contrato criado via emissão pública de sessão embed.',
         allowed_origin: allowedOrigin,
         source: 'contract-embed-public-link',
       },

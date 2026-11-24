@@ -29,7 +29,7 @@ export const assertContractStatusTransition = (
 ) => {
   if (!canTransitionContractStatus(currentStatus, nextStatus)) {
     throw new Error(
-      `Transicao invalida do contrato: ${currentStatus} -> ${nextStatus}`,
+      `Transição inválida do contrato: ${currentStatus} -> ${nextStatus}`,
     );
   }
 };
@@ -39,7 +39,7 @@ export const getContractStatusLabel = (status: ContractStatus) => {
     case 'draft':
       return 'Rascunho';
     case 'review_ready':
-      return 'Revisao pronta';
+      return 'Revisão pronta';
     case 'preview_generated':
       return 'Preview gerado';
     case 'pdf_generated':

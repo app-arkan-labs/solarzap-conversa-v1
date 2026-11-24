@@ -60,7 +60,7 @@ export default function OrganizationSelect() {
       <div className="mx-auto max-w-4xl">
         <Card data-testid="org-select-page" className="border-border/70 bg-background/90 shadow-[0_24px_70px_-36px_rgba(15,23,42,0.45)] backdrop-blur-xl">
           <CardHeader>
-            <CardTitle className="text-foreground">Selecao de empresa</CardTitle>
+            <CardTitle className="text-foreground">Seleção de empresa</CardTitle>
             <CardDescription>Selecione o contexto para continuar.</CardDescription>
           </CardHeader>
           <CardContent>

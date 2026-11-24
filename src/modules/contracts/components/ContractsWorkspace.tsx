@@ -109,12 +109,12 @@ export function ContractsWorkspace({
       ? {
           title: 'Contratos',
           subtitle:
-            'Modulo contratual central no CRM admin, com drafts, preview, PDF e preparacao para embed.',
+            'Módulo contratual central no CRM admin, com drafts, preview, PDF e preparação para embed.',
         }
       : {
-          title: 'Modulo contratual',
+          title: 'Módulo contratual',
           subtitle:
-            'Draft, wizard, preview, PDF e persistencia centralizados no SolarZap.',
+            'Draft, wizard, preview, PDF e persistência centralizados no SolarZap.',
         };
 
   return (
@@ -138,7 +138,7 @@ export function ContractsWorkspace({
                     Drafts
                   </p>
                   <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">
-                    Contratos do modulo central
+                    Contratos do módulo central
                   </h2>
                 </div>
                 {contractModule.isLoadingDrafts ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -210,7 +210,7 @@ export function ContractsWorkspace({
                       {activeValues.legalData.contratante.razaoSocial || 'Contrato em andamento'}
                     </h2>
                     <p className="text-sm text-slate-600">
-                      {activeValues.legalData.plano.nome} • Responsavel {activeValues.legalData.responsavel.nome || 'nao preenchido'}
+                      {activeValues.legalData.plano.nome} • Responsável {activeValues.legalData.responsavel.nome || 'não preenchido'}
                     </p>
                   </div>
 
@@ -257,9 +257,9 @@ export function ContractsWorkspace({
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   {[
-                    ['Implantacao', formatCurrencyPtBr(activeValues.legalData.pagamento.valorImplantacao)],
-                    ['Recorrencia', formatCurrencyPtBr(activeValues.legalData.pagamento.valorRecorrente)],
-                    ['Inicio', formatDatePtBr(activeValues.legalData.pagamento.dataInicio)],
+                    ['Implantação', formatCurrencyPtBr(activeValues.legalData.pagamento.valorImplantacao)],
+                    ['Recorrência', formatCurrencyPtBr(activeValues.legalData.pagamento.valorRecorrente)],
+                    ['Início', formatDatePtBr(activeValues.legalData.pagamento.dataInicio)],
                     ['Vencimento', `Todo dia ${activeValues.legalData.pagamento.diaVencimentoMensal}`],
                   ].map(([label, value]) => (
                     <div
@@ -292,13 +292,13 @@ export function ContractsWorkspace({
                     Nenhum contrato ativo selecionado
                   </h2>
                   <p className="text-sm leading-7 text-slate-600">
-                    Crie um draft para preencher dados da contratante, plano, recorrencia,
-                    condicao especial, preview contratual e PDF no modulo central do SolarZap.
+                    Crie um draft para preencher dados da contratante, plano, recorrência,
+                    condição especial, preview contratual e PDF no módulo central do SolarZap.
                   </p>
                   <div className="flex flex-wrap items-center justify-center gap-2">
                     <Button type="button" variant="outline" onClick={handleLoadMock}>
                       <Sparkles className="mr-2 h-4 w-4" />
-                      Gerar mock obrigatorio
+                      Gerar mock obrigatório
                     </Button>
                     <Button type="button" onClick={handleCreateDraft}>
                       <FilePlus2 className="mr-2 h-4 w-4" />

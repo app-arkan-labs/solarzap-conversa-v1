@@ -11,26 +11,26 @@ export const DASHBOARD_VIEW_OPTIONS: Array<{
   {
     value: "today",
     label: "Geral",
-    subtitle: "Acompanhe os principais numeros do periodo e as filas que precisam de resposta.",
-    question: "Visao geral do comercial e do financeiro.",
+    subtitle: "Acompanhe os principais números do período e as filas que precisam de resposta.",
+    question: "Visão geral do comercial e do financeiro.",
   },
   {
     value: "sales",
     label: "Vendas",
-    subtitle: "Acompanhe o funil, veja os canais com melhor resultado e identifique negociacoes paradas.",
-    question: "Resumo comercial do periodo.",
+    subtitle: "Acompanhe o funil, veja os canais com melhor resultado e identifique negociações paradas.",
+    question: "Resumo comercial do período.",
   },
   {
     value: "financial",
     label: "Financeiro",
-    subtitle: "Separe o que foi faturado, o que entrou, o que vai entrar e o que ja atrasou.",
-    question: "O que entrou, o que vai entrar e o que esta atrasado?",
+    subtitle: "Separe o que foi faturado, o que entrou, o que vai entrar e o que já atrasou.",
+    question: "O que entrou, o que vai entrar e o que está atrasado?",
   },
   {
     value: "losses",
     label: "Perdas",
-    subtitle: "Veja por que os negocios estao se perdendo e onde agir primeiro para recuperar conversao.",
-    question: "Por que os negocios estao sendo perdidos e onde agir primeiro?",
+    subtitle: "Veja por que os negócios estão se perdendo e onde agir primeiro para recuperar conversão.",
+    question: "Por que os negócios estão sendo perdidos e onde agir primeiro?",
   },
 ];
 

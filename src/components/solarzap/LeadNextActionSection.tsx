@@ -68,7 +68,7 @@ export function LeadNextActionSection({
   const [isCancelling, setIsCancelling] = useState(false);
 
   const suggestion = useMemo(
-    () => LEAD_NEXT_ACTION_SUGGESTIONS[contact.pipelineStage] || 'Definir proxima acao',
+    () => LEAD_NEXT_ACTION_SUGGESTIONS[contact.pipelineStage] || 'Definir próxima ação',
     [contact.pipelineStage],
   );
   const visibleHistory = useMemo(
@@ -83,17 +83,17 @@ export function LeadNextActionSection({
 
   const handleCancel = async () => {
     if (!nextAction) return;
-    if (!window.confirm('Cancelar a proxima acao ativa deste lead?')) return;
+    if (!window.confirm('Cancelar a próxima ação ativa deste lead?')) return;
     try {
       setIsCancelling(true);
       await onCancel(nextAction.id);
       toast({
-        title: 'Proxima acao cancelada',
-        description: `A acao de ${contact.name} foi cancelada.`,
+        title: 'Próxima ação cancelada',
+        description: `A ação de ${contact.name} foi cancelada.`,
       });
     } catch (error) {
       toast({
-        title: 'Erro ao cancelar acao',
+        title: 'Erro ao cancelar ação',
         description: error instanceof Error ? error.message : 'Tente novamente.',
         variant: 'destructive',
       });
@@ -118,17 +118,17 @@ export function LeadNextActionSection({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Proxima acao
+                  Próxima ação
                 </p>
                 <LeadNextActionBadge task={nextAction} showEmpty={Boolean(nextAction)} />
               </div>
               <p className="mt-1 truncate text-sm font-medium text-foreground">
-                {nextAction ? nextAction.title : 'Sem proxima acao definida'}
+                {nextAction ? nextAction.title : 'Sem próxima ação definida'}
               </p>
               <p className="mt-1 truncate text-xs text-muted-foreground">
                 {nextAction
-                  ? `${nextDueLabel} • Ultima: ${lastActionText}`
-                  : `Ultima: ${lastActionText}`}
+                  ? `${nextDueLabel} • Última: ${lastActionText}`
+                  : `Última: ${lastActionText}`}
               </p>
             </div>
 
@@ -179,15 +179,15 @@ export function LeadNextActionSection({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-1">
               <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Proxima acao
+                Próxima ação
               </p>
               <p className="text-sm font-medium leading-5 text-foreground">
-                {nextAction ? nextAction.title : 'Sem proxima acao definida'}
+                {nextAction ? nextAction.title : 'Sem próxima ação definida'}
               </p>
               {nextAction?.notes ? (
                 <p className="text-xs leading-4 text-muted-foreground">{nextAction.notes}</p>
               ) : !nextAction ? (
-                <p className="text-xs leading-4 text-muted-foreground">Sugestao da etapa: {suggestion}</p>
+                <p className="text-xs leading-4 text-muted-foreground">Sugestão da etapa: {suggestion}</p>
               ) : null}
             </div>
             <LeadNextActionBadge task={nextAction} showEmpty className="shrink-0" />
@@ -253,7 +253,7 @@ export function LeadNextActionSection({
             ) : (
               <Button size="sm" className="h-8 rounded-full gap-1.5" onClick={() => setCreateOpen(true)}>
                 <Plus className="h-3.5 w-3.5" />
-                Definir proxima
+                Definir próxima
               </Button>
             )}
             {isLoading ? <span className="self-center text-xs text-muted-foreground">Atualizando...</span> : null}
@@ -263,7 +263,7 @@ export function LeadNextActionSection({
         <div className="rounded-lg border border-border/60 bg-muted/15 px-3 py-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Ultima acao
+              Última ação
             </p>
             {lastActionAt ? <span className="text-[11px] text-muted-foreground">{lastActionAt}</span> : null}
           </div>
@@ -273,7 +273,7 @@ export function LeadNextActionSection({
         {visibleHistory.length > 0 ? (
           <div className="space-y-2 border-t border-border/60 pt-2">
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Historico recente
+              Histórico recente
             </p>
             <div className="space-y-2">
               {visibleHistory.map((task) => {
@@ -285,7 +285,7 @@ export function LeadNextActionSection({
                     <div className="flex items-start justify-between gap-2">
                       <p className="min-w-0 flex-1 text-xs font-medium leading-4 text-foreground">{historyText}</p>
                       <Badge variant="outline" className="h-5 rounded-full px-2 text-[10px]">
-                        {task.status === 'canceled' ? 'Cancelada' : 'Concluida'}
+                        {task.status === 'canceled' ? 'Cancelada' : 'Concluída'}
                       </Badge>
                     </div>
                     {historyAt ? <p className="mt-1 text-[11px] text-muted-foreground">{historyAt}</p> : null}

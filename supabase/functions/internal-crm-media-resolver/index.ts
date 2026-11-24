@@ -479,8 +479,8 @@ const resolvePlaceholderBody = (
   if (normalizedVariant === 'sticker') return 'Sticker recebido';
   if (normalizedVariant === 'gif') return 'GIF recebido';
   if (attachmentType === 'image') return 'Imagem recebida';
-  if (attachmentType === 'video') return 'Video recebido';
-  if (attachmentType === 'audio') return 'Audio recebido';
+  if (attachmentType === 'video') return 'Vídeo recebido';
+  if (attachmentType === 'audio') return 'Áudio recebido';
   return 'Documento recebido';
 };
 
@@ -614,7 +614,7 @@ async function resolveSingleMedia(
   const shouldReplaceBodyWithTranscript =
     attachmentType === 'audio'
     && Boolean(transcriptText)
-    && (!currentBody || currentBody === placeholderBody || currentBody.startsWith('Audio: '));
+    && (!currentBody || currentBody === placeholderBody || currentBody.startsWith('Áudio: ') || currentBody.startsWith('Audio: '));
 
   const updatePayload: Record<string, unknown> = {
     attachment_url: publicUrl,
@@ -628,7 +628,7 @@ async function resolveSingleMedia(
   };
 
   if (shouldReplaceBodyWithTranscript && transcriptText) {
-    updatePayload.body = `Audio: ${transcriptText}`;
+    updatePayload.body = `Áudio: ${transcriptText}`;
   } else if (!currentBody) {
     updatePayload.body = placeholderBody;
   }

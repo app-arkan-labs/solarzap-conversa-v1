@@ -219,7 +219,7 @@ export function useNotifications() {
 
   const rescheduleInstallment = useCallback(async (installmentId: string, newDueOn: string) => {
     if (!orgId) throw new Error('Organização não selecionada.');
-    if (!newDueOn) throw new Error('Nova data obrigatoria para reagendamento.');
+    if (!newDueOn) throw new Error('Nova data obrigatória para reagendamento.');
 
     const { error } = await supabase.rpc('rpc_reschedule_installment', {
       p_org_id: orgId,
@@ -364,7 +364,7 @@ export function useNotifications() {
     addNotification('new_lead_response', {
       contactId: contact.id,
       contactName: contact.name,
-      message: `${contact.name} respondeu! Responda rapidamente para aumentar a conversao.`,
+      message: `${contact.name} respondeu! Responda rapidamente para aumentar a conversão.`,
     });
   }, [addNotification]);
 
@@ -424,7 +424,7 @@ export function useNotifications() {
     addNotification('proposal_ready', {
       contactId: contact.id,
       contactName: contact.name,
-      message: `Proposta para ${contact.name} esta pronta! Envie agora.`,
+      message: `Proposta para ${contact.name} está pronta! Envie agora.`,
     });
   }, [addNotification]);
 

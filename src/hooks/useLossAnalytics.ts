@@ -62,7 +62,7 @@ const buildActionSuggestion = (reason: LossReasonAggregate): LossInsight => {
     case 'concorrente':
       return {
         title: 'Eleve a prova de confiança',
-        description: `${reason.count} leads foram para concorrentes. Antecipe diferenciais de instalacao, SLA, garantia e casos reais para reduzir comparação por preço puro.`,
+        description: `${reason.count} leads foram para concorrentes. Antecipe diferenciais de instalação, SLA, garantia e casos reais para reduzir comparação por preço puro.`,
       };
     case 'sem_resposta':
       return {

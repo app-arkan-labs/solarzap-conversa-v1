@@ -24,7 +24,7 @@ const SOURCE_OPTIONS = [
   { value: 'instagram', label: 'Instagram' },
   { value: 'google_ads', label: 'Google Ads' },
   { value: 'landing_page', label: 'Landing Page' },
-  { value: 'indicacao', label: 'Indicacao' },
+  { value: 'indicacao', label: 'Indicação' },
 ];
 
 const DURATION_OPTIONS = [
@@ -155,7 +155,7 @@ export function NewDealSimpleModal(props: NewDealSimpleModalProps) {
 
         <div className="space-y-5">
           <div className="space-y-2">
-            <Label>Como voce quer criar?</Label>
+            <Label>Como você quer criar?</Label>
             <Select
               value={state.clientMode}
               onValueChange={(value) => setState((current) => ({ ...current, clientMode: value as 'existing' | 'create' }))}
@@ -272,11 +272,11 @@ export function NewDealSimpleModal(props: NewDealSimpleModalProps) {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
-              <Label>Titulo do deal</Label>
+              <Label>Título do deal</Label>
               <Input
                 value={state.title}
                 onChange={(event) => setState((current) => ({ ...current, title: event.target.value }))}
-                placeholder="Ex: Reuniao ARKAN - Joao"
+                placeholder="Ex: Reunião ARKAN - Joao"
               />
             </div>
 
@@ -323,9 +323,9 @@ export function NewDealSimpleModal(props: NewDealSimpleModalProps) {
           {requiresAppointment ? (
             <div className="space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
               <div>
-                <p className="text-sm font-semibold text-foreground">Agendamento obrigatorio</p>
+                <p className="text-sm font-semibold text-foreground">Agendamento obrigatório</p>
                 <p className="text-xs text-muted-foreground">
-                  Deal em Reuniao Agendada precisa sair daqui ja com data e hora.
+                  Deal em Reunião Agendada precisa sair daqui já com data e hora.
                 </p>
               </div>
 
@@ -345,7 +345,7 @@ export function NewDealSimpleModal(props: NewDealSimpleModalProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Horario</Label>
+                  <Label>Horário</Label>
                   <Input
                     type="time"
                     value={state.appointment.time}
@@ -359,7 +359,7 @@ export function NewDealSimpleModal(props: NewDealSimpleModalProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Duracao</Label>
+                  <Label>Duração</Label>
                   <Select
                     value={String(state.appointment.duration_minutes)}
                     onValueChange={(value) =>
@@ -392,12 +392,12 @@ export function NewDealSimpleModal(props: NewDealSimpleModalProps) {
                         appointment: { ...current.appointment, location: event.target.value },
                       }))
                     }
-                    placeholder="Google Meet, telefone ou endereco"
+                    placeholder="Google Meet, telefone ou endereço"
                   />
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Observacoes do agendamento</Label>
+                  <Label>Observações do agendamento</Label>
                   <Textarea
                     rows={3}
                     value={state.appointment.notes}
@@ -407,7 +407,7 @@ export function NewDealSimpleModal(props: NewDealSimpleModalProps) {
                         appointment: { ...current.appointment, notes: event.target.value },
                       }))
                     }
-                    placeholder="Pontos para essa reuniao"
+                    placeholder="Pontos para essa reunião"
                   />
                 </div>
               </div>
@@ -420,7 +420,7 @@ export function NewDealSimpleModal(props: NewDealSimpleModalProps) {
               rows={3}
               value={state.notes}
               onChange={(event) => setState((current) => ({ ...current, notes: event.target.value }))}
-              placeholder="Observacoes do lead (opcional)"
+              placeholder="Observações do lead (opcional)"
             />
           </div>
         </div>

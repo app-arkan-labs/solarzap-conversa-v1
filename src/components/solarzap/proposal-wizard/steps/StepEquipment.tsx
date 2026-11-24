@@ -28,7 +28,7 @@ export function StepEquipment({ form }: StepEquipmentProps) {
         <TabsContent value="modulo" className="space-y-3 pt-2">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Nome / modelo do modulo</Label>
+              <Label>Nome / modelo do módulo</Label>
               <Input
                 value={form.formData.moduloNome || ''}
                 onChange={(e) => form.handleChange('moduloNome', e.target.value)}
@@ -36,7 +36,7 @@ export function StepEquipment({ form }: StepEquipmentProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Marca do modulo</Label>
+              <Label>Marca do módulo</Label>
               <Input
                 value={form.formData.moduloMarca || ''}
                 onChange={(e) => form.handleChange('moduloMarca', e.target.value)}
@@ -44,13 +44,13 @@ export function StepEquipment({ form }: StepEquipmentProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Tipo do modulo</Label>
+              <Label>Tipo do módulo</Label>
               <Select
                 value={form.formData.moduloTipo || 'Monocristalino'}
                 onValueChange={(value) => form.handleChange('moduloTipo', value)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione o tipo do modulo" />
+                  <SelectValue placeholder="Selecione o tipo do módulo" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover">
                   {form.options.MODULE_TYPE_OPTIONS.map((moduleType) => (
@@ -60,7 +60,7 @@ export function StepEquipment({ form }: StepEquipmentProps) {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Potencia do modulo (W)</Label>
+              <Label>Potência do módulo (W)</Label>
               <Input
                 type="number"
                 min={0}
@@ -69,7 +69,7 @@ export function StepEquipment({ form }: StepEquipmentProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Garantia do modulo (anos)</Label>
+              <Label>Garantia do módulo (anos)</Label>
               <Input
                 type="number"
                 min={0}
@@ -99,7 +99,7 @@ export function StepEquipment({ form }: StepEquipmentProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Potencia do inversor (kWp)</Label>
+              <Label>Potência do inversor (kWp)</Label>
               <Input
                 type="number"
                 min={0}
@@ -108,7 +108,7 @@ export function StepEquipment({ form }: StepEquipmentProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Tensao do inversor (V)</Label>
+              <Label>Tensão do inversor (V)</Label>
               <Input
                 type="number"
                 min={0}
@@ -144,17 +144,17 @@ export function StepEquipment({ form }: StepEquipmentProps) {
           <Input
             value={form.formData.estruturaTipo || ''}
             onChange={(e) => form.handleChange('estruturaTipo', e.target.value)}
-            placeholder="Ex: Telhado ceramico / Solo 2 linhas"
+            placeholder="Ex: Telhado cerâmico / Solo 2 linhas"
           />
         </div>
         <div className="space-y-1.5">
-          <Label>Posicao do telhado</Label>
+          <Label>Posição do telhado</Label>
           <Select
             value={form.formData.posicaoTelhado || 'nao_definido'}
             onValueChange={(value) => form.handleChange('posicaoTelhado', value)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Selecione a posicao" />
+              <SelectValue placeholder="Selecione a posição" />
             </SelectTrigger>
             <SelectContent className="bg-popover">
               {form.options.ROOF_POSITION_OPTIONS.map((option) => (
@@ -174,7 +174,7 @@ export function StepEquipment({ form }: StepEquipmentProps) {
             onChange={(e) => form.handleChange('sombreamentoPct', parseFloat(e.target.value) || 0)}
           />
           <p className="text-xs text-muted-foreground">
-            Auto-preenchido pela posicao do telhado, mas pode ser editado.
+            Auto-preenchido pela posição do telhado, mas pode ser editado.
           </p>
         </div>
       </div>
@@ -184,10 +184,10 @@ export function StepEquipment({ form }: StepEquipmentProps) {
           {form.formData.quantidadePaineis || 0} paineis de {form.formData.moduloPotencia || 0}W
         </p>
         <p className="text-muted-foreground">
-          Potencia estimada: {Number(form.formData.potenciaSistema || 0).toFixed(2)} kWp
+          Potência estimada: {Number(form.formData.potenciaSistema || 0).toFixed(2)} kWp
         </p>
         <p className="text-xs text-muted-foreground">
-          O valor de investimento e definido na proxima etapa (Pagamento).
+          O valor de investimento e definido na próxima etapa (Pagamento).
         </p>
       </div>
     </div>

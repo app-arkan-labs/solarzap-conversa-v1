@@ -346,7 +346,7 @@ export function SobreEmpresaTab() {
                 <QuestionCard
                     question="Cidade da sede da empresa"
                     hint="Ajuda a IA a responder corretamente onde a empresa fica"
-                    placeholder="Ex: Maringa"
+                    placeholder="Ex: Maringá"
                     value={profile.headquarters_city}
                     onChange={(v) => handleChange('headquarters_city', v)}
                     maxLength={120}
@@ -379,8 +379,8 @@ export function SobreEmpresaTab() {
                 </div>
 
                 <QuestionCard
-                    question="Endereco principal da empresa"
-                    hint="Endereco usado quando o lead pergunta localizacao"
+                    question="Endereço principal da empresa"
+                    hint="Endereço usado quando o lead pergunta localização"
                     placeholder="Ex: Av. Brasil, 1234 - Centro"
                     value={profile.headquarters_address}
                     onChange={(v) => handleChange('headquarters_address', v)}
@@ -392,7 +392,7 @@ export function SobreEmpresaTab() {
 
                 <QuestionCard
                     question="CEP da sede (opcional)"
-                    hint="Pode ser usado em respostas objetivas de localizacao"
+                    hint="Pode ser usado em respostas objetivas de localização"
                     placeholder="Ex: 87010-000"
                     value={profile.headquarters_zip}
                     onChange={(v) => handleChange('headquarters_zip', v)}
@@ -401,9 +401,9 @@ export function SobreEmpresaTab() {
                 />
 
                 <QuestionCard
-                    question="Resumo da area de atendimento"
-                    hint="Exemplo: atendemos todo o Noroeste do PR e regioes proximas"
-                    placeholder="Ex: Atendemos Mandaguacu, Maringa e regiao metropolitana"
+                    question="Resumo da área de atendimento"
+                    hint="Exemplo: atendemos todo o Noroeste do PR e regiões próximas"
+                    placeholder="Ex: Atendemos Mandaguaçu, Maringá e região metropolitana"
                     value={profile.service_area_summary}
                     onChange={(v) => handleChange('service_area_summary', v)}
                     multiline
@@ -413,7 +413,7 @@ export function SobreEmpresaTab() {
                 />
 
                 <QuestionCard
-                    question="Horario comercial"
+                    question="Horário comercial"
                     hint="Usado para orientar respostas e expectativa de retorno"
                     placeholder="Ex: Seg a Sex 08:00-18:00, Sab 08:00-12:00"
                     value={profile.business_hours_text}
@@ -423,7 +423,7 @@ export function SobreEmpresaTab() {
                 />
 
                 <QuestionCard
-                    question="Telefone publico"
+                    question="Telefone público"
                     hint="Telefone da empresa para contato geral"
                     placeholder="Ex: (44) 99999-9999"
                     value={profile.public_phone}
@@ -433,7 +433,7 @@ export function SobreEmpresaTab() {
                 />
 
                 <QuestionCard
-                    question="WhatsApp publico"
+                    question="WhatsApp público"
                     hint="Canal principal de contato da empresa"
                     placeholder="Ex: 44988888888"
                     value={profile.public_whatsapp}
@@ -463,8 +463,8 @@ export function SobreEmpresaTab() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="sim">Sim</SelectItem>
-                                <SelectItem value="nao">Nao</SelectItem>
-                                <SelectItem value="nao_informado">Nao informado</SelectItem>
+                                <SelectItem value="nao">Não</SelectItem>
+                                <SelectItem value="nao_informado">Não informado</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -500,15 +500,15 @@ export function SobreEmpresaTab() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="sim">Sim</SelectItem>
-                                <SelectItem value="nao">Nao</SelectItem>
-                                <SelectItem value="nao_informado">Nao informado</SelectItem>
+                                <SelectItem value="nao">Não</SelectItem>
+                                <SelectItem value="nao_informado">Não informado</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
                 </div>
 
                 <div className="rounded-xl border bg-card p-4">
-                    <p className="text-sm font-medium">Aceita parcelamento no cartao?</p>
+                    <p className="text-sm font-medium">Aceita parcelamento no cartão?</p>
                     <div className="mt-3">
                         <Select
                             value={
@@ -525,17 +525,17 @@ export function SobreEmpresaTab() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="sim">Sim</SelectItem>
-                                <SelectItem value="nao">Nao</SelectItem>
-                                <SelectItem value="nao_informado">Nao informado</SelectItem>
+                                <SelectItem value="nao">Não</SelectItem>
+                                <SelectItem value="nao_informado">Não informado</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
                 </div>
 
                 <QuestionCard
-                    question="Resumo da politica comercial de pagamento"
+                    question="Resumo da política comercial de pagamento"
                     hint="Use este campo para consolidar regras de parcelamento/financiamento"
-                    placeholder="Ex: Parcelamento em ate 12x no cartao e financiamento bancario em ate 84x sujeito a analise"
+                    placeholder="Ex: Parcelamento em até 12x no cartão e financiamento bancário em até 84x sujeito a análise"
                     value={profile.payment_policy_summary}
                     onChange={(v) => handleChange('payment_policy_summary', v)}
                     multiline

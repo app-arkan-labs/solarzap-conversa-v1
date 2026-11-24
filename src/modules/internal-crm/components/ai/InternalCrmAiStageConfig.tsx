@@ -82,7 +82,7 @@ export function InternalCrmAiStageConfig(props: InternalCrmAiStageConfigProps) {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="font-medium">{stage.name}</p>
-                  <p className="text-xs text-muted-foreground">Prompt para automacoes nesta etapa do funil.</p>
+                  <p className="text-xs text-muted-foreground">Prompt para automações nesta etapa do funil.</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <TokenBadge
@@ -102,7 +102,7 @@ export function InternalCrmAiStageConfig(props: InternalCrmAiStageConfigProps) {
                   rows={4}
                   value={config.system_prompt || ''}
                   onChange={(event) => upsertConfig(stage.stage_code, { system_prompt: event.target.value })}
-                  placeholder="Instrucao para o agente operar nesta etapa..."
+                  placeholder="Instrução para o agente operar nesta etapa..."
                 />
               </div>
             </div>

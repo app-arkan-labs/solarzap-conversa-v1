@@ -49,7 +49,7 @@ async function openAndConfirmCall(page: Page) {
   await expect(page.getByRole('button', { name: /Sim, Realizei/i })).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: /Sim, Realizei/i }).click();
   await expect(page.getByPlaceholder(/Ex: Cliente confirmou interesse/i)).toBeVisible({ timeout: 20_000 });
-  await page.getByPlaceholder(/Ex: Cliente confirmou interesse/i).fill('Ligacao registrada no fluxo de regressao.');
+  await page.getByPlaceholder(/Ex: Cliente confirmou interesse/i).fill('Ligação registrada no fluxo de regressao.');
 }
 
 test.beforeAll(async () => {

@@ -14,7 +14,7 @@ async function login(page: Page, email: string, password: string) {
 test('admin read-only smoke: dashboard e lista de orgs carregam', async ({ page }) => {
   test.skip(
     !TEST_SYSTEM_ADMIN_EMAIL || !TEST_SYSTEM_ADMIN_PASSWORD,
-    'TEST_SYSTEM_ADMIN_EMAIL/PASSWORD nao configurados',
+    'TEST_SYSTEM_ADMIN_EMAIL/PASSWORD não configurados',
   );
 
   await login(page, TEST_SYSTEM_ADMIN_EMAIL!, TEST_SYSTEM_ADMIN_PASSWORD!);
@@ -30,6 +30,6 @@ test('admin read-only smoke: dashboard e lista de orgs carregam', async ({ page 
 
   await page.goto('/admin/orgs');
   await expect(page).toHaveURL(/\/admin\/orgs$/);
-  await expect(page.getByText('Organizacoes')).toBeVisible();
+  await expect(page.getByText('Organizações')).toBeVisible();
   await expect(page.getByText(/Lista \(\d+\)/)).toBeVisible();
 });

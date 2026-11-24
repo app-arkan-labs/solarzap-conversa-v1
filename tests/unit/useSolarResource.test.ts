@@ -59,7 +59,7 @@ function buildErrorResponse(errorCode: string) {
 }
 
 const defaultLocationParams = {
-  cidade: 'Sao Paulo',
+  cidade: 'São Paulo',
   estado: 'SP',
   endereco: 'Av Paulista 1000',
   cep: '01310100',

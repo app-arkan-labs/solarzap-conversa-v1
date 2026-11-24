@@ -200,7 +200,7 @@ test('prompt versioning: save increments version and restore remains editable', 
   await expect(editor).toBeVisible({ timeout: 30_000 });
   const originalPrompt = await editor.inputValue();
 
-  const customPrompt = `Prompt custom ${Date.now()} para teste de versionamento. Conteudo suficientemente longo para salvar sem bloqueio.`;
+  const customPrompt = `Prompt custom ${Date.now()} para teste de versionamento. Conteúdo suficientemente longo para salvar sem bloqueio.`;
   await editor.fill(customPrompt);
   await expect(page.getByText(/Avisos.*bloqueiam o salvamento/i)).toBeVisible();
   await expect(page.getByRole('button', { name: /Salvar Altera/i })).toBeEnabled();

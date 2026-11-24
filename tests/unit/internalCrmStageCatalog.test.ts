@@ -25,6 +25,6 @@ describe('internal CRM stage catalog', () => {
   });
 
   it('renders the canonical label for the legacy alias', () => {
-    expect(getInternalCrmStageLabel('agendou_reuniao')).toBe('Reuniao Marcada');
+    expect(getInternalCrmStageLabel('agendou_reuniao')).toBe('Reunião Marcada');
   });
 });

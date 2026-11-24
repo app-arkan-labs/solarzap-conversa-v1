@@ -77,7 +77,7 @@ export function InternalCrmConversationList(props: InternalCrmConversationListPr
   ];
 
   const instanceOptions = [
-    { value: 'all', label: 'Todas instancias' },
+    { value: 'all', label: 'Todas instâncias' },
     ...props.instances.map((instance) => ({
       value: instance.id,
       label: instance.display_name || instance.instance_name,
@@ -140,7 +140,7 @@ export function InternalCrmConversationList(props: InternalCrmConversationListPr
           </Select>
           <Select value={props.instanceFilter} onValueChange={props.onInstanceFilterChange}>
             <SelectTrigger className="h-9 min-w-0 flex-1 rounded-lg bg-background text-xs">
-              <SelectValue placeholder="Instancia" />
+              <SelectValue placeholder="Instância" />
             </SelectTrigger>
             <SelectContent>
               {instanceOptions.map((option) => (

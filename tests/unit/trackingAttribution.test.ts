@@ -25,7 +25,7 @@ describe('tracking attribution helpers', () => {
 
     expect(matchTriggerRule('quero proposta', rules)?.id).toBe('1');
     expect(matchTriggerRule('quero simulacao agora', rules)?.id).toBe('2');
-    expect(matchTriggerRule('promocao ativa', rules)?.id).toBe('3');
+    expect(matchTriggerRule('promoção ativa', rules)?.id).toBe('3');
   });
 
   it('infers channel with ctwa priority', () => {
@@ -40,7 +40,7 @@ describe('tracking attribution helpers', () => {
       {
         orgId: 'org',
         leadId: 1,
-        messageText: 'quero simulacao',
+        messageText: 'quero simulação',
         gclid: 'gclid_123',
         ctwa: {
           ctwa_source_url: 'https://instagram.com/ads',

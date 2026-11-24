@@ -15,18 +15,18 @@ import { buildPlanSnapshot } from './catalog';
 import { createContractDraftId, createContractNumber } from './formatters';
 
 const nonEmptyText = (label: string) =>
-  z.string().trim().min(1, `${label} e obrigatorio.`);
+  z.string().trim().min(1, `${label} e obrigatório.`);
 
 const optionalText = z.string().trim().default('');
 
 const dateSchema = z
   .string()
   .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use uma data valida.');
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use uma data válida.');
 
 export const contractCompanyAddressSchema = z.object({
   logradouro: nonEmptyText('Logradouro'),
-  numero: nonEmptyText('Numero'),
+  numero: nonEmptyText('Número'),
   complemento: optionalText,
   bairro: nonEmptyText('Bairro'),
   cidade: nonEmptyText('Cidade'),
@@ -35,29 +35,29 @@ export const contractCompanyAddressSchema = z.object({
 });
 
 export const contractingCompanySchema = z.object({
-  razaoSocial: nonEmptyText('Razao social'),
+  razaoSocial: nonEmptyText('Razão social'),
   nomeFantasia: nonEmptyText('Nome fantasia'),
   cnpj: nonEmptyText('CNPJ'),
   endereco: contractCompanyAddressSchema,
 });
 
 export const legalRepresentativeSchema = z.object({
-  nome: nonEmptyText('Nome do responsavel'),
+  nome: nonEmptyText('Nome do responsável'),
   nacionalidade: nonEmptyText('Nacionalidade'),
   estadoCivil: nonEmptyText('Estado civil'),
   profissao: nonEmptyText('Profissao'),
   cpf: nonEmptyText('CPF'),
   rg: nonEmptyText('RG'),
   cargo: nonEmptyText('Cargo'),
-  email: nonEmptyText('E-mail').email('Use um e-mail valido.'),
+  email: nonEmptyText('E-mail').email('Use um e-mail válido.'),
   telefone: nonEmptyText('Telefone'),
 });
 
 export const contractorPartySchema = z.object({
-  razaoSocial: nonEmptyText('Razao social da contratada'),
+  razaoSocial: nonEmptyText('Razão social da contratada'),
   nomeFantasia: nonEmptyText('Nome fantasia da contratada'),
   cnpj: nonEmptyText('CNPJ da contratada'),
-  endereco: nonEmptyText('Endereco da contratada'),
+  endereco: nonEmptyText('Endereço da contratada'),
   representanteNome: nonEmptyText('Representante da contratada'),
   representanteCpf: nonEmptyText('CPF do representante da contratada'),
 });
@@ -75,10 +75,10 @@ export const contractPlanFlagsSchema = z.object({
 export const contractPlanSchema = z.object({
   codigo: z.enum(['plano_a', 'plano_b', 'plano_c']),
   nome: nonEmptyText('Plano'),
-  valorImplantacao: z.coerce.number().min(0, 'Valor invalido.'),
-  valorRecorrente: z.coerce.number().min(0, 'Valor invalido.'),
+  valorImplantacao: z.coerce.number().min(0, 'Valor inválido.'),
+  valorRecorrente: z.coerce.number().min(0, 'Valor inválido.'),
   quantidadeReunioesImplantacao: z.coerce.number().min(0).max(20),
-  descricaoObjetiva: nonEmptyText('Descricao do plano'),
+  descricaoObjetiva: nonEmptyText('Descrição do plano'),
   itensInclusos: z.array(z.string().trim()).default([]),
   itensNaoInclusos: z.array(z.string().trim()).default([]),
   flags: contractPlanFlagsSchema,
@@ -97,8 +97,8 @@ export const contractPaymentTermsSchema = z.object({
   dataInicio: dateSchema,
   dataPrimeiroVencimento: dateSchema,
   diaVencimentoMensal: z.coerce.number().int().min(1).max(31),
-  formaPagamentoImplantacao: nonEmptyText('Forma de pagamento da implantacao'),
-  formaPagamentoRecorrencia: nonEmptyText('Forma de pagamento da recorrencia'),
+  formaPagamentoImplantacao: nonEmptyText('Forma de pagamento da implantação'),
+  formaPagamentoRecorrencia: nonEmptyText('Forma de pagamento da recorrência'),
   valorImplantacao: z.coerce.number().min(0),
   valorRecorrente: z.coerce.number().min(0),
 });
@@ -110,8 +110,8 @@ export const contractRecurrenceTermsSchema = z.object({
   multaInadimplenciaPercentual: z.coerce.number().min(0),
   jurosInadimplenciaPercentual: z.coerce.number().min(0),
   renovacaoAutomaticaMensal: z.boolean(),
-  faseUmDescricao: nonEmptyText('Descricao da fase 1'),
-  faseDoisDescricao: nonEmptyText('Descricao da fase 2'),
+  faseUmDescricao: nonEmptyText('Descrição da fase 1'),
+  faseDoisDescricao: nonEmptyText('Descrição da fase 2'),
 });
 
 export const contractSignatureTermsSchema = z.object({
@@ -135,9 +135,9 @@ export const contractSourceContextSchema = z.object({
 
 export const contractInternalMetadataSchema = z.object({
   contractDraftId: nonEmptyText('ID do draft'),
-  contractNumber: nonEmptyText('Numero do contrato'),
+  contractNumber: nonEmptyText('Número do contrato'),
   contractVersion: z.coerce.number().int().min(1),
-  templateVersion: nonEmptyText('Versao do template'),
+  templateVersion: nonEmptyText('Versão do template'),
   leadId: optionalText,
   opportunityId: optionalText,
   organizationId: optionalText,
@@ -343,7 +343,7 @@ const normalizeRecurrencePayment = (value: unknown, fallback: string) => {
   if (!text) return fallback;
   if (text.includes('pix')) return 'Pix mensal';
   if (text.includes('boleto')) return 'boleto mensal';
-  if (text.includes('cartao') || text.includes('link')) return 'cartao recorrente';
+  if (text.includes('cartao') || text.includes('link')) return 'cartão recorrente';
   return asPrefillText(value, 80) || fallback;
 };
 
@@ -363,7 +363,7 @@ export const applyExternalPrefill = (
   const includesReuniaoExtra =
     asPrefillBoolean(prefill.incluiReuniaoExtra) ||
     asPrefillBoolean(prefill.includeReuniaoExtra) ||
-    specialSearchText.includes('reuniao extra');
+    specialSearchText.includes('reunião extra');
   const includesLandingPage =
     asPrefillBoolean(prefill.incluiLandingPage) ||
     asPrefillBoolean(prefill.includeLandingPage) ||

@@ -17,12 +17,12 @@ export function RevenueBreakdownChart(props: RevenueBreakdownChartProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Composicao de receita</CardTitle>
+        <CardTitle className="text-base">Composição de receita</CardTitle>
       </CardHeader>
       <CardContent className="h-[280px]">
         {props.data.every((item) => Number(item.value_cents || 0) === 0) ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Sem receita registrada para o periodo.
+            Sem receita registrada para o período.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">

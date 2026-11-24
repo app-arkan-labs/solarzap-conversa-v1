@@ -24,18 +24,18 @@ export function LossSummaryCard({ data, isLoading, onOpenDetails }: LossSummaryC
           <TrendingDown className="h-5 w-5 text-rose-500" />
           Motivos de perda
         </CardTitle>
-        <CardDescription>Resumo rapido do que esta derrubando negocios neste periodo.</CardDescription>
+        <CardDescription>Resumo rápido do que está derrubando negócios neste período.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="rounded-xl border border-border/60 bg-background/70 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Negocios perdidos</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Negócios perdidos</p>
           <p className="mt-2 text-3xl font-bold text-foreground">{data.total}</p>
           <div className={`mt-2 inline-flex items-center gap-1 text-sm font-medium ${trendTone}`}>
             <TrendIcon className="h-4 w-4" />
             {delta === null
-              ? "Sem base comparavel"
+              ? "Sem base comparável"
               : delta === 0
-                ? "Mesmo volume do periodo anterior"
+                ? "Mesmo volume do período anterior"
                 : `${Math.abs(delta)}% ${isWorse ? "acima" : "abaixo"} do periodo anterior`}
           </div>
         </div>
@@ -53,16 +53,16 @@ export function LossSummaryCard({ data, isLoading, onOpenDetails }: LossSummaryC
         </div>
 
         <div className="rounded-xl border border-border/60 bg-background/70 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Leitura rapida</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Leitura rápida</p>
           <p className="mt-2 text-sm text-muted-foreground">
             {data.active_reasons > 0
               ? `Atue primeiro nos ${Math.min(3, data.active_reasons)} motivos mais frequentes para reduzir perdas mais rapido.`
-              : "Nenhum motivo ativo no periodo selecionado."}
+              : "Nenhum motivo ativo no período selecionado."}
           </p>
         </div>
 
         <Button className="w-full" variant="outline" onClick={onOpenDetails}>
-          Abrir analise detalhada
+          Abrir análise detalhada
         </Button>
       </CardContent>
     </Card>

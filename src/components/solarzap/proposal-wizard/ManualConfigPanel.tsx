@@ -19,12 +19,12 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
     && Number.isFinite(Number(form.formData.longitude));
   const sourceLabel = form.formData.irradianceSource === 'pvgis'
     ? 'PVGIS'
-    : 'nao resolvida';
+    : 'não resolvida';
 
   return (
     <div className="space-y-5 rounded-lg border bg-muted/20 p-4">
       <div className="space-y-3">
-        <h4 className="text-sm font-semibold">Tecnico</h4>
+        <h4 className="text-sm font-semibold">Técnico</h4>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="space-y-1">
             <Label>CEP</Label>
@@ -35,7 +35,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             <Input value={form.formData.cidade || ''} onChange={(e) => form.handleChange('cidade', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Endereco</Label>
+            <Label>Endereço</Label>
             <Input value={form.formData.endereco || ''} onChange={(e) => form.handleChange('endereco', e.target.value)} />
           </div>
           <div className="space-y-1">
@@ -59,7 +59,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             />
           </div>
           <div className="space-y-1">
-            <Label>Tipo de ligacao</Label>
+            <Label>Tipo de ligação</Label>
             <Select
               value={form.formData.tipoLigacao}
               onValueChange={(value) => form.handleChange('tipoLigacao', value)}
@@ -73,7 +73,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>Irradiancia (kWh/m2/dia)</Label>
+            <Label>Irradiância (kWh/m2/dia)</Label>
             <Input
               type="number"
               step="0.01"
@@ -100,7 +100,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             />
           </div>
           <div className="space-y-1">
-            <Label>Preco por kWp (R$)</Label>
+            <Label>Preço por kWp (R$)</Label>
             <Input
               type="number"
               min={0}
@@ -109,11 +109,11 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             />
           </div>
           <div className="space-y-1 md:col-span-3">
-            <Label>Localizacao tecnica</Label>
+            <Label>Localização técnica</Label>
             <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
               {hasCoordinates
                 ? `${Number(form.formData.latitude).toFixed(5)}, ${Number(form.formData.longitude).toFixed(5)}`
-                : 'Coordenadas nao resolvidas'}
+                : 'Coordenadas não resolvidas'}
               {' | '}Fonte: {sourceLabel}
               {' | '}Ref: {form.formData.irradianceRefAt ? new Date(form.formData.irradianceRefAt).toLocaleString('pt-BR') : '-'}
               {' | '}Req: {form.formData.irradianceRequestId || '-'}
@@ -138,7 +138,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
         <h4 className="text-sm font-semibold">Dimensionamento</h4>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <div className="space-y-1">
-            <Label>Consumo (kWh/mes)</Label>
+            <Label>Consumo (kWh/mês)</Label>
             <Input
               type="number"
               min={0}
@@ -147,7 +147,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             />
           </div>
           <div className="space-y-1">
-            <Label>Potencia sistema (kWp)</Label>
+            <Label>Potência sistema (kWp)</Label>
             <Input
               type="number"
               step="0.01"
@@ -175,7 +175,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             />
           </div>
           <div className="space-y-1">
-            <Label>Garantia servicos (anos)</Label>
+            <Label>Garantia serviços (anos)</Label>
             <Input
               type="number"
               min={0}
@@ -244,7 +244,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             <Input value={form.formData.inversorMarca} onChange={(e) => form.handleChange('inversorMarca', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Inversor potencia (kWp)</Label>
+            <Label>Inversor potência (kWp)</Label>
             <Input
               type="number"
               min={0}
@@ -253,7 +253,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             />
           </div>
           <div className="space-y-1">
-            <Label>Inversor tensao (V)</Label>
+            <Label>Inversor tensão (V)</Label>
             <Input
               type="number"
               min={0}
@@ -284,7 +284,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             <Input value={form.formData.estruturaTipo} onChange={(e) => form.handleChange('estruturaTipo', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Posicao do telhado</Label>
+            <Label>Posição do telhado</Label>
             <Select
               value={form.formData.posicaoTelhado || 'nao_definido'}
               onValueChange={(value) => form.handleChange('posicaoTelhado', value)}
@@ -355,9 +355,9 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
             />
           </div>
           <div className="space-y-1">
-            <Label>Compensacao TUSD (%)</Label>
+            <Label>Compensação TUSD (%)</Label>
             <p className="text-xs text-muted-foreground">
-              Percentual do Fio B compensado pelos creditos solares (Lei 14.300/2022)
+              Percentual do Fio B compensado pelos créditos solares (Lei 14.300/2022)
             </p>
             <Input
               type="number"
@@ -371,7 +371,7 @@ export function ManualConfigPanel({ form }: ManualConfigPanelProps) {
           <div className="space-y-1">
             <Label>Aumento anual energia (%)</Label>
             <p className="text-xs text-muted-foreground">
-              Pode variar conforme bandeira tarifaria e regulacao vigente
+              Pode variar conforme bandeira tarifária e regulação vigente
             </p>
             <Input
               type="number"

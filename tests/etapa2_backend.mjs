@@ -35,9 +35,9 @@ async function runTests() {
     // Check if interacoes table exists and can be written
     const { data: interacoesTest, error: errInt } = await supabase.from('interacoes').select('id').limit(1);
     if (errInt) {
-        console.log("interacoes error:", errInt.message);
+        console.log("interações error:", errInt.message);
     } else {
-        console.log("interacoes table connected. Count > 0:", interacoesTest.length > 0);
+        console.log("interações table connected. Count > 0:", interacoesTest.length > 0);
     }
 
     console.log("\n=== V3. TESTE DE INVOCAÇÃO E LOGS DO AGENTE ===");

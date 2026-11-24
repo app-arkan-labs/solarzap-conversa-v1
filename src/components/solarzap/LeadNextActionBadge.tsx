@@ -29,7 +29,7 @@ export function LeadNextActionBadge({ task, showEmpty = false, className }: Lead
         badgeClassByState[dueState],
         className,
       )}
-      title={task ? `${task.title} - ${formatLeadTaskDueLabel(task)}` : 'Sem proxima acao'}
+      title={task ? `${task.title} - ${formatLeadTaskDueLabel(task)}` : 'Sem próxima ação'}
     >
       {formatLeadTaskDueLabel(task)}
     </Badge>

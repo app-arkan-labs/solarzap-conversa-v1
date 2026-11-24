@@ -24,7 +24,7 @@ describe('parseMessageContent legacy sticker fallback', () => {
 
   it('prioritizes attachment columns when attachment_type=image', () => {
     const parsed = parseMessageContent(
-      'qualquer conteudo',
+      'qualquer conteúdo',
       'https://cdn.example.com/image.png',
       'image',
       true,

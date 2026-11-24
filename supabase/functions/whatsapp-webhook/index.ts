@@ -850,7 +850,7 @@ Deno.serve(async (req: Request) => {
                     (aiSettings as any).support_ai_auto_disable_on_seller_message !== false
             }
         } catch (settingsErr) {
-            console.warn('âš ï¸ Failed to load ai_settings for webhook takeover context:', settingsErr)
+            console.warn('⚠️ Failed to load ai_settings for webhook takeover context:', settingsErr)
         }
 
         try {

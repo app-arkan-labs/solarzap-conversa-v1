@@ -365,27 +365,27 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     if (cors.missingAllowedOriginConfig) {
       return jsonResponse(
-        { success: false, error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados', code: 'missing_allowed_origin' },
+        { success: false, error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN não configurados', code: 'missing_allowed_origin' },
         corsHeaders,
         500,
       )
     }
     if (!cors.originAllowed) {
-      return jsonResponse({ success: false, error: 'Origin nao permitida', code: 'origin_not_allowed' }, corsHeaders, 403)
+      return jsonResponse({ success: false, error: 'Origin não permitida', code: 'origin_not_allowed' }, corsHeaders, 403)
     }
     return new Response('ok', { headers: corsHeaders })
   }
 
   if (cors.missingAllowedOriginConfig) {
     return jsonResponse(
-      { success: false, error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN nao configurados', code: 'missing_allowed_origin' },
+      { success: false, error: 'ALLOWED_ORIGINS/ALLOWED_ORIGIN não configurados', code: 'missing_allowed_origin' },
       corsHeaders,
       500,
     )
   }
 
   if (!cors.originAllowed) {
-    return jsonResponse({ success: false, error: 'Origin nao permitida', code: 'origin_not_allowed' }, corsHeaders, 403)
+    return jsonResponse({ success: false, error: 'Origin não permitida', code: 'origin_not_allowed' }, corsHeaders, 403)
   }
 
   try {

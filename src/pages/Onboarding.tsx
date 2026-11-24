@@ -73,8 +73,8 @@ const OWNER_STEPS = [
   { key: 'branding', title: 'Branding' },
   { key: 'whatsapp', title: 'WhatsApp' },
   { key: 'ai', title: 'IA' },
-  { key: 'automation', title: 'Automacao' },
-  { key: 'notifications', title: 'Notificacoes' },
+  { key: 'automation', title: 'Automação' },
+  { key: 'notifications', title: 'Notificações' },
 ] as const;
 
 const MEMBER_STEPS = [{ key: 'profile', title: 'Seu nome' }] as const;
@@ -206,7 +206,7 @@ export default function Onboarding() {
     const normalized = fullName.trim();
     if (!normalized) {
       toast({
-        title: 'Nome obrigatorio',
+        title: 'Nome obrigatório',
         description: 'Preencha seu nome para continuar.',
         variant: 'destructive',
       });
@@ -229,7 +229,7 @@ export default function Onboarding() {
       }
 
       await onboarding.updateStep(nextStep.key);
-      toast({ title: 'Perfil salvo', description: 'Vamos para a proxima etapa.' });
+      toast({ title: 'Perfil salvo', description: 'Vamos para a próxima etapa.' });
     } catch (error) {
       toast({
         title: 'Falha ao salvar perfil',
@@ -247,13 +247,13 @@ export default function Onboarding() {
       await onboarding.completeStep(currentStep.key);
       if (!nextStep) {
         await onboarding.markComplete();
-        toast({ title: 'Onboarding concluido', description: 'Tudo pronto para usar o app.' });
+        toast({ title: 'Onboarding concluído', description: 'Tudo pronto para usar o app.' });
         navigate('/');
         return;
       }
 
       await onboarding.updateStep(nextStep.key);
-      toast({ title: 'Etapa concluida', description: `Avancando para ${nextStep.title}.` });
+      toast({ title: 'Etapa concluída', description: `Avancando para ${nextStep.title}.` });
     } catch (error) {
       toast({
         title: 'Falha ao atualizar onboarding',
@@ -269,7 +269,7 @@ export default function Onboarding() {
 
     if (!nextStep) {
       await onboarding.markComplete();
-      toast({ title: 'Onboarding concluido', description: 'Tudo pronto para usar o app.' });
+      toast({ title: 'Onboarding concluído', description: 'Tudo pronto para usar o app.' });
       navigate('/');
       return;
     }
@@ -279,12 +279,12 @@ export default function Onboarding() {
 
   const saveCompanyStep = async () => {
     if (!orgId) {
-      toast({ title: 'Organizacao nao encontrada', variant: 'destructive' });
+      toast({ title: 'Organização não encontrada', variant: 'destructive' });
       return;
     }
 
     if (!companyDraft.company_name.trim()) {
-      toast({ title: 'Nome da empresa obrigatorio', description: 'Preencha o nome da empresa.', variant: 'destructive' });
+      toast({ title: 'Nome da empresa obrigatório', description: 'Preencha o nome da empresa.', variant: 'destructive' });
       return;
     }
 
@@ -319,7 +319,7 @@ export default function Onboarding() {
       await continueToNextStep();
     } catch (error) {
       toast({
-        title: 'Falha ao salvar configuracoes da IA',
+        title: 'Falha ao salvar configurações da IA',
         description: error instanceof Error ? error.message : 'Erro inesperado.',
         variant: 'destructive',
       });
@@ -333,14 +333,14 @@ export default function Onboarding() {
       if (automations.hasChanges) {
         const ok = await automations.saveChanges();
         if (!ok) {
-          toast({ title: 'Falha ao salvar automacoes', variant: 'destructive' });
+          toast({ title: 'Falha ao salvar automações', variant: 'destructive' });
           return;
         }
       }
       await continueToNextStep();
     } catch (error) {
       toast({
-        title: 'Falha ao salvar automacoes',
+        title: 'Falha ao salvar automações',
         description: error instanceof Error ? error.message : 'Erro inesperado.',
         variant: 'destructive',
       });
@@ -354,7 +354,7 @@ export default function Onboarding() {
       await continueToNextStep();
     } catch (error) {
       toast({
-        title: 'Falha ao salvar notificacoes',
+        title: 'Falha ao salvar notificações',
         description: error instanceof Error ? error.message : 'Erro inesperado.',
         variant: 'destructive',
       });
@@ -371,7 +371,7 @@ export default function Onboarding() {
     if (whatsapp.connectedCount < 1) {
       toast({
         title: 'Conecte um WhatsApp ou pule a etapa',
-        description: 'Sem WhatsApp conectado voce nao recebe mensagens no app.',
+        description: 'Sem WhatsApp conectado você não recebe mensagens no app.',
         variant: 'destructive',
       });
       return;
@@ -466,7 +466,7 @@ export default function Onboarding() {
             />
           </div>
           <p className="text-xs text-slate-500">
-            Organizacao atual: {orgId ? orgId.slice(0, 8) : 'nao definida'}
+            Organização atual: {orgId ? orgId.slice(0, 8) : 'não definida'}
           </p>
         </form>
       );
@@ -491,7 +491,7 @@ export default function Onboarding() {
                 id="company-pitch"
                 value={companyDraft.elevator_pitch}
                 onChange={(event) => setCompanyDraft((prev) => ({ ...prev, elevator_pitch: event.target.value }))}
-                placeholder="Descreva rapidamente seu negocio para personalizar a IA."
+                placeholder="Descreva rapidamente seu negócio para personalizar a IA."
                 rows={3}
               />
             </div>
@@ -501,7 +501,7 @@ export default function Onboarding() {
                 id="company-city"
                 value={companyDraft.headquarters_city}
                 onChange={(event) => setCompanyDraft((prev) => ({ ...prev, headquarters_city: event.target.value }))}
-                placeholder="Ex: Sao Paulo"
+                placeholder="Ex: São Paulo"
               />
             </div>
             <div className="space-y-2">
@@ -515,12 +515,12 @@ export default function Onboarding() {
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="company-service-area">Area de atendimento</Label>
+              <Label htmlFor="company-service-area">Área de atendimento</Label>
               <Input
                 id="company-service-area"
                 value={companyDraft.service_area_summary}
                 onChange={(event) => setCompanyDraft((prev) => ({ ...prev, service_area_summary: event.target.value }))}
-                placeholder="Ex: Grande Sao Paulo e interior"
+                placeholder="Ex: Grande São Paulo e interior"
               />
             </div>
             <div className="space-y-2">
@@ -562,7 +562,7 @@ export default function Onboarding() {
         <div className="space-y-4">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm text-slate-700">
-              Instancias conectadas: <strong>{whatsapp.connectedCount}</strong>
+              Instâncias conectadas: <strong>{whatsapp.connectedCount}</strong>
             </p>
           </div>
 
@@ -570,11 +570,11 @@ export default function Onboarding() {
             <Input
               value={newInstanceName}
               onChange={(event) => setNewInstanceName(event.target.value)}
-              placeholder="Nome da instancia"
+              placeholder="Nome da instância"
               className="max-w-xs"
             />
             <Button type="button" onClick={() => void createWhatsappInstance()} disabled={whatsapp.creating}>
-              {whatsapp.creating ? 'Criando...' : 'Criar instancia'}
+              {whatsapp.creating ? 'Criando...' : 'Criar instância'}
             </Button>
           </div>
 
@@ -608,8 +608,8 @@ export default function Onboarding() {
         <div className="space-y-4">
           <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
             <div>
-              <p className="text-sm font-medium text-slate-900">Ativar IA da operacao</p>
-              <p className="text-xs text-slate-500">Permite atendimento e automacao com IA.</p>
+              <p className="text-sm font-medium text-slate-900">Ativar IA da operação</p>
+              <p className="text-xs text-slate-500">Permite atendimento e automação com IA.</p>
             </div>
             <Switch
               checked={aiDraft.is_active}
@@ -628,7 +628,7 @@ export default function Onboarding() {
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
-            <p className="text-sm text-slate-700">Permitir auto-agendamento de ligacao</p>
+            <p className="text-sm text-slate-700">Permitir auto-agendamento de ligação</p>
             <Switch
               checked={aiDraft.auto_schedule_call_enabled}
               onCheckedChange={(checked) => setAiDraft((prev) => ({ ...prev, auto_schedule_call_enabled: checked }))}
@@ -650,21 +650,21 @@ export default function Onboarding() {
       return (
         <div className="space-y-4">
           <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
-            <p className="text-sm text-slate-700">Automacao: Chamada realizada</p>
+            <p className="text-sm text-slate-700">Automação: Chamada realizada</p>
             <Switch
               checked={automations.settings.dragDropChamadaRealizada}
               onCheckedChange={(checked) => automations.updateSetting('dragDropChamadaRealizada', checked)}
             />
           </div>
           <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
-            <p className="text-sm text-slate-700">Automacao: Aguardando proposta</p>
+            <p className="text-sm text-slate-700">Automação: Aguardando proposta</p>
             <Switch
               checked={automations.settings.dragDropAguardandoProposta}
               onCheckedChange={(checked) => automations.updateSetting('dragDropAguardandoProposta', checked)}
             />
           </div>
           <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
-            <p className="text-sm text-slate-700">Pular automacoes em movimento para tras</p>
+            <p className="text-sm text-slate-700">Pular automações em movimento para tras</p>
             <Switch
               checked={automations.settings.skipBackwardMoves}
               onCheckedChange={(checked) => automations.updateSetting('skipBackwardMoves', checked)}
@@ -678,7 +678,7 @@ export default function Onboarding() {
       return (
         <div className="space-y-4">
           <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
-            <p className="text-sm text-slate-700">Ativar sistema de notificacoes</p>
+            <p className="text-sm text-slate-700">Ativar sistema de notificações</p>
             <Switch
               checked={notificationDraft.enabled_notifications}
               onCheckedChange={(checked) => setNotificationDraft((prev) => ({ ...prev, enabled_notifications: checked }))}
@@ -728,25 +728,25 @@ export default function Onboarding() {
               : currentStep?.key === 'whatsapp'
                 ? 'Conectar WhatsApp'
                 : currentStep?.key === 'ai'
-                  ? 'Configuracoes da IA'
+                  ? 'Configurações da IA'
                   : currentStep?.key === 'automation'
-                    ? 'Configuracoes de automacao'
-                    : 'Configuracoes de notificacao'
+                    ? 'Configurações de automação'
+                    : 'Configurações de notificação'
       }
       description={
         currentStep?.key === 'profile'
-          ? 'Esse nome sera usado em mensagens internas e no topo da sua conta.'
+          ? 'Esse nome será usado em mensagens internas e no topo da sua conta.'
           : currentStep?.key === 'company'
-            ? 'Preencha os dados essenciais para personalizar o app para sua operacao.'
+            ? 'Preencha os dados essenciais para personalizar o app para sua operação.'
             : currentStep?.key === 'branding'
-              ? 'Voce pode pular esta etapa e ajustar depois em Minha Empresa.'
+              ? 'Você pode pular esta etapa e ajustar depois em Minha Empresa.'
               : currentStep?.key === 'whatsapp'
-                ? 'Conecte ao menos uma instancia para receber mensagens no app.'
+                ? 'Conecte ao menos uma instância para receber mensagens no app.'
                 : currentStep?.key === 'ai'
                   ? 'Ative a IA e configure o comportamento inicial de atendimento.'
                   : currentStep?.key === 'automation'
-                    ? 'Escolha as automacoes iniciais do seu funil de vendas.'
-                    : 'Defina os canais de notificacao para sua equipe.'
+                    ? 'Escolha as automações iniciais do seu funil de vendas.'
+                    : 'Defina os canais de notificação para sua equipe.'
       }
       onBack={currentStepIndex > 0 ? () => void handleBack() : undefined}
       onNext={() => void handleNext()}

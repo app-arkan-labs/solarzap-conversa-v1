@@ -262,7 +262,7 @@ async function getCurrentAccessToken(action: InternalCrmApiAction): Promise<stri
       code: 'missing_auth',
       rawCode: error.code ?? null,
       status: error.status,
-      message: toErrorMessage(error.message, 'Nao foi possivel ler a sessao atual.'),
+      message: toErrorMessage(error.message, 'Não foi possível ler a sessão atual.'),
     });
   }
 
@@ -277,7 +277,7 @@ async function refreshAccessToken(action: InternalCrmApiAction): Promise<string>
       code: 'missing_auth',
       rawCode: error?.code ?? null,
       status: error?.status,
-      message: toErrorMessage(error?.message, 'Sessao expirada ou ausente para internal-crm-api.'),
+      message: toErrorMessage(error?.message, 'Sessão expirada ou ausente para internal-crm-api.'),
     });
   }
 

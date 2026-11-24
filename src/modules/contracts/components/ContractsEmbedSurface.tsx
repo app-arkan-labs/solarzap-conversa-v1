@@ -49,7 +49,7 @@ export function ContractsEmbedSurface({ token }: ContractsEmbedSurfaceProps) {
             Token do embed ausente
           </h1>
           <p className="mt-3 text-sm leading-7 text-slate-600">
-            Esta rota publica precisa receber `?token=` para carregar a sessao contratual.
+            Esta rota pública precisa receber `?token=` para carregar a sessão contratual.
           </p>
         </div>
       </div>
@@ -60,13 +60,13 @@ export function ContractsEmbedSurface({ token }: ContractsEmbedSurfaceProps) {
     const message =
       contractEmbed.resolveQuery.error instanceof Error
         ? contractEmbed.resolveQuery.error.message
-        : 'Nao foi possivel resolver a sessao de embed.';
+        : 'Não foi possível resolver a sessão de embed.';
 
     return (
       <div className="flex min-h-[100dvh] items-center justify-center bg-slate-50 px-6 py-10">
         <div className="max-w-xl rounded-[28px] border border-rose-200 bg-white px-6 py-8 text-center shadow-[0_24px_60px_-42px_rgba(15,23,42,0.28)]">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-            Sessao de embed indisponivel
+            Sessão de embed indisponivel
           </h1>
           <p className="mt-3 text-sm leading-7 text-slate-600">{message}</p>
         </div>
@@ -79,7 +79,7 @@ export function ContractsEmbedSurface({ token }: ContractsEmbedSurfaceProps) {
       <div className="flex min-h-[100dvh] items-center justify-center bg-[linear-gradient(180deg,#f8fafc,#ffffff)] px-6 py-10">
         <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm text-slate-600 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.28)]">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Carregando sessao contratual...
+          Carregando sessão contratual...
         </div>
       </div>
     );
@@ -98,10 +98,10 @@ export function ContractsEmbedSurface({ token }: ContractsEmbedSurfaceProps) {
                 <ContractStatusBadge status={activeValues.internalMetadata.contractStatus} />
               </div>
               <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-                Formalizacao contratual
+                Formalização contratual
               </h1>
               <p className="text-sm leading-7 text-slate-600">
-                {activeValues.legalData.contratante.razaoSocial || 'Empresa nao preenchida'} •{' '}
+                {activeValues.legalData.contratante.razaoSocial || 'Empresa não preenchida'} •{' '}
                 {activeValues.legalData.plano.nome}
               </p>
             </div>
@@ -141,9 +141,9 @@ export function ContractsEmbedSurface({ token }: ContractsEmbedSurfaceProps) {
 
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {[
-              ['Implantacao', formatCurrencyPtBr(activeValues.legalData.pagamento.valorImplantacao)],
-              ['Recorrencia', formatCurrencyPtBr(activeValues.legalData.pagamento.valorRecorrente)],
-              ['Inicio', formatDatePtBr(activeValues.legalData.pagamento.dataInicio)],
+              ['Implantação', formatCurrencyPtBr(activeValues.legalData.pagamento.valorImplantacao)],
+              ['Recorrência', formatCurrencyPtBr(activeValues.legalData.pagamento.valorRecorrente)],
+              ['Início', formatDatePtBr(activeValues.legalData.pagamento.dataInicio)],
               ['Primeiro vencimento', formatDatePtBr(activeValues.legalData.pagamento.dataPrimeiroVencimento)],
             ].map(([label, value]) => (
               <div key={label} className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4">
@@ -195,8 +195,8 @@ export function ContractsEmbedSurface({ token }: ContractsEmbedSurfaceProps) {
         isGeneratingPdf={contractEmbed.isGeneratingPdf}
         isGeneratingWord={contractEmbed.isGeneratingWord}
         finalExportKind="word"
-        title="Formalizacao comercial"
-        subtitle="Sessao publica de formalizacao preparada para embed controlado na apresentacao comercial."
+        title="Formalização comercial"
+        subtitle="Sessão pública de formalização preparada para embed controlado na apresentação comercial."
         showMockSeedButton={false}
         lockedFieldKeys={contractEmbed.lockedFieldKeys}
       />

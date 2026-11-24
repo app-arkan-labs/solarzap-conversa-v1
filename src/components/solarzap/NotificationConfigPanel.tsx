@@ -52,7 +52,7 @@ import {
   removeRecipient,
 } from "@/lib/notificationRecipientEditor";
 
-/* â”€â”€ Timezone list â”€â”€ */
+/* ── Timezone list ── */
 const FALLBACK_TIMEZONES = [
   "America/Sao_Paulo",
   "America/Araguaina",
@@ -86,7 +86,7 @@ const SUPPORTED_TIMEZONES = (() => {
   return FALLBACK_TIMEZONES;
 })();
 
-/* â”€â”€ Component â”€â”€ */
+/* ── Component ── */
 interface Props {
   onClose: () => void;
 }
@@ -137,8 +137,8 @@ export function NotificationConfigPanel({ onClose }: Props) {
     if (result.parsedCount === 0) return;
     if (result.invalid.length > 0) {
       toast({
-        title: "Numero WhatsApp invalido",
-        description: "Use DDD + numero (10 ou 11 digitos), sem + ou espacos.",
+        title: "Número WhatsApp inválido",
+        description: "Use DDD + número (10 ou 11 dígitos), sem + ou espaços.",
         variant: "destructive",
       });
     }
@@ -162,7 +162,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
     if (result.parsedCount === 0) return;
     if (result.invalid.length > 0) {
       toast({
-        title: "E-mail invalido",
+        title: "E-mail inválido",
         description: "Revise o formato dos e-mails informados.",
         variant: "destructive",
       });
@@ -190,7 +190,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
 
   return (
     <div className="h-full flex flex-col bg-background border-r border-border">
-      {/* â”€â”€ Header â”€â”€ */}
+      {/* ── Header ── */}
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Settings2 className="h-5 w-5 text-primary" />
@@ -213,7 +213,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
       ) : (
         <ScrollArea className="flex-1">
           <div className="p-4 space-y-6">
-            {/* â•â•â• MASTER TOGGLE â•â•â• */}
+            {/* ═══ MASTER TOGGLE ═══ */}
             <div
               className={cn(
                 "p-4 rounded-xl border-2 transition-all",
@@ -253,7 +253,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
               </div>
             </div>
 
-            {/* â•â•â• CANAIS DE ENVIO â•â•â• */}
+            {/* ═══ CANAIS DE ENVIO ═══ */}
             <section className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
                 Canais de Envio
@@ -300,8 +300,8 @@ export function NotificationConfigPanel({ onClose }: Props) {
                     <div className="flex items-start gap-2">
                       <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600" />
                       <div className="space-y-1 text-[11px] text-green-700/90">
-                        <p>As notificacoes sao enviadas pela instancia SolarZap configurada no painel admin.</p>
-                        <p>Voce define aqui apenas os numeros que devem receber os alertas.</p>
+                        <p>As notificações são enviadas pela instância SolarZap configurada no painel admin.</p>
+                        <p>Você define aqui apenas os números que devem receber os alertas.</p>
                       </div>
                     </div>
                   </div>
@@ -344,7 +344,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                       >
                         {whatsappRecipients.length === 0 ? (
                           <p className="text-[10px] text-muted-foreground/70">
-                            Nenhum numero cadastrado.
+                            Nenhum número cadastrado.
                           </p>
                         ) : (
                           whatsappRecipients.map((recipient) => (
@@ -368,8 +368,8 @@ export function NotificationConfigPanel({ onClose }: Props) {
                         )}
                       </div>
                       <p className="text-[10px] text-muted-foreground/70 mt-1">
-                        Use DDD + numero. Aceita colagem de multiplos numeros
-                        (virgula, ; ou quebra de linha).
+                        Use DDD + número. Aceita colagem de múltiplos números
+                        (vírgula, ; ou quebra de linha).
                       </p>
                       <p className="text-[10px] text-muted-foreground/70 mt-1">
                         Envio somente para os números listados acima (sem
@@ -487,7 +487,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
                         )}
                       </div>
                       <p className="text-[10px] text-muted-foreground/70 mt-1">
-                        Aceita colagem de multiplos e-mails (virgula, ; ou
+                        Aceita colagem de múltiplos e-mails (vírgula, ; ou
                         quebra de linha).
                       </p>
                     </div>
@@ -496,7 +496,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
               </div>
             </section>
 
-            {/* â•â•â• LEMBRETES â•â•â• */}
+            {/* ═══ LEMBRETES ═══ */}
             <section className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
                 Lembretes
@@ -540,7 +540,7 @@ export function NotificationConfigPanel({ onClose }: Props) {
               </div>
             </section>
 
-            {/* â•â•â• EVENTOS MONITORADOS â•â•â• */}
+            {/* ═══ EVENTOS MONITORADOS ═══ */}
             <section className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
                 Eventos Monitorados

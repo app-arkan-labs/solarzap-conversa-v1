@@ -173,7 +173,7 @@ export default function GuidedTour({
               <div className="flex items-center gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={onPrev} disabled={stepIndex === 0}>Voltar</Button>
                 <Button type="button" size="sm" onClick={onNext}>
-                  {stepIndex + 1 < steps.length ? 'Proximo passo' : 'Concluir'}
+                  {stepIndex + 1 < steps.length ? 'Próximo passo' : 'Concluir'}
                 </Button>
               </div>
             </div>

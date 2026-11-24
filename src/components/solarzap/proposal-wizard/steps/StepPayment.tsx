@@ -22,7 +22,7 @@ export function StepPayment({ form }: StepPaymentProps) {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-base font-semibold">Como sera o pagamento?</h3>
+      <h3 className="text-base font-semibold">Como será o pagamento?</h3>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="space-y-1.5">
@@ -48,13 +48,13 @@ export function StepPayment({ form }: StepPaymentProps) {
             onChange={(e) => form.handleChange('descontoAvistaPercentual', Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
           />
           <p className="text-xs text-muted-foreground">
-            Percentual aplicado sobre o valor total para condicoes a vista.
+            Percentual aplicado sobre o valor total para condições a vista.
           </p>
         </div>
         <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-          <p className="font-medium">Resumo rapido</p>
+          <p className="font-medium">Resumo rápido</p>
           <p className="text-muted-foreground">
-            Potencia: {Number(form.formData.potenciaSistema || 0).toFixed(2)} kWp
+            Potência: {Number(form.formData.potenciaSistema || 0).toFixed(2)} kWp
           </p>
           <p className="text-muted-foreground">
             Sistema: {form.formData.quantidadePaineis || 0} paineis
@@ -66,16 +66,16 @@ export function StepPayment({ form }: StepPaymentProps) {
             Desconto: {(Number(form.formData.descontoAvistaPercentual) || 0).toFixed(1)}%
           </p>
           <p className="text-muted-foreground">
-            A vista liquido: {form.formatCurrency(form.formData.valorAvistaLiquido || 0)}
+            À vista líquido: {form.formatCurrency(form.formData.valorAvistaLiquido || 0)}
           </p>
           <p className="text-muted-foreground">
-            Base metricas: {form.formatCurrency(form.formData.investimentoBaseMetricas || 0)}
+            Base métricas: {form.formatCurrency(form.formData.investimentoBaseMetricas || 0)}
           </p>
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label>Condicoes de pagamento</Label>
+        <Label>Condições de pagamento</Label>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {form.options.PAYMENT_CONDITION_OPTIONS.map((option) => {
             const checked = form.formData.paymentConditions.includes(option.id);
@@ -95,7 +95,7 @@ export function StepPayment({ form }: StepPaymentProps) {
       {hasFinancingSelected && (
         <div className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2">
           <div>
-            <Label className="text-sm">Exibir simulacao de financiamento na proposta</Label>
+            <Label className="text-sm">Exibir simulação de financiamento na proposta</Label>
             <p className="text-xs text-muted-foreground">Financiamento pode existir sem tabela de parcelas no PDF.</p>
           </div>
           <Checkbox
@@ -110,7 +110,7 @@ export function StepPayment({ form }: StepPaymentProps) {
           <div className="flex items-center justify-between">
             <Label>Financiamento multi-banco</Label>
             <Button type="button" variant="outline" size="sm" onClick={form.addFinancingCondition}>
-              Adicionar instituicao
+              Adicionar instituição
             </Button>
           </div>
 
@@ -145,7 +145,7 @@ export function StepPayment({ form }: StepPaymentProps) {
                         if (checked) form.setPrimaryFinancingInstitution(condition.id);
                       }}
                     />
-                    <span>{`Instituicao ${index + 1}${isPrimary ? ' (principal)' : ''}`}</span>
+                    <span>{`Instituição ${index + 1}${isPrimary ? ' (principal)' : ''}`}</span>
                   </label>
                   <Button
                     type="button"
@@ -160,7 +160,7 @@ export function StepPayment({ form }: StepPaymentProps) {
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Instituicao financeira</Label>
+                    <Label className="text-xs">Instituição financeira</Label>
                     <Input
                       value={condition.institutionName}
                       onChange={(e) => form.updateFinancingCondition(condition.id, 'institutionName', e.target.value)}
@@ -182,7 +182,7 @@ export function StepPayment({ form }: StepPaymentProps) {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Carencia</Label>
+                    <Label className="text-xs">Carência</Label>
                     <div className="grid grid-cols-[1fr_120px] gap-2">
                       <Input
                         type="number"
@@ -268,7 +268,7 @@ export function StepPayment({ form }: StepPaymentProps) {
 
       {hasFinancingSelected && !form.formData.showFinancingSimulation && (
         <p className="text-xs text-muted-foreground">
-          Financiamento marcado apenas como forma de pagamento, sem simulacao detalhada no PDF.
+          Financiamento marcado apenas como forma de pagamento, sem simulação detalhada no PDF.
         </p>
       )}
     </div>

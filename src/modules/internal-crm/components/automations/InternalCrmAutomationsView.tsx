@@ -68,50 +68,50 @@ const TRIGGER_META: Record<
   }
 > = {
   lp_form_submitted: {
-    label: 'Formulario enviado',
-    description: 'Contato inicial imediatamente apos a captura do lead.',
+    label: 'Formulário enviado',
+    description: 'Contato inicial imediatamente após a captura do lead.',
     icon: MessageSquare,
     surfaceClassName: 'border-sky-200/70 bg-sky-500/10 text-sky-600 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300',
     tokens: COMMON_TEMPLATE_TOKENS,
   },
   lp_form_no_schedule: {
-    label: 'Formulario sem agendamento',
-    description: 'Recupera leads que preencheram a LP, mas ainda nao agendaram.',
+    label: 'Formulário sem agendamento',
+    description: 'Recupera leads que preencheram a LP, mas ainda não agendaram.',
     icon: Clock,
     surfaceClassName: 'border-amber-200/70 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
     tokens: COMMON_TEMPLATE_TOKENS,
   },
   appointment_scheduled: {
-    label: 'Reuniao agendada',
-    description: 'Confirma o compromisso com data, hora ou link de reuniao.',
+    label: 'Reunião agendada',
+    description: 'Confirma o compromisso com data, hora ou link de reunião.',
     icon: Calendar,
     surfaceClassName: 'border-violet-200/70 bg-violet-500/10 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300',
     tokens: COMMON_TEMPLATE_TOKENS,
   },
   appointment_no_show: {
-    label: 'Nao compareceu',
+    label: 'Não compareceu',
     description: 'Recupera agendas perdidas e reabre o canal rapidamente.',
     icon: UserX,
     surfaceClassName: 'border-rose-200/70 bg-rose-500/10 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300',
     tokens: COMMON_TEMPLATE_TOKENS,
   },
   appointment_done: {
-    label: 'Reuniao concluida',
-    description: 'Dispara follow-up logo apos a reuniao acontecer.',
+    label: 'Reunião concluída',
+    description: 'Dispara follow-up logo após a reunião acontecer.',
     icon: CheckCircle2,
     surfaceClassName: 'border-emerald-200/70 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300',
     tokens: COMMON_TEMPLATE_TOKENS,
   },
   deal_closed: {
-    label: 'Negocio fechado',
-    description: 'Confirma fechamentos e avanca a operacao comercial.',
+    label: 'Negócio fechado',
+    description: 'Confirma fechamentos e avanca a operação comercial.',
     icon: CheckCircle2,
     surfaceClassName: 'border-emerald-200/70 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300',
     tokens: COMMON_TEMPLATE_TOKENS,
   },
   deal_not_closed: {
-    label: 'Negocio nao fechado',
-    description: 'Aciona reengajamento quando a negociacao esfria ou trava.',
+    label: 'Negócio não fechado',
+    description: 'Aciona reengajamento quando a negociação esfria ou trava.',
     icon: AlertTriangle,
     surfaceClassName: 'border-orange-200/70 bg-orange-500/10 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300',
     tokens: COMMON_TEMPLATE_TOKENS,
@@ -151,7 +151,7 @@ const RUN_STATUS_MAP: Record<string, { label: string; className: string }> = {
     className: 'bg-slate-500/10 text-slate-700 dark:bg-slate-500/10 dark:text-slate-300',
   },
   idle: {
-    label: 'Sem historico',
+    label: 'Sem histórico',
     className: 'bg-muted text-muted-foreground',
   },
 };
@@ -219,7 +219,7 @@ function formatDelay(minutes: number): string {
   if (minutes === 0) return 'Imediata';
 
   const abs = Math.abs(minutes);
-  const prefix = minutes > 0 ? 'Apos ' : '';
+  const prefix = minutes > 0 ? 'Após ' : '';
   const suffix = minutes < 0 ? ' antes' : '';
 
   if (abs < 60) {
@@ -310,7 +310,7 @@ function getTriggerMeta(rule: InternalCrmAutomationRule | InternalCrmAutomationR
   return (
     TRIGGER_META[rule.trigger_event] || {
       label: rule.trigger_event,
-      description: 'Rotina operacional personalizada deste motor de automacoes.',
+      description: 'Rotina operacional personalizada deste motor de automações.',
       icon: Zap,
       surfaceClassName: 'border-primary/20 bg-primary/10 text-primary',
       tokens: COMMON_TEMPLATE_TOKENS,
@@ -434,7 +434,7 @@ function AutomationRuleCard(props: {
                   {props.rule.channel === 'whatsapp_admin' ? 'Canal interno' : 'WhatsApp lead'}
                 </Badge>
                 <Badge className={cn('border-0 text-[11px] font-medium', lastStatus.className)}>{lastStatus.label}</Badge>
-                {props.rule.last_run_at ? <span>Ultima execucao: {formatDateTime(props.rule.last_run_at)}</span> : null}
+                {props.rule.last_run_at ? <span>Última execução: {formatDateTime(props.rule.last_run_at)}</span> : null}
               </div>
             </div>
           </div>
@@ -465,15 +465,15 @@ function AutomationRuleCard(props: {
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               {templateLength > 0
-                ? 'Voce pode editar a mensagem mesmo deixando a automacao inativa.'
-                : 'Preencha o conteudo para evitar disparos sem mensagem.'}
+                ? 'Você pode editar a mensagem mesmo deixando a automação inativa.'
+                : 'Preencha o conteúdo para evitar disparos sem mensagem.'}
             </p>
           </div>
 
           <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5 sm:col-span-2 xl:col-span-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Cancelamento</p>
             <p className="mt-1 text-sm font-medium text-foreground">
-              {props.rule.cancel_on_event_types.length > 0 ? props.rule.cancel_on_event_types.join(', ') : 'Nao configurado'}
+              {props.rule.cancel_on_event_types.length > 0 ? props.rule.cancel_on_event_types.join(', ') : 'Não configurado'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Eventos que interrompem esta mensagem antes do envio final.
@@ -485,7 +485,7 @@ function AutomationRuleCard(props: {
           <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Variaveis disponiveis
+                Variaveis disponíveis
               </span>
               {triggerMeta.tokens.map((token) => (
                 <Badge key={`${props.rule.id}-${token}`} variant="outline" className="rounded-xl border-border/70 bg-background/80 text-[11px]">
@@ -495,22 +495,22 @@ function AutomationRuleCard(props: {
             </div>
 
             <div className="mt-4 space-y-2">
-              <Label htmlFor={`automation-template-${props.rule.id}`}>Mensagem automatica</Label>
+              <Label htmlFor={`automation-template-${props.rule.id}`}>Mensagem automática</Label>
               <Textarea
                 id={`automation-template-${props.rule.id}`}
                 value={props.draft.template}
                 onChange={(event) => props.onTemplateChange(event.target.value)}
                 rows={6}
                 className="min-h-[160px] resize-y bg-background"
-                placeholder="Escreva aqui a mensagem automatica que sera enviada nesse trigger..."
+                placeholder="Escreva aqui a mensagem automática que será enviada nesse trigger..."
               />
             </div>
 
             <div className="mt-3 flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
               <p className={cn(templateLength === 0 && props.draft.isActive ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
                 {templateLength === 0 && props.draft.isActive
-                  ? 'Esta regra esta ativa, mas ainda nao possui mensagem preenchida.'
-                  : 'As alteracoes ficam em rascunho ate voce salvar a pagina.'}
+                  ? 'Esta regra está ativa, mas ainda não possui mensagem preenchida.'
+                  : 'As alterações ficam em rascunho até você salvar a página.'}
               </p>
               <span className="text-muted-foreground">{pluralize(templateLength, 'caractere', 'caracteres')}</span>
             </div>
@@ -613,15 +613,15 @@ export function InternalCrmAutomationsView() {
     const messages: string[] = [];
 
     if (health && activeRuleCount > 0 && !health.whatsapp_connected) {
-      messages.push('Nenhuma instancia WhatsApp esta conectada para realizar os disparos.');
+      messages.push('Nenhuma instância WhatsApp está conectada para realizar os disparos.');
     }
 
     if (health && activeRuleCount > 0 && !health.evolution_api_reachable) {
-      messages.push('A API de envio esta indisponivel no momento.');
+      messages.push('A API de envio está indisponivel no momento.');
     }
 
     if (adminActiveCount > 0 && notificationRecipientCount === 0) {
-      messages.push('Existem alertas operacionais ativos, mas nenhum numero admin configurado para recebe-los.');
+      messages.push('Existem alertas operacionais ativos, mas nenhum número admin configurado para recebe-los.');
     }
 
     if (failedRunsCount > 0) {
@@ -651,11 +651,11 @@ export function InternalCrmAutomationsView() {
             : 'bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
         )}
       >
-        {requiresAttention ? 'Operacao exige atencao' : 'Operacao estavel'}
+        {requiresAttention ? 'Operação exige atenção' : 'Operação estável'}
       </Badge>
       {hasAnyChanges ? (
         <Badge className="rounded-xl border-0 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-          Alteracoes pendentes
+          Alterações pendentes
         </Badge>
       ) : null}
     </div>
@@ -752,15 +752,15 @@ export function InternalCrmAutomationsView() {
 
       if (ruleResult.failed > 0) {
         const description = [
-          settingsSaved ? 'A configuracao geral foi salva.' : null,
-          ruleResult.updated > 0 ? `${pluralize(ruleResult.updated, 'automacao atualizada', 'automacoes atualizadas')}.` : null,
-          `${pluralize(ruleResult.failed, 'automacao falhou', 'automacoes falharam')} ao salvar.`,
+          settingsSaved ? 'A configuração geral foi salva.' : null,
+          ruleResult.updated > 0 ? `${pluralize(ruleResult.updated, 'automação atualizada', 'automações atualizadas')}.` : null,
+          `${pluralize(ruleResult.failed, 'automação falhou', 'automações falharam')} ao salvar.`,
         ]
           .filter(Boolean)
           .join(' ');
 
         toast({
-          title: 'Algumas alteracoes exigem revisao',
+          title: 'Algumas alterações exigem revisão',
           description,
           variant: 'destructive',
         });
@@ -768,20 +768,20 @@ export function InternalCrmAutomationsView() {
       }
 
       const updatedParts = [
-        settingsSaved ? 'configuracao geral' : null,
+        settingsSaved ? 'configuração geral' : null,
         ruleResult.updated > 0 ? pluralize(ruleResult.updated, 'automacao', 'automacoes') : null,
       ].filter(Boolean);
 
       toast({
-        title: 'Alteracoes salvas',
+        title: 'Alterações salvas',
         description:
           updatedParts.length > 0
             ? `Atualizado: ${updatedParts.join(' e ')}.`
-            : 'Nao havia alteracoes pendentes para salvar.',
+            : 'Não havia alterações pendentes para salvar.',
       });
     } catch {
       toast({
-        title: 'Erro ao salvar alteracoes',
+        title: 'Erro ao salvar alterações',
         description: 'Revise os dados preenchidos e tente novamente.',
         variant: 'destructive',
       });
@@ -794,8 +794,8 @@ export function InternalCrmAutomationsView() {
     setSettingsDraft({ ...settingsBaseline });
     setRuleDrafts({ ...ruleBaselines });
     toast({
-      title: 'Alteracoes descartadas',
-      description: 'A aba voltou para o ultimo estado salvo.',
+      title: 'Alterações descartadas',
+      description: 'A aba voltou para o último estado salvo.',
     });
   }
 
@@ -812,7 +812,7 @@ export function InternalCrmAutomationsView() {
       {requiresAttention ? (
         <Alert className="border-rose-200 bg-rose-50/80 text-rose-950 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-50">
           <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-300" />
-          <AlertTitle>A operacao precisa de ajustes antes de confiar nos disparos</AlertTitle>
+          <AlertTitle>A operação precisa de ajustes antes de confiar nos disparos</AlertTitle>
           <AlertDescription>{issueMessages.join(' ')}</AlertDescription>
         </Alert>
       ) : null}
@@ -825,19 +825,19 @@ export function InternalCrmAutomationsView() {
           hint={
             totalRuleCount > 0
               ? `${coveragePercent}% das automacoes estao habilitadas agora.`
-              : 'Nenhuma automacao cadastrada para este escopo.'
+              : 'Nenhuma automação cadastrada para este escopo.'
           }
           tone={activeRuleCount > 0 ? 'sky' : 'slate'}
           progressValue={coveragePercent}
         />
         <SummaryMetricCard
           icon={Wifi}
-          label="Instancias prontas"
+          label="Instâncias prontas"
           value={instances.length > 0 ? `${connectedInstancesCount}/${instances.length}` : '0'}
           hint={
             instances.length > 0
-              ? `${pluralize(connectedInstancesCount, 'instancia conectada', 'instancias conectadas')} para envio.`
-              : 'Nenhuma instancia WhatsApp foi cadastrada ainda.'
+              ? `${pluralize(connectedInstancesCount, 'instância conectada', 'instâncias conectadas')} para envio.`
+              : 'Nenhuma instância WhatsApp foi cadastrada ainda.'
           }
           tone={connectedInstancesCount > 0 ? 'emerald' : 'rose'}
           progressValue={instances.length > 0 ? Math.round((connectedInstancesCount / instances.length) * 100) : 0}
@@ -848,7 +848,7 @@ export function InternalCrmAutomationsView() {
           value={health ? String(pendingRunsCount) : '--'}
           hint={
             health?.last_processed_at
-              ? `Ultimo processamento em ${formatDateTime(health.last_processed_at)}.`
+              ? `Último processamento em ${formatDateTime(health.last_processed_at)}.`
               : 'Sem registro recente de processamento.'
           }
           tone={pendingRunsCount > 0 ? 'amber' : 'sky'}
@@ -859,8 +859,8 @@ export function InternalCrmAutomationsView() {
           value={health ? String(failedRunsCount) : '--'}
           hint={
             failedRunsCount > 0
-              ? 'Existe atrito recente no motor de envio e isso merece revisao.'
-              : 'Nenhuma falha registrada no periodo recente.'
+              ? 'Existe atrito recente no motor de envio e isso merece revisão.'
+              : 'Nenhuma falha registrada no período recente.'
           }
           tone={failedRunsCount > 0 ? 'rose' : 'emerald'}
         />
@@ -874,19 +874,19 @@ export function InternalCrmAutomationsView() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <CardTitle className="text-xl">Catalogo de automacoes</CardTitle>
+                      <CardTitle className="text-xl">Catálogo de automações</CardTitle>
                       {rulesDirty ? (
                         <Badge className="border-0 bg-amber-500/10 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-                          {pluralize(changedRuleCount, 'alteracao pendente', 'alteracoes pendentes')}
+                          {pluralize(changedRuleCount, 'alteração pendente', 'alterações pendentes')}
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="border-border/70 bg-background/70">
-                          Sem pendencias
+                          Sem pendências
                         </Badge>
                       )}
                     </div>
                     <CardDescription>
-                      Separe por contexto, filtre rapidamente e edite templates sem perder a visao operacional da aba.
+                      Separe por contexto, filtre rapidamente e edite templates sem perder a visão operacional da aba.
                     </CardDescription>
                   </div>
 
@@ -900,13 +900,13 @@ export function InternalCrmAutomationsView() {
                     size="sm"
                     className="flex-wrap justify-start lg:justify-end"
                   >
-                    <ToggleGroupItem value="all" aria-label="Mostrar todas as automacoes">
+                    <ToggleGroupItem value="all" aria-label="Mostrar todas as automações">
                       Todas
                     </ToggleGroupItem>
-                    <ToggleGroupItem value="active" aria-label="Mostrar apenas automacoes ativas">
+                    <ToggleGroupItem value="active" aria-label="Mostrar apenas automações ativas">
                       Ativas
                     </ToggleGroupItem>
-                    <ToggleGroupItem value="inactive" aria-label="Mostrar apenas automacoes inativas">
+                    <ToggleGroupItem value="inactive" aria-label="Mostrar apenas automações inativas">
                       Inativas
                     </ToggleGroupItem>
                   </ToggleGroup>
@@ -920,7 +920,7 @@ export function InternalCrmAutomationsView() {
                   </TabsTrigger>
                   <TabsTrigger value="admin" className="gap-2 rounded-xl py-2.5 text-sm">
                     <AlertTriangle className="h-4 w-4" />
-                    Operacao
+                    Operação
                     <span className="text-xs text-muted-foreground">{adminRules.length}</span>
                   </TabsTrigger>
                 </TabsList>
@@ -938,7 +938,7 @@ export function InternalCrmAutomationsView() {
                           </Badge>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Disparos para captura, agendamento, no-show, reuniao concluida e reengajamento comercial.
+                          Disparos para captura, agendamento, no-show, reunião concluída e reengajamento comercial.
                         </p>
                       </div>
 
@@ -957,11 +957,11 @@ export function InternalCrmAutomationsView() {
                   {rulesLoading ? (
                     <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Carregando automacoes de lead...
+                      Carregando automações de lead...
                     </div>
                   ) : visibleLeadRules.length === 0 ? (
                     <SectionEmptyState
-                      title="Nenhuma automacao de lead neste filtro"
+                      title="Nenhuma automação de lead neste filtro"
                       description="Ajuste o filtro acima ou habilite novas rotinas para este grupo."
                     />
                   ) : (
@@ -985,13 +985,13 @@ export function InternalCrmAutomationsView() {
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                       <div className="space-y-1.5">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-base font-semibold text-foreground">Alertas da operacao</h3>
+                          <h3 className="text-base font-semibold text-foreground">Alertas da operação</h3>
                           <Badge variant="outline" className="border-amber-200/70 bg-background/70 text-amber-700 dark:border-amber-500/20 dark:text-amber-200">
                             {visibleAdminRules.length} visiveis
                           </Badge>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Notificacoes internas para novo lead, agenda, fechamento e outros marcos criticos do CRM interno.
+                          Notificações internas para novo lead, agenda, fechamento e outros marcos críticos do CRM interno.
                         </p>
                       </div>
 
@@ -1015,7 +1015,7 @@ export function InternalCrmAutomationsView() {
                   ) : visibleAdminRules.length === 0 ? (
                     <SectionEmptyState
                       title="Nenhum alerta operacional neste filtro"
-                      description="Revise o filtro acima ou configure os numeros de destino para usar esta area com seguranca."
+                      description="Revise o filtro acima ou configure os números de destino para usar esta área com segurança."
                     />
                   ) : (
                     <div className="space-y-4">
@@ -1053,7 +1053,7 @@ export function InternalCrmAutomationsView() {
                       : 'bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
                   )}
                 >
-                  {health ? (requiresAttention ? 'Atencao' : 'Pronto') : 'Consultando'}
+                  {health ? (requiresAttention ? 'Atenção' : 'Pronto') : 'Consultando'}
                 </Badge>
               </div>
             </CardHeader>
@@ -1069,7 +1069,7 @@ export function InternalCrmAutomationsView() {
                       <p className="mt-2 text-sm font-medium text-foreground">
                         {health.whatsapp_connected
                           ? `Conectado${health.whatsapp_instance_name ? ` em ${health.whatsapp_instance_name}` : ''}`
-                          : 'Nenhuma instancia conectada'}
+                          : 'Nenhuma instância conectada'}
                       </p>
                     </div>
 
@@ -1079,7 +1079,7 @@ export function InternalCrmAutomationsView() {
                         API de envio
                       </div>
                       <p className="mt-2 text-sm font-medium text-foreground">
-                        {health.evolution_api_reachable ? 'Disponivel' : 'Indisponivel'}
+                        {health.evolution_api_reachable ? 'Disponível' : 'Indisponivel'}
                       </p>
                     </div>
 
@@ -1102,14 +1102,14 @@ export function InternalCrmAutomationsView() {
 
                   <div className="rounded-xl border border-border/70 bg-background/70 px-3 py-3 text-sm text-muted-foreground">
                     {health.last_processed_at
-                      ? `Ultimo processamento em ${formatDateTime(health.last_processed_at)}.`
+                      ? `Último processamento em ${formatDateTime(health.last_processed_at)}.`
                       : 'Sem processamento recente registrado.'}
                   </div>
                 </>
               ) : (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Consultando o motor de automacoes...
+                  Consultando o motor de automações...
                 </div>
               )}
             </CardContent>
@@ -1121,9 +1121,9 @@ export function InternalCrmAutomationsView() {
                 <div>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Settings2 className="h-4 w-4 text-primary" />
-                    Configuracao de envio
+                    Configuração de envio
                   </CardTitle>
-                  <CardDescription>Separe a instancia das automacoes para clientes da instancia dedicada para notificacoes internas.</CardDescription>
+                  <CardDescription>Separe a instância das automações para clientes da instância dedicada para notificações internas.</CardDescription>
                 </div>
                 <Badge
                   className={cn(
@@ -1139,7 +1139,7 @@ export function InternalCrmAutomationsView() {
 
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline" className="border-border/70 bg-background/70">
-                  {pluralize(connectedInstancesCount, 'instancia pronta', 'instancias prontas')}
+                  {pluralize(connectedInstancesCount, 'instância pronta', 'instâncias prontas')}
                 </Badge>
                 <Badge variant="outline" className="border-border/70 bg-background/70">
                   {pluralize(notificationRecipientCount, 'destino', 'destinos')}
@@ -1154,16 +1154,16 @@ export function InternalCrmAutomationsView() {
               {settingsPanelLoading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Carregando configuracao de envio...
+                  Carregando configuração de envio...
                 </div>
               ) : null}
 
               {instances.length === 0 ? (
                 <Alert className="border-amber-200 bg-amber-50/80 dark:border-amber-500/30 dark:bg-amber-500/10">
                   <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-300" />
-                  <AlertTitle>Nenhuma instancia cadastrada</AlertTitle>
+                  <AlertTitle>Nenhuma instância cadastrada</AlertTitle>
                   <AlertDescription>
-                    Conecte uma instancia na aba Integracoes antes de depender de disparos automaticos.
+                    Conecte uma instância na aba Integrações antes de depender de disparos automáticos.
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -1173,23 +1173,23 @@ export function InternalCrmAutomationsView() {
                   <AlertTriangle className="h-4 w-4 text-rose-700 dark:text-rose-300" />
                   <AlertTitle>Alertas ativos sem destino</AlertTitle>
                   <AlertDescription>
-                    Existem regras internas ligadas, mas nenhum numero admin configurado para recebe-las.
+                    Existem regras internas ligadas, mas nenhum número admin configurado para recebe-las.
                   </AlertDescription>
                 </Alert>
               ) : null}
 
               {canManageInternalNotificationsInstance ? (
                 <div className="space-y-2">
-                  <Label>Instancia dedicada das notificacoes internas</Label>
+                  <Label>Instância dedicada das notificações internas</Label>
                   <Select
                     value={settingsDraft.internalNotificationWhatsappInstanceId}
                     onValueChange={(value) => setSettingsDraft((current) => ({ ...current, internalNotificationWhatsappInstanceId: value }))}
                   >
                     <SelectTrigger className="bg-background">
-                      <SelectValue placeholder="Selecione a instancia" />
+                      <SelectValue placeholder="Selecione a instância" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Sem instancia dedicada (fallback legado)</SelectItem>
+                      <SelectItem value="none">Sem instância dedicada (fallback legado)</SelectItem>
                       {instances.map((instance) => (
                         <SelectItem key={instance.id} value={instance.id}>
                           {instance.display_name} - {formatInstanceStatus(instance)}
@@ -1199,27 +1199,27 @@ export function InternalCrmAutomationsView() {
                   </Select>
                   {selectedInternalNotificationInstance ? (
                     <p className="text-xs text-muted-foreground">
-                      Status da instancia dedicada das notificacoes internas: {formatInstanceStatus(selectedInternalNotificationInstance)}.
+                      Status da instância dedicada das notificações internas: {formatInstanceStatus(selectedInternalNotificationInstance)}.
                     </p>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      Sem instancia dedicada configurada. O runtime usa fallback legado para compatibilidade.
+                      Sem instância dedicada configurada. O runtime usa fallback legado para compatibilidade.
                     </p>
                   )}
                 </div>
               ) : null}
 
               <div className="space-y-2">
-                <Label>Instancia das automacoes para clientes</Label>
+                <Label>Instância das automações para clientes</Label>
                 <Select
                   value={settingsDraft.defaultWhatsappInstanceId}
                   onValueChange={(value) => setSettingsDraft((current) => ({ ...current, defaultWhatsappInstanceId: value }))}
                 >
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Selecione a instancia" />
+                    <SelectValue placeholder="Selecione a instância" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Sem instancia fixa</SelectItem>
+                    <SelectItem value="none">Sem instância fixa</SelectItem>
                     {instances.map((instance) => (
                       <SelectItem key={instance.id} value={instance.id}>
                         {instance.display_name} - {formatInstanceStatus(instance)}
@@ -1229,13 +1229,13 @@ export function InternalCrmAutomationsView() {
                 </Select>
                 {selectedInstance ? (
                   <p className="text-xs text-muted-foreground">
-                    Status da instancia selecionada para os clientes: {formatInstanceStatus(selectedInstance)}.
+                    Status da instância selecionada para os clientes: {formatInstanceStatus(selectedInstance)}.
                   </p>
                 ) : null}
               </div>
 
               <div className="space-y-2">
-                <Label>Intervalo minimo entre alertas</Label>
+                <Label>Intervalo mínimo entre alertas</Label>
                 <Input
                   type="number"
                   min={1}
@@ -1250,12 +1250,12 @@ export function InternalCrmAutomationsView() {
                   className="bg-background"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use este intervalo para evitar notificacoes internas duplicadas em sequencia curta.
+                  Use este intervalo para evitar notificações internas duplicadas em sequência curta.
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label>Numeros para alertas internos</Label>
+                <Label>Números para alertas internos</Label>
                 <Textarea
                   rows={3}
                   value={settingsDraft.adminNotificationNumbers}
@@ -1269,19 +1269,19 @@ export function InternalCrmAutomationsView() {
                   placeholder="5511999999999, 5511988888888"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Separe por virgula, ponto e virgula ou quebra de linha. Duplicidades sao removidas ao salvar.
+                  Separe por vírgula, ponto e vírgula ou quebra de linha. Duplicidades são removidas ao salvar.
                 </p>
               </div>
 
               <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
-                A instancia dedicada de notificacoes internas nao interfere no disparo das automacoes para clientes.
+                A instância dedicada de notificações internas não interfere no disparo das automações para clientes.
                 Cada fluxo permanece isolado.
               </div>
 
               <Separator />
 
               <p className="text-xs text-muted-foreground">
-                As mudancas desta caixa entram no mesmo fluxo de salvar da pagina para evitar configuracoes desencontradas.
+                As mudanças desta caixa entram no mesmo fluxo de salvar da página para evitar configurações desencontradas.
               </p>
             </CardContent>
           </Card>
@@ -1291,7 +1291,7 @@ export function InternalCrmAutomationsView() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <CardTitle className="text-base">Execucoes recentes</CardTitle>
-                  <CardDescription>Ultimas automacoes processadas pelo motor de envio.</CardDescription>
+                  <CardDescription>Últimas automações processadas pelo motor de envio.</CardDescription>
                 </div>
                 <Badge variant="outline" className="border-border/70 bg-background/70">
                   {pluralize(runs.length, 'registro', 'registros')}
@@ -1303,12 +1303,12 @@ export function InternalCrmAutomationsView() {
               {runsLoading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Carregando historico recente...
+                  Carregando histórico recente...
                 </div>
               ) : runs.length === 0 ? (
                 <SectionEmptyState
                   title="Sem execucoes recentes"
-                  description="Quando o motor processar automacoes, o historico mais novo aparece aqui."
+                  description="Quando o motor processar automações, o histórico mais novo aparece aqui."
                 />
               ) : (
                 <ScrollArea className="h-[420px] pr-4">
@@ -1359,10 +1359,10 @@ export function InternalCrmAutomationsView() {
                 Primeiro valide conectividade, fila e falhas. Sem isso, editar template vira maquiagem de um problema operacional.
               </div>
               <div className="rounded-xl border border-border/70 bg-background/70 p-3">
-                Depois ajuste a configuracao de envio: instancia padrao, cooldown e numeros administrativos precisam estar coerentes com as regras ativas.
+                Depois ajuste a configuração de envio: instância padrão, cooldown e números administrativos precisam estar coerentes com as regras ativas.
               </div>
               <div className="rounded-xl border border-border/70 bg-background/70 p-3">
-                Por fim revise os templates, ative o que fizer sentido e use a barra fixa no rodape para salvar tudo de uma vez.
+                Por fim revise os templates, ative o que fizer sentido e use a barra fixa no rodapé para salvar tudo de uma vez.
               </div>
             </CardContent>
           </Card>
@@ -1374,10 +1374,10 @@ export function InternalCrmAutomationsView() {
           <div className="rounded-2xl border border-primary/20 bg-background/95 shadow-[0_24px_80px_-32px_hsl(var(--foreground)/0.35)] backdrop-blur-xl">
             <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">Alteracoes pendentes</p>
+                <p className="text-sm font-semibold text-foreground">Alterações pendentes</p>
                 <p className="text-xs text-muted-foreground">
                   {[
-                    settingsDirty ? 'configuracao geral' : null,
+                    settingsDirty ? 'configuração geral' : null,
                     changedRuleCount > 0 ? pluralize(changedRuleCount, 'automacao', 'automacoes') : null,
                   ]
                     .filter(Boolean)

@@ -355,7 +355,7 @@ export function AppointmentModal({
             console.error('[appointment-modal][init-error]', error);
             toast({
                 title: 'Erro ao abrir agendamento',
-                description: 'Falha ao inicializar o formulario.',
+                description: 'Falha ao inicializar o formulário.',
                 variant: 'destructive',
             });
             onClose();
@@ -471,7 +471,7 @@ export function AppointmentModal({
                     time: data.time
                 });
                 toast({
-                    title: 'Data ou hora invalida',
+                    title: 'Data ou hora inválida',
                     description: 'Revise lead, data e hora do agendamento.',
                     variant: 'destructive',
                 });
@@ -516,8 +516,8 @@ export function AppointmentModal({
 
             if (!responsibleUserId) {
                 toast({
-                    title: 'Responsavel invalido',
-                    description: 'Selecione um vendedor responsavel para continuar.',
+                    title: 'Responsável inválido',
+                    description: 'Selecione um vendedor responsável para continuar.',
                     variant: 'destructive',
                 });
                 return;
@@ -572,9 +572,9 @@ export function AppointmentModal({
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
                     {linkedTaskTitle ? (
                         <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-                            <p className="text-xs font-semibold text-primary">Vinculo operacional ativo</p>
+                            <p className="text-xs font-semibold text-primary">Vínculo operacional ativo</p>
                             <p className="mt-1 text-sm text-foreground">
-                                Este agendamento sera vinculado a: <span className="font-medium">{linkedTaskTitle}</span>
+                                Este agendamento será vinculado a: <span className="font-medium">{linkedTaskTitle}</span>
                             </p>
                         </div>
                     ) : null}
@@ -611,11 +611,11 @@ export function AppointmentModal({
                     </div>
 
                     <div className="space-y-2">
-                        <Label>Vendedor Responsavel</Label>
+                        <Label>Vendedor Responsável</Label>
                         <Controller
                             control={control}
                             name="responsible_user_id"
-                            rules={{ required: 'Selecione um responsavel' }}
+                            rules={{ required: 'Selecione um responsável' }}
                             render={({ field }) => (
                                 <Select
                                     onValueChange={field.onChange}
@@ -660,7 +660,7 @@ export function AppointmentModal({
 
                     {lastEventSummary ? (
                         <div className="space-y-2">
-                            <Label>Ultimo evento</Label>
+                            <Label>Último evento</Label>
                             <Textarea
                                 value={lastEventSummary}
                                 readOnly

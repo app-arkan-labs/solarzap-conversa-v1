@@ -19,7 +19,7 @@ export function OrdersTable(props: OrdersTableProps) {
             <TableRow>
               <TableHead>Order</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Metodo</TableHead>
+              <TableHead>Método</TableHead>
               <TableHead>Valor</TableHead>
               <TableHead>Pago em</TableHead>
             </TableRow>

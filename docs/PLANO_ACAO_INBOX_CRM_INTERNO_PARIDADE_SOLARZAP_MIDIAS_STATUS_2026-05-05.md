@@ -226,7 +226,7 @@ Criterio de aceite: um lead nunca aparece como `Novo Lead` e `Respondeu` ao mesm
    - `EVOLUTION_API_KEY`
    - `EDGE_INTERNAL_API_KEY`
    - `OPENAI_API_KEY`, apenas para transcricao de audio se usado
-5. Corrigir textos corrompidos de placeholder no resolver, como `VÃ­deo` e `Ãudio`.
+5. Corrigir textos de placeholder no resolver, como `Vídeo` e `Áudio`.
 6. Garantir que todo webhook de midia grave:
    - `wa_message_id`
    - `metadata.instance_name`

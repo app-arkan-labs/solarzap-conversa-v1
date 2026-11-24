@@ -14,7 +14,7 @@ import {
 describe('digestContract', () => {
   it('normaliza seções e gera labels canônicas', () => {
     const sections = normalizeDigestSections({
-      summary: '  Cliente pediu nova simulacao de prazo.  ',
+      summary: '  Cliente pediu nova simulação de prazo.  ',
       currentSituation: '',
       recommendedActions: ' ',
     })

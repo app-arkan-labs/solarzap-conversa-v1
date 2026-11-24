@@ -218,7 +218,7 @@ export function ConfiguracoesContaView() {
                                         <div className="space-y-1">
                                             <p className="text-sm font-medium text-foreground">Foto de perfil</p>
                                             <p className="text-xs text-muted-foreground">Clique na foto para alterar.</p>
-                                            <p className="text-xs text-muted-foreground">PNG, JPG ou WebP ate 2 MB.</p>
+                                            <p className="text-xs text-muted-foreground">PNG, JPG ou WebP até 2 MB.</p>
                                         </div>
                                     </div>
                                     <input

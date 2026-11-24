@@ -21,7 +21,7 @@ export function SubscriptionsTable(props: SubscriptionsTableProps) {
               <TableHead>Status</TableHead>
               <TableHead>MRR</TableHead>
               <TableHead>Ciclo</TableHead>
-              <TableHead>Renovacao</TableHead>
+              <TableHead>Renovação</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

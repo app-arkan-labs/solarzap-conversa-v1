@@ -66,11 +66,11 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
   const marginValue = data.margin.value_pct;
   const cycleTone =
     data.avg_close_days.value <= 15 ? "text-emerald-600" : data.avg_close_days.value <= 30 ? "text-amber-600" : "text-rose-600";
-  const revenueLabel = data.revenue.basis === "project_paid" ? "Faturamento em Projeto Pago" : "Vendas fechadas no periodo";
+  const revenueLabel = data.revenue.basis === "project_paid" ? "Faturamento em Projeto Pago" : "Vendas fechadas no período";
   const revenueHelper =
     data.revenue.basis === "project_paid"
-      ? "Valor total dos projetos que entraram em Projeto Pago no periodo."
-      : "Baseado nas vendas fechadas dentro do periodo.";
+      ? "Valor total dos projetos que entraram em Projeto Pago no período."
+      : "Baseado nas vendas fechadas dentro do período.";
 
   const cards = [
     {
@@ -83,7 +83,7 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
       iconBg: "bg-sky-500/10",
     },
     {
-      title: "Conversao",
+      title: "Conversão",
       value: `${data.conversion.value_pct.toFixed(1)}%`,
       description: `${data.conversion.won} vendas no periodo`,
       descriptionTone: "text-muted-foreground",
@@ -92,9 +92,9 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
       iconBg: "bg-emerald-500/10",
     },
     {
-      title: "Ticket medio",
+      title: "Ticket médio",
       value: formatCurrency(data.ticket_avg.value),
-      description: "Valor medio por venda fechada",
+      description: "Valor médio por venda fechada",
       descriptionTone: "text-muted-foreground",
       icon: Wallet,
       iconTone: "text-cyan-600",
@@ -103,7 +103,7 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
     {
       title: "Tempo de fechamento",
       value: data.avg_close_days.value > 0 ? `${Math.round(data.avg_close_days.value)} dias` : "--",
-      description: data.avg_close_days.value > 0 ? "Da entrada ate o fechamento" : "Sem vendas no periodo",
+      description: data.avg_close_days.value > 0 ? "Da entrada até o fechamento" : "Sem vendas no período",
       descriptionTone: data.avg_close_days.value > 0 ? cycleTone : "text-muted-foreground",
       icon: Timer,
       iconTone: "text-rose-600",
@@ -116,7 +116,7 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
       <Card className="border-border/50 bg-background/80 shadow-sm">
         <CardContent className="flex flex-col gap-5 p-5 lg:flex-row lg:items-start lg:justify-between lg:p-6">
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Resultado do periodo</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Resultado do período</p>
             <div className="flex flex-wrap items-center gap-3">
               <p className="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">
                 {formatCurrency(data.revenue.value)}
@@ -132,7 +132,7 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
 
           <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[420px]">
             <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Em negociacao</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Em negociação</p>
               <p className="mt-1 text-lg font-semibold text-foreground">{formatCurrency(data.forecast.value)}</p>
               <p className="mt-1 text-xs text-muted-foreground">{data.forecast.count} oportunidades abertas</p>
             </div>

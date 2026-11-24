@@ -229,10 +229,10 @@ Regras obrigatórias:
 - Nada genérico; use o contexto do cliente e da empresa recebido no payload.
 - Inclua CTA objetivo.
 - Importante: esta proposta é apresentada presencialmente (visita já está acontecendo). Não use CTA do tipo "agendar visita" ou "agendar apresentação". Prefira CTA de confirmação/aprovação para iniciar validação técnica final, contrato e cronograma.
-- Use o historico recente de conversa (context.interactions) para personalizar e antecipar objecoes.
+- Use o histórico recente de conversa (context.interactions) para personalizar e antecipar objeções.
 - Use os documentos importados (context.documents) e a base (company_profile/objections/testimonials) como fonte de argumentos, garantias e diferenciais.
-- Nao cite "documento/base de conhecimento" explicitamente; apenas aplique os fatos.
-- Nao copie blocos longos do conteudo; sintetize.
+- Não cite "documento/base de conhecimento" explicitamente; apenas aplique os fatos.
+- Não copie blocos longos do conteúdo; sintetize.
 - Estruture para decisão comercial rápida.
 - Evite exageros não comprováveis.
 

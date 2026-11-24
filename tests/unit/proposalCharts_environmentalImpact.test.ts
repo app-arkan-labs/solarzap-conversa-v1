@@ -12,7 +12,7 @@ describe('calcEnvironmentalImpact', () => {
     expect(result.carKm).toBeGreaterThan(150000);
   });
 
-  it('alinha com baseline de 300 kWh/mes usado na comparacao com Luvik', () => {
+  it('alinha com baseline de 300 kWh/mês usado na comparacao com Luvik', () => {
     const result = calcEnvironmentalImpact(300 * 12, 25);
 
     expect(result.co2Tons).toBe(28.66);

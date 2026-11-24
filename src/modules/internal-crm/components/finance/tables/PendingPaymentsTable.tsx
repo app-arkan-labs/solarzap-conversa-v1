@@ -22,7 +22,7 @@ export function PendingPaymentsTable(props: PendingPaymentsTableProps) {
           <TableHeader>
             <TableRow>
               <TableHead>Origem</TableHead>
-              <TableHead>Referencia</TableHead>
+              <TableHead>Referência</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Valor</TableHead>
               <TableHead>Data</TableHead>
@@ -32,7 +32,7 @@ export function PendingPaymentsTable(props: PendingPaymentsTableProps) {
             {props.rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  Sem pendencias no momento.
+                  Sem pendências no momento.
                 </TableCell>
               </TableRow>
             ) : (

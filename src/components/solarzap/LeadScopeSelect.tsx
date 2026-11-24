@@ -55,7 +55,7 @@ export function LeadScopeSelect({
         ))}
         {loading && uniqueMembers.length === 0 ? (
           <SelectItem value="loading-users" disabled>
-            Carregando responsaveis...
+            Carregando responsáveis...
           </SelectItem>
         ) : null}
       </SelectContent>

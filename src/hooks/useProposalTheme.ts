@@ -236,7 +236,7 @@ export function useProposalTheme() {
     if (!orgId) return;
     const normalized = hexOrNull ? normalizeThemeHex(hexOrNull) : null;
     if (hexOrNull && !normalized) {
-      toast({ title: 'Cor secundaria invalida', variant: 'destructive' });
+      toast({ title: 'Cor secundária inválida', variant: 'destructive' });
       return;
     }
 
@@ -255,10 +255,10 @@ export function useProposalTheme() {
       if (error) {
         if (isMissingSecondaryColorColumnError(error)) {
           toast({
-            title: 'Cor secundaria salva',
+            title: 'Cor secundária salva',
             description: normalized
               ? `Cor ${normalized.toUpperCase()} aplicada as proximas propostas (modo local).`
-              : 'Modo automatico reativado (modo local).',
+              : 'Modo automático reativado (modo local).',
           });
           return;
         }
@@ -266,12 +266,12 @@ export function useProposalTheme() {
       }
 
       toast({
-        title: 'Cor secundaria salva',
-        description: normalized ? `Cor ${normalized.toUpperCase()} aplicada as proximas propostas.` : 'Modo automatico reativado.',
+        title: 'Cor secundária salva',
+        description: normalized ? `Cor ${normalized.toUpperCase()} aplicada as proximas propostas.` : 'Modo automático reativado.',
       });
     } catch (err) {
       console.error('Failed to save proposal secondary color:', err);
-      toast({ title: 'Erro ao salvar cor secundaria', variant: 'destructive' });
+      toast({ title: 'Erro ao salvar cor secundária', variant: 'destructive' });
     } finally {
       setLoading(false);
     }

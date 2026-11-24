@@ -58,7 +58,7 @@ export function PipelineFilters(props: PipelineFiltersProps) {
           <SelectItem value={ALL_VALUE}>Todos os status</SelectItem>
           <SelectItem value="open">Abertos</SelectItem>
           <SelectItem value="won">Fechou Contrato</SelectItem>
-          <SelectItem value="lost">Nao Fechou</SelectItem>
+          <SelectItem value="lost">Não Fechou</SelectItem>
         </SelectContent>
       </Select>
 
@@ -78,7 +78,7 @@ export function PipelineFilters(props: PipelineFiltersProps) {
 
       <Select value={props.ownerUserId} onValueChange={props.onOwnerUserIdChange}>
         <SelectTrigger>
-          <SelectValue placeholder="Responsavel" />
+          <SelectValue placeholder="Responsável" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL_VALUE}>Todos os responsáveis</SelectItem>

@@ -11,7 +11,7 @@ type StageBadgeItem = {
 const FINANCING_STATUS_LABELS: Record<string, string> = {
   collecting_docs: 'Coletando docs',
   submitted: 'Enviado',
-  in_review: 'Em analise',
+  in_review: 'Em análise',
   pending: 'Pendente',
   approved: 'Aprovado',
   denied: 'Negado',
@@ -26,8 +26,8 @@ const NEGOTIATION_STATUS_LABELS: Record<string, string> = {
 
 const NO_SHOW_REASON_LABELS: Record<string, string> = {
   tempo: 'Sem tempo',
-  tecnico: 'Motivo tecnico',
-  duvida: 'Com duvidas',
+  tecnico: 'Motivo técnico',
+  duvida: 'Com dúvidas',
   desinteresse: 'Desinteresse',
   sem_resposta: 'Sem resposta',
 };

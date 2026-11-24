@@ -82,7 +82,7 @@ export function InstallmentActionModal({
     if (!installment?.dueOn) {
       return {
         label: "Sem vencimento informado",
-        helper: "Confirme o pagamento ou reagende a cobranca.",
+        helper: "Confirme o pagamento ou reagende a cobrança.",
         tone: "bg-muted text-muted-foreground",
       };
     }
@@ -103,7 +103,7 @@ export function InstallmentActionModal({
     if (diffDays === 1) {
       return {
         label: "1 dia de atraso",
-        helper: "Vale confirmar agora se o pagamento ja entrou.",
+        helper: "Vale confirmar agora se o pagamento já entrou.",
         tone: "bg-amber-500/10 text-amber-700",
       };
     }
@@ -155,8 +155,8 @@ export function InstallmentActionModal({
           <DialogTitle>Confirmar parcela</DialogTitle>
           <DialogDescription>
             {step === "decision"
-              ? "Essa parcela foi paga ou ainda precisa de nova cobranca?"
-              : "Se ela nao foi paga, escolha a proxima data de cobranca."}
+              ? "Essa parcela foi paga ou ainda precisa de nova cobrança?"
+              : "Se ela não foi paga, escolha a próxima data de cobrança."}
           </DialogDescription>
         </DialogHeader>
 
@@ -206,7 +206,7 @@ export function InstallmentActionModal({
                 >
                   <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
-                    Nao foi paga
+                    Não foi paga
                   </span>
                   <span className="text-xs font-normal text-muted-foreground">
                     Escolha a nova data para continuar cobrando.
@@ -229,7 +229,7 @@ export function InstallmentActionModal({
 
                 <div className="space-y-2">
                   <label htmlFor="installment-reschedule-date" className="text-sm font-medium text-foreground">
-                    Nova data de cobranca
+                    Nova data de cobrança
                   </label>
                   <div className="relative">
                     <CalendarClock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

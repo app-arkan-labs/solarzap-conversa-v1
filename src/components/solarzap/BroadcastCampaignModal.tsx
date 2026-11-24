@@ -51,7 +51,7 @@ interface BroadcastCampaignModalProps {
 type Step = 1 | 2 | 3 | 4 | 5;
 
 const STEP_LABELS: Record<Step, string> = {
-  1: 'Configuracao',
+  1: 'Configuração',
   2: 'Upload',
   3: 'Mensagens',
   4: 'Timer',
@@ -221,18 +221,18 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
         return false;
       }
       if (!instanceName.trim()) {
-        toast({ title: 'Selecione uma instancia de WhatsApp', variant: 'destructive' });
+        toast({ title: 'Selecione uma instância de WhatsApp', variant: 'destructive' });
         return false;
       }
       if (normalizeAssigneeIds(assignedToUserIds).length < 1) {
-        toast({ title: 'Selecione o responsavel da campanha', variant: 'destructive' });
+        toast({ title: 'Selecione o responsável da campanha', variant: 'destructive' });
         return false;
       }
     }
 
     if (step === 2) {
       if (contacts.length < 1) {
-        toast({ title: 'Importe pelo menos 1 contato valido', variant: 'destructive' });
+        toast({ title: 'Importe pelo menos 1 contato válido', variant: 'destructive' });
         return false;
       }
     }
@@ -246,7 +246,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
 
     if (step === 4) {
       if (clampBroadcastTimerSeconds(timerSeconds) < BROADCAST_MIN_TIMER_SECONDS) {
-        toast({ title: 'O timer minimo e 60 segundos', variant: 'destructive' });
+        toast({ title: 'O timer mínimo e 60 segundos', variant: 'destructive' });
         return false;
       }
     }
@@ -318,7 +318,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
     }
 
     if (contacts.length < 1) {
-      toast({ title: 'Nenhum contato valido para salvar a campanha', variant: 'destructive' });
+      toast({ title: 'Nenhum contato válido para salvar a campanha', variant: 'destructive' });
       return;
     }
 
@@ -470,7 +470,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <Label>Responsavel pelos leads</Label>
+                  <Label>Responsável pelos leads</Label>
                   <Button
                     type="button"
                     variant="ghost"
@@ -602,7 +602,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                         <FileSpreadsheet className="w-4 h-4" />
                         {uploadedFileName}
                       </p>
-                      <p className="text-xs text-muted-foreground">{contacts.length} contato(s) valido(s).</p>
+                      <p className="text-xs text-muted-foreground">{contacts.length} contato(s) válido(s).</p>
                       {invalidRows > 0 && (
                         <p className="text-xs text-amber-600">{invalidRows} linha(s) ignorada(s) por falta de nome/telefone.</p>
                       )}
@@ -651,8 +651,8 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary">{messages.length} variacao(oes)</Badge>
-                  <p className="text-xs text-muted-foreground">Quanto mais variacoes, menor risco de bloqueio.</p>
+                  <Badge variant="secondary">{messages.length} variação(oes)</Badge>
+                  <p className="text-xs text-muted-foreground">Quanto mais variações, menor risco de bloqueio.</p>
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={addMessage}>
                   <Plus className="w-4 h-4 mr-1" />
@@ -671,7 +671,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                       <Textarea
                         value={message}
                         onChange={(event) => updateMessage(index, event.target.value)}
-                        placeholder="Escreva a mensagem que sera enviada para esse contato"
+                        placeholder="Escreva a mensagem que será enviada para esse contato"
                         rows={4}
                       />
                       <div className="flex justify-end">
@@ -695,7 +695,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
           {step === 4 && (
             <div className="space-y-6">
               <div className="space-y-3">
-                <Label>Intervalo entre mensagens (minimo 60s, sem limite maximo)</Label>
+                <Label>Intervalo entre mensagens (mínimo 60s, sem limite máximo)</Label>
                 <div className="flex items-center gap-3">
                   <Slider
                     min={BROADCAST_MIN_TIMER_SECONDS}
@@ -734,12 +734,12 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
               <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-2">
                 <p className="font-medium flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-primary" />
-                  Randomizacao anti-bloqueio
+                  Randomização anti-bloqueio
                 </p>
                 <p className="text-muted-foreground">
-                  O sistema aplica variacao automatica de ate +/-30% no intervalo por destinatario, sempre respeitando o minimo operacional de 60 segundos.
+                  O sistema aplica variação automática de até +/-30% no intervalo por destinatário, sempre respeitando o mínimo operacional de 60 segundos.
                 </p>
-                <p className="text-xs text-amber-600">Timer minimo de seguranca: 60s.</p>
+                <p className="text-xs text-amber-600">Timer mínimo de segurança: 60s.</p>
               </div>
             </div>
           )}
@@ -752,7 +752,7 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                   <p className="font-semibold">{campaignName || '-'}</p>
                 </div>
                 <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Instancia</p>
+                  <p className="text-xs text-muted-foreground">Instância</p>
                   <p className="font-semibold">{instanceName || '-'}</p>
                 </div>
                 <div className="rounded-lg border p-3">
@@ -767,11 +767,11 @@ export function BroadcastCampaignModal({ isOpen, onClose, instances, onSubmit }:
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">Intervalo base</p>
                   <p className="font-semibold">
-                    {formatBroadcastInterval(normalizedTimerSeconds)} ({normalizedTimerSeconds}s, variacao de ate +/-30%)
+                    {formatBroadcastInterval(normalizedTimerSeconds)} ({normalizedTimerSeconds}s, variação de até +/-30%)
                   </p>
                 </div>
                 <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Responsavel</p>
+                  <p className="text-xs text-muted-foreground">Responsável</p>
                   <p className="font-semibold">{selectedAssigneeLabel}</p>
                 </div>
                 <div className="rounded-lg border p-3">

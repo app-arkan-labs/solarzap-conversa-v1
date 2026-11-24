@@ -12,7 +12,7 @@ export function RevenueKpiGrid(props: RevenueKpiGridProps) {
       <MetricCard
         title="Receita one-time"
         value={formatCurrencyBr(props.summary?.revenue_one_time_cents ?? 0)}
-        subtitle="Servicos e mentorias pagas"
+        subtitle="Serviços e mentorias pagas"
       />
       <MetricCard
         title="MRR vendido"
@@ -23,7 +23,7 @@ export function RevenueKpiGrid(props: RevenueKpiGridProps) {
       <MetricCard
         title="MRR ativo"
         value={formatCurrencyBr(props.summary?.mrr_active_cents ?? 0)}
-        subtitle="Recorrencia ativa em subscriptions"
+        subtitle="Recorrência ativa em subscriptions"
         accentClassName="text-emerald-700"
       />
       <MetricCard
@@ -33,9 +33,9 @@ export function RevenueKpiGrid(props: RevenueKpiGridProps) {
         accentClassName="text-rose-700"
       />
       <MetricCard
-        title="Pendencias"
+        title="Pendências"
         value={String(props.pendingPaymentsRows)}
-        subtitle="Orders e subscriptions com atencao"
+        subtitle="Orders e subscriptions com atenção"
         accentClassName="text-amber-700"
       />
     </div>

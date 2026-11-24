@@ -201,7 +201,7 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
 
   const createNextAction = useCallback(
     async (input: UpsertLeadTaskInput) => {
-      if (!orgId || !user) throw new Error('Organizacao ou usuario ausente');
+      if (!orgId || !user) throw new Error('Organização ou usuário ausente');
 
       const basePayload = {
         org_id: orgId,
@@ -232,7 +232,7 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
 
         if (!isMissingColumnError(error)) {
           if (error.code === '23505') {
-            throw new Error('Este lead ja possui uma proxima acao ativa.');
+            throw new Error('Este lead já possui uma próxima ação ativa.');
           }
           throw error;
         }
@@ -247,7 +247,7 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
 
       if (error) {
         if (error.code === '23505') {
-          throw new Error('Este lead ja possui uma proxima acao ativa.');
+          throw new Error('Este lead já possui uma próxima ação ativa.');
         }
         throw error;
       }
@@ -259,7 +259,7 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
 
   const updateNextAction = useCallback(
     async (input: UpdateLeadTaskInput) => {
-      if (!orgId || !user) throw new Error('Organizacao ou usuario ausente');
+      if (!orgId || !user) throw new Error('Organização ou usuário ausente');
 
       const basePayload = {
         ...(input.title !== undefined ? { title: input.title.trim() } : {}),
@@ -299,10 +299,10 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
 
   const completeNextAction = useCallback(
     async (task: LeadTask, resultSummary: string) => {
-      if (!orgId || !user) throw new Error('Organizacao ou usuario ausente');
+      if (!orgId || !user) throw new Error('Organização ou usuário ausente');
 
       const trimmedResult = resultSummary.trim();
-      if (!trimmedResult) throw new Error('Informe o resultado da acao.');
+      if (!trimmedResult) throw new Error('Informe o resultado da ação.');
 
       if (leadTasksSupportExtendedColumns !== false) {
         const { error } = await supabase
@@ -320,7 +320,7 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
           await supabase.from('comentarios_leads').insert({
             org_id: orgId,
             lead_id: task.leadId,
-            texto: `[Acao concluida] ${task.title}: ${trimmedResult}`,
+            texto: `[Ação concluída] ${task.title}: ${trimmedResult}`,
             autor: 'Vendedor',
           });
           queryClient.invalidateQueries({ queryKey: ['lead-tasks', orgId] });
@@ -345,7 +345,7 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
       await supabase.from('comentarios_leads').insert({
         org_id: orgId,
         lead_id: task.leadId,
-        texto: `[Acao concluida] ${task.title}: ${trimmedResult}`,
+        texto: `[Ação concluída] ${task.title}: ${trimmedResult}`,
         autor: 'Vendedor',
       });
 
@@ -356,7 +356,7 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
 
   const cancelNextAction = useCallback(
     async (taskId: string) => {
-      if (!orgId || !user) throw new Error('Organizacao ou usuario ausente');
+      if (!orgId || !user) throw new Error('Organização ou usuário ausente');
 
       const { error } = await supabase
         .from('lead_tasks')
@@ -371,7 +371,7 @@ export function useLeadTasks(options: UseLeadTasksOptions = {}) {
 
   const linkNextActionToAppointment = useCallback(
     async (input: LinkLeadTaskAppointmentInput) => {
-      if (!orgId || !user) throw new Error('Organizacao ou usuario ausente');
+      if (!orgId || !user) throw new Error('Organização ou usuário ausente');
 
       const extendedPayload = {
         linked_appointment_id: input.appointmentId,

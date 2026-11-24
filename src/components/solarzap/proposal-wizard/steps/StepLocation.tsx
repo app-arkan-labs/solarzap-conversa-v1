@@ -114,7 +114,7 @@ export function StepLocation({ form }: StepLocationProps) {
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>{isUsina ? 'Geracao estimada (kWh/mes)' : 'Consumo medio mensal (kWh/mes)'}</Label>
+          <Label>{isUsina ? 'Geração estimada (kWh/mês)' : 'Consumo médio mensal (kWh/mês)'}</Label>
           <Input
             type="number"
             min={0}
@@ -127,7 +127,7 @@ export function StepLocation({ form }: StepLocationProps) {
 
       {!isUsina && (
         <div className="space-y-1.5">
-          <Label>Conta media mensal (R$)</Label>
+          <Label>Conta média mensal (R$)</Label>
           <Input
             type="number"
             min={0}
@@ -157,7 +157,7 @@ export function StepLocation({ form }: StepLocationProps) {
       </div>
 
       <div className="space-y-1.5">
-        <Label>Endereco (rua, numero, bairro)</Label>
+        <Label>Endereço (rua, número, bairro)</Label>
         <Input
           value={form.formData.endereco || ''}
           placeholder="Ex: Rua das Palmeiras, 120 - Centro"
@@ -189,7 +189,7 @@ export function StepLocation({ form }: StepLocationProps) {
         <p className="text-xs text-muted-foreground">
           {hasCoordinates
             ? `Coordenadas: ${Number(form.formData.latitude).toFixed(5)}, ${Number(form.formData.longitude).toFixed(5)}`
-            : 'Coordenadas: nao resolvidas'}
+            : 'Coordenadas: não resolvidas'}
           {hasPvgis && ` | PVGIS por ${locationLabel}`}
           {hasPvgis && form.solarResourceReferenceYear && ` | Histórico até ${form.solarResourceReferenceYear}`}
         </p>

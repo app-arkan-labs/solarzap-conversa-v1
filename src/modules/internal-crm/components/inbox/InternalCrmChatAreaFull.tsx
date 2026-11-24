@@ -487,7 +487,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted/60">
             <MessageSquare className="h-7 w-7 text-muted-foreground" />
           </div>
-          <p className="text-muted-foreground">Selecione uma conversa para visualizar o historico.</p>
+          <p className="text-muted-foreground">Selecione uma conversa para visualizar o histórico.</p>
         </div>
       </div>
     );
@@ -560,7 +560,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
               )}
               <span className="text-xs font-medium">
                 {!isInstanceConnected
-                  ? 'Instancia Pausada'
+                  ? 'Instância Pausada'
                   : props.instance?.ai_enabled === false
                     ? 'IA Pausada'
                     : 'IA Ativa'}
@@ -585,7 +585,7 @@ export function InternalCrmChatAreaFull(props: InternalCrmChatAreaFullProps) {
 
           <button
             onClick={() => {
-              toast({ title: 'Busca em breve', description: 'A busca de mensagens sera ativada nesta tela.' });
+              toast({ title: 'Busca em breve', description: 'A busca de mensagens será ativada nesta tela.' });
             }}
             className="hidden p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors md:block"
             title="Pesquisar mensagens"

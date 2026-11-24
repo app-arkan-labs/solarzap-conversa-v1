@@ -39,7 +39,7 @@ function InternalCrmAccessDeniedScreen() {
           </div>
           <CardTitle>Acesso ao CRM interno indisponivel</CardTitle>
           <CardDescription>
-            Seu usuario e admin do sistema, mas ainda nao possui um `crm_role` habilitado para o novo CRM interno.
+            Seu usuário e admin do sistema, mas ainda não possui um `crm_role` habilitado para o novo CRM interno.
           </CardDescription>
         </CardHeader>
         <CardContent>

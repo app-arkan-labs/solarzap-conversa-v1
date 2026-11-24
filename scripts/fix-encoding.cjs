@@ -20,33 +20,31 @@ const { execSync } = require('child_process');
 // Complete mapping of mojibake sequences → correct Portuguese characters
 const MOJIBAKE_MAP = [
   // Three-byte sequences (must come FIRST to avoid partial matches)
-  ['Ã§Ãµes', 'ções'],
-  ['Ã§Ã£o', 'ção'],
-  ['Ã§Ã£', 'çã'],      // standalone çã
+  ['\u00c3\u00a7\u00c3\u00b5es', 'ções'],
+  ['\u00c3\u00a7\u00c3\u00a3o', 'ção'],
+  ['\u00c3\u00a7\u00c3\u00a3', 'çã'],      // standalone çã
   
   // Two-byte sequences  
-  ['Ã£o', 'ão'],
-  ['Ã£', 'ã'],
-  ['Ãµes', 'ões'],
-  ['Ãµ', 'õ'],
-  ['Ã©', 'é'],
-  ['Ã¡', 'á'],
-  ['Ã­', 'í'],
-  ['Ãº', 'ú'],
-  ['Ã³', 'ó'],
-  ['Ã§', 'ç'],
-  ['Ãª', 'ê'],
-  ['Ã¢', 'â'],
-  ['Ã´', 'ô'],
-  ['Ã¼', 'ü'],
-  ['Ã', 'À'],  // capital À - must be LAST among Ã patterns
-  ['Â', ''],   // orphan  byte from double encoding (artifact)
-  ['Ã‰', 'É'],
-  ['Ã"', 'Ó'],
-  ['Ãš', 'Ú'],
-  ['Ã‡', 'Ç'],
-  ['Ã‚', 'Â'],
-  ['Ãƒ', 'Ã'],
+  ['\u00c3\u00a3o', 'ão'],
+  ['\u00c3\u00a3', 'ã'],
+  ['\u00c3\u00b5es', 'ões'],
+  ['\u00c3\u00b5', 'õ'],
+  ['\u00c3\u00a9', 'é'],
+  ['\u00c3\u00a1', 'á'],
+  ['\u00c3\u00ad', 'í'],
+  ['\u00c3\u00ba', 'ú'],
+  ['\u00c3\u00b3', 'ó'],
+  ['\u00c3\u00a7', 'ç'],
+  ['\u00c3\u00aa', 'ê'],
+  ['\u00c3\u00a2', 'â'],
+  ['\u00c3\u00b4', 'ô'],
+  ['\u00c3\u00bc', 'ü'],
+  ['\u00c3\u2030', 'É'],
+  ['\u00c3\u201c', 'Ó'],
+  ['\u00c3\u0161', 'Ú'],
+  ['\u00c3\u2021', 'Ç'],
+  ['\u00c3\u201a', 'Â'],
+  ['\u00c3\u0192', 'Ã'],
 ];
 
 // Files with runtime mojibake repair functions — skip their regex/detection code
@@ -59,10 +57,10 @@ const RUNTIME_REPAIR_EXCLUSIONS = new Set([
 function shouldSkipLine(line, filePath) {
   const trimmed = line.trim();
   // Skip regex patterns that detect mojibake at runtime
-  if (trimmed.includes('/[ÃƒÆ') || trimmed.includes('/[ÃÂ]')) return true;
-  if (trimmed.includes('.match(/[Ãƒ')) return true;
+  if (trimmed.includes('/[\\u00c3') || trimmed.includes('/[\\u00c2')) return true;
+  if (trimmed.includes('.match(/[\\u00c3')) return true;
   if (trimmed.includes('.test(')) return true;
-  if (trimmed.includes('if (!/[Ã') || trimmed.includes('if (!/[Â')) return true;
+  if (trimmed.includes('if (!/[\\u00c3') || trimmed.includes('if (!/[\\u00c2')) return true;
   return false;
 }
 
@@ -148,7 +146,7 @@ for (const file of files) {
   for (let i = 0; i < lines.length; i++) {
     if (shouldSkipLine(lines[i], file)) continue;
     // Check for remaining Ã patterns (but not in regex/detection code)
-    if (/Ã[£¡©§ª³ºµ­´¢¼â€™â€œ]/.test(lines[i])) {
+    if (/\u00c3[\u00a3\u00a1\u00a9\u00a7\u00aa\u00b3\u00ba\u00b5\u00ad\u00b4\u00a2\u00bc\u00e2\u20ac\u2122\u0153]/.test(lines[i])) {
       remainingCount++;
       const relPath = path.relative(path.join(__dirname, '..'), file);
       console.log(`⚠️  Remaining mojibake: ${relPath}:${i + 1}: ${lines[i].trim().substring(0, 80)}`);

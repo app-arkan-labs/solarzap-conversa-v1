@@ -664,8 +664,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const cep = normalizeCep(rawCep || currentFormData.cep || '');
     if (cep.length !== 8) {
       toast({
-        title: 'CEP invalido',
-        description: 'Informe um CEP com 8 digitos.',
+        title: 'CEP inválido',
+        description: 'Informe um CEP com 8 dígitos.',
         variant: 'destructive',
       });
       return null;
@@ -1233,8 +1233,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     if (!isStrictPvgisSource(formData.irradianceSource) || !Number.isFinite(Number(formData.latitude)) || !Number.isFinite(Number(formData.longitude))) {
       toast({
-        title: 'Irradiancia obrigatoria via PVGIS',
-        description: 'Calcule o local exato ate obter fonte PVGIS antes de gerar a proposta.',
+        title: 'Irradiância obrigatória via PVGIS',
+        description: 'Calcule o local exato até obter fonte PVGIS antes de gerar a proposta.',
         variant: 'destructive',
       });
       return;

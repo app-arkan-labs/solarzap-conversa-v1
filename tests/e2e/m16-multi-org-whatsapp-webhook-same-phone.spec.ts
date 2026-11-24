@@ -161,7 +161,7 @@ test.afterAll(async () => {
   }
 });
 
-test('M16 multi-org whatsapp webhook: same phone creates one lead per org and keeps interacoes aligned', async () => {
+test('M16 multi-org whatsapp webhook: same phone creates one lead per org and keeps interações aligned', async () => {
   const first = await invokeWhatsappWebhook(state.instanceAName, `m16-a-${Date.now()}`, 'Oi da org A');
   const second = await invokeWhatsappWebhook(state.instanceBName, `m16-b-${Date.now()}`, 'Oi da org B');
 
@@ -228,7 +228,7 @@ test('M16 multi-org whatsapp webhook: same phone creates one lead per org and ke
     .eq('phone_e164', state.phoneE164)
     .order('created_at', { ascending: true });
 
-  if (interactionsError) throw new Error(`Failed to fetch M16 interacoes: ${interactionsError.message}`);
+  if (interactionsError) throw new Error(`Failed to fetch M16 interações: ${interactionsError.message}`);
 
   expect(interactions).toHaveLength(2);
   for (const row of interactions || []) {

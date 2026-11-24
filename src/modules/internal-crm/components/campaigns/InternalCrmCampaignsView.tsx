@@ -36,7 +36,7 @@ const campaignStatusLabel: Record<InternalCrmCampaign['status'], string> = {
   draft: 'Rascunho',
   running: 'Rodando',
   paused: 'Pausada',
-  completed: 'Concluida',
+  completed: 'Concluída',
   canceled: 'Cancelada',
 };
 
@@ -91,8 +91,8 @@ export function InternalCrmCampaignsView() {
         });
         setSelectedRecipients(result.recipients || []);
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao carregar destinatarios';
-        toast({ title: 'Falha ao carregar destinatarios', description: message, variant: 'destructive' });
+        const message = err instanceof Error ? err.message : 'Erro ao carregar destinatários';
+        toast({ title: 'Falha ao carregar destinatários', description: message, variant: 'destructive' });
       }
     };
 
@@ -119,7 +119,7 @@ export function InternalCrmCampaignsView() {
       }[actionName];
       toast({ title: successMessage });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro na acao da campanha';
+      const message = err instanceof Error ? err.message : 'Erro na ação da campanha';
       toast({ title: 'Falha na campanha', description: message, variant: 'destructive' });
     } finally {
       setActionInFlight(null);
@@ -129,7 +129,7 @@ export function InternalCrmCampaignsView() {
   const handleSubmitCampaign = async (input: InternalCrmCampaignInput, autoStart: boolean) => {
     const selectedInstance = instances.find((instance) => instance.instance_name === input.instance_name);
     if (!selectedInstance?.id) {
-      throw new Error('Instancia selecionada nao encontrada.');
+      throw new Error('Instância selecionada não encontrada.');
     }
 
     const created = await campaignsModule.upsertCampaignMutation.mutateAsync({
@@ -240,7 +240,7 @@ export function InternalCrmCampaignsView() {
                         <div className="min-w-0 flex-1">
                           <CardTitle className="text-base">{campaign.name}</CardTitle>
                           <p className="mt-1 truncate text-xs text-muted-foreground">
-                            Instancia: {instanceNameById.get(campaign.whatsapp_instance_id || '') || 'Nao definida'}
+                            Instância: {instanceNameById.get(campaign.whatsapp_instance_id || '') || 'Não definida'}
                           </p>
                         </div>
                         <Badge className={campaignStatusClass[campaign.status]}>{campaignStatusLabel[campaign.status]}</Badge>
@@ -414,8 +414,8 @@ export function InternalCrmCampaignsView() {
           <AlertDialogHeader>
             <AlertDialogTitle>Deletar campanha?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acao removera a campanha "{campaignToDelete?.name || ''}" e seu historico de envios.
-              {campaignToDelete?.status === 'running' ? ' A campanha sera cancelada antes da exclusao.' : ''}
+              Esta ação removera a campanha "{campaignToDelete?.name || ''}" e seu histórico de envios.
+              {campaignToDelete?.status === 'running' ? ' A campanha será cancelada antes da exclusão.' : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

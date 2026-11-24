@@ -7,7 +7,7 @@ const STEP_LABELS = [
   'Equipamento',
   'Pagamento',
   'Assinatura',
-  'Revisao',
+  'Revisão',
 ];
 
 interface WizardProgressBarProps {

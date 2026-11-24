@@ -38,7 +38,7 @@ export function InternalCrmConversationActionsSheet(props: InternalCrmConversati
     },
     {
       id: 'video',
-      label: 'Video',
+      label: 'Vídeo',
       icon: Video,
       className: 'bg-cyan-500 hover:bg-cyan-600 text-white',
       onClick: () => {
@@ -47,7 +47,7 @@ export function InternalCrmConversationActionsSheet(props: InternalCrmConversati
     },
     {
       id: 'schedule',
-      label: 'Reuniao',
+      label: 'Reunião',
       icon: Calendar,
       className: 'bg-purple-500 hover:bg-purple-600 text-white',
       onClick: () => {
@@ -67,7 +67,7 @@ export function InternalCrmConversationActionsSheet(props: InternalCrmConversati
     },
     {
       id: 'comments',
-      label: 'Comentarios',
+      label: 'Comentários',
       icon: MessageSquare,
       className: 'bg-secondary hover:bg-secondary/80 text-secondary-foreground',
       onClick: () => {
@@ -91,7 +91,7 @@ export function InternalCrmConversationActionsSheet(props: InternalCrmConversati
     <Sheet open={props.open} onOpenChange={props.onOpenChange}>
       <SheetContent className="w-full sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>Acoes do Cliente</SheetTitle>
+          <SheetTitle>Ações do Cliente</SheetTitle>
         </SheetHeader>
 
         <div className="mt-4 space-y-5">

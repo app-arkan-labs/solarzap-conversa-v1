@@ -451,11 +451,11 @@ export function ConversationList({
     }
 
     if (conversation.lastMessage?.attachment_type === 'video') {
-      return 'Video';
+      return 'Vídeo';
     }
 
     if (conversation.lastMessage?.attachment_type === 'audio') {
-      return 'Audio';
+      return 'Áudio';
     }
 
     if (conversation.lastMessage?.attachment_type === 'document') {
@@ -465,7 +465,7 @@ export function ConversationList({
     const content = String(conversation.lastMessage?.content || '').trim();
     if (content.length > 0) return content;
 
-    return conversation.contact.company || conversation.contact.phone || 'Sem historico recente';
+    return conversation.contact.company || conversation.contact.phone || 'Sem histórico recente';
   }, []);
 
   const handleCompactActionsScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {

@@ -45,7 +45,7 @@ export function SourcePerformanceCard({
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Sem dados de origem no periodo selecionado.</p>
+          <p className="text-sm text-muted-foreground">Sem dados de origem no período selecionado.</p>
         ) : (
           <div className="space-y-3">
             {rows.map((row) => (
@@ -54,7 +54,7 @@ export function SourcePerformanceCard({
                   <div>
                     <p className="text-sm font-medium text-foreground">{row.label}</p>
                     <p className="text-xs text-muted-foreground">
-                      {row.leads} leads | {row.won} vendas | {row.conversion_pct.toFixed(1)}% conversao
+                      {row.leads} leads | {row.won} vendas | {row.conversion_pct.toFixed(1)}% conversão
                     </p>
                   </div>
                   <div className="text-right">

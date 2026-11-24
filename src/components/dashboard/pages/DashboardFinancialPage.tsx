@@ -32,8 +32,8 @@ export function DashboardFinancialPage({
   const revenueLabel = data.kpis.revenue.basis === "project_paid" ? "Faturado" : "Valor fechado";
   const revenueDescription =
     data.kpis.revenue.basis === "project_paid"
-      ? "Projetos que entraram em Projeto Pago no periodo."
-      : "Vendas fechadas dentro do periodo selecionado.";
+      ? "Projetos que entraram em Projeto Pago no período."
+      : "Vendas fechadas dentro do período selecionado.";
 
   const metrics: DashboardMetricItem[] = [
     {
@@ -48,7 +48,7 @@ export function DashboardFinancialPage({
       id: "financial-received",
       label: "Recebido",
       value: formatCurrency(data.finance.received_in_period),
-      description: "Parcelas confirmadas no periodo.",
+      description: "Parcelas confirmadas no período.",
       icon: CheckCircle2,
       tone: "sky",
     },
@@ -62,7 +62,7 @@ export function DashboardFinancialPage({
     },
     {
       id: "financial-scheduled",
-      label: "A receber no periodo",
+      label: "A receber no período",
       value: formatCurrency(data.finance.scheduled_in_period),
       description: "Parcelas previstas no intervalo filtrado.",
       icon: CalendarClock,
@@ -78,7 +78,7 @@ export function DashboardFinancialPage({
     },
     {
       id: "financial-next",
-      label: "Proximos 7 dias",
+      label: "Próximos 7 dias",
       value: formatCurrency(data.finance.due_next_7_days_amount),
       description: `${data.finance.due_next_7_days_count} parcelas para acompanhar.`,
       icon: CalendarClock,

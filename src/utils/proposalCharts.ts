@@ -567,7 +567,7 @@ export function drawROIPieChart(
   setTextC(doc, theme.green);
   doc.setFontSize(7); doc.setFont('helvetica', 'bold');
   doc.text(
-    `Para cada R$ 1 investido, voce recupera R$ ${retornoPorReal.toFixed(1)}`,
+    `Para cada R$ 1 investido, você recupera R$ ${retornoPorReal.toFixed(1)}`,
     x + w / 2, y + h - 6, { align: 'center' }
   );
 }
@@ -608,7 +608,7 @@ export function drawEnvironmentalImpact(
   // Subtitle
   setTextC(doc, theme.textLight);
   doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-  doc.text('Ao gerar sua propria energia limpa, voce contribui com o meio ambiente', x + w / 2, y + 17, { align: 'center' });
+  doc.text('Ao gerar sua própria energia limpa, você contribui com o meio ambiente', x + w / 2, y + 17, { align: 'center' });
 
   const colW = w / 3;
   const items = [
@@ -756,7 +756,7 @@ export function drawMonthlyGenerationChart(
 
   setTextC(doc, theme.text);
   doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-  doc.text('Geracao Mensal Estimada (kWh)', x + w / 2, y + 10, { align: 'center' });
+  doc.text('Geração Mensal Estimada (kWh)', x + w / 2, y + 10, { align: 'center' });
 
   const values = monthlyKwh.slice(0, 12).map((value) => {
     const numeric = Number(value);
@@ -826,7 +826,7 @@ export function drawMonthlyGenerationChart(
   doc.setLineDashPattern([], 0);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.1);
-  const avgText = `Media: ${fmtNumberShort(avg)} kWh`;
+  const avgText = `Média: ${fmtNumberShort(avg)} kWh`;
   const avgBadgeW = doc.getTextWidth(avgText) + 6;
   const avgBadgeX = baseX + chartW - avgBadgeW;
   const avgBadgeY = y + 11;

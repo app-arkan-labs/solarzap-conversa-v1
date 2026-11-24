@@ -12,7 +12,7 @@ export function StepPersonalization({ form }: StepPersonalizationProps) {
       <h3 className="text-base font-semibold">Assinatura e garantia</h3>
 
       <div className="space-y-1.5">
-        <Label>Garantia de servico (anos)</Label>
+        <Label>Garantia de serviço (anos)</Label>
         <Input
           type="number"
           min={0}

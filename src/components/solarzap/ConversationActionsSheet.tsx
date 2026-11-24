@@ -84,9 +84,9 @@ const DURATION_OPTIONS = ['15', '30', '45', '60', '90', '120'];
 const TYPE_OPTIONS: Array<{ value: AppointmentType; label: string }> = [
   { value: 'other', label: 'Outro' },
   { value: 'chamada', label: 'Chamada' },
-  { value: 'reuniao', label: 'Reuniao' },
+  { value: 'reuniao', label: 'Reunião' },
   { value: 'visita', label: 'Visita' },
-  { value: 'instalacao', label: 'Instalacao' },
+  { value: 'instalacao', label: 'Instalação' },
 ];
 
 const normalizeAppointmentType = (value: unknown): AppointmentType => {
@@ -435,10 +435,10 @@ export function ConversationActionsSheet({
     setTextEditor({
       leadId,
       field,
-      label: isTitleField ? 'Proxima Acao' : 'Local',
+      label: isTitleField ? 'Próxima Ação' : 'Local',
       value: nextValue,
       multiline: isTitleField,
-      placeholder: isTitleField ? 'Descreva a proxima acao' : 'Informe o local',
+      placeholder: isTitleField ? 'Descreva a próxima ação' : 'Informe o local',
     });
     setTextEditorValue(nextValue);
   }, [drafts, onSelectConversation]);
@@ -463,8 +463,8 @@ export function ConversationActionsSheet({
     const title = draft.title.trim();
     if (!title) {
       toast({
-        title: 'Proxima acao sem titulo',
-        description: 'Preencha a coluna de Proxima Acao antes de salvar.',
+        title: 'Próxima ação sem título',
+        description: 'Preencha a coluna de Próxima Ação antes de salvar.',
         variant: 'destructive',
       });
       return;
@@ -473,7 +473,7 @@ export function ConversationActionsSheet({
     const startAt = parseDateTimeInput(draft.dateTime);
     if (!startAt) {
       toast({
-        title: 'Data e hora invalidas',
+        title: 'Data e hora inválidas',
         description: `Defina Data / Hora para ${conversation.contact.name}.`,
         variant: 'destructive',
       });
@@ -483,7 +483,7 @@ export function ConversationActionsSheet({
     if (startAt.getTime() < Date.now() - PAST_GRACE_MS) {
       toast({
         title: 'Agendamento no passado',
-        description: 'A Proxima Acao precisa ficar em uma data futura.',
+        description: 'A Próxima Ação precisa ficar em uma data futura.',
         variant: 'destructive',
       });
       return;
@@ -492,8 +492,8 @@ export function ConversationActionsSheet({
     const durationMinutes = Number.parseInt(draft.duration, 10);
     if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
       toast({
-        title: 'Duracao invalida',
-        description: 'Escolha uma duracao valida para salvar o evento.',
+        title: 'Duração inválida',
+        description: 'Escolha uma duração válida para salvar o evento.',
         variant: 'destructive',
       });
       return;
@@ -502,8 +502,8 @@ export function ConversationActionsSheet({
     const responsibleUserId = String(draft.responsibleUserId || '').trim() || currentUserId;
     if (!responsibleUserId) {
       toast({
-        title: 'Responsavel ausente',
-        description: 'Selecione um responsavel para continuar.',
+        title: 'Responsável ausente',
+        description: 'Selecione um responsável para continuar.',
         variant: 'destructive',
       });
       return;
@@ -554,8 +554,8 @@ export function ConversationActionsSheet({
       }));
 
       toast({
-        title: 'Erro ao salvar acao',
-        description: error instanceof Error ? error.message : 'Nao foi possivel salvar o agendamento.',
+        title: 'Erro ao salvar ação',
+        description: error instanceof Error ? error.message : 'Não foi possível salvar o agendamento.',
         variant: 'destructive',
       });
     } finally {
@@ -585,12 +585,12 @@ export function ConversationActionsSheet({
                 )}
                 style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
               >
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ultima Acao</div>
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proxima Acao</div>
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Última Ação</div>
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Próxima Ação</div>
                 <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tipo</div>
                 <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Data / Hora</div>
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Duracao</div>
-                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Responsavel</div>
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Duração</div>
+                <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Responsável</div>
                 <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Local</div>
                 <div className="flex items-center border-r border-border/60 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Etapa</div>
                 <div className="flex items-center px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Salvar</div>
@@ -618,7 +618,7 @@ export function ConversationActionsSheet({
                   >
                   <div className="min-w-0 flex h-full flex-col justify-center border-r border-border/60 px-3 py-2">
                     <p className="line-clamp-2 text-sm font-medium text-foreground">{draft.lastActionTitle}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">{draft.lastActionMeta || 'Sem historico'}</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">{draft.lastActionMeta || 'Sem histórico'}</p>
                   </div>
 
                   <div className="min-w-0 flex h-full items-center border-r border-border/60 px-3 py-2">
@@ -632,7 +632,7 @@ export function ConversationActionsSheet({
                           : 'border-dashed border-border/80 bg-background/45 text-muted-foreground hover:border-primary/35 hover:text-foreground',
                       )}
                     >
-                      <span className="truncate">{hasTitle ? draft.title : 'Adicionar proxima acao'}</span>
+                      <span className="truncate">{hasTitle ? draft.title : 'Adicionar próxima ação'}</span>
                     </button>
                   </div>
 
@@ -685,7 +685,7 @@ export function ConversationActionsSheet({
                       className="h-9 w-full rounded-md border border-input bg-background/80 px-2 text-xs text-foreground outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                     >
                       {responsibleOptions.length === 0 ? (
-                        <option value="">Sem responsavel</option>
+                        <option value="">Sem responsável</option>
                       ) : null}
                       {responsibleOptions.map((option) => (
                         <option key={`${leadId}-responsible-${option.id}`} value={option.id}>

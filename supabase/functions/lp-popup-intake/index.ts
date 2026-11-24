@@ -111,7 +111,7 @@ async function sendEmailViaResend(subject: string, html: string, text: string) {
     throw new Error('missing_resend_api_key');
   }
 
-  const from = String(Deno.env.get('RESEND_FROM_EMAIL') || 'SolarZap <notificacoes@resend.dev>').trim();
+  const from = String(Deno.env.get('RESEND_FROM_EMAIL') || 'SolarZap <notificações@resend.dev>').trim();
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -147,7 +147,7 @@ async function notifyLeadCreatedBestEffort(input: {
     const createdAtFormatted = formatDateTimeForEmail(createdAtIso, input.timezone);
     const subject = `Novo lead LP criado - ${input.fullName || input.companyName || 'Sem nome'}`;
     const html = [
-      '<h2>Novo lead criado pelo formulario LP</h2>',
+      '<h2>Novo lead criado pelo formulário LP</h2>',
       `<p><strong>Data/Hora:</strong> ${createdAtFormatted}</p>`,
       `<p><strong>Nome:</strong> ${input.fullName || '-'}</p>`,
       `<p><strong>Empresa:</strong> ${input.companyName || '-'}</p>`,
@@ -157,7 +157,7 @@ async function notifyLeadCreatedBestEffort(input: {
       `<p><strong>Session:</strong> ${input.formSessionId}</p>`,
     ].join('');
     const text = [
-      'Novo lead criado pelo formulario LP',
+      'Novo lead criado pelo formulário LP',
       `Data/Hora: ${createdAtFormatted}`,
       `Nome: ${input.fullName || '-'}`,
       `Empresa: ${input.companyName || '-'}`,
@@ -187,7 +187,7 @@ async function notifyBookingCreatedBestEffort(input: {
     const scheduledAtFormatted = formatDateTimeForEmail(input.scheduledAt, input.timezone);
     const subject = `Agendamento LP confirmado - ${input.fullName || input.companyName || 'Sem nome'}`;
     const html = [
-      '<h2>Novo agendamento confirmado no formulario LP</h2>',
+      '<h2>Novo agendamento confirmado no formulário LP</h2>',
       `<p><strong>Data/Hora agendada:</strong> ${scheduledAtFormatted}</p>`,
       `<p><strong>Nome:</strong> ${input.fullName || '-'}</p>`,
       `<p><strong>Empresa:</strong> ${input.companyName || '-'}</p>`,
@@ -197,7 +197,7 @@ async function notifyBookingCreatedBestEffort(input: {
       `<p><strong>Session:</strong> ${input.formSessionId}</p>`,
     ].join('');
     const text = [
-      'Novo agendamento confirmado no formulario LP',
+      'Novo agendamento confirmado no formulário LP',
       `Data/Hora agendada: ${scheduledAtFormatted}`,
       `Nome: ${input.fullName || '-'}`,
       `Empresa: ${input.companyName || '-'}`,

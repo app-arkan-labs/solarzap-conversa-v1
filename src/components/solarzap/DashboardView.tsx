@@ -162,7 +162,7 @@ export function DashboardView({
 
   const handleExport = async (type: "leads" | "deals" | "appointments") => {
     try {
-      toast({ title: "Gerando exportacao...", description: "Aguarde um momento." });
+      toast({ title: "Gerando exportação...", description: "Aguarde um momento." });
       const { data: response, error: exportError } = await supabase.functions.invoke("reports-export", {
         body: {
           type,
@@ -177,7 +177,7 @@ export function DashboardView({
         toast({ title: "Sucesso", description: "Download iniciado." });
       }
     } catch (exportFailure: unknown) {
-      const exportMessage = exportFailure instanceof Error ? exportFailure.message : "Nao foi possivel concluir a exportacao.";
+      const exportMessage = exportFailure instanceof Error ? exportFailure.message : "Não foi possível concluir a exportação.";
       toast({
         variant: "destructive",
         title: "Erro ao exportar",
@@ -271,12 +271,12 @@ export function DashboardView({
 
             <Select value={periodLabel} onValueChange={handlePeriodChange}>
               <SelectTrigger className="w-full border-border/50 bg-background shadow-sm glass sm:w-[160px]">
-                <SelectValue placeholder="Periodo" />
+                <SelectValue placeholder="Período" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="this_month">Este mes</SelectItem>
-                <SelectItem value="last_7_days">Ultimos 7 dias</SelectItem>
-                <SelectItem value="last_30_days">Ultimos 30 dias</SelectItem>
+                <SelectItem value="this_month">Este mês</SelectItem>
+                <SelectItem value="last_7_days">Últimos 7 dias</SelectItem>
+                <SelectItem value="last_30_days">Últimos 30 dias</SelectItem>
                 <SelectItem value="this_year">Este ano</SelectItem>
               </SelectContent>
             </Select>
@@ -334,10 +334,10 @@ export function DashboardView({
           <div className="flex items-center gap-2">
             <Select value={periodLabel} onValueChange={handlePeriodChange}>
               <SelectTrigger className="h-8 w-[120px] border-border/50 bg-background text-xs">
-                <SelectValue placeholder="Periodo" />
+                <SelectValue placeholder="Período" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="this_month">Este mes</SelectItem>
+                <SelectItem value="this_month">Este mês</SelectItem>
                 <SelectItem value="last_7_days">7 dias</SelectItem>
                 <SelectItem value="last_30_days">30 dias</SelectItem>
                 <SelectItem value="this_year">Ano</SelectItem>

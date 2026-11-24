@@ -912,7 +912,7 @@ async function handleCreateOrgWithUser(
     throw { status: 500, code: 'user_resolution_failed' };
   }
 
-  const fallbackName = `Organizacao de ${email}`;
+  const fallbackName = `Organização de ${email}`;
   const orgName = orgNameInput || fallbackName;
   const nowIso = new Date().toISOString();
   const trialEndsAtIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();

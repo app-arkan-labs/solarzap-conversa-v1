@@ -160,7 +160,7 @@ Agendar: "Perfeito ✅ Vamos marcar sua visita técnica gratuita. Melhor {{DIA1}
 **D+3 (última):** "Última por aqui, {{NOME}}. Se ainda fizer sentido, me diga só: visita ou chamada e qual período (manhã/tarde/noite/sábado). Eu encaixo pra você."
 
 ### Campos para salvar no CRM
-- no_show_reason: tempo | tecnico | dúvida | desinteresse | sem_resposta
+- no_show_reason: tempo | técnico | dúvida | desinteresse | sem_resposta
 - recovery_path: reschedule_call | bant_chat_to_visit | objection_handled
 - next_step: call | visit
 - attempt_count: 1/2/3`,

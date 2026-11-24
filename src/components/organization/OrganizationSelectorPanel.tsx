@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import type { UserOrganizationOption } from '@/lib/orgAdminClient';
 
 const ROLE_LABELS: Record<string, string> = {
-  owner: 'Proprietario',
+  owner: 'Proprietário',
   admin: 'Administrador',
   user: 'Vendedor',
   consultant: 'Consultor',

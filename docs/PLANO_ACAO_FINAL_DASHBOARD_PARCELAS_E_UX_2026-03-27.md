@@ -464,7 +464,7 @@ Conclusao:
    - receber callback de `onReviewInstallment`
    - ganhar lista com altura fixa
 2. `StaleLeadsTable`
-   - trocar navegaçao para rota correta
+   - trocar navegaÃ§ao para rota correta
    - aceitar `maxHeight`
    - aceitar layout com corpo scrollavel
 3. `LeadActionQueuePanel`
@@ -556,7 +556,7 @@ Entrega da etapa:
 1. manter metricas do topo
 2. compactar `FunnelOverview`
 3. revisar `SourcePerformanceCard` para ocupar o espaco com mais eficiencia
-4. remover ou absorver `Onde agir primeiro` caso permaneça redundante
+4. remover ou absorver `Onde agir primeiro` caso permaneÃ§a redundante
 5. colocar `Leads que precisam de atencao` em painel de altura fixa
 6. revisar grid para acabar com vazios desproporcionais
 

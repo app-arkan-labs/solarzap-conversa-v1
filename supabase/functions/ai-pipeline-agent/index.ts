@@ -41,18 +41,18 @@ const FOLLOW_UP_STAGE_GOALS: Record<string, string> = {
     novo_lead: 'Fazer o lead responder e evoluir a conversa.',
     respondeu: 'Qualificar para Chamada Agendada ou Visita Agendada.',
     nao_compareceu: 'Recuperar no-show e levar para agendamento.',
-    chamada_agendada: 'Confirmar presenca na chamada agendada.',
-    chamada_realizada: 'Conduzir ao proximo passo pos-ligacao.',
-    visita_agendada: 'Confirmar presenca na visita agendada.',
-    visita_realizada: 'Conduzir ao proximo passo pos-visita.',
-    proposta_pronta: 'Apresentar proposta ao lead (por ligacao, videochamada ou visita — nunca por WhatsApp).',
-    proposta_negociacao: 'Negociar ate compromisso de aprovacao ou proximo passo comercial.',
-    aguardando_proposta: 'Manter lead engajado enquanto proposta esta sendo preparada.',
-    financiamento: 'Acompanhar financiamento e levar para aprovacao do projeto.',
-    aprovou_projeto: 'Alinhar proximos passos pos-aprovacao (contrato, instalacao).',
-    contrato_assinado: 'Acompanhar andamento pos-contrato.',
-    projeto_pago: 'Alinhar timeline de instalacao e proximos passos.',
-    aguardando_instalacao: 'Manter lead informado sobre timeline de instalacao.',
+    chamada_agendada: 'Confirmar presença na chamada agendada.',
+    chamada_realizada: 'Conduzir ao próximo passo pós-ligação.',
+    visita_agendada: 'Confirmar presença na visita agendada.',
+    visita_realizada: 'Conduzir ao próximo passo pós-visita.',
+    proposta_pronta: 'Apresentar proposta ao lead (por ligação, videochamada ou visita — nunca por WhatsApp).',
+    proposta_negociacao: 'Negociar até compromisso de aprovação ou próximo passo comercial.',
+    aguardando_proposta: 'Manter lead engajado enquanto proposta está sendo preparada.',
+    financiamento: 'Acompanhar financiamento e levar para aprovação do projeto.',
+    aprovou_projeto: 'Alinhar próximos passos pós-aprovação (contrato, instalação).',
+    contrato_assinado: 'Acompanhar andamento pós-contrato.',
+    projeto_pago: 'Alinhar timeline de instalação e próximos passos.',
+    aguardando_instalacao: 'Manter lead informado sobre timeline de instalação.',
 };
 const FOLLOW_UP_STAGE_GOAL_FALLBACK = 'Manter continuidade comercial e reengajar o lead.';
 
@@ -206,16 +206,16 @@ function resolveAutoSchedulePolicy(settings: any): AutoSchedulePolicy {
 function buildSchedulePolicyPromptBlock(policy: AutoSchedulePolicy, isAfterHoursForCall: boolean): string {
     const modeLine =
         policy.mode === 'both_on'
-            ? 'MODO_AGENDAMENTO: ambos ativos, a IA pode escolher entre ligacao ou visita.'
+            ? 'MODO_AGENDAMENTO: ambos ativos, a IA pode escolher entre ligação ou visita.'
             : policy.mode === 'call_only'
-                ? 'MODO_AGENDAMENTO: apenas ligacao ativa, NAO oferecer visita automatica.'
+                ? 'MODO_AGENDAMENTO: apenas ligação ativa, NÃO oferecer visita automática.'
                 : policy.mode === 'visit_only'
-                    ? 'MODO_AGENDAMENTO: apenas visita ativa, NAO oferecer ligacao automatica.'
-                    : 'MODO_AGENDAMENTO: ambos desativados, NAO fazer agendamento automatico.';
+                    ? 'MODO_AGENDAMENTO: apenas visita ativa, NÃO oferecer ligação automática.'
+                    : 'MODO_AGENDAMENTO: ambos desativados, NÃO fazer agendamento automático.';
 
     const cutoffLine = isAfterHoursForCall
-        ? 'REGRA_HORARIO_ATIVA: agora eh apos 18h no timezone operacional. Nao convide para ligacao; continue no WhatsApp.'
-        : 'REGRA_HORARIO_ATIVA: dentro da janela para convite de ligacao.';
+        ? 'REGRA_HORARIO_ATIVA: agora eh após 18h no timezone operacional. Não convide para ligação; continue no WhatsApp.'
+        : 'REGRA_HORARIO_ATIVA: dentro da janela para convite de ligação.';
 
     return `
 POLITICA_DE_AGENDAMENTO_RUNTIME:
@@ -629,12 +629,12 @@ function buildScheduleRetryContent(
     };
     const available = (slotsByType[typeKey] || []).slice(0, 2).map((slot) => formatSlotLabel(slot, timeZone, now));
     if (available.length >= 2) {
-        return `Esse horario nao esta disponivel. Posso te oferecer ${available[0]} ou ${available[1]} para ${labelsByType[typeKey]}?`;
+        return `Esse horário não está disponível. Posso te oferecer ${available[0]} ou ${available[1]} para ${labelsByType[typeKey]}?`;
     }
     if (available.length === 1) {
-        return `Esse horario nao esta disponivel. Tenho ${available[0]} para ${labelsByType[typeKey]}. Pode ser?`;
+        return `Esse horário não está disponível. Tenho ${available[0]} para ${labelsByType[typeKey]}. Pode ser?`;
     }
-    return `Esse horario nao esta disponivel no momento. Me diga outro periodo (manha, tarde ou noite) para eu te sugerir opcoes livres.`;
+    return `Esse horário não está disponível no momento. Me diga outro período (manhã, tarde ou noite) para eu te sugerir opções livres.`;
 }
 
 // Deterministic closing CTA used when qualification is complete but the model failed to drive
@@ -1274,11 +1274,11 @@ function buildDeterministicNextQuestionFallback(
     }
 ): string | null {
     if (options?.manualReturnMode) {
-        return 'Perfeito. Vou verificar com o time o melhor horario para ligacao e te retorno por aqui, combinado?';
+        return 'Perfeito. Vou verificar com o time o melhor horário para ligação e te retorno por aqui, combinado?';
     }
 
     if (options?.afterHoursCallBlocked) {
-        return 'Agora ja passou das 18h por aqui. Vamos seguir por WhatsApp e eu te proponho ligacao em horario comercial, tudo bem?';
+        return 'Agora já passou das 18h por aqui. Vamos seguir por WhatsApp e eu te proponho ligação em horário comercial, tudo bem?';
     }
 
     if (currentStage === 'respondeu') {
@@ -1291,14 +1291,14 @@ function buildDeterministicNextQuestionFallback(
             return QUALIFICATION_QUESTION_BY_KEY[missingKeys[0]] || QUALIFICATION_QUESTION_BY_KEY.project_type;
         }
 
-        return 'Show, com isso ja consigo seguir. Pelo seu perfil, o ideal e uma visita tecnica rapida pra fechar o dimensionamento e te passar os numeros certos. Consigo essa semana — prefere comeco ou fim da semana?';
+        return 'Show, com isso já consigo seguir. Pelo seu perfil, o ideal é uma visita técnica rápida pra fechar o dimensionamento e te passar os números certos. Consigo essa semana — prefere começo ou fim da semana?';
     }
 
     if (currentStage === 'nao_compareceu') {
-        return 'Sem problema. Me diz qual periodo fica melhor para retomarmos esse atendimento.';
+        return 'Sem problema. Me diz qual período fica melhor para retomarmos esse atendimento.';
     }
 
-    return 'Perfeito, recebi aqui. Vou seguir com seu atendimento e te orientar no proximo passo.';
+    return 'Perfeito, recebi aqui. Vou seguir com seu atendimento e te orientar no próximo passo.';
 }
 
 type CompanyProfileFacts = {
@@ -1349,19 +1349,19 @@ function buildCompanyFactualReply(
     if (locationQuestion) {
         if (address || city || state) {
             const cityState = [city, state].filter(Boolean).join('/');
-            const addressSuffix = address ? ` — nosso escritorio fica na ${address}` : '';
+            const addressSuffix = address ? ` — nosso escritório fica na ${address}` : '';
             const areaSuffix = (!address && serviceArea) ? ` Atendemos ${serviceArea}.` : '';
-            factualReply = `Somos de ${cityState || 'localizacao cadastrada'}${addressSuffix}.${areaSuffix}`;
+            factualReply = `Somos de ${cityState || 'localização cadastrada'}${addressSuffix}.${areaSuffix}`;
         } else if (serviceArea) {
-            factualReply = `Atendemos ${serviceArea}. Se precisar do endereco exato do escritorio, me fala que eu confirmo pra voce.`;
+            factualReply = `Atendemos ${serviceArea}. Se precisar do endereço exato do escritório, me fala que eu confirmo pra você.`;
         } else {
-            factualReply = `Ainda nao tenho o endereco completo cadastrado aqui. Mas posso confirmar com o time e te retorno rapidinho.`;
+            factualReply = `Ainda não tenho o endereço completo cadastrado aqui. Mas posso confirmar com o time e te retorno rapidinho.`;
         }
     } else if (hoursQuestion) {
         if (businessHours) {
             factualReply = `Funcionamos de ${businessHours}.`;
         } else {
-            factualReply = 'Nao tenho o horario detalhado aqui agora, mas posso confirmar e te retorno rapidinho.';
+            factualReply = 'Não tenho o horário detalhado aqui agora, mas posso confirmar e te retorno rapidinho.';
         }
     } else if (contactQuestion) {
         const contactParts = [];
@@ -1370,19 +1370,19 @@ function buildCompanyFactualReply(
         if (contactParts.length > 0) {
             factualReply = `Claro! ${contactParts.join(' e ')}.`;
         } else {
-            factualReply = 'Ainda nao tenho um numero publico cadastrado aqui. Posso confirmar o melhor canal e te retorno.';
+            factualReply = 'Ainda não tenho um número público cadastrado aqui. Posso confirmar o melhor canal e te retorno.';
         }
     } else if (visitCostQuestion) {
         if (typeof companyProfile?.technical_visit_is_free === 'boolean') {
             if (companyProfile.technical_visit_is_free) {
-                factualReply = 'A visita tecnica e gratuita sim.';
+                factualReply = 'A visita técnica é gratuita sim.';
             } else {
-                factualReply = 'A visita tecnica pode ter custo, depende da politica comercial.';
+                factualReply = 'A visita técnica pode ter custo, depende da política comercial.';
             }
             const feeNotes = String(companyProfile?.technical_visit_fee_notes || '').trim();
             if (feeNotes) factualReply += ` ${feeNotes}`;
         } else {
-            factualReply = 'Nao tenho essa info com precisao aqui agora. Posso confirmar com o time e te retorno rapidinho.';
+            factualReply = 'Não tenho essa info com precisão aqui agora. Posso confirmar com o time e te retorno rapidinho.';
         }
     } else if (financingQuestion) {
         const financing = companyProfile?.supports_financing;
@@ -1390,12 +1390,12 @@ function buildCompanyFactualReply(
         const policySummary = String(companyProfile?.payment_policy_summary || '').trim();
 
         const parts: string[] = [];
-        if (typeof financing === 'boolean') parts.push(financing ? 'Temos financiamento sim.' : 'No momento nao trabalhamos com financiamento.');
-        if (typeof card === 'boolean') parts.push(card ? 'Aceitamos parcelamento no cartao tambem.' : 'Parcelamento no cartao nao esta disponivel no momento.');
+        if (typeof financing === 'boolean') parts.push(financing ? 'Temos financiamento sim.' : 'No momento não trabalhamos com financiamento.');
+        if (typeof card === 'boolean') parts.push(card ? 'Aceitamos parcelamento no cartão também.' : 'Parcelamento no cartão não está disponível no momento.');
         if (policySummary) parts.push(policySummary);
 
         if (parts.length > 0) factualReply = parts.join(' ');
-        else factualReply = 'Ainda nao tenho as regras de pagamento detalhadas aqui. Posso confirmar e te retorno rapidinho.';
+        else factualReply = 'Ainda não tenho as regras de pagamento detalhadas aqui. Posso confirmar e te retorno rapidinho.';
     }
 
     if (!factualReply) return null;
@@ -1504,25 +1504,25 @@ function sanitizeQuery(text: string): string {
         .substring(0, 200);
 }
 
-// Fix common UTF-8 mojibake patterns like "vocÃª", "mÃ©dia".
+// Fix common UTF-8 mojibake caused by accidental Windows-1252 decoding.
 function repairMojibake(text: string): string {
     if (!text) return text;
-    if (!/[ÃÂ]/.test(text)) return text;
+    if (!/[\u00c3\u00c2\u00e2]/.test(text)) return text;
     const replacements: Array<[string, string]> = [
-        ['Ã¡', 'á'], ['Ã¢', 'â'], ['Ã£', 'ã'], ['Ã¤', 'ä'],
-        ['Ã©', 'é'], ['Ãª', 'ê'], ['Ã«', 'ë'],
-        ['Ã­', 'í'], ['Ã®', 'î'], ['Ã¯', 'ï'],
-        ['Ã³', 'ó'], ['Ã´', 'ô'], ['Ãµ', 'õ'], ['Ã¶', 'ö'],
-        ['Ãº', 'ú'], ['Ã»', 'û'], ['Ã¼', 'ü'],
-        ['Ã§', 'ç'], ['Ã±', 'ñ'],
-        ['Ã', 'Á'], ['Ã‚', 'Â'], ['Ãƒ', 'Ã'], ['Ã„', 'Ä'],
-        ['Ã‰', 'É'], ['ÃŠ', 'Ê'], ['Ã‹', 'Ë'],
-        ['Ã', 'Í'], ['ÃŽ', 'Î'], ['Ã', 'Ï'],
-        ['Ã“', 'Ó'], ['Ã”', 'Ô'], ['Ã•', 'Õ'], ['Ã–', 'Ö'],
-        ['Ãš', 'Ú'], ['Ã›', 'Û'], ['Ãœ', 'Ü'],
-        ['Ã‡', 'Ç'], ['Ã‘', 'Ñ'],
-        ['â€™', '’'], ['â€œ', '“'], ['â€', '”'], ['â€“', '–'], ['â€”', '—'],
-        ['Â', '']
+        ['\u{c3}\u{a1}', 'á'], ['\u{c3}\u{a2}', 'â'], ['\u{c3}\u{a3}', 'ã'], ['\u{c3}\u{a4}', 'ä'],
+        ['\u{c3}\u{a9}', 'é'], ['\u{c3}\u{aa}', 'ê'], ['\u{c3}\u{ab}', 'ë'],
+        ['\u{c3}\u{ad}', 'í'], ['\u{c3}\u{ae}', 'î'], ['\u{c3}\u{af}', 'ï'],
+        ['\u{c3}\u{b3}', 'ó'], ['\u{c3}\u{b4}', 'ô'], ['\u{c3}\u{b5}', 'õ'], ['\u{c3}\u{b6}', 'ö'],
+        ['\u{c3}\u{ba}', 'ú'], ['\u{c3}\u{bb}', 'û'], ['\u{c3}\u{bc}', 'ü'],
+        ['\u{c3}\u{a7}', 'ç'], ['\u{c3}\u{b1}', 'ñ'],
+        ['\u{c3}\u{81}', 'Á'], ['\u{c3}\u{201a}', 'Â'], ['\u{c3}\u{192}', 'Ã'], ['\u{c3}\u{201e}', 'Ä'],
+        ['\u{c3}\u{2030}', 'É'], ['\u{c3}\u{160}', 'Ê'], ['\u{c3}\u{2039}', 'Ë'],
+        ['\u{c3}\u{8d}', 'Í'], ['\u{c3}\u{17d}', 'Î'], ['\u{c3}\u{8f}', 'Ï'],
+        ['\u{c3}\u{201c}', 'Ó'], ['\u{c3}\u{201d}', 'Ô'], ['\u{c3}\u{2022}', 'Õ'], ['\u{c3}\u{2013}', 'Ö'],
+        ['\u{c3}\u{161}', 'Ú'], ['\u{c3}\u{203a}', 'Û'], ['\u{c3}\u{153}', 'Ü'],
+        ['\u{c3}\u{2021}', 'Ç'], ['\u{c3}\u{2018}', 'Ñ'],
+        ['\u{e2}\u{20ac}\u{2122}', '’'], ['\u{e2}\u{20ac}\u{153}', '“'], ['\u{e2}\u{20ac}\u{9d}', '”'], ['\u{e2}\u{20ac}\u{201c}', '–'], ['\u{e2}\u{20ac}\u{201d}', '—'],
+        ['\u{c2}', '']
     ];
     let repaired = text;
     for (const [from, to] of replacements) {
@@ -1609,17 +1609,17 @@ function extractStageCoreSections(fullPrompt: string): string {
 
 function getFollowUpProhibitions(stage: string): string {
     const prohibitions: Record<string, string> = {
-        novo_lead: '- NAO assumir que houve contato previo.\n- NAO falar de proposta, preco ou economia.\n- Apenas tentar gerar a primeira resposta do lead.',
-        respondeu: '- NAO falar de proposta, preco, economia ou financiamento.\n- NAO dizer que enviou proposta.\n- O unico objetivo e qualificar e agendar chamada ou visita.',
-        chamada_agendada: '- NAO falar de proposta ou preco.\n- Apenas confirmar presenca na chamada agendada.',
-        visita_agendada: '- NAO falar de proposta ou preco.\n- Apenas confirmar presenca na visita agendada.',
-        nao_compareceu: '- NAO culpar o lead.\n- Apenas recuperar e reagendar.',
-        proposta_pronta: '- NAO enviar proposta por WhatsApp.\n- NAO inventar valores de proposta.\n- Conduzir para apresentacao (ligacao, videochamada ou visita).\n- Se a proposta NAO foi apresentada ainda, NAO perguntar se o lead analisou a proposta.',
-        proposta_negociacao: '- NAO enviar proposta por WhatsApp.\n- NAO inventar valores.\n- Focar em destravar objecao e fechar compromisso.',
-        aguardando_proposta: '- NAO inventar que a proposta esta pronta se nao estiver.\n- Manter lead engajado e informado.',
-        financiamento: '- NAO inventar status de financiamento.\n- Acompanhar e reduzir atrito.',
+        novo_lead: '- NÃO assumir que houve contato previo.\n- NÃO falar de proposta, preço ou economia.\n- Apenas tentar gerar a primeira resposta do lead.',
+        respondeu: '- NÃO falar de proposta, preço, economia ou financiamento.\n- NÃO dizer que enviou proposta.\n- O único objetivo é qualificar e agendar chamada ou visita.',
+        chamada_agendada: '- NÃO falar de proposta ou preço.\n- Apenas confirmar presença na chamada agendada.',
+        visita_agendada: '- NÃO falar de proposta ou preço.\n- Apenas confirmar presença na visita agendada.',
+        nao_compareceu: '- NÃO culpar o lead.\n- Apenas recuperar e reagendar.',
+        proposta_pronta: '- NÃO enviar proposta por WhatsApp.\n- NÃO inventar valores de proposta.\n- Conduzir para apresentação (ligação, videochamada ou visita).\n- Se a proposta NÃO foi apresentada ainda, NÃO perguntar se o lead analisou a proposta.',
+        proposta_negociacao: '- NÃO enviar proposta por WhatsApp.\n- NÃO inventar valores.\n- Focar em destravar objeção e fechar compromisso.',
+        aguardando_proposta: '- NÃO inventar que a proposta está pronta se não estiver.\n- Manter lead engajado e informado.',
+        financiamento: '- NÃO inventar status de financiamento.\n- Acompanhar e reduzir atrito.',
     };
-    return prohibitions[stage] || '- NAO inventar contexto que nao existe no historico.\n- Referenciar apenas fatos reais da conversa.';
+    return prohibitions[stage] || '- NÃO inventar contexto que não existe no histórico.\n- Referenciar apenas fatos reais da conversa.';
 }
 
 // ────────────────────────────────────────────────────────
@@ -1664,7 +1664,7 @@ function detectHumanHandoffIntent(
             aiRes: {
                 action: 'send_message',
                 content:
-                    'Entendi! Voce quer falar diretamente com o responsavel. Vou transferir sua conversa agora para que ele(a) entre em contato com voce. Enquanto isso, ja pode me dizer o que precisa que eu adianto por aqui.',
+                    'Entendi! Você quer falar diretamente com o responsável. Vou transferir sua conversa agora para que ele(a) entre em contato com você. Enquanto isso, já pode me dizer o que precisa que eu adianto por aqui.',
                 handoff: {
                     target_type: 'seller',
                     assign_to_user_id: owner.user_id,
@@ -1680,7 +1680,7 @@ function detectHumanHandoffIntent(
             aiRes: {
                 action: 'send_message',
                 content:
-                    'Claro! Vou encaminhar voce para um atendente da nossa equipe. Ele(a) ja vai entrar em contato com voce por aqui.',
+                    'Claro! Vou encaminhar você para um atendente da nossa equipe. Ele(a) já vai entrar em contato com você por aqui.',
                 handoff: {
                     target_type: 'seller',
                     assign_to_user_id: anySeller.user_id,
@@ -1696,7 +1696,7 @@ function detectHumanHandoffIntent(
         aiRes: {
             action: 'send_message',
             content:
-                'Entendo que prefere falar com uma pessoa. Vou avisar a equipe aqui e alguem vai te chamar por aqui assim que possivel. Enquanto isso, pode me dizer o que precisa?',
+                'Entendo que prefere falar com uma pessoa. Vou avisar a equipe aqui e alguém vai te chamar por aqui assim que possível. Enquanto isso, pode me dizer o que precisa?',
         },
     };
 }
@@ -1774,9 +1774,9 @@ function detectServiceAreaMismatch(
         aiRes: {
             action: 'send_message',
             content:
-                `Entendi! Voce esta em ${leadRegion}. Nos atendemos exclusivamente ${areaName}. Infelizmente nao conseguimos atender sua regiao no momento. Se conhecer alguem na nossa area de cobertura, pode indicar que a gente ajuda com prazer.`,
+                `Entendi! Você está em ${leadRegion}. Nos atendemos exclusivamente ${areaName}. Infelizmente não conseguimos atender sua região no momento. Se conhecer alguém na nossa área de cobertura, pode indicar que a gente ajuda com prazer.`,
             comment: {
-                text: `Lead mencionou regiao fora da area de cobertura: ${leadRegion}. Area atendida: ${areaName}.`,
+                text: `Lead mencionou região fora da área de cobertura: ${leadRegion}. Área atendida: ${areaName}.`,
                 type: 'note',
             },
         },
@@ -1860,7 +1860,7 @@ function assessEngagementLevel(params: {
 function getEngagementDirective(level: 'cold' | 'lukewarm' | 'warm' | 'engaged'): string {
     switch (level) {
         case 'cold':
-            return 'NIVEL_ENGAJAMENTO_LEAD: FRIO — lead quase nao responde. Priorize deixar a porta aberta. Faça 1 tentativa leve SEM pressionar. Nao insista em CTA forte. Tom de "se fizer sentido, estou aqui".';
+            return 'NIVEL_ENGAJAMENTO_LEAD: FRIO — lead quase não responde. Priorize deixar a porta aberta. Faça 1 tentativa leve SEM pressionar. Não insista em CTA forte. Tom de "se fizer sentido, estou aqui".';
         case 'lukewarm':
             return 'NIVEL_ENGAJAMENTO_LEAD: MORNO — lead respondeu pouco. Reduza a insistencia. Ofereca 1 caminho curto sem pressionar. Se hesitar, recue com leveza.';
         case 'warm':
@@ -1881,7 +1881,7 @@ function normalizeHistoryText(message: any, attachmentUrl: string | null): strin
     text = text.replace(/^🎤\s*/u, '').trim();
     // If only placeholder remained (e.g. "Áudio" or "Áudio (12s)"), provide minimal context
     if (/^[Áá]udio(\s*\(\d+s?\))?$/i.test(text) || text === '') {
-        return text === '' ? '[audio sem transcricao]' : '[audio sem transcricao]';
+        return text === '' ? '[áudio sem transcrição]' : '[áudio sem transcrição]';
     }
     return text;
 }
@@ -4700,7 +4700,7 @@ Deno.serve(async (req) => {
                         if (item.item_type === 'company_info') {
                             kbLines.push(`[empresa] ${item.content_snippet}`);
                         } else if (item.item_type === 'objection') {
-                            kbLines.push(`[objecao] P: ${item.title_or_name} R: ${snippet}`);
+                            kbLines.push(`[objeção] P: ${item.title_or_name} R: ${snippet}`);
                         } else if (item.item_type === 'testimonial') {
                             kbLines.push(`[depoimento] ${item.title_or_name}: ${snippet}`);
                         } else {
@@ -4731,7 +4731,7 @@ Deno.serve(async (req) => {
             const loc = [cp.headquarters_city, cp.headquarters_state].filter(Boolean).join('/');
             if (loc) parts.push(`SEDE: ${loc}${cp.headquarters_address ? ` (${cp.headquarters_address})` : ''}`);
             if (cp.service_area_summary) {
-                parts.push(`AREA_DE_ATENDIMENTO_EXCLUSIVA: ${cp.service_area_summary} — voce NAO pode atender regioes fora desta area. Se o lead mencionar local fora, informe e encerre o atendimento.`);
+                parts.push(`AREA_DE_ATENDIMENTO_EXCLUSIVA: ${cp.service_area_summary} — você NÃO pode atender regiões fora desta área. Se o lead mencionar local fora, informe e encerre o atendimento.`);
             }
             if (cp.business_hours_text) parts.push(`HORARIO_COMERCIAL: ${cp.business_hours_text}`);
             if (cp.public_phone || cp.public_whatsapp) {
@@ -5058,16 +5058,16 @@ Deno.serve(async (req) => {
 
             const postCallContextBlock = isScheduledPostCallTrigger
                 ? `
-=== CONTEXTO DA LIGACAO (PRIORIDADE MAXIMA) ===
-O vendedor realizou uma ligacao com o lead ha 5 minutos e registrou:
+=== CONTEXTO DA LIGAÇÃO (PRIORIDADE MÁXIMA) ===
+O vendedor realizou uma ligação com o lead ha 5 minutos e registrou:
 "${postCallCommentText}"
 
-INSTRUCOES:
-- Sua mensagem DEVE referenciar o que foi conversado na ligacao.
+INSTRUÇÕES:
+- Sua mensagem DEVE referenciar o que foi conversado na ligação.
 - Use o feedback acima como dado PRINCIPAL do contexto.
-- Conduza para o proximo passo (agendar visita, gerar proposta, ou pedir dado faltante).
-- NAO invente o que foi conversado. Use APENAS o feedback registrado.
-=== FIM DO CONTEXTO DA LIGACAO ===
+- Conduza para o próximo passo (agendar visita, gerar proposta, ou pedir dado faltante).
+- NÃO invente o que foi conversado. Use APENAS o feedback registrado.
+=== FIM DO CONTEXTO DA LIGAÇÃO ===
 `
                 : '';
 
@@ -5159,41 +5159,41 @@ INSTRUCOES:
 === FOLLOW UP (STEP ${followUpStep || '?'}/5) ===
 ETAPA_ATUAL_DO_LEAD: ${currentStage || 'desconhecida'}
 OBJETIVO_DA_ETAPA: ${followUpStageGoal}
-O lead nao responde ha ${followUpElapsedText}.
-Este e o follow-up ${followUpStep || '?'} de 5.
-${lastFollowUpText ? `ULTIMO_FOLLOWUP_ENVIADO: "${lastFollowUpText}"\nANGULO_USADO_NO_ULTIMO: ${lastFollowUpAngle} — NAO repita este angulo nem o mesmo texto.\n` : ''}
-PROIBICOES DESTA ETAPA (OBRIGATORIO):
+O lead não responde ha ${followUpElapsedText}.
+Este é o follow-up ${followUpStep || '?'} de 5.
+${lastFollowUpText ? `ULTIMO_FOLLOWUP_ENVIADO: "${lastFollowUpText}"\nANGULO_USADO_NO_ULTIMO: ${lastFollowUpAngle} — NÃO repita este ângulo nem o mesmo texto.\n` : ''}
+PROIBICOES DESTA ETAPA (OBRIGATÓRIO):
 ${followUpProhibitions}
 ${realStageProtocol ? `
-PROTOCOLO DA ETAPA REAL (PRIORIDADE MAXIMA — o follow-up deve respeitar estas regras):
+PROTOCOLO DA ETAPA REAL (PRIORIDADE MÁXIMA — o follow-up deve respeitar estas regras):
 ${realStageProtocol}
 ` : ''}
-REGRA CRITICA: O CTA deste follow-up DEVE estar alinhado com o OBJETIVO_DA_ETAPA acima.
-O follow-up NAO pode inventar contexto. Se o historico nao mostra que algo foi enviado/feito, NAO referencie como se tivesse sido.
-Se o objetivo e agendar chamada, o follow-up deve puxar para chamada.
-Se o objetivo e agendar visita, o follow-up deve puxar para visita.
-Se o objetivo e negociar proposta, o follow-up deve puxar para apresentacao (nunca envio por WhatsApp).
+REGRA CRÍTICA: O CTA deste follow-up DEVE estar alinhado com o OBJETIVO_DA_ETAPA acima.
+O follow-up NÃO pode inventar contexto. Se o histórico não mostra que algo foi enviado/feito, NÃO referencie como se tivesse sido.
+Se o objetivo é agendar chamada, o follow-up deve puxar para chamada.
+Se o objetivo é agendar visita, o follow-up deve puxar para visita.
+Se o objetivo é negociar proposta, o follow-up deve puxar para apresentação (nunca envio por WhatsApp).
 
-INSTRUCOES POR STEP (cada step e um MOMENTO diferente — varie de verdade, nada de mensagem padrao):
-- Step 1 (~3h, mesmo dia): toque leve. Retome em 1 frase o ultimo ponto REAL da conversa e faca UMA pergunta curta pra destravar. Nada de reapresentar.
-- Step 2 (~1 dia depois): traga 1 beneficio ou dado novo (ex.: como a economia comeca apos a troca do medidor) sem repetir o que ja disse.
-- Step 3 (~2 dias): micro-urgencia sem pressao — cada mes parado e economia que deixa de entrar.
-- Step 4 (~3 dias): empatia/validacao. Pergunte com leveza se ainda faz sentido seguir agora ou se prefere mais pra frente.
+INSTRUÇÕES POR STEP (cada step e um MOMENTO diferente — varie de verdade, nada de mensagem padrão):
+- Step 1 (~3h, mesmo dia): toque leve. Retome em 1 frase o último ponto REAL da conversa e faca UMA pergunta curta pra destravar. Nada de reapresentar.
+- Step 2 (~1 dia depois): traga 1 benefício ou dado novo (ex.: como a economia comeca após a troca do medidor) sem repetir o que já disse.
+- Step 3 (~2 dias): micro-urgência sem pressão — cada mês parado e economia que deixa de entrar.
+- Step 4 (~3 dias): empatia/validação. Pergunte com leveza se ainda faz sentido seguir agora ou se prefere mais pra frente.
 - Step 5 (~7 dias): despedida leve, porta aberta ("quando quiser retomar, e so chamar").
 
-OBRIGATORIO:
+OBRIGATÓRIO:
 - Cada follow-up deve ser DIFERENTE dos anteriores e coerente com o MOMENTO (tempo sem resposta) acima.
-- NUNCA se reapresente (nome/empresa) nem reabra a conversa do zero; o lead ja te conhece.
-- Referenciar a ultima conversa com base no historico real.
-- 1-2 frases no maximo.
-- Nao repetir perguntas ja feitas.
-- NAO usar emojis. Zero emojis no follow-up.
-- NAO copiar prefixos de formato do historico (ex: icones, marcadores de audio, anexo).
-- NUNCA afirmar que algo foi enviado, feito ou combinado se isso NAO aparece EXPLICITAMENTE no historico.
-- Se o historico nao mostrar que proposta foi enviada, NAO perguntar sobre proposta.
-- Se o historico nao mostrar que visita foi realizada, NAO perguntar sobre visita.
-- Se o historico nao mostrar que chamada aconteceu, NAO perguntar sobre chamada.
-- Na duvida, retomar com pergunta aberta curta baseada no ultimo ponto REAL da conversa.
+- NUNCA se reapresente (nome/empresa) nem reabra a conversa do zero; o lead já te conhece.
+- Referenciar a última conversa com base no histórico real.
+- 1-2 frases no máximo.
+- Não repetir perguntas já feitas.
+- NÃO usar emojis. Zero emojis no follow-up.
+- NÃO copiar prefixos de formato do histórico (ex: ícones, marcadores de áudio, anexo).
+- NUNCA afirmar que algo foi enviado, feito ou combinado se isso NÃO aparece EXPLICITAMENTE no histórico.
+- Se o histórico não mostrar que proposta foi enviada, NÃO perguntar sobre proposta.
+- Se o histórico não mostrar que visita foi realizada, NÃO perguntar sobre visita.
+- Se o histórico não mostrar que chamada aconteceu, NÃO perguntar sobre chamada.
+- Na dúvida, retomar com pergunta aberta curta baseada no último ponto REAL da conversa.
 === FIM DO FOLLOW UP ===
 `
                 : '';
@@ -5202,13 +5202,13 @@ OBRIGATORIO:
                 ? `
 PERSONALIZACAO_DA_INSTANCIA (prioridade abaixo de compliance e protocolo de etapa):
 - Fonte: whatsapp_instances.assistant_prompt_override
-- Versao: ${instanceAssistantPromptOverrideVersion}
-- Regras: aplique estas instrucoes para estilo/persona/roteamento desta instancia, sem violar politicas de seguranca, compliance e protocolo da etapa.
+- Versão: ${instanceAssistantPromptOverrideVersion}
+- Regras: aplique estas instruções para estilo/persona/roteamento desta instância, sem violar políticas de segurança, compliance e protocolo da etapa.
 ${instanceAssistantPromptOverrideText}
 `
                 : `
 PERSONALIZACAO_DA_INSTANCIA:
-- Sem prompt personalizado para esta instancia. Use apenas identidade efetiva + protocolo da etapa.
+- Sem prompt personalizado para esta instância. Use apenas identidade efetiva + protocolo da etapa.
 `;
 
             systemPrompt = `
@@ -5310,16 +5310,16 @@ Confidence: "high" se o usuário disse explicitamente, "medium" se inferido clar
 Source: "user" se veio direto do que o cliente escreveu, "inferred" se você deduziu, "confirmed" se o cliente confirmou algo que você perguntou.
 Campos possíveis: consumption_kwh_month, estimated_value_brl, conta_luz_mensal, customer_type, city, zip, roof_type, utility_company, grid_connection_type, financing_interest, installation_site_type, average_bill_context. Em novo_lead e respondeu, use conta_luz_mensal para o valor mensal informado pelo lead ou lido na foto da conta.
 
-DADOS ESTRUTURADOS POR ETAPA (OPCIONAL, quando houver alta/medio confianca):
+DADOS ESTRUTURADOS POR ETAPA (OPCIONAL, quando houver alta/médio confiança):
 - Quando a conversa trouxer dados estruturados relevantes da etapa atual, inclua "stage_data" no JSON.
 - Use chaves em snake_case.
-- Para currentStage="proposta_negociacao", use namespace "negociacao" (ou "proposta_negociacao" se preferir) dentro de "stage_data".
+- Para currentStage="proposta_negociacao", use namespace "negociação" (ou "proposta_negociacao" se preferir) dentro de "stage_data".
 - Nunca invente; omita campos sem certeza.
 
 INCREMENTO_CIRURGICO_V2_20260306_GLOBAL:
-- Se currentStage for "respondeu" ou "nao_compareceu", nao incluir "proposal" no JSON e nao usar acao de proposta.
-- Se currentStage for "respondeu" ou "nao_compareceu", continuar qualificacao ate agendamento (chamada_agendada ou visita_agendada).
-- Ao tratar promocao, nunca inventar valores/condicoes; usar apenas dados explicitamente presentes no contexto.
+- Se currentStage for "respondeu" ou "nao_compareceu", não incluir "proposal" no JSON e não usar ação de proposta.
+- Se currentStage for "respondeu" ou "nao_compareceu", continuar qualificação até agendamento (chamada_agendada ou visita_agendada).
+- Ao tratar promoção, nunca inventar valores/condições; usar apenas dados explicitamente presentes no contexto.
 
 COMENTÁRIOS INTERNOS E FOLLOW-UPS (V7):
 - Antes de perguntar qualquer coisa, consulte DADOS_JA_CONFIRMADOS. Se um dado já estiver confirmado, NÃO peça de novo.
@@ -5329,25 +5329,25 @@ COMENTÁRIOS INTERNOS E FOLLOW-UPS (V7):
 - Nunca crie tarefas/comentários duplicados no mesmo contexto; um por burst/âncora.
 - Você pode combinar: action="send_message" + "comment":{"text":"...","type":"next_step"} para responder E registrar comentário ao mesmo tempo.
 
-HANDOFF / ATRIBUICAO DE CONTATO (OBRIGATORIO QUANDO APLICAVEL):
+HANDOFF / ATRIBUIÇÃO DE CONTATO (OBRIGATÓRIO QUANDO APLICÁVEL):
 - Quando identificar necessidade de transferir atendimento, inclua "handoff" no JSON.
 - target_type="seller": use assign_to_user_id com user_id exato de VENDEDORES_DISPONIVEIS_PARA_ATRIBUICAO.
 - target_type="instance": use assign_to_instance_name com instance_name exato de INSTANCIAS_IA_DISPONIVEIS_PARA_HANDOFF.
-- Nunca invente IDs ou instance_name. Se nao houver alvo valido no catalogo, omita handoff.
-- Exemplo: Joao (vendas) pode encaminhar para Maria (pos-vendas) com handoff target_type="seller".
-- Exemplo: transferir para outra IA/instancia com handoff target_type="instance".
+- Nunca invente IDs ou instance_name. Se não houver alvo válido no catálogo, omita handoff.
+- Exemplo: Joao (vendas) pode encaminhar para Maria (pós-vendas) com handoff target_type="seller".
+- Exemplo: transferir para outra IA/instância com handoff target_type="instance".
 
 ${handoffTargetsCatalogText || 'CATALOGO_HANDOFF_INDISPONIVEL: sem alvos carregados neste momento.'}
 
 DIRETRIZ FINAL DE TOM (LEIA IMEDIATAMENTE ANTES DE RESPONDER — MAIS IMPORTANTE QUE AS REGRAS ANTERIORES):
-As regras acima definem O QUE fazer. Esta diretriz define COMO falar. Cumpra TODAS as regras mas soando como PESSOA REAL no WhatsApp. Regras sao o mapa; seu tom e a voz. Varie palavras, ritmo e comprimento das frases. NUNCA recite o script como robo. NUNCA repita a mesma frase pronta duas vezes. NUNCA soe como checklist ou atendente de call center. Seja caloroso, direto e natural — como um vendedor escrevendo de verdade no WhatsApp.
+As regras acima definem O QUE fazer. Esta diretriz define COMO falar. Cumpra TODAS as regras mas soando como PESSOA REAL no WhatsApp. Regras são o mapa; seu tom é a voz. Varie palavras, ritmo e comprimento das frases. NUNCA recite o script como robô. NUNCA repita a mesma frase pronta duas vezes. NUNCA soe como checklist ou atendente de call center. Seja caloroso, direto e natural — como um vendedor escrevendo de verdade no WhatsApp.
 
 FORMATO DE SAÍDA (JSON ESTRITO, sem markdown, sem explicação fora do JSON):
 Exemplo de JSON válido apenas para mostrar a estrutura: {"action":"send_message","content":"Faz sentido olhar isso no seu caso?"}
 {"action": "send_message"|"move_stage"|"update_lead_fields"|"add_comment"|"create_followup"|"create_appointment"|"none", "content": "Texto humano aqui...", "target_stage": "next_stage_id", "fields": {"campo": {"value": "...", "confidence": "high"|"medium"|"low", "source": "user"|"inferred"|"confirmed"}}, "stage_data": {"campo_ou_namespace": "valor"}, "comment": {"text": "Resumo/nota interna", "type": "summary|note|next_step"}, "task": {"title": "Título do follow-up", "notes": "Detalhes", "due_at": "ISO", "priority": "low|medium|high", "channel": "whatsapp|call|email"}, "appointment": {"type": "call|visit|meeting|installation", "title": "Título curto", "start_at": "ISO", "end_at": "ISO opcional", "location": "Opcional", "notes": "Opcional"}, "handoff": {"target_type": "seller"|"instance", "assign_to_user_id": "uuid", "assign_to_instance_name": "instance_name", "reason": "opcional"}}
 
 Se action for "move_stage", DEVE incluir "target_stage".
-Se currentStage for "novo_lead" e action for "send_message", DEVE incluir "target_stage": "respondeu" (obrigatorio - lead respondeu pela primeira vez).
+Se currentStage for "novo_lead" e action for "send_message", DEVE incluir "target_stage": "respondeu" (obrigatório - lead respondeu pela primeira vez).
 Se action for "send_message", "content" é obrigatório.
 Se houver confirmação de agendamento, inclua "appointment.start_at" obrigatoriamente.
 Se action for "create_appointment", inclua "appointment" com "start_at".
@@ -5563,11 +5563,11 @@ Se houver transferência de responsável/instância, inclua "handoff" com target
                 try {
                     const duplicateCorrectionPrompt = `${systemPrompt}
 
-CORRECAO OBRIGATORIA:
+CORREÇÃO OBRIGATÓRIA:
 - A resposta abaixo tentou perguntar novamente um dado já confirmado pelo lead.
-- NAO repita a pergunta de chave "${draftedQuestionKey}".
+- NÃO repita a pergunta de chave "${draftedQuestionKey}".
 - Use DADOS_JA_CONFIRMADOS como verdade.
-- Gere a proxima melhor pergunta faltante ou avance para o proximo passo.
+- Gere a próxima melhor pergunta faltante ou avance para o próximo passo.
 `;
 
                     const retryCompletion = await replyClient.chat.completions.create({
@@ -5780,7 +5780,7 @@ CORRECAO OBRIGATORIA:
                     type: hasAppointmentObject && aiRes.appointment.type ? aiRes.appointment.type : inferredTypeFromContext,
                     title: hasAppointmentObject && aiRes.appointment.title
                         ? aiRes.appointment.title
-                        : (inferredTypeFromContext === 'visit' ? 'Visita tecnica' : 'Chamada comercial'),
+                        : (inferredTypeFromContext === 'visit' ? 'Visita técnica' : 'Chamada comercial'),
                     start_at: selectedImplicitSlot,
                     end_at: hasAppointmentObject ? aiRes.appointment.end_at : undefined,
                 };
@@ -5852,7 +5852,7 @@ CORRECAO OBRIGATORIA:
                             aiRes.appointment = {
                                 ...rawAppointment,
                                 type: rawAppointment.type || inferredType,
-                                title: String(rawAppointment.title || (inferredType === 'visit' ? 'Visita tecnica' : 'Chamada comercial')).trim().substring(0, 200),
+                                title: String(rawAppointment.title || (inferredType === 'visit' ? 'Visita técnica' : 'Chamada comercial')).trim().substring(0, 200),
                                 start_at: startIso,
                                 end_at: endDate.toISOString(),
                             };
@@ -5902,7 +5902,7 @@ CORRECAO OBRIGATORIA:
                         }) || aiRes.content;
                     } else if (reasonForLog === 'min_days_blocked') {
                         const minDays = typeForRetry === 'visit' ? scheduleVisitMinDays : scheduleCallMinDays;
-                        aiRes.content = `Para ${typeForRetry === 'visit' ? 'visita' : 'ligacao'}, trabalhamos com antecedencia minima de ${minDays} dia(s). Posso te sugerir opcoes dentro dessa regra?`;
+                        aiRes.content = `Para ${typeForRetry === 'visit' ? 'visita' : 'ligacao'}, trabalhamos com antecedencia mínima de ${minDays} dia(s). Posso te sugerir opções dentro dessa regra?`;
                     } else {
                         aiRes.content = buildScheduleRetryContent(
                             typeForRetry,

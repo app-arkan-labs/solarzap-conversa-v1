@@ -1239,7 +1239,7 @@ export function ChatArea({
                   >
                     {instances.find(i => i.id === selectedInstanceId)?.display_name ||
                       instances.find(i => i.id === selectedInstanceId)?.instance_name ||
-                      'Instancia atribuida'}
+                      'Instância atribuida'}
                   </Badge>
                 )}
               </div>
@@ -1631,7 +1631,7 @@ export function ChatArea({
 
       {/* Message Input - Hidden during selection mode */}
       {!isSelectionMode && (
-        <div className={cn("px-4 py-3 border-t border-border bg-card shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]", replyTarget && "border-t-0")}>
+        <div className={cn("px-4 py-3 border-t border-border bg-card shrink-0 pb-[max(0.75rem,env(safe-área-inset-bottom))]", replyTarget && "border-t-0")}>
           {/* Mobile hold-to-record overlay */}
           {isMobileChatExperience && <MobileRecordingOverlay state={mobileRecorder.state} durationSeconds={mobileRecorder.durationSeconds} cancelRatio={mobileRecorder.cancelRatio} />}
 

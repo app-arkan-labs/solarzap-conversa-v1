@@ -209,7 +209,7 @@ export default function InternalCrmInboxPage() {
     isVoiceNote?: boolean;
     preferSticker?: boolean;
   }) => {
-    if (!selectedConversationId) throw new Error('Conversa nao selecionada.');
+    if (!selectedConversationId) throw new Error('Conversa não selecionada.');
 
     const { data, error } = await inbox.supabaseClient.functions.invoke('internal-crm-storage-intent', {
       body: {
@@ -354,11 +354,11 @@ export default function InternalCrmInboxPage() {
     if (selectedConversation.channel === 'manual_note') return null;
 
     if (!inbox.selectedInstance?.id) {
-      return 'Selecione uma instancia conectada para enviar mensagens.';
+      return 'Selecione uma instância conectada para enviar mensagens.';
     }
 
     if (inbox.selectedInstance.status !== 'connected') {
-      return 'A instancia selecionada esta pausada. Conecte-a ou selecione outra instancia.';
+      return 'A instância selecionada está pausada. Conecte-a ou selecione outra instância.';
     }
 
     return null;
@@ -380,7 +380,7 @@ export default function InternalCrmInboxPage() {
       ...payload,
       client_id: selectedClientId || payload.client_id,
     });
-    toast({ title: 'Reuniao agendada' });
+    toast({ title: 'Reunião agendada' });
     setAppointmentModalOpen(false);
   };
 
@@ -428,7 +428,7 @@ export default function InternalCrmInboxPage() {
       client_id: clientId,
       deal_id: resolvedDealId,
     });
-    toast({ title: 'Reuniao agendada' });
+    toast({ title: 'Reunião agendada' });
     setAppointmentModalOpen(false);
   };
 
@@ -508,7 +508,7 @@ export default function InternalCrmInboxPage() {
                 } catch (error) {
                   toast({
                     title: 'Falha ao reprocessar midia',
-                    description: error instanceof Error ? error.message : 'Nao foi possivel reenfileirar a midia.',
+                    description: error instanceof Error ? error.message : 'Não foi possível reenfileirar a midia.',
                     variant: 'destructive',
                   });
                 }
