@@ -583,7 +583,8 @@ Deno.serve(async (req: Request) => {
 
     const batchSize = Math.max(1, Math.min(200, Number(body.batchSize || 50)));
 
-    await supabase.rpc('tracking_requeue_stale_deliveries').catch(() => null);
+    const { error: requeueError } = await supabase.rpc('tracking_requeue_stale_deliveries');
+    if (requeueError) console.warn('[conversion-dispatcher] stale requeue failed:', requeueError.message);
 
     const { data: claimRows, error: claimError } = await supabase.rpc('tracking_claim_delivery_batch', {
       p_batch_size: batchSize,
