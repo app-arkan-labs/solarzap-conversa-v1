@@ -9,6 +9,7 @@ import {
     scopeProposalVersionByProposalIdQuery,
 } from '@/lib/multiOrgLeadScoping';
 import { assertLeadStageUpdateApplied } from './pipelineStageGuards';
+import { DEV_MODE } from '@/config/devMode';
 
 type ProposalSegment = 'residencial' | 'empresarial' | 'agronegocio' | 'usina' | 'indefinido';
 
@@ -83,7 +84,17 @@ export function usePipeline() {
                 return [];
             }
         },
-        enabled: !!user && !!orgId,
+        enabled: !DEV_MODE && !!user && !!orgId,
+        initialData: DEV_MODE ? [{
+            id: 'dev-event-1',
+            contactId: '10001',
+            title: 'Apresentação da proposta solar',
+            description: 'Demonstração do sistema e próximos passos',
+            type: 'reuniao',
+            startDate: new Date(Date.now() + 86400000),
+            endDate: new Date(Date.now() + 90000000),
+            isCompleted: false,
+        }] : undefined,
     });
 
     const moveToPipelineMutation = useMutation({

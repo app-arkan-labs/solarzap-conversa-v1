@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { DEV_MODE } from '@/config/devMode';
 import {
   bootstrapSelf,
   listUserOrgs,
@@ -89,6 +90,24 @@ const EMPTY_MEMBERSHIP: MembershipState = {
   role: null,
   canViewTeamLeads: false,
 };
+
+const DEV_ACCOUNT = {
+  id: '00000000-0000-4000-8000-000000000001',
+  aud: 'authenticated',
+  role: 'authenticated',
+  email: 'dev@solarzap.local',
+  email_confirmed_at: new Date(0).toISOString(),
+  phone: '',
+  confirmed_at: new Date(0).toISOString(),
+  last_sign_in_at: new Date().toISOString(),
+  app_metadata: { provider: 'email', providers: ['email'] },
+  user_metadata: { display_name: 'Conta Dev SolarZap', company_name: 'SolarZap Demo' },
+  identities: [],
+  created_at: new Date(0).toISOString(),
+  updated_at: new Date().toISOString(),
+} as User;
+
+const DEV_ORG_ID = '00000000-0000-4000-8000-000000000002';
 
 const MEMBERSHIP_RETRY_DELAYS_MS = [250, 750, 1500] as const;
 
@@ -610,6 +629,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
+    if (DEV_MODE) {
+      setUser(DEV_ACCOUNT);
+      setOrgId(DEV_ORG_ID);
+      setRole('owner');
+      setCanViewTeamLeads(true);
+      setOrganizations([{
+        org_id: DEV_ORG_ID,
+        role: 'owner',
+        can_view_team_leads: true,
+        joined_at: new Date(0).toISOString(),
+        company_name: 'SolarZap Demo',
+        organization_name: 'SolarZap Demo',
+        display_name: 'SolarZap Demo',
+      }]);
+      setOrgResolutionStatus('ready');
+      setLoading(false);
+      return () => { mounted = false; };
+    }
+
     const applySessionState = async (nextSession: Session | null, source: string) => {
       const seq = ++applySessionSeqRef.current;
       const isCurrent = () => mounted && seq === applySessionSeqRef.current;
@@ -902,6 +940,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let mounted = true;
+
+    if (DEV_MODE) return () => { mounted = false; };
 
     const loadOrgStatus = async () => {
       if (!user?.id || !orgId) {

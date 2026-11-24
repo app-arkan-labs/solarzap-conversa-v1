@@ -16,8 +16,9 @@ import {
 } from '@/types/ai';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { getDefaultStageGoal, getDefaultStagePrompt } from '@/constants/aiPipelinePdfPrompts';
+import { AI_PIPELINE_STAGE_PROMPTS_PDF, getDefaultStageGoal, getDefaultStagePrompt } from '@/constants/aiPipelinePdfPrompts';
 import { normalizeSupportedTimezone } from '@/lib/timezones';
+import { DEV_MODE } from '@/config/devMode';
 
 const STAGE_COL = 'pipeline_stage';
 const LEGACY_COL = 'status_pipeline';
@@ -277,6 +278,20 @@ export function useAISettings() {
       return;
     }
 
+    if (DEV_MODE) {
+      setSettings({
+        ...DEFAULT_AI_SETTINGS,
+        id: 1,
+        org_id: orgId,
+        is_active: true,
+        assistant_identity_name: 'Consultor Solar',
+        updated_at: new Date().toISOString(),
+      });
+      setStageConfigs([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
       const { data: settingsData, error: settingsError } = await supabase
@@ -355,7 +370,7 @@ export function useAISettings() {
   useEffect(() => {
     void fetchSettings();
 
-    if (!orgId) return;
+    if (DEV_MODE || !orgId) return;
 
     const settingsSub = supabase
       .channel(`ai_settings_changes_${orgId}`)
@@ -388,9 +403,36 @@ export function useAISettings() {
   const updateGlobalSettings = async (updates: Partial<AISettings>) => {
     try {
       if (!orgId) throw new Error('Organização não vinculada ao usuário');
+      if (DEV_MODE) {
+        setSettings((current) => ({
+          ...(current || {
+            ...DEFAULT_AI_SETTINGS,
+            id: 1,
+            org_id: orgId,
+            updated_at: new Date().toISOString(),
+          }),
+          ...updates,
+          is_active: updates.is_active ?? current?.is_active ?? true,
+          updated_at: new Date().toISOString(),
+        }));
+        toast({ title: 'Configuração salva', description: 'Modo demo local ativo.' });
+        return;
+      }
       const normalizedUpdates: Partial<AISettings> = {
         ...updates,
       };
+
+      if (normalizedUpdates.is_active === true) {
+        const stageDefaults = Object.keys(AI_PIPELINE_STAGE_PROMPTS_PDF).map((stage) => ({
+          org_id: orgId,
+          pipeline_stage: stage,
+          ...getStageSeedDefaults(stage),
+        }));
+        const { error } = await supabase
+          .from('ai_stage_config')
+          .upsert(stageDefaults, { onConflict: 'org_id,pipeline_stage', ignoreDuplicates: true });
+        if (error) throw error;
+      }
 
       if (Object.prototype.hasOwnProperty.call(normalizedUpdates, 'timezone')) {
         normalizedUpdates.timezone = normalizeTimezone(

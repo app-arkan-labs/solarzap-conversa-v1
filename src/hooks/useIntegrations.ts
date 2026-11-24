@@ -2,6 +2,7 @@
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { DEV_MODE } from '@/config/devMode';
 
 export interface Integration {
   id: string;
@@ -95,12 +96,16 @@ export function useIntegrations() {
 
   // Initial fetch
   useEffect(() => {
+    if (DEV_MODE) {
+      setLoading(false);
+      return;
+    }
     fetchIntegrations();
   }, [fetchIntegrations]);
 
   // Subscribe to realtime changes for WhatsApp instances
   useEffect(() => {
-    if (!orgId) return;
+    if (DEV_MODE || !orgId) return;
 
     const channel = supabase
       .channel(`whatsapp-instances-changes-${orgId}`)

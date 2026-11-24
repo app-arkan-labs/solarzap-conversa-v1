@@ -13,8 +13,8 @@
 // Para produção: DEV_MODE = false, USE_MOCK_DATA = false
 // =====================================================
 
-export const DEV_MODE = false;
-export const USE_MOCK_DATA = false;
+export const DEV_MODE = import.meta.env.DEV && import.meta.env.VITE_DEV_ACCOUNT !== 'false';
+export const USE_MOCK_DATA = DEV_MODE;
 
 // Se true, usa mock data quando Edge Function não responde
 export const EDGE_FUNCTION_FALLBACK = false;

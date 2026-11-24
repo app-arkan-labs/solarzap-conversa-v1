@@ -10,6 +10,7 @@ import { upsertOwnReaction } from '@/lib/reactions';
 import { useAuth } from '@/contexts/AuthContext';
 import { Contact, Conversation, Message } from '@/types/solarzap';
 import { normalizePhoneE164, onlyPhoneDigits } from '@/lib/phoneUtils';
+import { DEV_MODE } from '@/config/devMode';
 
 const vendedorTypes = [
     'mensagem_vendedor',
@@ -423,7 +424,18 @@ export function useChat(contacts: Contact[] = []) {
     const messagesQuery = useQuery({
         queryKey: interactionsQueryKey,
         queryFn: fetchInteractionsFull,
-        enabled: !!user && !!orgId && scopedLeadIdNumbers.length > 0,
+        enabled: !DEV_MODE && !!user && !!orgId && scopedLeadIdNumbers.length > 0,
+        initialData: DEV_MODE ? [{
+            id: 'dev-message-1',
+            contactId: '10001',
+            content: 'Oi, Mariana! Vi que você pediu uma simulação de energia solar. Posso te ajudar?',
+            timestamp: new Date(Date.now() - 15 * 60 * 1000),
+            isFromClient: false,
+            isRead: true,
+            status: 'sent',
+            instanceName: 'SolarZap Demo',
+            phoneE164: '+5511999990001',
+        }] : undefined,
         staleTime: 5000,
     });
 

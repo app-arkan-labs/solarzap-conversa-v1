@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { DEV_MODE } from '@/config/devMode';
 
 export function useOrgFeatureFlags() {
   const { orgId } = useAuth();
@@ -31,7 +32,7 @@ export function useOrgFeatureFlags() {
         return {} as Record<string, boolean>;
       }
     },
-    enabled: Boolean(orgId),
+    enabled: !DEV_MODE && Boolean(orgId),
     staleTime: 60_000,
     placeholderData: {},
   });

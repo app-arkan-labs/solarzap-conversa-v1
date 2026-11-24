@@ -61,6 +61,7 @@ import { useGuidedTour } from '@/hooks/useGuidedTour';
 import GuidedTour from '@/components/onboarding/GuidedTour';
 import { isMobileMoreTabActive, type SolarZapTabPermissions } from './mobileNavConfig';
 import { lazyWithRetry } from '@/lib/lazyWithRetry';
+import { DEV_MODE } from '@/config/devMode';
 import { formatLeadTaskTimestamp, getLastActionText } from '@/lib/leadNextActions';
 
 type AppointmentModalErrorBoundaryProps = {
@@ -240,9 +241,9 @@ export function SolarZapLayout() {
   // Global loading state - Only show full screen loader on INITIAL load (no data)
   // We check if lists are empty AND loading is true.
   const isInitialLoading =
-    (isLoadingLeads && contacts.length === 0) ||
+    !DEV_MODE && ((isLoadingLeads && contacts.length === 0) ||
     (isLoadingMessages && conversations.length === 0) ||
-    (isLoadingEvents && events.length === 0);
+    (isLoadingEvents && events.length === 0));
 
   // UI State
   const [activeTab, setActiveTab] = useState<ActiveTab>(() =>
@@ -814,7 +815,7 @@ export function SolarZapLayout() {
     }
 
     type UpsertNextActionAppointmentRpcRow = {
-      appointment_id: number;
+      appointment_id: string;
       task_id: string;
       appointment_user_id: string;
       appointment_title: string;
@@ -835,7 +836,7 @@ export function SolarZapLayout() {
       p_location: input.location || '',
       p_notes: input.notes || '',
       p_user_id: input.responsibleUserId,
-      p_appointment_id: input.appointmentId ? Number(input.appointmentId) : null,
+      p_appointment_id: input.appointmentId || null,
       p_task_id: input.nextActionTaskId || nextActionByLeadId.get(String(input.contact.id))?.id || null,
     });
 

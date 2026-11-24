@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { useBillingBlocker } from '@/contexts/BillingBlockerContext';
 import { buildLimitBlockerForKey, buildSubscriptionIssueBlocker, isUnlimitedBillingBypass } from '@/lib/billingBlocker';
+import { DEV_MODE } from '@/config/devMode';
 
 export interface UserWhatsAppInstance {
   org_id?: string | null;
@@ -120,6 +121,26 @@ const normalizeInstance = (row: any): UserWhatsAppInstance => ({
   assistant_prompt_updated_at: row?.assistant_prompt_updated_at ? String(row.assistant_prompt_updated_at) : null,
 });
 
+const DEV_INSTANCE: UserWhatsAppInstance = {
+  id: 'dev-instance-1',
+  org_id: '00000000-0000-4000-8000-000000000002',
+  user_id: '00000000-0000-4000-8000-000000000001',
+  instance_name: 'solarzap-demo',
+  display_name: 'WhatsApp Demo',
+  status: 'connected',
+  phone_number: '+55 11 99999-0001',
+  qr_code: null,
+  is_active: true,
+  connected_at: new Date().toISOString(),
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  ai_enabled: true,
+  assistant_identity_name: 'Consultor Solar',
+  assistant_prompt_override: null,
+  assistant_prompt_override_version: 0,
+  assistant_prompt_updated_at: null,
+};
+
 function addInstanceOnce(instances: UserWhatsAppInstance[], instance: UserWhatsAppInstance) {
   return instances.some(existing => existing.id === instance.id) ? instances : [instance, ...instances];
 }
@@ -145,6 +166,11 @@ export function useUserWhatsAppInstances() {
 
   // Fetch instances from Supabase in active organization scope.
   const fetchInstances = useCallback(async () => {
+    if (DEV_MODE) {
+      setInstances([DEV_INSTANCE]);
+      setLoading(false);
+      return;
+    }
     if (!user || !orgId) {
       setInstances([]);
       setLoading(false);
@@ -258,7 +284,7 @@ export function useUserWhatsAppInstances() {
 
   // Real-time subscription
   useEffect(() => {
-    if (!user || !orgId) return;
+    if (DEV_MODE || !user || !orgId) return;
 
     const channel = supabase
       .channel(`whatsapp-instances-${orgId}-${user.id}`)
@@ -892,6 +918,13 @@ export function useUserWhatsAppInstances() {
     },
     setInstanceAiEnabled: async (instanceName: string, enabled: boolean): Promise<boolean> => {
       try {
+        if (DEV_MODE) {
+          setInstances(prev => prev.map(inst =>
+            inst.instance_name === instanceName ? { ...inst, ai_enabled: enabled } : inst
+          ));
+          toast.success(enabled ? 'IA ativada' : 'IA desativada');
+          return true;
+        }
         if (!orgId) {
           toast.error('Organização não vinculada ao usuário');
           return false;
@@ -942,6 +975,11 @@ export function useUserWhatsAppInstances() {
     },
     toggleAllInstances: async (enabled: boolean): Promise<boolean> => {
       try {
+        if (DEV_MODE) {
+          setInstances(prev => prev.map(inst => ({ ...inst, ai_enabled: enabled })));
+          toast.success(enabled ? 'Todas as instâncias ativadas' : 'Todas as instâncias desativadas');
+          return true;
+        }
         if (!orgId) {
           toast.error('Organização não vinculada ao usuário');
           return false;
@@ -978,6 +1016,13 @@ export function useUserWhatsAppInstances() {
     },
     activateAiForAllLeads: async (instanceName: string): Promise<number | null> => {
       try {
+        if (DEV_MODE) {
+          setInstances(prev => prev.map(inst =>
+            inst.instance_name === instanceName ? { ...inst, ai_enabled: true } : inst
+          ));
+          toast.success('IA reativada para o contato demo');
+          return 1;
+        }
         if (!orgId) {
           toast.error('Organização não vinculada ao usuário');
           return null;

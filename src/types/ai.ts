@@ -171,8 +171,9 @@ export interface AIActionLog {
     created_at: string;
 }
 
-export const DEFAULT_AI_SETTINGS: Partial<AISettings> = {
+export const DEFAULT_AI_SETTINGS = {
     is_active: false,
+    personality_tone: 'profissional e empático',
     assistant_identity_name: 'Consultor Solar',
     timezone: 'America/Sao_Paulo',
     auto_schedule_call_enabled: true,
@@ -187,4 +188,4 @@ export const DEFAULT_AI_SETTINGS: Partial<AISettings> = {
     appointment_window_config: DEFAULT_APPOINTMENT_WINDOW_CONFIG,
     follow_up_sequence_config: DEFAULT_FOLLOW_UP_SEQUENCE_CONFIG,
     follow_up_window_config: DEFAULT_FOLLOW_UP_WINDOW_CONFIG,
-};
+} satisfies Omit<AISettings, 'id' | 'updated_at'>;

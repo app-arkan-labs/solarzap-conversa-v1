@@ -1,6 +1,7 @@
 import React, { createContext, useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { DEV_MODE } from '@/config/devMode';
 
 export interface AutomationSettings {
   novoLeadFirstResponseToRespondeuEnabled: boolean;
@@ -107,6 +108,14 @@ export function AutomationProvider({ children }: { children: ReactNode }) {
     let active = true;
 
     const hydrate = async () => {
+      if (DEV_MODE) {
+        const localFallback = readScopedStorage(storageKey, orgId) || DEFAULT_SETTINGS;
+        setSavedSettings(localFallback);
+        setPendingSettings(localFallback);
+        setIsHydrating(false);
+        return;
+      }
+
       if (!orgId) {
         const localFallback = readScopedStorage(storageKey, null) || DEFAULT_SETTINGS;
         if (active) {

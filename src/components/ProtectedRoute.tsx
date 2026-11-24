@@ -12,6 +12,7 @@ import { BillingBlockerProvider } from '@/contexts/BillingBlockerContext';
 import { useOnboardingProgress } from '@/hooks/useOnboardingProgress';
 import SubscriptionRequiredScreen from '@/components/billing/SubscriptionRequiredScreen';
 import { isUnlimitedBillingBypass } from '@/lib/billingBlocker';
+import { DEV_MODE } from '@/config/devMode';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -76,8 +77,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   const { user, loading, role, orgId, orgStatus, suspensionReason, signOut, orgResolutionStatus, orgResolutionError, organizations } = useAuth();
   const { toast } = useToast();
   const location = useLocation();
-  const billingQuery = useOrgBillingInfo(Boolean(user && orgId));
-  const onboardingQuery = useOnboardingProgress(Boolean(user && orgId));
+  const billingQuery = useOrgBillingInfo(!DEV_MODE && Boolean(user && orgId));
+  const onboardingQuery = useOnboardingProgress(!DEV_MODE && Boolean(user && orgId));
   const hasShownAccessToastRef = useRef(false);
 
   const missingRequiredRole =

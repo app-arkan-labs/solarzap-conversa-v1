@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Appointment, AppointmentStatus, AppointmentType } from '@/types/solarzap';
 import { toast } from 'sonner';
+import { DEV_MODE } from '@/config/devMode';
 
 export type CreateAppointmentData = {
     user_id?: string;
@@ -33,7 +34,7 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
 
     // Real-time subscription
     useEffect(() => {
-        if (!user || !orgId) return;
+        if (DEV_MODE || !user || !orgId) return;
 
         const channel = supabase
             .channel(`appointments-realtime-${orgId}`)
@@ -80,7 +81,20 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
 
             return data as Appointment[];
         },
-        enabled: !!user && !!orgId,
+        enabled: !DEV_MODE && !!user && !!orgId,
+        initialData: DEV_MODE ? [{
+            id: 'dev-appointment-1',
+            user_id: '00000000-0000-4000-8000-000000000001',
+            lead_id: 10001,
+            title: 'Apresentação da proposta solar',
+            type: 'meeting',
+            status: 'scheduled',
+            start_at: new Date(Date.now() + 86400000).toISOString(),
+            end_at: new Date(Date.now() + 90000000).toISOString(),
+            notes: 'Conta de demonstração SolarZap',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        }] : undefined,
         placeholderData: (previousData) => previousData ?? [],
         retry: 1,
     });

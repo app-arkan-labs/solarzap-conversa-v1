@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, ReactNode } from 'react';
 import { useGoogleIntegration, GoogleAccount, GoogleCalendarEvent } from '@/hooks/useGoogleIntegration';
+import { DEV_MODE } from '@/config/devMode';
 
 interface GoogleIntegrationContextType {
   isConnected: boolean;
@@ -26,7 +27,7 @@ export function GoogleIntegrationProvider({ children }: { children: ReactNode })
   const googleIntegration = useGoogleIntegration();
 
   useEffect(() => {
-    googleIntegration.loadAccount();
+    if (!DEV_MODE) googleIntegration.loadAccount();
   }, []);
 
   return (

@@ -14,6 +14,7 @@ import {
     type ImportLeadsSummary,
     type ImportLeadRpcRow,
 } from '@/lib/importLeadsSummary';
+import { DEV_MODE } from '@/config/devMode';
 
 // Module-level cache for DB schema capabilities (to avoid repeated failed requests)
 let dbSupportsExtendedColumns: boolean | null = null;
@@ -169,6 +170,23 @@ export const leadToContact = (lead: any): Contact => {
         lostReason: lead.lost_reason ?? null,
     };
 };
+
+const DEV_CONTACT = leadToContact({
+    id: 10001,
+    nome: 'Mariana Oliveira',
+    empresa: 'Casa Oliveira',
+    telefone: '+55 11 99999-0001',
+    email: 'mariana.oliveira@demo.local',
+    canal: 'whatsapp',
+    status_pipeline: 'respondeu',
+    consumo_kwh: 850,
+    valor_estimado: 28500,
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+    updated_at: new Date().toISOString(),
+    last_message_at: new Date().toISOString(),
+    assigned_to_user_id: '00000000-0000-4000-8000-000000000001',
+    ai_enabled: true,
+});
 
 export interface LeadPatch {
     nome?: string;
@@ -471,8 +489,9 @@ export function useLeads() {
 
             return contacts.filter((c) => !c.instanceName || allowedInstanceSet.has(c.instanceName));
         },
-        enabled: !!user && !!orgId,
-        refetchInterval: 5000,
+        enabled: !DEV_MODE && !!user && !!orgId,
+        initialData: DEV_MODE ? [DEV_CONTACT] : undefined,
+        refetchInterval: DEV_MODE ? false : 5000,
     });
 
     // GENERIC HELPER: Try insert/update with Safe Fallback

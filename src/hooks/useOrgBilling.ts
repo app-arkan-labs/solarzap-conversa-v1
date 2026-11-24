@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveSupabaseFunctionErrorMessage } from '@/lib/supabaseFunctionErrors';
+import { DEV_MODE } from '@/config/devMode';
 
 export type BillingAccessState = 'full' | 'read_only' | 'blocked';
 
@@ -50,6 +51,23 @@ export function useOrgBillingInfo(enabled = true) {
   return useQuery({
     queryKey: [...BILLING_QUERY_KEY, orgId],
     enabled: enabled && Boolean(orgId),
+    initialData: DEV_MODE && orgId ? {
+      org_id: orgId,
+      plan_key: 'unlimited',
+      plan_limits: {},
+      features: { all: true },
+      subscription_status: 'active',
+      trial_ends_at: null,
+      trial_started_at: null,
+      grace_ends_at: null,
+      current_period_end: null,
+      onboarding_state: 'complete',
+      access_state: 'full',
+      effective_limits: {},
+      limits: {},
+      usage: {},
+      packs: [],
+    } : undefined,
     staleTime: 30_000,
     queryFn: async (): Promise<OrgBillingInfo | null> => {
       if (!orgId) return null;
