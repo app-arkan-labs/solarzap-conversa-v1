@@ -82,7 +82,7 @@ describe('useSolarResource', () => {
   });
 
   it('resolves successfully and sets data + status', async () => {
-    mockInvoke.mockResolvedValueOnce(buildSuccessResponse());
+    mockInvoke.mockResolvedValueOnce(buildSuccessResponse({ locationPrecision: 'postal_code' }));
 
     const { result } = renderHook(() => useSolarResource());
 
@@ -96,12 +96,25 @@ describe('useSolarResource', () => {
     expect(result.current.data).not.toBeNull();
     expect(result.current.data!.source).toBe('pvgis');
     expect(result.current.data!.annualIrradianceKwhM2Day).toBe(4.85);
+    expect(result.current.data!.locationPrecision).toBe('postal_code');
     expect(result.current.data!.monthlyIrradianceKwhM2Day).toHaveLength(12);
     expect(result.current.data!.monthlyGenerationFactors).toHaveLength(12);
     expect(result.current.data!.resolvedAt).toBeTruthy();
     expect(result.current.loading).toBe(false);
     expect(result.current.errorCode).toBeNull();
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('rejects a PVGIS response without the annual average instead of assuming 4.5', async () => {
+    mockInvoke.mockResolvedValueOnce(buildSuccessResponse({ annualIrradianceKwhM2Day: null }));
+    const { result } = renderHook(() => useSolarResource());
+
+    await act(async () => {
+      expect(await result.current.resolve(defaultLocationParams)).toBeNull();
+    });
+
+    expect(result.current.status).toBe('error');
+    expect(result.current.data).toBeNull();
   });
 
   // ── KEY REGRESSION TEST ──

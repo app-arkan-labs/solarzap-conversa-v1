@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import municipalityCoordinates from "./municipality-coordinates.json" with { type: "json" };
 
 const CORS_ALLOW_HEADERS = "authorization, x-client-info, apikey, content-type";
 const CORS_ALLOW_METHODS = "POST, OPTIONS";
@@ -35,11 +36,12 @@ const buildCorsHeaders = (req: Request) => {
 };
 
 const FETCH_TIMEOUT_MS = 15_000;
-const PVGIS_TIMEOUT_MS = 25_000;
-const MAX_PVGIS_ATTEMPTS_PER_BASE = 3;
+const PVGIS_TIMEOUT_MS = 12_000;
+const MAX_PVGIS_ATTEMPTS_PER_BASE = 2;
 const HANDLER_DEADLINE_MS = 120_000;
 
 const DAYS_IN_MONTH = [31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const AVERAGE_DAYS_PER_YEAR = 365.25;
 
 const UF_TO_STATE_NAME: Record<string, string> = {
   AC: "Acre",
@@ -76,7 +78,6 @@ const toFinite = (value: unknown, fallback = 0): number => {
   return Number.isFinite(numeric) ? numeric : fallback;
 };
 
-const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const normalizeZip = (value: unknown): string => String(value || "").replace(/\D/g, "").slice(0, 8);
 const normalizeText = (value: string): string =>
@@ -130,6 +131,9 @@ type SolarResourcePayload = {
   source: SolarResourceSource;
   lat: number | null;
   lon: number | null;
+  city?: string;
+  uf?: string;
+  locationPrecision: "address" | "postal_code" | "municipality" | "coordinates";
   annualIrradianceKwhM2Day: number;
   monthlyIrradianceKwhM2Day: number[];
   monthlyGenerationFactors: number[];
@@ -144,6 +148,8 @@ type SolarResourcePayload = {
 
 type GeocodeErrorCode = Extract<SolarResourceErrorCode, "geocode_failed" | "geocode_provider_unavailable" | "geocode_low_confidence">;
 
+type CoordinateRequest = { city: string; uf: string; addressLine: string; zip: string; googleApiKey: string };
+
 type ResolveCoordinatesResult =
   | {
     ok: true;
@@ -151,6 +157,7 @@ type ResolveCoordinatesResult =
     lon: number;
     city: string;
     uf: string;
+    precision: Exclude<SolarResourcePayload["locationPrecision"], "coordinates">;
     message?: string;
   }
   | {
@@ -420,28 +427,11 @@ const cityMatches = (expectedCity: string, geocodedCity: string): boolean => {
   return expected === actual || expected.includes(actual) || actual.includes(expected);
 };
 
-async function resolveCoordinatesWithGoogle(params: {
-  city: string;
-  uf: string;
-  addressLine: string;
-  zip: string;
-  googleApiKey: string;
-}): Promise<ResolveCoordinatesResult> {
+async function resolveCoordinatesWithGoogle(params: CoordinateRequest, googleApiKey: string): Promise<ResolveCoordinatesResult> {
   const normalizedZip = normalizeZip(params.zip);
   let city = String(params.city || "").trim();
   let uf = String(params.uf || "").trim().toUpperCase();
   let addressLine = String(params.addressLine || "").trim();
-  const googleApiKey = resolveGoogleApiKey(params.googleApiKey);
-
-  if (!googleApiKey) {
-    return {
-      ok: false,
-      errorCode: "geocode_provider_unavailable",
-      upstreamStatus: null,
-      message: "missing_google_api_key",
-    };
-  }
-
   const viaCep = normalizedZip.length === 8 ? await fetchViaCep(normalizedZip) : null;
   if (viaCep) {
     city = city || viaCep.city;
@@ -465,7 +455,7 @@ async function resolveCoordinatesWithGoogle(params: {
     .filter(Boolean)
     .join(", ");
   if (fullAddress) {
-    queries.push({
+    queries.unshift({
       address: fullAddress,
       components: "country:BR",
       label: "address_full",
@@ -527,6 +517,9 @@ async function resolveCoordinatesWithGoogle(params: {
       lon: geocode.lon,
       city: city || geocode.city,
       uf: uf || geocode.uf,
+      precision: !geocode.partialMatch && (geocode.locationType === "ROOFTOP" || geocode.locationType === "RANGE_INTERPOLATED")
+        ? "address"
+        : normalizedZip ? "postal_code" : "municipality",
       message: geocode.partialMatch
         ? `partial_match_location_type_${geocode.locationType || "unknown"}`
         : undefined,
@@ -539,6 +532,53 @@ async function resolveCoordinatesWithGoogle(params: {
     upstreamStatus: null,
     message: lastNotFoundMessage || "google_zero_results",
   };
+}
+
+async function resolveCoordinates(params: CoordinateRequest): Promise<ResolveCoordinatesResult> {
+  const googleKey = resolveGoogleApiKey(params.googleApiKey);
+  if (googleKey) {
+    const google = await resolveCoordinatesWithGoogle(params, googleKey);
+    if (google.ok || google.errorCode === "geocode_low_confidence") return google;
+  }
+
+  let { city, uf } = params;
+  const zip = normalizeZip(params.zip);
+  if (zip.length === 8) {
+    let postal: { city?: string; state?: string; location?: { coordinates?: { latitude?: string; longitude?: string } } } | null = null;
+    try {
+      const response = await fetchWithTimeout(`https://brasilapi.com.br/api/cep/v2/${zip}`, 6_000);
+      if (response.ok) postal = await response.json();
+    } catch {
+      // City and state still resolve locally when the postal service is unavailable.
+    }
+
+    const postalCity = String(postal?.city || "").trim();
+    const postalUf = String(postal?.state || "").trim().toUpperCase();
+    const locality = postalCity && postalUf ? { city: postalCity, uf: postalUf } : await fetchViaCep(zip);
+    if (locality) {
+      if ((uf && uf !== locality.uf) || !cityMatches(city, locality.city)) {
+        return { ok: false, errorCode: "geocode_low_confidence", upstreamStatus: null, message: "postal_location_mismatch" };
+      }
+      city ||= locality.city;
+      uf ||= locality.uf;
+    }
+
+    const point = postal?.location?.coordinates;
+    const lat = toFinite(point?.latitude || undefined, NaN);
+    const lon = toFinite(point?.longitude || undefined, NaN);
+    if (locality && isValidCoordinatePair(lat, lon)) {
+      return { ok: true, lat, lon, city, uf, precision: "postal_code" };
+    }
+  }
+
+  const municipalities = municipalityCoordinates as Record<string, Record<string, [number, number]>>;
+  const coordinates = municipalities[uf]?.[normalizeText(city)];
+  if (Array.isArray(coordinates)) {
+    const [lat, lon] = coordinates;
+    return { ok: true, lat, lon, city, uf, precision: "municipality" };
+  }
+
+  return { ok: false, errorCode: "geocode_failed", upstreamStatus: null, message: "postal_code_or_municipality_not_found" };
 }
 
 const isAmericasCoordinate = (lat: number, lon: number): boolean =>
@@ -554,41 +594,35 @@ type PvgisBasePlan = {
 };
 
 const buildPvgisBasePlans = (lat: number, lon: number): PvgisBasePlan[] => {
-  if (isAmericasCoordinate(lat, lon)) {
-    // Keep PVGIS-only flow, but prioritize databases with wider coverage in Brazil/Americas.
-    return [
-      {
-        baseUrl: "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
-        label: "v5_2/PVcalc",
-        raddatabase: "PVGIS-ERA5",
-      },
-      {
-        baseUrl: "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
-        label: "v5_2/PVcalc",
-        raddatabase: "PVGIS-SARAH2",
-      },
-      {
-        baseUrl: "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
-        label: "v5_2/PVcalc_default_db",
-      },
-      {
-        baseUrl: "https://re.jrc.ec.europa.eu/api/v5_3/PVcalc",
-        label: "v5_3/PVcalc",
-      },
-    ];
-  }
-
-  return [
-    {
-      baseUrl: "https://re.jrc.ec.europa.eu/api/v5_3/PVcalc",
-      label: "v5_3/PVcalc",
-    },
-    {
-      baseUrl: "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc",
-      label: "v5_2/PVcalc",
-    },
-  ];
+  const raddatabase = isAmericasCoordinate(lat, lon) ? "PVGIS-ERA5" : undefined;
+  return ["v5_3/PVcalc", "v5_2/PVcalc"].map(label => ({
+    baseUrl: `https://re.jrc.ec.europa.eu/api/${label}`,
+    label,
+    raddatabase,
+  }));
 };
+
+function parsePvgisClimate(data: any) {
+  const rows = data?.outputs?.monthly?.fixed;
+  if (!Array.isArray(rows) || rows.length !== 12) return null;
+  const monthlyDaily = new Array<number>(12).fill(NaN);
+  for (const row of rows) {
+    const month = Number(row?.month);
+    if (!Number.isInteger(month) || month < 1 || month > 12) return null;
+    monthlyDaily[month - 1] = toFinite(row?.["H(i)_d"] ?? NaN, NaN);
+  }
+  if (monthlyDaily.some(value => !Number.isFinite(value) || value < 0)) return null;
+
+  const annualTotal = toFinite(data?.outputs?.totals?.fixed?.["H(i)_y"], 0);
+  const total = annualTotal > 0 ? annualTotal : monthlyDaily.reduce((sum, value, idx) => sum + value * DAYS_IN_MONTH[idx], 0);
+  if (total <= 0) return null;
+  const lastYear = toFinite(data?.inputs?.meteo_data?.year_max, 0);
+  return {
+    annual: Number((total / AVERAGE_DAYS_PER_YEAR).toFixed(4)),
+    monthlyDaily,
+    referenceYear: lastYear > 0 ? lastYear : null,
+  };
+}
 
 const computeRetryDelayMs = (attempt: number): number => {
   const baseDelay = Math.min(4_000, 400 * (2 ** attempt));
@@ -601,7 +635,7 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
   const pvgisBasePlans = buildPvgisBasePlans(lat, lon);
   const pvgisBaseTried: string[] = [];
 
-  let data: any = null;
+  let climate: ReturnType<typeof parsePvgisClimate> = null;
   let totalAttempts = 0;
   let sawRateLimit = false;
   let sawTimeout = false;
@@ -682,11 +716,8 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
       }
 
       const candidate = await response.json().catch(() => null);
-      const monthlyRows = Array.isArray((candidate as any)?.outputs?.monthly?.fixed)
-        ? (candidate as any).outputs.monthly.fixed
-        : [];
-      if (monthlyRows.length > 0) {
-        data = candidate;
+      climate = parsePvgisClimate(candidate);
+      if (climate) {
         pvgisBaseUsed = planLabel;
         break;
       }
@@ -696,12 +727,12 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
       await sleep(computeRetryDelayMs(attempt));
     }
 
-    if (data) break;
+    if (climate) break;
   }
 
   const latencyMs = Date.now() - startedAt;
 
-  if (!data) {
+  if (!climate) {
     const errorCode: PvgisFetchErrorCode = sawRateLimit
       ? "upstream_rate_limited"
       : sawTimeout
@@ -721,58 +752,9 @@ async function fetchPvgisMonthly(lat: number, lon: number, deadlineMs?: number):
     };
   }
 
-  const monthlyRows = Array.isArray((data as any)?.outputs?.monthly?.fixed)
-    ? (data as any).outputs.monthly.fixed
-    : [];
-  if (monthlyRows.length === 0) {
-    return {
-      ok: false,
-      errorCode: "upstream_http_error",
-      totalAttempts,
-      upstreamStatus,
-      latencyMs,
-      pvgisBaseTried,
-      message: "no_monthly_rows",
-    };
-  }
-
-  const monthlyDaily: number[] = new Array(12).fill(0);
-  for (const row of monthlyRows) {
-    const monthIndex = clamp(Math.round(toFinite((row as any)?.month, 0)) - 1, 0, 11);
-    const dailyIrradiance = Math.max(0, toFinite((row as any)?.["H(i)_d"], 0));
-    monthlyDaily[monthIndex] = dailyIrradiance;
-  }
-
-  const validCount = monthlyDaily.filter((value) => value > 0.01).length;
-  if (validCount < 8) {
-    return {
-      ok: false,
-      errorCode: "upstream_http_error",
-      totalAttempts,
-      upstreamStatus,
-      latencyMs,
-      pvgisBaseTried,
-      message: `insufficient_valid_months_${validCount}`,
-    };
-  }
-
-  const knownAvg = monthlyDaily.filter((v) => v > 0).reduce((acc, v) => acc + v, 0) / validCount;
-  const patchedMonthlyDaily = monthlyDaily.map((value) => (value > 0 ? value : knownAvg));
-
-  const totalsHiD = toFinite((data as any)?.outputs?.totals?.fixed?.["H(i)_d"], 0);
-  const annual = totalsHiD > 0
-    ? totalsHiD
-    : patchedMonthlyDaily.reduce((acc, value, idx) => acc + value * DAYS_IN_MONTH[idx], 0) / 365.25;
-
-  const referenceYear = Number.isFinite(Number((data as any)?.inputs?.meteo_data?.year_max))
-    ? Number((data as any)?.inputs?.meteo_data?.year_max)
-    : null;
-
   return {
     ok: true,
-    annual: Number(annual.toFixed(4)),
-    monthlyDaily: patchedMonthlyDaily.map((value) => Number(value.toFixed(4))),
-    referenceYear,
+    ...climate,
     totalAttempts,
     latencyMs,
     pvgisBaseTried,
@@ -906,13 +888,14 @@ Deno.serve(async (req) => {
     const zip = normalizeZip(body.zip);
     const geocodingApiKey = String(body.geocodingApiKey || "").trim();
 
-    let lat = toFinite(body.lat, NaN);
-    let lon = toFinite(body.lon, NaN);
+    let lat = toFinite(body.lat ?? NaN, NaN);
+    let lon = toFinite(body.lon ?? NaN, NaN);
+    let locationPrecision: SolarResourcePayload["locationPrecision"] = "coordinates";
 
     console.log(`[solar-resource] REQ requestId=${requestId} zip=${zip} city=${city} uf=${uf} addr=${addressLine.slice(0, 40)}`);
 
     if (!isValidCoordinatePair(lat, lon)) {
-      const geocode = await resolveCoordinatesWithGoogle({
+      const geocode = await resolveCoordinates({
         city,
         uf,
         addressLine,
@@ -953,6 +936,7 @@ Deno.serve(async (req) => {
       lon = geocode.lon;
       city = city || geocode.city;
       uf = uf || geocode.uf;
+      locationPrecision = geocode.precision;
     }
 
     if (!isValidCoordinatePair(lat, lon)) {
@@ -1021,6 +1005,9 @@ Deno.serve(async (req) => {
       source: "pvgis",
       lat: latRounded,
       lon: lonRounded,
+      city: city || undefined,
+      uf: uf || undefined,
+      locationPrecision,
       annualIrradianceKwhM2Day: pvgis.annual,
       monthlyIrradianceKwhM2Day: pvgis.monthlyDaily,
       monthlyGenerationFactors: factors.map((factor) => Number(factor.toFixed(6))),

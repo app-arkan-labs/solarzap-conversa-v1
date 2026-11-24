@@ -23,6 +23,7 @@ export interface SolarResourceData {
   source: SolarResourceResponse['source'];
   lat: number | null;
   lon: number | null;
+  locationPrecision?: SolarResourceResponse['locationPrecision'];
   annualIrradianceKwhM2Day: number;
   monthlyIrradianceKwhM2Day: number[];
   monthlyGenerationFactors: number[];
@@ -87,6 +88,7 @@ export const isStrictPvgisSource = (source: string | undefined | null): boolean 
   source === 'pvgis';
 
 const toFiniteOrUndefined = (value: unknown): number | undefined => {
+  if (value == null || value === '') return undefined;
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : undefined;
 };
@@ -374,21 +376,23 @@ async function invokeSolarResource(params: {
           .map((v) => Math.max(0, Number(v) || 0))
       : [];
 
-    if (monthlyFactors.length !== 12 || monthlyIrradiance.length !== 12) {
+    const annualIrradiance = Number(payload.annualIrradianceKwhM2Day);
+    if (monthlyFactors.length !== 12 || monthlyIrradiance.length !== 12 || !Number.isFinite(annualIrradiance) || annualIrradiance <= 0) {
       return { resource: null, errorCode: 'unexpected_error' };
     }
 
     return {
       resource: {
         source: source as SolarResourceResponse['source'],
-        lat: Number.isFinite(Number(payload.lat)) ? Number(payload.lat) : null,
-        lon: Number.isFinite(Number(payload.lon)) ? Number(payload.lon) : null,
-        annualIrradianceKwhM2Day: Math.max(0.01, Number(payload.annualIrradianceKwhM2Day) || 4.5),
+        lat: toFiniteOrUndefined(payload.lat) ?? null,
+        lon: toFiniteOrUndefined(payload.lon) ?? null,
+        city: typeof payload.city === 'string' ? payload.city : undefined,
+        uf: typeof payload.uf === 'string' ? payload.uf : undefined,
+        locationPrecision: payload.locationPrecision as SolarResourceResponse['locationPrecision'],
+        annualIrradianceKwhM2Day: annualIrradiance,
         monthlyIrradianceKwhM2Day: monthlyIrradiance,
         monthlyGenerationFactors: monthlyFactors,
-        referenceYear: Number.isFinite(Number(payload.referenceYear))
-          ? Number(payload.referenceYear)
-          : null,
+        referenceYear: toFiniteOrUndefined(payload.referenceYear) ?? null,
         cached: Boolean(payload.cached),
         degraded: Boolean(payload.degraded),
         errorCode: normalizeSolarResourceErrorCode(payload.errorCode),
@@ -440,7 +444,7 @@ export function useSolarResource(): UseSolarResourceReturn {
       if (code === 'geocode_provider_unavailable') {
         toast({
           title: 'Geocodificação indisponível',
-          description: `Serviço de geocodificação indisponível. Verifique a chave Google e tente novamente.${requestSuffix}`,
+          description: `Tente novamente com um CEP válido ou com a cidade e a UF.${requestSuffix}`,
           variant: 'destructive',
         });
         return;
@@ -576,6 +580,7 @@ export function useSolarResource(): UseSolarResourceReturn {
           source: result.resource.source,
           lat: result.resource.lat,
           lon: result.resource.lon,
+          locationPrecision: result.resource.locationPrecision,
           annualIrradianceKwhM2Day: result.resource.annualIrradianceKwhM2Day,
           monthlyIrradianceKwhM2Day: result.resource.monthlyIrradianceKwhM2Day,
           monthlyGenerationFactors: result.resource.monthlyGenerationFactors,

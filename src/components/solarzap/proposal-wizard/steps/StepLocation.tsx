@@ -19,14 +19,19 @@ interface StepLocationProps {
 export function StepLocation({ form }: StepLocationProps) {
   const isUsina = form.formData.tipo_cliente === 'usina';
   const cepAutofillRef = useRef<string>('');
-  const hasCoordinates = Number.isFinite(Number(form.formData.latitude))
-    && Number.isFinite(Number(form.formData.longitude));
+  const hasCoordinates = Number.isFinite(form.formData.latitude)
+    && Number.isFinite(form.formData.longitude);
   const cepValue = form.formData.cep;
   const autofillAddressByCep = form.autofillAddressByCep;
   const resolvePreciseLocation = form.resolvePreciseLocation;
-  const sourceLabel = form.formData.irradianceSource === 'pvgis'
-    ? 'PVGIS'
-    : 'nao resolvida';
+  const hasPvgis = form.formData.irradianceSource === 'pvgis';
+  const locationPrecision = form.solarResourceLocationPrecision;
+  const locationLabel = {
+    address: 'endereço',
+    postal_code: 'CEP',
+    municipality: 'município',
+    coordinates: 'coordenadas',
+  }[locationPrecision || 'coordinates'];
 
   const ufDistributorOptions = useMemo(() => {
     return form.options.getEnergyDistributorOptionsByUf(form.formData.estado || null);
@@ -170,7 +175,7 @@ export function StepLocation({ form }: StepLocationProps) {
           }}
         >
           {form.locationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
-          Calcular local exato
+          Calcular irradiância anual
         </Button>
       </div>
 
@@ -179,15 +184,14 @@ export function StepLocation({ form }: StepLocationProps) {
           Sistema estimado: {Number(form.formData.potenciaSistema || 0).toFixed(2)} kWp
         </p>
         <p className="text-muted-foreground">
-          {form.formData.quantidadePaineis || 0} paineis | Irradiancia {Number(form.formData.irradiancia || 0).toFixed(3)} kWh/m2/dia
+          {form.formData.quantidadePaineis || 0} painéis | Irradiância média diária no ano: {hasPvgis ? `${Number(form.formData.irradiancia).toFixed(3)} kWh/m²/dia` : 'a calcular'}
         </p>
         <p className="text-xs text-muted-foreground">
           {hasCoordinates
             ? `Coordenadas: ${Number(form.formData.latitude).toFixed(5)}, ${Number(form.formData.longitude).toFixed(5)}`
             : 'Coordenadas: nao resolvidas'}
-          {' | '}Fonte: {sourceLabel}
-          {' | '}Ref: {form.formData.irradianceRefAt ? new Date(form.formData.irradianceRefAt).toLocaleString('pt-BR') : '-'}
-          {' | '}Req: {form.formData.irradianceRequestId || '-'}
+          {hasPvgis && ` | PVGIS por ${locationLabel}`}
+          {hasPvgis && form.solarResourceReferenceYear && ` | Histórico até ${form.solarResourceReferenceYear}`}
         </p>
       </div>
     </div>

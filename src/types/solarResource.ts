@@ -39,6 +39,9 @@ export interface SolarResourceResponse {
   source: SolarResourceSource;
   lat: number | null;
   lon: number | null;
+  city?: string;
+  uf?: string;
+  locationPrecision?: 'address' | 'postal_code' | 'municipality' | 'coordinates';
   annualIrradianceKwhM2Day: number;
   monthlyIrradianceKwhM2Day: number[];
   monthlyGenerationFactors: number[];

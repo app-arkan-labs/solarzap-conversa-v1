@@ -596,6 +596,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
   }, []);
 
   const toFiniteOrUndefined = (value: unknown): number | undefined => {
+    if (value == null || value === '') return undefined;
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : undefined;
   };
@@ -633,9 +634,11 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     });
 
     if (result) {
+      const resolvedUf = result.uf || uf;
+      const resolvedCity = result.city || cidade;
       setFormData((prev) => patchAndRecalculate(prev, {
-        estado: uf || prev.estado,
-        cidade: cidade || prev.cidade,
+        estado: resolvedUf || prev.estado,
+        cidade: resolvedCity || prev.cidade,
         endereco: endereco || prev.endereco,
         cep: cep || prev.cep,
         irradiancia: result.annualIrradianceKwhM2Day,
@@ -646,8 +649,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         irradianceRefAt: new Date().toISOString(),
         irradianceRequestId: result.requestId ?? prev.irradianceRequestId,
         ...buildConcessionariaPatch(prev, {
-          uf: uf || prev.estado,
-          cidade: cidade || prev.cidade,
+          uf: resolvedUf || prev.estado,
+          cidade: resolvedCity || prev.cidade,
           cep: cep || prev.cep,
         }),
       }, { preserveValorTotal: true }));
@@ -890,13 +893,16 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     if (field === 'estado') {
       const uf = value as string;
-      const irradianceRefAt = new Date().toISOString();
+      solarResource.reset();
       setFormData(prev => {
         const patch: Partial<typeof formData> = {
           estado: uf,
-          irradiancia: prev.irradiancia,
-          irradianceSource: prev.irradianceSource,
-          irradianceRefAt: prev.irradianceRefAt || irradianceRefAt,
+          latitude: undefined,
+          longitude: undefined,
+          monthlyGenerationFactors: undefined,
+          irradianceSource: undefined,
+          irradianceRefAt: undefined,
+          irradianceRequestId: undefined,
         };
         const inference = inferDistributor({
           uf,
@@ -967,12 +973,14 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
       return;
     }
 
-    if (field === 'cep') {
+    if (field === 'cep' || field === 'cidade' || field === 'endereco') {
+      solarResource.reset();
       setFormData((prev) => ({
         ...prev,
-        cep: normalizeCep(String(value || '')),
+        [field]: field === 'cep' ? normalizeCep(String(value || '')) : String(value || ''),
         latitude: undefined,
         longitude: undefined,
+        monthlyGenerationFactors: undefined,
         irradianceSource: undefined,
         irradianceRefAt: undefined,
         irradianceRequestId: undefined,
@@ -1636,6 +1644,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     const currentContact = contactRef.current;
     if (!currentContact || !isOpen) return;
 
+    solarResource.reset();
     setIsLoading(false);
     setAiLoading(false);
     setAiContent(null);
@@ -1706,10 +1715,10 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         posicaoTelhado: 'nao_definido',
         sombreamentoPct: ROOF_POSITION_LOSS_MAP.nao_definido,
         monthlyGenerationFactors: undefined,
-        irradianceSource: isStrictPvgisSource(currentContact.irradianceSource) ? currentContact.irradianceSource : undefined,
+        irradianceSource: undefined,
         latitude: currentContact.latitude,
         longitude: currentContact.longitude,
-        irradianceRefAt: currentContact.irradianceRefAt || undefined,
+        irradianceRefAt: undefined,
         irradianceRequestId: undefined,
         concessionaria: inferredDistributor,
         tipoLigacao,
@@ -1727,11 +1736,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
 
     const leadLatitude = toFiniteOrUndefined(currentContact.latitude);
     const leadLongitude = toFiniteOrUndefined(currentContact.longitude);
-    const hasStrictPvgisCoordinates = isStrictPvgisSource(currentContact.irradianceSource)
-      && leadLatitude !== undefined
-      && leadLongitude !== undefined;
-
-    if (!hasStrictPvgisCoordinates) {
+    if ((leadLatitude !== undefined && leadLongitude !== undefined)
+      || normalizeCep(currentContact.zip || '').length === 8 || (uf && currentContact.city)) {
       void resolvePreciseLocation({
         estado: uf || undefined,
         cidade: currentContact.city || undefined,
@@ -1741,7 +1747,7 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
         longitude: leadLongitude,
       });
     }
-  }, [contact?.id, isOpen, recalculateSizing, resolvePreciseLocation]);
+  }, [contact?.id, isOpen, recalculateSizing, resolvePreciseLocation, solarResource.reset]);
 
   const isUsina = formData.tipo_cliente === 'usina';
   const hasFinancingSelected = formData.paymentConditions.includes('financiamento_bancario');
@@ -1764,6 +1770,8 @@ export function useProposalForm({ isOpen, onClose, contact, onGenerate }: UsePro
     isLoading,
     locationLoading: solarResource.loading,
     solarResourceStatus: solarResource.status,
+    solarResourceLocationPrecision: solarResource.data?.locationPrecision,
+    solarResourceReferenceYear: solarResource.data?.referenceYear,
     aiLoading,
     aiContent,
     aiHeadline,
