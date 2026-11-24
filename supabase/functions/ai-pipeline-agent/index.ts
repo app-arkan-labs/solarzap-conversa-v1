@@ -2170,11 +2170,16 @@ async function performOpenAIWebSearch(openAIApiKey: string, query: string): Prom
 
 // --- V6: NORMALIZERS for lead field extraction ---
 function normalizeMoneyBRL(raw: any): number | null {
-    if (typeof raw === 'number') return raw > 0 ? raw : null;
+    if (typeof raw === 'number') return Number.isFinite(raw) && raw > 0 ? raw : null;
     if (typeof raw !== 'string') return null;
-    const cleaned = raw.replace(/[R$\s.]/g, '').replace(',', '.').trim();
-    const n = parseFloat(cleaned);
-    return isNaN(n) || n <= 0 ? null : Math.round(n * 100) / 100;
+    const amount = raw.replace(/\s/g, '').replace(/^R\$/i, '').match(/^[+-]?\d+(?:[.,]\d+)*/)?.[0];
+    if (!amount) return null;
+    const comma = amount.lastIndexOf(',');
+    const dot = amount.lastIndexOf('.');
+    const decimal = comma > dot ? comma : /\.\d{1,2}$/.test(amount) ? dot : -1;
+    const integer = (decimal >= 0 ? amount.slice(0, decimal) : amount).replace(/[.,]/g, '');
+    const n = Number(decimal >= 0 ? `${integer}.${amount.slice(decimal + 1)}` : integer);
+    return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
 }
 
 function normalizeKwh(raw: any): number | null {
